@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ../backend 
+      dockerfile: ../docker/backend.Dockerfile
+    container_name: a-stock-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../backend:/app/backend
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro    # 同步本地时间
+      - /etc/timezone:/etc/timezone:ro      # 同步时区
+    restart: unless-stopped
+    networks:
+      - stock-network
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: a-stock-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../frontend/dist:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ../logs/nginx:/var/log/nginx
+      - /etc/localtime:/etc/localtime:ro    # 同步本地时间
+      - /etc/timezone:/etc/timezone:ro      # 同步时区
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - stock-network
+
+networks:
+  stock-network:
+    driver: bridge

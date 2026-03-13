@@ -1,0 +1,265 @@
+.dashboard {
+  min-height: 100vh;
+  padding: 20px;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 15px;
+}
+
+.header h1 {
+  font-size: 24px;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  width: 100%;
+  margin: 0 auto 20px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+
+.time-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-selector label {
+  color: #8ba4c7;
+  font-size: 14px;
+}
+
+.time-selector select {
+  background: rgba(20, 25, 45, 0.8);
+  border: 1px solid #3a4a6b;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.time-selector select:focus {
+  outline: none;
+  border-color: #5470c6;
+}
+
+.refresh-btn {
+  background: linear-gradient(135deg, #5470c6 0%, #3a5a9e 100%);
+  border: none;
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(84, 112, 198, 0.4);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.last-update {
+  color: #8ba4c7;
+  font-size: 12px;
+}
+
+.countdown {
+  color: #5470c6;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(84, 112, 198, 0.1);
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(84, 112, 198, 0.3);
+}
+
+.chart-container {
+  background: rgba(20, 25, 45, 0.6);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.chart {
+  width: 100%;
+  height: 500px;
+}
+
+.sector-list {
+  background: rgba(20, 25, 45, 0.6);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.sector-list h3 {
+  color: #fff;
+  margin-bottom: 15px;
+  font-size: 16px;
+}
+
+.sector-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.sector-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.sector-card {
+  background: rgba(30, 35, 60, 0.8);
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 1px solid transparent;
+  min-width: 120px;
+  text-align: center;
+  margin-top: 5px;
+}
+
+.sector-card:hover {
+  transform: translateY(-2px);
+  border-color: #5470c6;
+}
+
+.sector-card.top-3 {
+  border-color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.sector-card .rank {
+  font-size: 20px;
+  font-weight: bold;
+  color: #5470c6;
+  margin-bottom: 4px;
+}
+
+.sector-card.top-3 .rank {
+  color: #ffd700;
+}
+
+.sector-card .name {
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sector-card .flow {
+  color: #ee6666;
+  font-size: 12px;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+.sector-card .change {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.sector-card .change.positive {
+  color: #ee6666;
+}
+
+.sector-card .change.negative {
+  color: #91cc75;
+}
+
+.sector-card .trend-arrow {
+  margin-left: 4px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 20px;
+  border: 3px solid #3a4a6b;
+  border-top-color: #5470c6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading p {
+  color: #8ba4c7;
+}
+
+.error {
+  text-align: center;
+  padding: 40px;
+  background: rgba(238, 102, 102, 0.1);
+  border-radius: 8px;
+}
+
+.error p {
+  color: #ee6666;
+  margin-bottom: 15px;
+}
+
+.error button {
+  background: #ee6666;
+  border: none;
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+@media (max-width: 1200px) {
+  .sector-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chart {
+    height: 350px;
+  }
+
+  .sector-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
