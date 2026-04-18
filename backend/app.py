@@ -6,6 +6,8 @@ from data_processor import (
     latest_data, generate_daily_summary, load_daily_data, error_logger, data_logger, system_logger
 )
 from data_collector import data_collection_thread
+from news_processor import get_recent_news, get_news_data, save_news_data
+from news_collector import news_collection_thread
 import threading
 from datetime import datetime
 
@@ -83,6 +85,27 @@ def get_minute_data():
             'message': '服务器内部错误'
         }), 500
 
+@app.route('/api/news', methods=['GET'])
+def get_news():
+    try:
+        limit = request.args.get('limit', '50', type=int)
+        limit = min(limit, 200)
+        
+        news_data = get_recent_news(limit)
+        
+        return jsonify({
+            'success': True,
+            'data': news_data,
+            'count': len(news_data),
+            'timestamp': datetime.now().astimezone().isoformat()
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/news 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
@@ -104,9 +127,22 @@ if __name__ == '__main__':
             else:
                 system_logger.error("保存初始数据失败")
         
+        # 获取初始新闻数据
+        system_logger.info("获取最新新闻数据...")
+        initial_news = get_news_data(page=1, pagesize=400)
+        if initial_news:
+            save_news_data(initial_news)
+            system_logger.info(f"已获取 {len(initial_news)} 条新闻")
+        else:
+            system_logger.warning("未获取到初始新闻数据")
+        
         # 启动数据采集线程
         collection_thread = threading.Thread(target=data_collection_thread, daemon=True)
         collection_thread.start()
+        
+        # 启动新闻采集线程
+        news_thread = threading.Thread(target=news_collection_thread, daemon=True)
+        news_thread.start()
         
         # 启动Flask服务
         system_logger.info("启动Flask服务...")

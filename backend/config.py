@@ -11,7 +11,11 @@ if BASE_DIR == '/':
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 DAILY_DIR = os.path.join(DATA_DIR, 'daily')  # 最近一个月的每日最高流入数据
 REALTIME_DIR = os.path.join(DATA_DIR, 'realtime')  # 当天5分钟一次的实时数据
+NEWS_DIR = os.path.join(DATA_DIR, 'news')  # 新闻数据目录
 LOG_DIR = os.path.join(BASE_DIR, 'logs')  # 日志目录（与data平行）
 
 MAX_DAYS = 30
+MAX_NEWS_HOURS = 24  # 新闻保留时间（小时）
+
 DATA_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"

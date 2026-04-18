@@ -18,8 +18,37 @@
         <div class="countdown">
           下次刷新: {{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
+        <button class="news-notification" @click="showNewsModal">
+          📰 新闻
+        </button>
       </div>
     </header>
+
+    <div class="news-modal-overlay" v-if="newsModalVisible" @click="closeNewsModal">
+      <div class="news-modal" @click.stop>
+        <div class="news-modal-header">
+          <h3>📰 最新新闻</h3>
+          <button @click="closeNewsModal" class="close-modal-btn">×</button>
+        </div>
+        <div class="news-modal-content">
+          <div 
+            v-for="news in latestNews" 
+            :key="news.id"
+            class="news-modal-item"
+            :class="{ 'is-important': isImportant(news.importance) }"
+            @click="openNews(news.url)"
+          >
+            <div class="news-modal-time">{{ formatNewsTime(news.time) }}</div>
+            <div class="news-modal-title">
+              {{ news.title }}
+            </div>
+          </div>
+        </div>
+        <div class="news-modal-footer">
+          <button @click="goToNews" class="view-more-btn">查看更多新闻 →</button>
+        </div>
+      </div>
+    </div>
 
     <div class="chart-container" ref="chartContainer">
       <div ref="chart" class="chart"></div>
@@ -64,7 +93,7 @@
 <script>
 import * as echarts from 'echarts'
 import { formatFlow } from './utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData } from './services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews } from './services/apiService'
 import { generateChartOption, generateSeries } from './services/chartService'
 import './styles/App.css'
 
@@ -85,8 +114,11 @@ export default {
         '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#ff5722',
         '#00bcd4', '#8bc34a', '#ffc107', '#9c27b0', '#3f51b5'
       ],
-      countdown: 300, // 5分钟，单位秒
-      countdownInterval: null
+      countdown: 300,
+      countdownInterval: null,
+      latestNews: [],
+      latestNewsCount: 0,
+      newsModalVisible: false
     }
   },
   computed: {
@@ -101,6 +133,7 @@ export default {
     this.initChart()
     this.fetchDataByTimeRange()
     this.startCountdown()
+    this.fetchLatestNews()
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -374,6 +407,70 @@ export default {
 
     formatFlow(value) {
       return formatFlow(value)
+    },
+
+    async fetchLatestNews() {
+      try {
+        const response = await getNews(5)
+        if (response.success) {
+          this.latestNews = response.data
+          this.latestNewsCount = response.count
+        }
+      } catch (err) {
+        console.error('获取最新新闻失败:', err)
+      }
+    },
+
+    goToNews() {
+      this.$router.push('/news')
+    },
+
+    openNews(url) {
+      if (url) {
+        window.open(url, '_blank')
+      }
+    },
+
+    isImportant(importance) {
+      return importance === '3'
+    },
+
+    formatNewsTime(timeStr) {
+      if (!timeStr) return ''
+      
+      try {
+        let date
+        if (typeof timeStr === 'number') {
+          date = new Date(timeStr * 1000)
+        } else if (typeof timeStr === 'string') {
+          if (/^\d+$/.test(timeStr)) {
+            date = new Date(parseInt(timeStr) * 1000)
+          } else {
+            date = new Date(timeStr)
+          }
+        } else {
+          return ''
+        }
+        
+        if (isNaN(date.getTime())) {
+          return timeStr
+        }
+        
+        return date.toLocaleString('zh-CN', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      } catch (e) {
+        return timeStr
+      }
+    },
+
+    showNewsModal() {
+      this.newsModalVisible = true
+    },
+
+    closeNewsModal() {
+      this.newsModalVisible = false
     }
   }
 }

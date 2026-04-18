@@ -70,3 +70,20 @@ export async function getLatestData() {
     throw error
   }
 }
+
+/**
+ * 获取新闻数据
+ * @param {number} limit - 数量限制
+ * @returns {Promise<Object>} 新闻数据
+ */
+export async function getNews(limit = 50) {
+  try {
+    const response = await apiClient.get('/news', {
+      params: { limit: limit }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取新闻数据失败:', error)
+    throw error
+  }
+}
