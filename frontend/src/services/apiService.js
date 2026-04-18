@@ -186,3 +186,13 @@ export async function saveAIPrompt(prompt, password) {
     throw error
   }
 }
+
+export async function getSystemHealth() {
+  try {
+    const response = await axios.get('/health')
+    return response.data
+  } catch (error) {
+    console.error('获取系统健康状态失败:', error)
+    throw error
+  }
+}

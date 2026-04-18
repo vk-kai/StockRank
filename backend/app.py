@@ -8,6 +8,7 @@ from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
 from routes import flow_bp, news_bp, config_bp
+from thread_monitor import get_all_status
 
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
@@ -29,7 +30,10 @@ def create_app():
     
     @app.route('/health', methods=['GET'])
     def health():
-        return jsonify({'status': 'ok'})
+        return jsonify({
+            'status': 'ok',
+            'threads': get_all_status()
+        })
     
     return app
 

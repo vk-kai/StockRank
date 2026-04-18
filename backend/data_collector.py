@@ -2,6 +2,7 @@ import time
 from datetime import datetime, timedelta
 import calendar
 from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, error_logger, data_logger, system_logger
+from thread_monitor import heartbeat, register_thread
 
 # 判断是否为交易日
 def is_trading_day(date):
@@ -35,6 +36,7 @@ def is_trading_time(time):
 
 # 定时采集数据的线程
 def data_collection_thread():
+    register_thread('data_collector')
     system_logger.info("启动数据采集线程，每5分钟采集一次数据...")
     
     # 清理过期数据
@@ -42,6 +44,7 @@ def data_collection_thread():
     
     while True:
         try:
+            heartbeat('data_collector')
             now = datetime.now().astimezone()
             today = now.strftime('%Y-%m-%d')
             current_minute = now.minute

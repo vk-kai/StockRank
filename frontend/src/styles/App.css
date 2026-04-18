@@ -101,6 +101,7 @@
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
+  margin-top: 60px;
 }
 
 .news-notification {
@@ -339,6 +340,7 @@
   background: rgba(20, 25, 45, 0.6);
   border-radius: 8px;
   padding: 20px;
+  margin-top: -40px;
 }
 
 .sector-list h3 {
@@ -630,6 +632,113 @@
 .config-button:hover {
   background: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
+}
+
+.monitor-card-container {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 350px;
+  background: linear-gradient(135deg, rgba(30, 35, 60, 0.95) 0%, rgba(20, 25, 45, 0.95) 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.monitor-card-container:hover {
+  border-color: rgba(79, 195, 247, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.monitor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.monitor-card-label {
+  color: #4fc3f7;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.monitor-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.monitor-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.monitor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.monitor-ok .monitor-dot {
+  background: #4caf50;
+  box-shadow: 0 0 8px #4caf50;
+  animation: pulse-dot 2s infinite;
+}
+
+.monitor-error .monitor-dot {
+  background: #f44336;
+  box-shadow: 0 0 8px #f44336;
+  animation: blink-dot 1s infinite;
+}
+
+.monitor-loading .monitor-dot {
+  background: #ffc107;
+  box-shadow: 0 0 6px #ffc107;
+  animation: pulse-dot 1s infinite;
+}
+
+.monitor-name {
+  color: #b0bec5;
+}
+
+.monitor-ok .monitor-text {
+  color: #81c784;
+  margin-left: auto;
+}
+
+.monitor-error .monitor-text {
+  color: #ef5350;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.monitor-loading .monitor-text {
+  color: #ffc107;
+  margin-left: auto;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
 }
 
 .news-ticker-container {
