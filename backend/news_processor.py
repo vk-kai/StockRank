@@ -5,7 +5,7 @@ import os
 from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS
 from logger import setup_logging
 
-error_logger, data_logger, system_logger = setup_logging()
+error_logger, _, _ = setup_logging()
 
 def get_news_data(page=1, pagesize=400):
     headers = {
@@ -44,8 +44,6 @@ def get_news_data(page=1, pagesize=400):
                             'timestamp': datetime.now().isoformat()
                         }
                         news_list.append(news_item)
-            else:
-                system_logger.warning(f"新闻数据格式异常: {type(news_data)}")
             
             return news_list
         return []
@@ -60,7 +58,6 @@ def get_news_file_path():
 def ensure_news_dir():
     if not os.path.exists(NEWS_DIR):
         os.makedirs(NEWS_DIR)
-        system_logger.info(f"创建新闻数据目录: {NEWS_DIR}")
 
 def load_today_news():
     ensure_news_dir()
@@ -92,9 +89,6 @@ def save_news_data(news_list):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(all_news, f, ensure_ascii=False, indent=2)
         
-        if new_news:
-            data_logger.info(f"保存新闻数据成功，新增 {len(new_news)} 条，总计 {len(all_news)} 条")
-        
         return True
     except Exception as e:
         error_logger.error(f"保存新闻数据失败: {e}")
@@ -105,7 +99,6 @@ def cleanup_old_news():
         ensure_news_dir()
         cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
         
-        deleted_count = 0
         for filename in os.listdir(NEWS_DIR):
             if filename.endswith('.json'):
                 file_path = os.path.join(NEWS_DIR, filename)
@@ -113,10 +106,6 @@ def cleanup_old_news():
                 
                 if file_time < cutoff_time:
                     os.remove(file_path)
-                    deleted_count += 1
-        
-        if deleted_count > 0:
-            system_logger.info(f"清理过期新闻文件: {deleted_count} 个")
         
         return True
     except Exception as e:

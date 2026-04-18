@@ -3,23 +3,33 @@
     <header class="news-page-header">
       <button @click="goBack" class="back-button">← 返回</button>
       <h1>📰 实时新闻</h1>
-      <div class="news-controls">
-        <button 
-          class="notification-toggle" 
-          :class="{ 'active': enableNotification }"
-          @click="toggleNotification"
-          :title="enableNotification ? '关闭新闻提醒' : '开启新闻提醒'"
-        >
-          {{ enableNotification ? '🔔 提醒已开启' : '🔕 提醒已关闭' }}
-        </button>
-        <div class="last-update" v-if="lastUpdate">
-          最后更新: {{ lastUpdate }}
-        </div>
-        <div class="countdown">
-          下次刷新: {{ countdownSeconds }}秒
-        </div>
-      </div>
+      <div class="header-spacer"></div>
     </header>
+    
+    <div class="news-controls">
+      <button 
+        class="filter-toggle"
+        :class="{ 'active': showOnlyImportant }"
+        @click="toggleImportantFilter"
+        :title="showOnlyImportant ? '显示全部新闻' : '仅显示重要新闻'"
+      >
+        {{ showOnlyImportant ? '⭐ 仅重要' : '📰 全部' }}
+      </button>
+      <button 
+        class="notification-toggle" 
+        :class="{ 'active': enableNotification }"
+        @click="toggleNotification"
+        :title="enableNotification ? '关闭新闻提醒' : '开启新闻提醒'"
+      >
+        {{ enableNotification ? '🔔 提醒已开启' : '🔕 提醒已关闭' }}
+      </button>
+      <div class="last-update" v-if="lastUpdate">
+        最后更新: {{ lastUpdate }}
+      </div>
+      <div class="countdown">
+        下次刷新: {{ countdownSeconds }}秒
+      </div>
+    </div>
 
     <div class="news-list" v-if="displayNewsList.length > 0">
       <template v-for="(news, index) in displayNewsList" :key="news.id">
@@ -90,25 +100,33 @@ export default {
       currentPage: 1,
       pageSize: 20,
       enableNotification: true,
-      lastNewsId: null
+      lastNewsId: null,
+      showOnlyImportant: false
     }
   },
   computed: {
     countdownSeconds() {
       return this.countdown.toString().padStart(2, '0')
     },
+    filteredNewsList() {
+      if (this.showOnlyImportant) {
+        return this.newsList.filter(news => this.isImportant(news.importance))
+      }
+      return this.newsList
+    },
     displayNewsList() {
-      return this.newsList.slice(0, this.currentPage * this.pageSize)
+      return this.filteredNewsList.slice(0, this.currentPage * this.pageSize)
     },
     hasMoreNews() {
-      return this.currentPage * this.pageSize < this.newsList.length
+      return this.currentPage * this.pageSize < this.filteredNewsList.length
     },
     remainingNews() {
-      return this.newsList.length - this.currentPage * this.pageSize
+      return this.filteredNewsList.length - this.currentPage * this.pageSize
     }
   },
   mounted() {
     this.loadNotificationState()
+    this.loadFilterState()
     this.fetchNews()
     this.startCountdown()
   },
@@ -180,6 +198,19 @@ export default {
       if (this.enableNotification) {
         this.requestNotificationPermission()
       }
+    },
+
+    loadFilterState() {
+      const saved = localStorage.getItem('newsShowOnlyImportant')
+      if (saved !== null) {
+        this.showOnlyImportant = saved === 'true'
+      }
+    },
+
+    toggleImportantFilter() {
+      this.showOnlyImportant = !this.showOnlyImportant
+      localStorage.setItem('newsShowOnlyImportant', this.showOnlyImportant.toString())
+      this.currentPage = 1
     },
 
     toggleNotification() {
@@ -405,9 +436,13 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-spacer {
+  min-width: 100px;
 }
 
 .back-button {
@@ -430,7 +465,6 @@ export default {
   color: #fff;
   font-size: 28px;
   margin: 0;
-  flex: 1;
   text-align: center;
 }
 
@@ -438,6 +472,32 @@ export default {
   display: flex;
   gap: 15px;
   align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.filter-toggle {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.filter-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.filter-toggle.active {
+  background: rgba(255, 82, 82, 0.3);
+  border-color: #ff5252;
 }
 
 .notification-toggle {
@@ -531,7 +591,6 @@ export default {
 }
 
 .news-item.is-important {
-  background: rgba(255, 82, 82, 0.1);
   border-left-color: #ff5252;
 }
 
@@ -590,7 +649,6 @@ export default {
 }
 
 .news-item.is-important .news-source-badge {
-  background: rgba(255, 82, 82, 0.2);
   color: #ff5252;
 }
 
