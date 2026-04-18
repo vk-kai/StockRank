@@ -21,6 +21,9 @@ yarn-error.log*
 # 项目特定
 data/
 logs/
+config/ai_config.json
+config/feishu_config.json
+config/stock_monitor.json
 
 # IDE
 .vscode/

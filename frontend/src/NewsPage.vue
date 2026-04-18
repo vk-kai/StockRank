@@ -95,7 +95,7 @@ export default {
       loading: false,
       error: null,
       lastUpdate: null,
-      countdown: 15,
+      countdown: 30,
       countdownInterval: null,
       currentPage: 1,
       pageSize: 20,
@@ -185,7 +185,7 @@ export default {
           this.countdown--
         } else {
           this.fetchNews()
-          this.countdown = 15
+          this.countdown = 30
         }
       }, 1000)
     },

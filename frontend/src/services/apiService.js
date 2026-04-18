@@ -3,7 +3,6 @@
  */
 import axios from 'axios'
 
-// 创建axios实例
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 10000
@@ -84,6 +83,106 @@ export async function getNews(limit = 50) {
     return response.data
   } catch (error) {
     console.error('获取新闻数据失败:', error)
+    throw error
+  }
+}
+
+export async function getAIConfig() {
+  try {
+    const response = await apiClient.get('/config/ai')
+    return response.data
+  } catch (error) {
+    console.error('获取AI配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveAIConfig(config) {
+  try {
+    const response = await apiClient.post('/config/ai', config)
+    return response.data
+  } catch (error) {
+    console.error('保存AI配置失败:', error)
+    throw error
+  }
+}
+
+export async function testAIConnection() {
+  try {
+    const response = await apiClient.post('/config/ai/test', {})
+    return response.data
+  } catch (error) {
+    console.error('测试AI连接失败:', error)
+    throw error
+  }
+}
+
+export async function getFeishuConfig() {
+  try {
+    const response = await apiClient.get('/config/feishu')
+    return response.data
+  } catch (error) {
+    console.error('获取飞书配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveFeishuConfig(config) {
+  try {
+    const response = await apiClient.post('/config/feishu', config)
+    return response.data
+  } catch (error) {
+    console.error('保存飞书配置失败:', error)
+    throw error
+  }
+}
+
+export async function testFeishuConnection() {
+  try {
+    const response = await apiClient.post('/config/feishu/test', {})
+    return response.data
+  } catch (error) {
+    console.error('测试飞书连接失败:', error)
+    throw error
+  }
+}
+
+export async function getStockMonitorConfig() {
+  try {
+    const response = await apiClient.get('/config/stock-monitor')
+    return response.data
+  } catch (error) {
+    console.error('获取股票监控配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveStockMonitorConfig(config) {
+  try {
+    const response = await apiClient.post('/config/stock-monitor', config)
+    return response.data
+  } catch (error) {
+    console.error('保存股票监控配置失败:', error)
+    throw error
+  }
+}
+
+export async function getAIPrompt() {
+  try {
+    const response = await apiClient.get('/config/prompt')
+    return response.data
+  } catch (error) {
+    console.error('获取AI提示词失败:', error)
+    throw error
+  }
+}
+
+export async function saveAIPrompt(prompt, password) {
+  try {
+    const response = await apiClient.post('/config/prompt', { prompt, password })
+    return response.data
+  } catch (error) {
+    console.error('保存AI提示词失败:', error)
     throw error
   }
 }

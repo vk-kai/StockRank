@@ -2,12 +2,15 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
-from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS
+from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, DEV_MODE, DEV_NEWS_URL
 from logger import setup_logging
 
-error_logger, _, _ = setup_logging()
+error_logger, info_logger, _ = setup_logging()
 
 def get_news_data(page=1, pagesize=400):
+    api_url = DEV_NEWS_URL if DEV_MODE else NEWS_URL
+    if DEV_MODE:
+        info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Referer': 'https://news.10jqka.com.cn/',
@@ -22,31 +25,51 @@ def get_news_data(page=1, pagesize=400):
     }
     
     try:
-        response = requests.get(NEWS_URL, params=params, headers=headers, timeout=10)
-        data = response.json()
+        response = requests.get(api_url, params=params, headers=headers, timeout=10)
         
-        if data and 'data' in data and 'list' in data['data']:
-            news_list = []
-            news_data = data['data']['list']
-            
-            if isinstance(news_data, list):
-                for item in news_data:
-                    if isinstance(item, dict):
-                        news_item = {
-                            'id': str(item.get('id', '')),
-                            'title': item.get('title', ''),
-                            'content': item.get('digest', item.get('content', '')),
-                            'source': item.get('source', '同花顺'),
-                            'time': item.get('time', item.get('ctime', '')),
-                            'url': item.get('url', ''),
-                            'type': item.get('type', 'stock'),
-                            'importance': item.get('import', '0'),
-                            'timestamp': datetime.now().isoformat()
-                        }
-                        news_list.append(news_item)
-            
-            return news_list
-        return []
+        if response.status_code != 200:
+            error_logger.error(f"新闻API请求失败: HTTP {response.status_code}")
+            return []
+        
+        try:
+            data = response.json()
+        except Exception as e:
+            error_logger.error(f"新闻API返回非JSON: {response.text[:200]}")
+            return []
+        
+        if not data:
+            info_logger.info(f"新闻API返回空数据: {response.text[:100]}")
+            return []
+        
+        if 'data' not in data:
+            info_logger.info(f"新闻API无data字段: {list(data.keys())}")
+            return []
+        
+        inner_data = data['data']
+        if not isinstance(inner_data, dict) or 'list' not in inner_data:
+            info_logger.info(f"新闻API data格式异常")
+            return []
+        
+        news_list = []
+        news_data = inner_data['list']
+        
+        if isinstance(news_data, list):
+            for item in news_data:
+                if isinstance(item, dict):
+                    news_item = {
+                        'id': str(item.get('id', '')),
+                        'title': item.get('title', ''),
+                        'content': item.get('digest', item.get('content', '')),
+                        'source': item.get('source', '同花顺'),
+                        'time': item.get('time', item.get('ctime', '')),
+                        'url': item.get('url', ''),
+                        'type': item.get('type', 'stock'),
+                        'importance': item.get('import', '0'),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    news_list.append(news_item)
+        
+        return news_list
     except Exception as e:
         error_logger.error(f"获取新闻数据失败: {e}")
         return []
@@ -65,8 +88,15 @@ def load_today_news():
     
     if os.path.exists(file_path):
         try:
+            if os.path.getsize(file_path) == 0:
+                return []
             with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+                return []
+        except json.JSONDecodeError:
+            return []
         except Exception as e:
             error_logger.error(f"加载新闻数据失败: {e}")
             return []
@@ -78,11 +108,18 @@ def save_news_data(news_list):
     
     try:
         existing_news = load_today_news()
-        existing_ids = {item['id'] for item in existing_news}
+        existing_dict = {item['id']: item for item in existing_news}
         
-        new_news = [item for item in news_list if item['id'] not in existing_ids]
+        for item in news_list:
+            if 'ai_analyzed' not in item:
+                item['ai_analyzed'] = False
+            if 'pushed' not in item:
+                item['pushed'] = False
+            if 'core_event' not in item:
+                item['core_event'] = ''
+            existing_dict[item['id']] = item
         
-        all_news = new_news + existing_news
+        all_news = list(existing_dict.values())
         
         all_news.sort(key=lambda x: x.get('time', ''), reverse=True)
         
@@ -123,21 +160,36 @@ def get_recent_news(limit=50):
             if filename.endswith('.json'):
                 file_path = os.path.join(NEWS_DIR, filename)
                 try:
+                    if os.path.getsize(file_path) == 0:
+                        continue
                     with open(file_path, 'r', encoding='utf-8') as f:
                         news_data = json.load(f)
+                        
+                        if not isinstance(news_data, list):
+                            continue
                         
                         filtered_news = [
                             item for item in news_data 
                             if datetime.fromisoformat(item.get('timestamp', datetime.now().isoformat())) >= cutoff_time
                         ]
                         all_news.extend(filtered_news)
+                except json.JSONDecodeError:
+                    continue
                 except Exception as e:
                     error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
                     continue
         
-        all_news.sort(key=lambda x: x.get('time', ''), reverse=True)
+        seen_ids = set()
+        unique_news = []
+        for news in all_news:
+            news_id = news.get('id')
+            if news_id and news_id not in seen_ids:
+                seen_ids.add(news_id)
+                unique_news.append(news)
         
-        return all_news[:limit]
+        unique_news.sort(key=lambda x: x.get('time', ''), reverse=True)
+        
+        return unique_news[:limit]
     except Exception as e:
         error_logger.error(f"获取最近新闻失败: {e}")
         return []

@@ -18,35 +18,31 @@
         <div class="countdown">
           下次刷新: {{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
-        <button class="news-notification" @click="showNewsModal">
-          📰 新闻
+        <button class="config-button" @click="goToConfig">
+          ⚙️ 配置
         </button>
       </div>
     </header>
 
-    <div class="news-modal-overlay" v-if="newsModalVisible" @click="closeNewsModal">
-      <div class="news-modal" @click.stop>
-        <div class="news-modal-header">
-          <h3>📰 最新新闻</h3>
-          <button @click="closeNewsModal" class="close-modal-btn">×</button>
-        </div>
-        <div class="news-modal-content">
+    <div class="news-ticker-container" v-if="latestNews.length > 0">
+      <div class="news-ticker-header">
+        <span class="ticker-label">📰 最新新闻</span>
+        <button class="view-more-news" @click="goToNews">更多 →</button>
+      </div>
+      <div class="news-ticker-content">
+        <transition name="fade" mode="out-in">
           <div 
-            v-for="news in latestNews" 
-            :key="news.id"
-            class="news-modal-item"
-            :class="{ 'is-important': isImportant(news.importance) }"
-            @click="openNews(news.url)"
+            :key="currentNewsIndex" 
+            class="ticker-item" 
+            @click="openNews(latestNews[currentNewsIndex].url)"
           >
-            <div class="news-modal-time">{{ formatNewsTime(news.time) }}</div>
-            <div class="news-modal-title">
-              {{ news.title }}
+            <div class="news-time">{{ formatNewsTime(latestNews[currentNewsIndex].timestamp) }}</div>
+            <div class="news-title">
+              <span v-if="latestNews[currentNewsIndex].importance === '3'" class="important-badge">重要</span>
+              {{ latestNews[currentNewsIndex].title }}
             </div>
           </div>
-        </div>
-        <div class="news-modal-footer">
-          <button @click="goToNews" class="view-more-btn">查看更多新闻 →</button>
-        </div>
+        </transition>
       </div>
     </div>
 
@@ -118,7 +114,8 @@ export default {
       countdownInterval: null,
       latestNews: [],
       latestNewsCount: 0,
-      newsModalVisible: false
+      currentNewsIndex: 0,
+      newsRotationInterval: null
     }
   },
   computed: {
@@ -127,6 +124,11 @@ export default {
     },
     countdownSeconds() {
       return (this.countdown % 60).toString().padStart(2, '0')
+    },
+    importantNews() {
+      return this.latestNews.filter(news => 
+        news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
+      ).slice(0, 10)
     }
   },
   mounted() {
@@ -134,6 +136,7 @@ export default {
     this.fetchDataByTimeRange()
     this.startCountdown()
     this.fetchLatestNews()
+    this.startNewsRotation()
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -144,6 +147,9 @@ export default {
     }
     if (this.countdownInterval) {
       clearInterval(this.countdownInterval)
+    }
+    if (this.newsRotationInterval) {
+      clearInterval(this.newsRotationInterval)
     }
   },
   methods: {
@@ -409,6 +415,25 @@ export default {
       return formatFlow(value)
     },
 
+    formatNewsTime(timestamp) {
+      if (!timestamp) return ''
+      
+      const date = new Date(timestamp * 1000)
+      const now = new Date()
+      const hours = date.getHours().toString().padStart(2, '0')
+      const minutes = date.getMinutes().toString().padStart(2, '0')
+      
+      const isToday = date.toDateString() === now.toDateString()
+      
+      if (isToday) {
+        return `${hours}:${minutes}`
+      } else {
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const day = date.getDate().toString().padStart(2, '0')
+        return `${month}-${day} ${hours}:${minutes}`
+      }
+    },
+
     async fetchLatestNews() {
       try {
         const response = await getNews(5)
@@ -421,8 +446,20 @@ export default {
       }
     },
 
+    startNewsRotation() {
+      this.newsRotationInterval = setInterval(() => {
+        if (this.latestNews.length > 0) {
+          this.currentNewsIndex = (this.currentNewsIndex + 1) % this.latestNews.length
+        }
+      }, 3000)
+    },
+
     goToNews() {
       this.$router.push('/news')
+    },
+
+    goToConfig() {
+      this.$router.push('/config')
     },
 
     openNews(url) {
@@ -463,14 +500,6 @@ export default {
       } catch (e) {
         return timeStr
       }
-    },
-
-    showNewsModal() {
-      this.newsModalVisible = true
-    },
-
-    closeNewsModal() {
-      this.newsModalVisible = false
     }
   }
 }

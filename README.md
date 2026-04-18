@@ -1,213 +1,270 @@
-# 📈 A股板块资金流入统计系统
-
-**实时监控A股市场板块资金流向 · 智能数据分析 · 可视化大屏展示**
-
-[功能特性](#功能特性) · [快速开始](#快速开始) · [部署指南](#部署指南) · [技术架构](#技术架构)
-
-## 🎨 界面预览
-
 <div align="center">
 
-![系统界面](image.png)
+# 📈 StockRank - A股智能分析系统
+
+**实时监控 · AI分析 · 智能推送 · 专业决策**
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.8+-brightgreen.svg)](https://www.python.org/)
+[![Vue](https://img.shields.io/badge/vue-3.0+-brightgreen.svg)](https://vuejs.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+
+[在线演示](#) · [快速开始](#快速开始) · [功能特性](#功能特性) · [部署指南](#部署指南)
 
 </div>
 
-***
+---
+
+## 📋 目录
+
+- [项目简介](#项目简介)
+- [功能特性](#功能特性)
+- [技术架构](#技术架构)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [API文档](#api文档)
+- [部署指南](#部署指南)
+- [开发指南](#开发指南)
+- [常见问题](#常见问题)
+- [贡献指南](#贡献指南)
+- [许可证](#许可证)
+- [联系方式](#联系方式)
+
+---
 
 ## 🎯 项目简介
 
-这是一个专业的A股市场板块资金流入实时监控系统，通过对接东方财富数据源，实时采集和分析各板块的资金流向数据，为投资者提供直观、准确的市场资金动态分析。
+StockRank 是一个专业的A股市场智能分析系统，集成了实时数据采集、AI智能分析、飞书机器人推送等功能。通过对接东方财富和同花顺数据源，为投资者提供全方位的市场监控和决策支持。
 
 ### ✨ 核心亮点
 
-- 🔄 **实时数据采集** - 每5分钟自动更新板块资金流入数据
-- 📊 **智能数据分析** - 自动计算每日资金流入TOP榜单
-- 📈 **可视化展示** - 使用ECharts构建交互式数据大屏
-- 🗄️ **历史数据追溯** - 支持查询最近30天的历史数据
-- 🐳 **容器化部署** - 完整的Docker部署方案，一键启动
-- 🚀 **高性能架构** - 前后端分离，支持高并发访问
+| 特性 | 描述 |
+|------|------|
+| 🔄 **实时监控** | 每5分钟自动更新板块资金流入数据，15秒采集一次新闻 |
+| 🤖 **AI分析** | 集成GPT等大模型，智能分析新闻对A股的影响 |
+| 📢 **智能推送** | 支持飞书机器人推送重要新闻和关注股票动态 |
+| 📊 **可视化大屏** | 使用ECharts构建专业金融数据可视化界面 |
+| 🎯 **自定义监控** | 支持自定义股票监控，关键词匹配自动推送 |
+| 🐳 **容器化部署** | 完整的Docker部署方案，一键启动 |
 
-***
+---
 
 ## 🚀 功能特性
 
-### 数据采集
+### 1. 实时数据采集
 
-- ✅ 实时获取A股所有板块资金流入数据
-- ✅ 自动计算板块涨跌幅
-- ✅ 5分钟间隔自动数据更新
+- ✅ 板块资金流入数据（每5分钟更新）
+- ✅ 同花顺实时新闻（每15秒采集）
+- ✅ 历史数据追溯（支持30天）
 - ✅ 异常自动重试机制
 
-### 数据分析
+### 2. AI智能分析
 
-- ✅ 每日资金流入TOP10榜单
-- ✅ 板块资金流向趋势分析
-- ✅ 历史数据对比
-- ✅ 实时分钟级数据追踪
+- ✅ 自动识别重要新闻（importance=3）
+- ✅ AI深度分析新闻影响
+- ✅ 判断影响类型（即时/延迟）
+- ✅ 识别相关板块和市场
+- ✅ 生成投资建议
 
-### 可视化展示
+### 3. 智能推送系统
 
-- ✅ 交互式折线图展示资金流向
-- ✅ 板块排名卡片展示
-- ✅ 涨跌幅颜色标识
-- ✅ 自动倒计时刷新
-- ✅ 响应式布局设计
+- ✅ 飞书机器人实时推送
+- ✅ 重要新闻自动推送
+- ✅ 自定义股票监控推送
+- ✅ 卡片消息格式化
 
-### 系统功能
+### 4. 可视化展示
 
-- ✅ RESTful API接口
-- ✅ 完整的日志记录
-- ✅ 健康检查接口
-- ✅ 跨域支持
-- ✅ Nginx反向代理
+- ✅ 板块资金流向趋势图
+- ✅ 实时TOP10榜单
+- ✅ 重要新闻滚动展示
+- ✅ 金融风格界面设计
 
-***
+### 5. 配置管理
 
-## 📁 项目结构
+- ✅ AI模型配置界面
+- ✅ 飞书机器人配置
+- ✅ 股票监控配置
+- ✅ AI提示词自定义
 
-```
-StockRank/
-├── backend/                 # 后端服务
-│   ├── app.py              # Flask应用主程序
-│   ├── config.py           # 配置文件
-│   ├── data_collector.py   # 数据采集模块
-│   ├── data_processor.py   # 数据处理模块
-│   ├── logger.py           # 日志模块
-│   ├── requirements.txt    # Python依赖
-│   └── start.sh            # 启动脚本
-├── frontend/               # 前端服务
-│   ├── src/
-│   │   ├── App.vue         # 主组件
-│   │   ├── main.js         # 入口文件
-│   │   ├── services/       # API服务
-│   │   ├── styles/         # 样式文件
-│   │   └── utils/          # 工具函数
-│   ├── dist/               # 构建输出
-│   └── package.json       # Node依赖
-├── docker/                 # Docker配置
-│   ├── backend.Dockerfile  # 后端镜像
-│   ├── frontend.Dockerfile # 前端镜像
-│   ├── docker-compose.yml  # 编排配置
-│   └── nginx.conf          # Nginx配置
-├── data/                   # 数据存储
-│   ├── daily/              # 每日数据
-│   └── realtime/           # 实时数据
-├── logs/                   # 日志文件
-└── README.md               # 项目文档
-```
+---
 
-***
+## 🏗️ 技术架构
 
-## 🛠 技术架构
+### 技术栈
 
-### 后端技术栈
+#### 后端
+- **Python 3.8+** - 核心开发语言
+- **Flask** - Web框架
+- **Requests** - HTTP客户端
+- **ECharts** - 数据可视化
 
-- **Flask 3.0** - 轻量级Web框架
-- **Flask-CORS** - 跨域支持
-- **Requests** - HTTP请求库
-- **Gunicorn** - WSGI服务器
-- **Threading** - 多线程数据采集
-
-### 前端技术栈
-
-- **Vue.js 3.4** - 渐进式JavaScript框架
-- **Vite 5.0** - 现代化构建工具
-- **ECharts 5.4** - 数据可视化库
-- **Vue-ECharts** - Vue ECharts组件
+#### 前端
+- **Vue 3** - 前端框架
+- **Vue Router** - 路由管理
 - **Axios** - HTTP客户端
+- **ECharts** - 图表库
 
-### 部署技术栈
+#### 数据源
+- **东方财富** - 板块资金流入数据
+- **同花顺** - 实时新闻数据
 
-- **Docker** - 容器化部署
-- **Docker Compose** - 多容器编排
-- **Nginx** - 反向代理和静态文件服务
+#### AI服务
+- **OpenAI API** - GPT模型
+- **自定义API** - 支持其他兼容接口
 
-***
+#### 推送服务
+- **飞书机器人** - Webhook推送
 
+### 系统架构图
 
-
-### 主要功能模块
-
-#### 1. 实时资金流向大屏
-
-- 动态折线图展示各板块资金流入趋势
-- 支持多时间维度切换（当天/7天/15天/30天）
-- 自动5分钟倒计时刷新
-
-#### 2. 板块排名榜单
-
-- TOP10板块资金流入排名
-- 实时涨跌幅显示
-- 颜色标识（红色上涨/绿色下跌）
-- 鼠标悬停高亮图表对应数据
-
-#### 3. 历史数据查询
-
-- 支持查询最近30天历史数据
-- 数据对比分析
-- 趋势追踪
-
-***
-
-## 🚀 快速开始
-
-### 环境要求
-
-- Python 3.11+
-- Node.js 16+
-- Docker & Docker Compose（可选）
-
-### 方式一：Docker部署（推荐）
-
-```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd StockRank
-
-# 2. 启动服务
-cd docker
-docker-compose up -d
-
-# 3. 访问应用
-# 浏览器打开: http://localhost
+```
+┌─────────────────┐
+│   数据采集层     │
+│  ┌───────────┐  │
+│  │ 板块数据   │  │
+│  │ 新闻数据   │  │
+│  └───────────┘  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   数据处理层     │
+│  ┌───────────┐  │
+│  │ 数据清洗   │  │
+│  │ AI分析    │  │
+│  └───────────┘  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   业务逻辑层     │
+│  ┌───────────┐  │
+│  │ 资金分析   │  │
+│  │ 新闻推送   │  │
+│  └───────────┘  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│   展示层         │
+│  ┌───────────┐  │
+│  │ Web界面   │  │
+│  │ 飞书推送   │  │
+│  └───────────┘  │
+└─────────────────┘
 ```
 
-### 方式二：本地开发
+---
 
-#### 后端启动
+## 🎬 快速开始
+
+### 前置要求
+
+- Python 3.8+
+- Node.js 14+
+- npm 或 yarn
+
+### 安装步骤
+
+#### 1. 克隆项目
 
 ```bash
-# 1. 进入后端目录
-cd backend
+git clone https://github.com/yourusername/StockRank.git
+cd StockRank
+```
 
-# 2. 安装依赖
+#### 2. 后端配置
+
+```bash
+# 安装Python依赖
+cd backend
 pip install -r requirements.txt
 
-# 3. 启动服务
+# 配置AI服务（可选）
+cp ../config/ai_config.json.example ../config/ai_config.json
+# 编辑 ai_config.json 填入您的API密钥
+
+# 配置飞书推送（可选）
+cp ../config/feishu_config.json.example ../config/feishu_config.json
+# 编辑 feishu_config.json 填入您的Webhook地址
+
+# 启动后端服务
 python app.py
 ```
 
-#### 前端启动
+#### 3. 前端配置
 
 ```bash
-# 1. 进入前端目录
-cd frontend
-
-# 2. 安装依赖
+# 安装前端依赖
+cd ../frontend
 npm install
 
-# 3. 开发模式启动
+# 启动开发服务器
 npm run dev
-
-# 4. 构建生产版本
-npm run build
 ```
 
-***
+#### 4. 访问系统
 
-## 📡 API接口
+打开浏览器访问：`http://localhost:5173`
 
-### 获取当前资金流向
+---
+
+## ⚙️ 配置说明
+
+详细配置说明请查看：[配置文件说明](config/README.md)
+
+### AI模型配置
+
+编辑 `config/ai_config.json`：
+
+```json
+{
+  "enabled": true,
+  "api_url": "https://api.openai.com/v1/chat/completions",
+  "api_key": "sk-your-api-key",
+  "model": "gpt-3.5-turbo",
+  "temperature": 0.7,
+  "max_tokens": 1000,
+  "timeout": 30
+}
+```
+
+### 飞书机器人配置
+
+编辑 `config/feishu_config.json`：
+
+```json
+{
+  "enabled": true,
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/your-webhook",
+  "secret": "your-secret",
+  "msg_type": "interactive"
+}
+```
+
+### 股票监控配置
+
+编辑 `config/stock_monitor.json`：
+
+```json
+{
+  "enabled": true,
+  "stocks": [
+    {
+      "name": "同花顺",
+      "code": "300338",
+      "keywords": ["同花顺", "300338", "花顺"],
+      "enabled": true
+    }
+  ]
+}
+```
+
+---
+
+## 📖 API文档
+
+### 数据接口
+
+#### 获取当前资金流入
 
 ```
 GET /api/flow/current
@@ -220,178 +277,217 @@ GET /api/flow/current
   "success": true,
   "data": [
     {
-      "name": "银行",
-      "flow": 123456.78,
-      "change": 0.0234
+      "rank": 1,
+      "name": "半导体",
+      "flow": 123456789,
+      "change": 0.05
     }
   ],
-  "timestamp": "2026-03-13T10:30:00+08:00"
+  "timestamp": "2026-04-18T12:00:00"
 }
 ```
 
-### 获取历史数据
+#### 获取历史数据
 
 ```
 GET /api/flow/history?days=7
 ```
 
-**参数：**
-
-- `days`: 查询天数（1-30）
-
-### 获取分钟级数据
+#### 获取新闻数据
 
 ```
-GET /api/flow/minute?hours=24
+GET /api/news?limit=50
 ```
 
-**参数：**
+### 配置接口
 
-- `hours`: 查询小时数（1-24）
-
-### 健康检查
+#### 获取AI配置
 
 ```
-GET /health
+GET /api/config/ai
 ```
 
-***
+#### 更新AI配置
+
+```
+POST /api/config/ai
+```
+
+#### 获取飞书配置
+
+```
+GET /api/config/feishu
+```
+
+#### 更新飞书配置
+
+```
+POST /api/config/feishu
+```
+
+---
 
 ## 🐳 部署指南
 
-### Docker部署
+### Docker部署（推荐）
 
-#### 构建镜像
-
-```bash
-# 构建后端镜像
-docker build -f docker/backend.Dockerfile -t a-stock-backend .
-
-# 构建前端镜像
-docker build -f docker/frontend.Dockerfile -t a-stock-frontend .
-```
-
-#### 使用Docker Compose
+#### 1. 构建镜像
 
 ```bash
-# 启动所有服务
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-
-# 停止服务
-docker-compose down
-
-# 重启服务
-docker-compose restart
+docker build -t stockrank:latest .
 ```
 
-### Nginx配置
+#### 2. 运行容器
 
-系统已配置Nginx反向代理，默认配置：
-
-- 前端静态文件：`/usr/share/nginx/html`
-- 后端API代理：`/api/*` → `http://backend:5000`
-
-***
-
-## 📊 数据说明
-
-### 数据来源
-
-- **东方财富网** - 板块资金流入数据
-- **更新频率** - 每5分钟自动更新
-
-### 数据字段
-
-- `name` - 板块名称
-- `flow` - 资金净流入（万元）
-- `change` - 涨跌幅（小数）
-- `rank` - 排名
-
-### 数据存储
-
-- **每日数据** - `data/daily/YYYY-MM-DD.json`
-- **实时数据** - `data/realtime/YYYY-MM-DD.json`
-- **数据保留** - 最近30天
-
-***
-
-## 🔧 配置说明
-
-### 后端配置（backend/config.py）
-
-```python
-# 数据目录
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-DAILY_DIR = os.path.join(DATA_DIR, 'daily')
-REALTIME_DIR = os.path.join(DATA_DIR, 'realtime')
-LOG_DIR = os.path.join(BASE_DIR, 'logs')
-
-# 最大保留天数
-MAX_DAYS = 30
-
-# 数据源URL
-DATA_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+```bash
+docker run -d \
+  --name stockrank \
+  -p 5000:5000 \
+  -p 5173:5173 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/config:/app/config \
+  stockrank:latest
 ```
 
-### 前端配置（frontend/src/services/apiService.js）
+#### 3. 访问系统
 
-```javascript
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+打开浏览器访问：`http://localhost:5173`
+
+### 手动部署
+
+详细的手动部署指南请查看：[部署文档](docs/deploy.md)
+
+---
+
+## 💻 开发指南
+
+### 项目结构
+
+```
+StockRank/
+├── backend/              # 后端代码
+│   ├── app.py           # Flask应用
+│   ├── config.py        # 配置管理
+│   ├── data_collector.py # 数据采集
+│   ├── data_processor.py # 数据处理
+│   ├── news_collector.py # 新闻采集
+│   ├── news_processor.py # 新闻处理
+│   ├── ai_analyzer.py   # AI分析
+│   ├── feishu_pusher.py # 飞书推送
+│   └── stock_monitor.py # 股票监控
+├── frontend/            # 前端代码
+│   ├── src/
+│   │   ├── App.vue      # 首页
+│   │   ├── NewsPage.vue # 新闻页
+│   │   ├── ConfigPage.vue # 配置页
+│   │   └── router.js    # 路由配置
+│   └── package.json
+├── config/              # 配置文件
+│   ├── ai_config.json   # AI配置
+│   ├── feishu_config.json # 飞书配置
+│   ├── stock_monitor.json # 股票监控
+│   └── ai_prompt.txt    # AI提示词
+├── data/                # 数据目录
+├── logs/                # 日志目录
+└── README.md            # 项目文档
 ```
 
-***
+### 开发环境搭建
 
-## 📝 日志系统
+```bash
+# 安装开发依赖
+pip install -r requirements-dev.txt
 
-系统提供三种日志类型：
+# 运行测试
+pytest
 
-- **系统日志** (`logs/system.log`) - 系统运行状态
-- **数据日志** (`logs/data.log`) - 数据采集记录
-- **错误日志** (`logs/error.log`) - 异常错误信息
+# 代码格式化
+black .
 
-***
+# 代码检查
+flake8
+```
+
+---
+
+## ❓ 常见问题
+
+### Q: 如何获取OpenAI API密钥？
+
+A: 访问 [OpenAI官网](https://platform.openai.com/) 注册账号，在API Keys页面创建密钥。
+
+### Q: 如何创建飞书机器人？
+
+A: 
+1. 打开飞书群设置
+2. 点击"群机器人" → "添加机器人"
+3. 选择"自定义机器人"
+4. 复制Webhook地址和签名密钥
+
+### Q: 数据采集频率可以修改吗？
+
+A: 可以。修改 `backend/config.py` 中的相关参数：
+- `DATA_COLLECTION_INTERVAL`: 板块数据采集间隔（默认5分钟）
+- `NEWS_COLLECTION_INTERVAL`: 新闻采集间隔（默认15秒）
+
+### Q: 支持哪些AI模型？
+
+A: 支持所有兼容OpenAI API格式的模型：
+- OpenAI: GPT-3.5, GPT-4
+- 国内镜像: 各种GPT镜像站
+- 自定义模型: 任何兼容OpenAI API的服务
+
+---
 
 ## 🤝 贡献指南
 
-欢迎提交Issue和Pull Request！
+我们欢迎所有形式的贡献！
 
-1. Fork本仓库
+### 贡献方式
+
+1. Fork本项目
 2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启Pull Request
+5. 创建Pull Request
 
-***
+### 代码规范
+
+- Python代码遵循PEP 8规范
+- 使用Black进行代码格式化
+- 编写单元测试
+- 更新相关文档
+
+---
 
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
 
-***
+---
 
 ## 📞 联系方式
 
-如有问题或建议，欢迎通过以下方式联系：
+- 项目主页: [https://github.com/yourusername/StockRank](https://github.com/yourusername/StockRank)
+- 问题反馈: [Issues](https://github.com/yourusername/StockRank/issues)
+- 邮箱: your.email@example.com
 
-- 提交Issue
-- 发送邮件
-
-***
+---
 
 ## 🙏 致谢
 
-- 数据来源：[东方财富网](https://www.eastmoney.com/)
-- 前端框架：[Vue.js](https://vuejs.org/)
-- 可视化库：[ECharts](https://echarts.apache.org/)
+感谢以下开源项目：
 
-***
+- [Vue.js](https://vuejs.org/)
+- [Flask](https://flask.palletsprojects.com/)
+- [ECharts](https://echarts.apache.org/)
+- [OpenAI](https://openai.com/)
+
+---
 
 <div align="center">
 
-**⭐ 如果这个项目对你有帮助，请给个Star支持一下！⭐**
+**⭐ 如果这个项目对您有帮助，请给一个Star支持一下！⭐**
 
 Made with ❤️ by StockRank Team
 

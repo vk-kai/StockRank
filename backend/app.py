@@ -1,152 +1,59 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
-from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
-from data_processor import (
-    get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data, 
-    latest_data, generate_daily_summary, load_daily_data, error_logger, data_logger, system_logger
-)
-from data_collector import data_collection_thread
-from news_processor import get_recent_news, get_news_data, save_news_data
-from news_collector import news_collection_thread
 import threading
-from datetime import datetime
+import os
 
-app = Flask(__name__)
-CORS(app)
+from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
+from data_processor import error_logger, system_logger
+from data_collector import data_collection_thread as data_collection_func
+from news_collector import news_collection_thread as news_collection_func, init_news_data
+from routes import flow_bp, news_bp, config_bp
 
-# API路由
-@app.route('/api/flow/current', methods=['GET'])
-def get_current_flow():
-    try:
-        if not latest_data:
-            data = get_sector_flow_data()
-        else:
-            data = latest_data
-        
-        return jsonify({
-            'success': True,
-            'data': data,
-            'timestamp': datetime.now().astimezone().isoformat()
-        })
-    except Exception as e:
-        error_logger.error(f"API /api/flow/current 异常: {e}")
-        return jsonify({
-            'success': False,
-            'message': '服务器内部错误'
-        }), 500
+data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
+news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
 
-@app.route('/api/flow/history', methods=['GET'])
-def get_history():
-    try:
-        days = request.args.get('days', '7', type=int)
-        days = min(days, 30)
-        
-        # 加载历史每日数据（已完成的交易日）
-        history = load_recent_daily_data(days)
-        print(history)
-        # 检查今天的数据
-        today = datetime.now().strftime('%Y-%m-%d')
-        today_daily_record = load_daily_data(today)
-        today_last_data=get_sector_flow_data()
-        # 如果今天已有每日数据（交易日已结束），使用每日数据
-        if today_daily_record and 'data' in today_daily_record:
-            history[today] = today_daily_record['data']
-        # 如果今天没有每日数据（交易进行中），使用实时数据
-        elif today_last_data:
-            history[today] = today_last_data[:10]
-        
-        return jsonify({
-            'success': True,
-            'data': history
-        })
-    except Exception as e:
-        error_logger.error(f"API /api/flow/history 异常: {e}")
-        return jsonify({
-            'success': False,
-            'message': '服务器内部错误'
-        }), 500
+def create_app():
+    app = Flask(__name__)
+    
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })
+    
+    app.register_blueprint(flow_bp)
+    app.register_blueprint(news_bp)
+    app.register_blueprint(config_bp)
+    
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'})
+    
+    return app
 
-@app.route('/api/flow/minute', methods=['GET'])
-def get_minute_data():
-    try:
-        hours = request.args.get('hours', '24', type=int)
-        hours = min(hours, 24)
-        
-        minute_data = load_recent_realtime_data(hours)
-        
-        return jsonify({
-            'success': True,
-            'data': minute_data
-        })
-    except Exception as e:
-        error_logger.error(f"API /api/flow/minute 异常: {e}")
-        return jsonify({
-            'success': False,
-            'message': '服务器内部错误'
-        }), 500
-
-@app.route('/api/news', methods=['GET'])
-def get_news():
-    try:
-        limit = request.args.get('limit', '50', type=int)
-        limit = min(limit, 200)
-        
-        news_data = get_recent_news(limit)
-        
-        return jsonify({
-            'success': True,
-            'data': news_data,
-            'count': len(news_data),
-            'timestamp': datetime.now().astimezone().isoformat()
-        })
-    except Exception as e:
-        error_logger.error(f"API /api/news 异常: {e}")
-        return jsonify({
-            'success': False,
-            'message': '服务器内部错误'
-        }), 500
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok'})
+app = create_app()
 
 if __name__ == '__main__':
     try:
-        system_logger.info("启动A股资金流入服务...")
+        for directory in [DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR]:
+            os.makedirs(directory, exist_ok=True)
         
-        # 获取最新板块资金流入数据
-        system_logger.info("获取最新板块资金流入数据...")
-        initial_data = get_sector_flow_data()
-        if initial_data:
-            today = datetime.now().strftime('%Y-%m-%d')
-            current_minute = datetime.now().strftime('%H:%M')
-            from data_processor import save_realtime_data
-            success = save_realtime_data(today, current_minute, initial_data)
-            if success:
-                system_logger.info(f"已获取 {len(initial_data)} 个板块的数据")
-            else:
-                system_logger.error("保存初始数据失败")
+        init_news_data()
         
-        # 获取初始新闻数据
-        system_logger.info("获取最新新闻数据...")
-        initial_news = get_news_data(page=1, pagesize=400)
-        if initial_news:
-            save_news_data(initial_news)
-            system_logger.info(f"已获取 {len(initial_news)} 条新闻")
-        else:
-            system_logger.warning("未获取到初始新闻数据")
+        if not data_collection_thread.is_alive():
+            data_collection_thread.start()
+            system_logger.info("数据采集线程已启动")
         
-        # 启动数据采集线程
-        collection_thread = threading.Thread(target=data_collection_thread, daemon=True)
-        collection_thread.start()
+        if not news_collection_thread.is_alive():
+            news_collection_thread.start()
+            system_logger.info("新闻采集线程已启动")
         
-        # 启动新闻采集线程
-        news_thread = threading.Thread(target=news_collection_thread, daemon=True)
-        news_thread.start()
-        
-        # 启动Flask服务
-        system_logger.info("启动Flask服务...")
+        system_logger.info("Flask服务器启动")
         app.run(host='0.0.0.0', port=5000, debug=False)
+        
+    except KeyboardInterrupt:
+        system_logger.info("服务器正在关闭...")
     except Exception as e:
-        error_logger.error(f"服务启动失败: {e}")
-        raise
+        error_logger.error(f"服务器启动失败: {e}")
