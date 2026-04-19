@@ -288,37 +288,67 @@ export default {
           series: []
         }
       } else {
-        const topSectors = this.getTopSectors(timeData, allData)
-        const series = generateSeries(topSectors, timeData, allData, this.colors)
-        option = generateChartOption(timeData, series, topSectors, oldSelected, this.colors)
+        const isToday = this.selectedTimeRange === 'today'
+        const topSectors = this.getTopSectors(timeData, allData, isToday)
+        const series = generateSeries(topSectors, timeData, allData, this.colors, isToday)
+        option = generateChartOption(timeData, series, topSectors, oldSelected, this.colors, isToday)
       }
 
       this.chartInstance.setOption(option)
     },
 
-    getTopSectors(timeData, allData) {
-      const sectorFlows = {}
-      
-      timeData.forEach(timeKey => {
-        const data = allData[timeKey]?.data || []
-        data.forEach(item => {
-          if (!sectorFlows[item.name]) {
-            sectorFlows[item.name] = []
-          }
-          sectorFlows[item.name].push(item.flow)
+    getTopSectors(timeData, allData, isToday) {
+      if (isToday) {
+        const sectorFlows = {}
+        
+        timeData.forEach(timeKey => {
+          const data = allData[timeKey]?.data || []
+          data.forEach(item => {
+            if (!sectorFlows[item.name]) {
+              sectorFlows[item.name] = []
+            }
+            if (item.flow !== null && item.flow !== undefined) {
+              sectorFlows[item.name].push(item.flow)
+            }
+          })
         })
-      })
 
-      const avgFlows = Object.entries(sectorFlows).map(([name, flows]) => {
-        const validFlows = flows.filter(f => f !== null)
-        if (validFlows.length === 0) return { name, avgFlow: 0 }
-        const avg = validFlows.reduce((a, b) => a + b, 0) / validFlows.length
-        return { name, avgFlow: avg }
-      })
+        const avgFlows = Object.entries(sectorFlows).map(([name, flows]) => {
+          if (flows.length === 0) return { name, avgFlow: 0 }
+          const avg = flows.reduce((a, b) => a + b, 0) / flows.length
+          return { name, avgFlow: avg }
+        })
 
-      avgFlows.sort((a, b) => b.avgFlow - a.avgFlow)
-      
-      return avgFlows.slice(0, 15).map(s => s.name)
+        avgFlows.sort((a, b) => b.avgFlow - a.avgFlow)
+        
+        return avgFlows.slice(0, 10).map(s => s.name)
+      } else {
+        const sectorStats = {}
+        
+        timeData.forEach(timeKey => {
+          const data = allData[timeKey]?.data || allData[timeKey] || []
+          data.forEach(item => {
+            if (!sectorStats[item.name]) {
+              sectorStats[item.name] = {
+                totalFlow: 0,
+                appearances: 0
+              }
+            }
+            if (item.total_flow !== undefined) {
+              sectorStats[item.name].totalFlow = item.total_flow
+            }
+            if (item.appearances !== undefined) {
+              sectorStats[item.name].appearances = item.appearances
+            }
+          })
+        })
+
+        const sortedSectors = Object.entries(sectorStats)
+          .map(([name, stats]) => ({ name, totalFlow: stats.totalFlow }))
+          .sort((a, b) => b.totalFlow - a.totalFlow)
+        
+        return sortedSectors.slice(0, 15).map(s => s.name)
+      }
     },
 
     formatFlow(value) {

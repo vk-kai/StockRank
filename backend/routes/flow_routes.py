@@ -3,7 +3,7 @@ from datetime import datetime
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
-    latest_data, load_daily_data, error_logger
+    load_recent_daily_data_with_accumulation, latest_data, load_daily_data, error_logger
 )
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -34,16 +34,38 @@ def get_history():
         days = request.args.get('days', '7', type=int)
         days = min(days, 30)
         
-        history = load_recent_daily_data(days)
+        history = load_recent_daily_data_with_accumulation(days)
         
         today = datetime.now().strftime('%Y-%m-%d')
         today_daily_record = load_daily_data(today)
         today_last_data = get_sector_flow_data()
         
         if today_daily_record and 'data' in today_daily_record:
-            history[today] = today_daily_record['data']
+            if today not in history:
+                history[today] = []
+            for i, item in enumerate(today_daily_record['data']):
+                history[today].append({
+                    'rank': i + 1,
+                    'name': item.get('name', ''),
+                    'flow': item.get('flow', 0),
+                    'change': item.get('change', 0),
+                    'total_flow': item.get('flow', 0),
+                    'accumulated_change_percent': item.get('change', 0),
+                    'appearances': 1
+                })
         elif today_last_data:
-            history[today] = today_last_data[:10]
+            if today not in history:
+                history[today] = []
+            for i, item in enumerate(today_last_data[:10]):
+                history[today].append({
+                    'rank': i + 1,
+                    'name': item.get('name', ''),
+                    'flow': item.get('flow', 0),
+                    'change': item.get('change', 0),
+                    'total_flow': item.get('flow', 0),
+                    'accumulated_change_percent': item.get('change', 0),
+                    'appearances': 1
+                })
         
         return jsonify({
             'success': True,

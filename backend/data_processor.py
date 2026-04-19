@@ -58,10 +58,11 @@ def get_sector_flow_data():
             global latest_data
             latest_data = result
             return result
+        else:
+            error_logger.error(f"API返回数据格式异常: {data}")
     
     except Exception as e:
         error_logger.error(f"获取数据失败: {e}")
-        return []
     
     return []
 
@@ -296,6 +297,81 @@ def load_recent_daily_data(days):
         error_logger.error(f"加载最近每日数据失败: {e}")
         return {}
 
+def load_recent_daily_data_with_accumulation(days):
+    try:
+        raw_data = load_recent_daily_data(days)
+        
+        if not raw_data:
+            return {}
+        
+        sector_stats = {}
+        
+        dates_sorted = sorted(raw_data.keys())
+        
+        for date_str in dates_sorted:
+            daily_data = raw_data[date_str]
+            if not isinstance(daily_data, list):
+                continue
+            
+            for item in daily_data:
+                sector_name = item.get('name')
+                if not sector_name:
+                    continue
+                
+                if sector_name not in sector_stats:
+                    sector_stats[sector_name] = {
+                        'name': sector_name,
+                        'total_flow': 0,
+                        'accumulated_change': 1.0,
+                        'appearances': 0,
+                        'daily_records': []
+                    }
+                
+                flow = item.get('flow', 0) or 0
+                change = item.get('change', 0) or 0
+                
+                sector_stats[sector_name]['total_flow'] += flow
+                sector_stats[sector_name]['accumulated_change'] *= (1 + change)
+                sector_stats[sector_name]['appearances'] += 1
+                sector_stats[sector_name]['daily_records'].append({
+                    'date': date_str,
+                    'flow': flow,
+                    'change': change
+                })
+        
+        for sector_name, stats in sector_stats.items():
+            stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
+        
+        sorted_sectors = sorted(
+            sector_stats.values(),
+            key=lambda x: x['total_flow'],
+            reverse=True
+        )
+        
+        result = {}
+        for i, sector in enumerate(sorted_sectors):
+            for record in sector['daily_records']:
+                date_str = record['date']
+                if date_str not in result:
+                    result[date_str] = []
+                
+                result[date_str].append({
+                    'rank': i + 1,
+                    'name': sector['name'],
+                    'flow': record['flow'],
+                    'change': record['change'],
+                    'total_flow': sector['total_flow'],
+                    'accumulated_change_percent': sector['accumulated_change_percent'],
+                    'appearances': sector['appearances']
+                })
+            
+            result[date_str].sort(key=lambda x: x['rank'])
+        
+        return result
+    except Exception as e:
+        error_logger.error(f"加载累计每日数据失败: {e}")
+        return {}
+
 # 加载最近N小时的实时数据
 def load_recent_realtime_data(hours):
     try:
@@ -306,7 +382,6 @@ def load_recent_realtime_data(hours):
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
         for minute_key, record in realtime_data.items():
-            # 将时间字符串转换为datetime对象进行比较
             time_str = f"{today} {minute_key}"
             try:
                 record_time = datetime.strptime(time_str, '%Y-%m-%d %H:%M')

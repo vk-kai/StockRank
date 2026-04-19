@@ -10,6 +10,9 @@ from thread_monitor import heartbeat, register_thread
 
 error_logger, info_logger, _ = setup_logging()
 
+last_cleanup_time = 0
+CLEANUP_INTERVAL = 3600
+
 def process_news_with_ai_and_push(news_list):
     try:
         existing_news = load_today_news()
@@ -131,8 +134,10 @@ def process_news_with_ai_and_push(news_list):
         return news_list, [], [], []
 
 def news_collection_thread():
+    global last_cleanup_time
     register_thread('news_collector')
     cleanup_old_news()
+    last_cleanup_time = time.time()
     
     while True:
         try:
@@ -160,7 +165,11 @@ def news_collection_thread():
                 
                 info_logger.info(f"本轮新增 {total_new} 条，当前共 {len(all_news)} 条")
             
-            cleanup_old_news()
+            current_time = time.time()
+            if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
+                cleanup_old_news()
+                last_cleanup_time = current_time
+                info_logger.info(f"执行定时清理任务，下次清理时间: {CLEANUP_INTERVAL} 秒后")
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")

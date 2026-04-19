@@ -1,13 +1,30 @@
 import json
+import time
+import os
 from config import STOCK_MONITOR_CONFIG_FILE
 from logger import setup_logging
 
 error_logger, _, _ = setup_logging()
 
+_cached_config = None
+_cache_time = 0
+CACHE_TTL = 60
+
 def load_stock_monitor_config():
+    global _cached_config, _cache_time
+    
+    now = time.time()
+    if _cached_config is not None and (now - _cache_time) < CACHE_TTL:
+        return _cached_config
+    
     try:
+        if not os.path.exists(STOCK_MONITOR_CONFIG_FILE):
+            return None
+        
         with open(STOCK_MONITOR_CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            _cached_config = json.load(f)
+            _cache_time = now
+            return _cached_config
     except Exception as e:
         error_logger.error(f"加载股票监控配置失败: {e}")
         return None

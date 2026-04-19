@@ -4,6 +4,7 @@ from logger import setup_logging
 error_logger, system_logger, _ = setup_logging()
 
 _thread_status = {}
+_dead_logged = {}
 
 def register_thread(name):
     _thread_status[name] = {
@@ -11,12 +12,14 @@ def register_thread(name):
         'last_heartbeat': time.time(),
         'start_time': time.time()
     }
+    _dead_logged[name] = False
     system_logger.info(f"[线程监控] 线程 {name} 已注册")
 
 def heartbeat(name):
     if name in _thread_status:
         _thread_status[name]['last_heartbeat'] = time.time()
         _thread_status[name]['alive'] = True
+        _dead_logged[name] = False
     else:
         system_logger.warning(f"[线程监控] 收到未注册线程的心跳: {name}")
 
@@ -32,8 +35,9 @@ def get_all_status():
         elapsed = now - status['last_heartbeat']
         is_alive = status['alive'] and elapsed < 120
         
-        if not is_alive and status['alive']:
+        if not is_alive and not _dead_logged.get(name, False):
             system_logger.error(f"[线程监控] 线程 {name} 心跳超时: 已 {round(elapsed, 1)} 秒无响应")
+            _dead_logged[name] = True
         
         result[name] = {
             'alive': is_alive,

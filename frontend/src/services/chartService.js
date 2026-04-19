@@ -1,18 +1,6 @@
-/**
- * 图表配置封装
- */
 import { formatFlow } from '../utils/formatters'
 
-/**
- * 生成图表配置
- * @param {Array} timeData - 时间数据
- * @param {Array} series - 系列数据
- * @param {Array} topSectors - 板块列表
- * @param {Object} oldSelected - 旧的选中状态
- * @param {Array} colors - 颜色列表
- * @returns {Object} ECharts配置
- */
-export function generateChartOption(timeData, series, topSectors, oldSelected, colors) {
+export function generateChartOption(timeData, series, topSectors, oldSelected, colors, isToday) {
   return {
     tooltip: {
   trigger: 'item',
@@ -24,21 +12,17 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   formatter: (params) => {
 
     const change = params.data?.change
+    const totalFlow = params.data?.totalFlow
+    const accumulatedChange = params.data?.accumulatedChangePercent
+    const appearances = params.data?.appearances
 
     let changeHtml = '-'
-
     if (change !== null && change !== undefined) {
-
       const color = change >= 0 ? '#ee6666' : '#91cc75'
-
-      changeHtml = `
-        <b style="color:${color}">
-          ${(change * 100).toFixed(2)}%
-        </b>
-      `
+      changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
     }
 
-    return `
+    let tooltipContent = `
       <div style="padding:6px 10px;">
         <div style="font-weight:bold;margin-bottom:6px;color:#fff;">
           ${params.seriesName}
@@ -58,8 +42,41 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         <div style="color:#8ba4c7">
           涨跌幅： ${changeHtml}
         </div>
-      </div>
     `
+
+    if (!isToday && totalFlow !== null && totalFlow !== undefined) {
+      let accumulatedChangeHtml = '-'
+      if (accumulatedChange !== null && accumulatedChange !== undefined) {
+        const color = accumulatedChange >= 0 ? '#ee6666' : '#91cc75'
+        accumulatedChangeHtml = `<b style="color:${color}">${(accumulatedChange * 100).toFixed(2)}%</b>`
+      }
+
+      let totalFlowHtml = '-'
+      if (totalFlow !== null && totalFlow !== undefined) {
+        totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalFlow)}</b>`
+      }
+
+      let appearancesHtml = appearances ? `<b>${appearances}</b>天` : '-'
+
+      tooltipContent += `
+        <div style="border-top:1px dashed #3a4a6b;margin:6px 0;"></div>
+
+        <div style="color:#8ba4c7">
+          累计流入： ${totalFlowHtml}
+        </div>
+
+        <div style="color:#8ba4c7">
+          累计涨跌： ${accumulatedChangeHtml}
+        </div>
+
+        <div style="color:#8ba4c7">
+          出现天数： ${appearancesHtml}
+        </div>
+      `
+    }
+
+    tooltipContent += `</div>`
+    return tooltipContent
   }
 },   
     legend: {
@@ -122,27 +139,29 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   }
 }
 
-/**
- * 生成系列数据
- * @param {Array} topSectors - 板块列表
- * @param {Array} timeData - 时间数据
- * @param {Object} allData - 所有数据
- * @param {Array} colors - 颜色列表
- * @returns {Array} 系列数据
- */
-export function generateSeries(topSectors, timeData, allData, colors) {
+export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
     const data = timeData.map(timeKey => {
-      const timeDataItem = allData[timeKey]?.data || []
+      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
 
       if (!sectorItem) {
-        return { value: null, change: null }
+        return { value: null, change: null, totalFlow: null, accumulatedChangePercent: null, appearances: null }
+      }
+
+      if (isToday) {
+        return {
+          value: sectorItem.flow,
+          change: sectorItem.change
+        }
       }
 
       return {
         value: sectorItem.flow,
-        change: sectorItem.change
+        change: sectorItem.change,
+        totalFlow: sectorItem.total_flow,
+        accumulatedChangePercent: sectorItem.accumulated_change_percent,
+        appearances: sectorItem.appearances
       }
     })
 

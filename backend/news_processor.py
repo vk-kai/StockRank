@@ -138,14 +138,35 @@ def cleanup_old_news():
     try:
         ensure_news_dir()
         cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
+        cutoff_date = cutoff_time.strftime('%Y-%m-%d')
+        
+        deleted_files = []
+        kept_files = []
+        total_files = 0
         
         for filename in os.listdir(NEWS_DIR):
             if filename.endswith('.json'):
+                total_files += 1
                 file_path = os.path.join(NEWS_DIR, filename)
-                file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                file_date = filename.replace('.json', '')
                 
-                if file_time < cutoff_time:
-                    os.remove(file_path)
+                if file_date < cutoff_date:
+                    try:
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        deleted_files.append({'name': filename, 'size': file_size})
+                        info_logger.info(f"清理过期新闻文件: {filename} (大小: {file_size} 字节)")
+                    except Exception as e:
+                        error_logger.error(f"删除新闻文件失败 ({filename}): {e}")
+                else:
+                    kept_files.append(filename)
+        
+        if deleted_files:
+            total_deleted_size = sum(f['size'] for f in deleted_files)
+            info_logger.info(f"新闻清理完成: 共扫描 {total_files} 个文件, 删除 {len(deleted_files)} 个过期文件, "
+                           f"保留 {len(kept_files)} 个文件, 释放空间 {total_deleted_size} 字节")
+        else:
+            info_logger.debug(f"新闻清理检查: 共 {total_files} 个文件, 无过期文件需要删除")
         
         return True
     except Exception as e:
