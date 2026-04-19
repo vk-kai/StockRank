@@ -111,12 +111,26 @@ export default {
     },
 
     loadNotificationState() {
+      if (!('Notification' in window)) {
+        this.enableNotification = false
+        return
+      }
+      
       const saved = localStorage.getItem('newsNotificationEnabled')
+      const browserGranted = Notification.permission === 'granted'
+      
       if (saved !== null) {
         this.enableNotification = saved === 'true'
       }
-      if (this.enableNotification) {
-        this.requestNotificationPermission()
+      
+      if (browserGranted && !this.enableNotification) {
+        this.enableNotification = true
+        localStorage.setItem('newsNotificationEnabled', 'true')
+      }
+      
+      if (!browserGranted && this.enableNotification) {
+        this.enableNotification = false
+        localStorage.setItem('newsNotificationEnabled', 'false')
       }
     },
 
@@ -134,10 +148,13 @@ export default {
     },
 
     toggleNotification() {
-      this.enableNotification = !this.enableNotification
-      localStorage.setItem('newsNotificationEnabled', this.enableNotification.toString())
-      if (this.enableNotification) {
+      if (!this.enableNotification) {
+        this.enableNotification = true
+        localStorage.setItem('newsNotificationEnabled', 'true')
         this.requestNotificationPermission()
+      } else {
+        this.enableNotification = false
+        localStorage.setItem('newsNotificationEnabled', 'false')
       }
     },
 
@@ -149,21 +166,31 @@ export default {
         return
       }
       
+      if (Notification.permission === 'granted') {
+        return
+      }
+      
       if (Notification.permission === 'denied') {
-        alert('您已禁止通知权限，请在浏览器设置中允许通知')
+        const guide = '您之前已禁止通知权限。\n\n请在浏览器地址栏左侧点击"锁"图标，\n找到"通知"选项并选择"允许"，\n然后刷新页面即可。'
+        alert(guide)
         this.enableNotification = false
         localStorage.setItem('newsNotificationEnabled', 'false')
         return
       }
       
-      if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission()
-        if (permission !== 'granted') {
-          alert('需要允许通知权限才能启用新闻提醒')
-          this.enableNotification = false
-          localStorage.setItem('newsNotificationEnabled', 'false')
-          return
-        }
+      const permission = await Notification.requestPermission()
+      if (permission === 'granted') {
+        new Notification('通知已开启', {
+          body: '您将收到重要新闻的推送提醒',
+          icon: '/favicon.ico'
+        })
+      } else if (permission === 'denied') {
+        alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
+        this.enableNotification = false
+        localStorage.setItem('newsNotificationEnabled', 'false')
+      } else {
+        this.enableNotification = false
+        localStorage.setItem('newsNotificationEnabled', 'false')
       }
     },
 
