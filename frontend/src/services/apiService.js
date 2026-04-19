@@ -196,3 +196,37 @@ export async function getSystemHealth() {
     throw error
   }
 }
+
+export async function getLogList() {
+  try {
+    const response = await apiClient.get('/log/list')
+    return response.data
+  } catch (error) {
+    console.error('获取日志列表失败:', error)
+    throw error
+  }
+}
+
+export async function getLogContent(logType, level = '', lines = 200) {
+  try {
+    const params = { lines }
+    if (level) {
+      params.level = level
+    }
+    const response = await apiClient.get(`/log/content/${logType}`, { params })
+    return response.data
+  } catch (error) {
+    console.error('获取日志内容失败:', error)
+    throw error
+  }
+}
+
+export async function getLogLevels() {
+  try {
+    const response = await apiClient.get('/log/levels')
+    return response.data
+  } catch (error) {
+    console.error('获取日志级别失败:', error)
+    throw error
+  }
+}

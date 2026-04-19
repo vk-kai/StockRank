@@ -634,6 +634,23 @@
   transform: translateY(-2px);
 }
 
+.log-button {
+  background: rgba(79, 195, 247, 0.2);
+  color: #4fc3f7;
+  border: 1px solid rgba(79, 195, 247, 0.5);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.log-button:hover {
+  background: rgba(79, 195, 247, 0.3);
+  transform: translateY(-2px);
+}
+
 .monitor-card-container {
   position: absolute;
   top: 20px;

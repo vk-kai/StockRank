@@ -2,17 +2,18 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
-from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, DEV_MODE, DEV_NEWS_URL
+from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, is_dev_mode, DEV_NEWS_URL, get_random_user_agent
 from logger import setup_logging
 
 error_logger, info_logger, _ = setup_logging()
 
 def get_news_data(page=1, pagesize=400):
-    api_url = DEV_NEWS_URL if DEV_MODE else NEWS_URL
-    if DEV_MODE:
+    dev_mode = is_dev_mode()
+    api_url = DEV_NEWS_URL if dev_mode else NEWS_URL
+    if dev_mode:
         info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': get_random_user_agent(),
         'Referer': 'https://news.10jqka.com.cn/',
         'Accept': 'application/json, text/javascript, */*; q=0.01'
     }
@@ -33,6 +34,8 @@ def get_news_data(page=1, pagesize=400):
         
         try:
             data = response.json()
+            if dev_mode:
+                info_logger.debug(f"[DEV模式] 新闻API响应: {json.dumps(data, ensure_ascii=False)}")
         except Exception as e:
             error_logger.error(f"新闻API返回非JSON: {response.text[:200]}")
             return []

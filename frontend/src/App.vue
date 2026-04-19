@@ -21,6 +21,9 @@
         <button class="config-button" @click="goToConfig">
           ⚙️ 配置
         </button>
+        <button class="log-button" @click="goToLogs">
+          📋 日志
+        </button>
       </div>
     </header>
 

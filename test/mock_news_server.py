@@ -29,42 +29,45 @@ MOCK_NEWS = [
 ]
 
 call_count = 0
+base_time = int(time.time())
 
 class MockHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        global call_count
+        global call_count, base_time
         call_count += 1
         
         parsed = urlparse(self.path)
         
         if '/tapp/news/push/stock/' in parsed.path:
+            current_time = base_time + call_count * 60
+            
             news_list = []
             for item in MOCK_NEWS:
                 item_copy = dict(item)
-                item_copy["time"] = str(int(time.time()))
-                item_copy["ctime"] = str(int(time.time()))
+                item_copy["time"] = str(current_time - 3600)
+                item_copy["ctime"] = str(current_time - 3600)
                 news_list.append(item_copy)
             
             new_item = {
                 "id": f"9001{call_count:03d}",
                 "source": "测试数据源",
-                "time": str(int(time.time())),
-                "ctime": str(int(time.time())),
+                "time": str(current_time),
+                "ctime": str(current_time),
                 "url": f"https://example.com/news/9001{call_count:03d}",
                 "type": "stock"
             }
             
             if call_count % 3 == 0:
-                new_item["title"] = f"暴雷：某上市公司财务造假被立案调查（第{call_count}次请求）"
-                new_item["digest"] = f"证监会发布公告，某上市公司因涉嫌重大财务造假被正式立案调查。经初步查实，该公司近三年虚增利润超过50亿元，涉嫌欺诈发行。公司股票已紧急停牌，预计复牌后将面临重大退市风险。投资者需密切关注后续进展。"
+                new_item["title"] = f"【重要】大盘暴雷！沪指暴跌5%触发熔断 - 第{call_count}轮请求"
+                new_item["digest"] = f"今日A股市场遭遇重挫，沪指开盘后迅速下挫，盘中跌幅一度超过5%，触发熔断机制。分析人士指出，多重利空因素叠加导致市场恐慌性抛售。央行紧急发声安抚市场情绪，建议投资者保持理性。"
                 new_item["import"] = "3"
-            elif call_count % 2 == 0:
-                new_item["title"] = f"重要：国务院发布新一轮经济刺激政策（第{call_count}次请求）"
-                new_item["digest"] = f"国务院常务会议决定推出新一轮经济刺激措施，包括加大基建投资、降低企业税负、扩大消费补贴等多项举措。分析人士认为，此次政策力度超出市场预期，将对相关行业产生积极影响。"
+            elif call_count % 3 == 2:
+                new_item["title"] = f"【重要】某地发布天气预警 - 第{call_count}轮请求"
+                new_item["digest"] = f"气象部门发布消息，某地区未来三天将有中到大雨，局部暴雨。请市民注意防范，出行携带雨具。此消息与股市无关，仅供参考。"
                 new_item["import"] = "3"
             else:
-                new_item["title"] = f"普通：两市融资余额小幅增加（第{call_count}次请求）"
-                new_item["digest"] = f"截至昨日收盘，沪深两市融资余额合计增加15.6亿元，其中沪市增加8.2亿元，深市增加7.4亿元。融资买入额较前一交易日有所回升。"
+                new_item["title"] = f"普通新闻：两市成交额小幅波动 - 第{call_count}轮请求"
+                new_item["digest"] = f"今日沪深两市成交额较前一交易日小幅波动，市场整体表现平稳。板块方面，新能源、半导体等板块表现活跃。"
                 new_item["import"] = "0"
             
             news_list.append(new_item)
@@ -81,8 +84,13 @@ class MockHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
             
-            tag = "普通" if call_count % 3 != 0 and call_count % 2 != 0 else ("重要" if call_count % 2 == 0 and call_count % 3 != 0 else "暴雷")
-            print(f"[{time.strftime('%H:%M:%S')}] 第{call_count}次请求，新增1条{tag}新闻，共返回{len(news_list)}条")
+            if call_count % 3 == 0:
+                tag = "暴雷"
+            elif call_count % 3 == 2:
+                tag = "重要(废)"
+            else:
+                tag = "普通"
+            print(f"[{time.strftime('%H:%M:%S')}] 第{call_count}轮请求，新增1条{tag}新闻，共返回{len(news_list)}条")
         else:
             self.send_response(404)
             self.end_headers()
@@ -99,9 +107,9 @@ if __name__ == '__main__':
     print(f"接口地址: http://{host}:{port}/tapp/news/push/stock/")
     print(f"基础数据: {len(MOCK_NEWS)}条")
     print(f"每次请求新增1条:")
-    print(f"  第1次: 普通新闻")
-    print(f"  第2次: 重要新闻（import=3）")
-    print(f"  第3次: 暴雷新闻（import=3）")
+    print(f"  第1轮: 普通新闻")
+    print(f"  第2轮: 重要新闻(废消息)")
+    print(f"  第3轮: 大盘暴雷(重要)")
     print(f"  循环...")
     print("按 Ctrl+C 停止\n")
     

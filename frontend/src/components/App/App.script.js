@@ -353,6 +353,10 @@ export default {
       this.$router.push('/config')
     },
 
+    goToLogs() {
+      this.$router.push('/logs')
+    },
+
     openNews(url) {
       if (url) {
         window.open(url, '_blank')

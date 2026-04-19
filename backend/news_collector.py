@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news
@@ -16,8 +17,8 @@ def process_news_with_ai_and_push(news_list):
         existing_dict = {item['id']: item for item in existing_news}
         
         new_items = []
-        normal_count = 0
-        important_count = 0
+        normal_items = []
+        important_items = []
         
         for news_item in news_list:
             news_id = news_item.get('id')
@@ -31,21 +32,19 @@ def process_news_with_ai_and_push(news_list):
             news_item['core_event'] = ''
             
             if news_item.get('importance') == '3':
-                important_count += 1
+                important_items.append(news_item)
             else:
-                normal_count += 1
+                normal_items.append(news_item)
                 news_item['ai_analyzed'] = True
             
             new_items.append(news_item)
             existing_dict[news_id] = news_item
         
         if not new_items:
-            return list(existing_dict.values()), 0, 0
+            return list(existing_dict.values()), [], [], []
         
-        important_items = [item for item in new_items if item.get('importance') == '3']
-        
-        pushed_count = 0
-        ignored_count = 0
+        pushed_items = []
+        ignored_items = []
         
         if important_items:
             analysis_results = batch_analyze_news(important_items)
@@ -62,11 +61,23 @@ def process_news_with_ai_and_push(news_list):
                     if is_important_news(analysis):
                         push_important_news(news_item, analysis)
                         news_item['pushed'] = True
-                        pushed_count += 1
+                        pushed_items.append({
+                            'title': news_item.get('title', ''),
+                            'reason': analysis.get('reason', ''),
+                            'core_event': analysis.get('core_event', '')
+                        })
                     else:
-                        ignored_count += 1
+                        ignored_items.append({
+                            'title': news_item.get('title', ''),
+                            'reason': analysis.get('reason', ''),
+                            'level': analysis.get('level', '')
+                        })
                 else:
-                    ignored_count += 1
+                    ignored_items.append({
+                        'title': news_item.get('title', ''),
+                        'reason': 'AI分析失败',
+                        'level': '未知'
+                    })
         
         for news_item in new_items:
             should_push, matched_stocks = should_push_news(news_item)
@@ -95,11 +106,11 @@ def process_news_with_ai_and_push(news_list):
                 send_feishu_message(news_title, content, url=url)
                 news_item['pushed'] = True
         
-        return list(existing_dict.values()), normal_count, important_count, pushed_count, ignored_count
+        return list(existing_dict.values()), normal_items, pushed_items, ignored_items
                 
     except Exception as e:
         error_logger.error(f"处理新闻AI分析和推送异常: {e}")
-        return news_list, 0, 0, 0, 0
+        return news_list, [], [], []
 
 def news_collection_thread():
     register_thread('news_collector')
@@ -112,20 +123,24 @@ def news_collection_thread():
             
             result = process_news_with_ai_and_push(news_data or [])
             all_news = result[0]
-            normal_count = result[1]
-            important_count = result[2]
+            normal_items = result[1]
+            pushed_items = result[2]
+            ignored_items = result[3]
             
             save_news_data(all_news)
             
-            total_new = normal_count + important_count
+            total_new = len(normal_items) + len(pushed_items) + len(ignored_items)
             if total_new > 0:
-                log_parts = [f"新增 {total_new} 条（普通{normal_count}条，重要{important_count}条）"]
-                if important_count > 0:
-                    pushed_count = result[3]
-                    ignored_count = result[4]
-                    log_parts.append(f"AI分析{important_count}条，推送{pushed_count}条，忽略{ignored_count}条")
-                log_parts.append(f"当前共{len(all_news)}条")
-                info_logger.info("，".join(log_parts))
+                for item in normal_items:
+                    info_logger.info(f"新增普通新闻，标题: {item.get('title', '')}")
+                
+                for item in pushed_items:
+                    info_logger.info(f"新增重要新闻并推送，标题: {item['title']}，推送理由: {item['reason']}")
+                
+                for item in ignored_items:
+                    info_logger.info(f"新增重要新闻但忽略，标题: {item['title']}，忽略理由: {item['reason']} (级别: {item['level']})")
+                
+                info_logger.info(f"本轮新增 {total_new} 条，当前共 {len(all_news)} 条")
             
             cleanup_old_news()
             

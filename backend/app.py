@@ -1,14 +1,16 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import threading
+import multiprocessing
 import os
 
 from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
-from routes import flow_bp, news_bp, config_bp
-from thread_monitor import get_all_status
+from routes import flow_bp, news_bp, config_bp, log_bp
+from thread_monitor import get_all_status, register_thread
+from monitor import monitor_loop
 
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
@@ -27,6 +29,7 @@ def create_app():
     app.register_blueprint(flow_bp)
     app.register_blueprint(news_bp)
     app.register_blueprint(config_bp)
+    app.register_blueprint(log_bp)
     
     @app.route('/health', methods=['GET'])
     def health():
@@ -34,6 +37,37 @@ def create_app():
             'status': 'ok',
             'threads': get_all_status()
         })
+    
+    @app.route('/api/system/restart', methods=['POST'])
+    def restart_thread():
+        global data_collection_thread, news_collection_thread
+        
+        data = request.get_json() or {}
+        thread_name = data.get('thread', '')
+        
+        if thread_name == 'data_collector':
+            if data_collection_thread.is_alive():
+                system_logger.warning("[重启] 数据采集线程仍在运行，跳过重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+            
+            data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
+            data_collection_thread.start()
+            register_thread('data_collector')
+            system_logger.info("[重启] 数据采集线程已重启")
+            return jsonify({'success': True, 'message': '数据采集线程已重启'})
+        
+        elif thread_name == 'news_collector':
+            if news_collection_thread.is_alive():
+                system_logger.warning("[重启] 新闻采集线程仍在运行，跳过重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+            
+            news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
+            news_collection_thread.start()
+            register_thread('news_collector')
+            system_logger.info("[重启] 新闻采集线程已重启")
+            return jsonify({'success': True, 'message': '新闻采集线程已重启'})
+        
+        return jsonify({'success': False, 'message': f'未知线程: {thread_name}'}), 400
     
     return app
 
@@ -53,6 +87,10 @@ if __name__ == '__main__':
         if not news_collection_thread.is_alive():
             news_collection_thread.start()
             system_logger.info("新闻采集线程已启动")
+        
+        monitor_process = multiprocessing.Process(target=monitor_loop, daemon=True)
+        monitor_process.start()
+        system_logger.info("监控进程已启动")
         
         system_logger.info("Flask服务器启动")
         app.run(host='0.0.0.0', port=5000, debug=False)

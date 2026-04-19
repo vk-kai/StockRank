@@ -2,19 +2,17 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS,DATA_URL
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
 from logger import setup_logging
 
-# 初始化日志
 error_logger, data_logger, system_logger = setup_logging()
 
 # 全局变量存储最新数据
 latest_data = []
 
-# 从东方财富获取板块资金流入数据
 def get_sector_flow_data():
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': get_random_user_agent()
     }
     
     params = {
@@ -38,9 +36,7 @@ def get_sector_flow_data():
             sectors = []
             for item in data['data']['diff']:
                 sector_name = item.get('f14', '')
-                # f62: 净流入（单位：元），转换为万元
                 net_inflow = item.get('f62', 0) / 10000
-                # f3: 涨跌幅度（单位：百分比），转换为小数
                 change = item.get('f3', 0) / 100
                 
                 if sector_name and net_inflow is not None:
@@ -50,7 +46,6 @@ def get_sector_flow_data():
                         'change': change
                     })
             
-            # 按净流入排序
             sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
             
             result = [{
