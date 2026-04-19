@@ -220,7 +220,8 @@ export default {
       const icons = {
         'error': '❌',
         'data': '📊',
-        'system': '⚙️'
+        'system': '⚙️',
+        'nginx': '🌐'
       }
       return icons[type] || '📄'
     },
@@ -229,7 +230,8 @@ export default {
       const names = {
         'error': '错误日志',
         'data': '数据日志',
-        'system': '系统日志'
+        'system': '系统日志',
+        'nginx': 'Nginx日志'
       }
       return names[type] || type
     },

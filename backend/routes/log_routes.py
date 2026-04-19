@@ -10,7 +10,8 @@ log_bp = Blueprint('log', __name__, url_prefix='/api/log')
 LOG_FILES = {
     'error': 'error.log',
     'data': 'data.log',
-    'system': 'system.log'
+    'system': 'system.log',
+    'nginx': 'nginx/error.log'
 }
 
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -18,6 +19,21 @@ LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 LOG_PATTERN = re.compile(
     r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (DEBUG|INFO|WARNING|ERROR|CRITICAL) - ([\w\.]+):(\d+) - (.*)$'
 )
+
+NGINX_LOG_PATTERN = re.compile(
+    r'^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (\d+)#(\d+): (.*)$'
+)
+
+NGINX_LEVEL_MAP = {
+    'debug': 'DEBUG',
+    'info': 'INFO',
+    'notice': 'INFO',
+    'warn': 'WARNING',
+    'error': 'ERROR',
+    'crit': 'CRITICAL',
+    'alert': 'CRITICAL',
+    'emerg': 'CRITICAL'
+}
 
 @log_bp.route('/list', methods=['GET'])
 def get_log_list():
@@ -45,6 +61,35 @@ def get_log_list():
         error_logger.error(f"获取日志列表失败: {e}")
         return jsonify({'success': False, 'message': '获取日志列表失败'}), 500
 
+def parse_nginx_line(line):
+    match = NGINX_LOG_PATTERN.match(line)
+    if match:
+        timestamp, level, pid, tid, message = match.groups()
+        mapped_level = NGINX_LEVEL_MAP.get(level.lower(), level.upper())
+        return {
+            'timestamp': timestamp,
+            'level': mapped_level,
+            'source': f'nginx[{pid}]',
+            'lineno': int(tid),
+            'message': message,
+            'raw': line
+        }
+    return None
+
+def parse_python_log_line(line):
+    match = LOG_PATTERN.match(line)
+    if match:
+        timestamp, level, source, lineno, message = match.groups()
+        return {
+            'timestamp': timestamp,
+            'level': level,
+            'source': source,
+            'lineno': int(lineno),
+            'message': message,
+            'raw': line
+        }
+    return None
+
 @log_bp.route('/content/<log_type>', methods=['GET'])
 def get_log_content(log_type):
     try:
@@ -70,24 +115,19 @@ def get_log_content(log_type):
             if not line:
                 continue
             
-            match = LOG_PATTERN.match(line)
-            if match:
-                timestamp, level, source, lineno, message = match.groups()
-                
-                if level_filter and level != level_filter:
+            if log_type == 'nginx':
+                parsed = parse_nginx_line(line)
+            else:
+                parsed = parse_python_log_line(line)
+            
+            if parsed:
+                if level_filter and parsed['level'] != level_filter:
                     continue
                 
                 if search_keyword and search_keyword.lower() not in line.lower():
                     continue
                 
-                parsed_lines.append({
-                    'timestamp': timestamp,
-                    'level': level,
-                    'source': source,
-                    'lineno': int(lineno),
-                    'message': message,
-                    'raw': line
-                })
+                parsed_lines.append(parsed)
             else:
                 if level_filter:
                     continue
