@@ -138,7 +138,7 @@ def push_important_news(news_item, analysis_result):
         parts.append(news_time)
     parts.append(f"<font color='red'>{content}</font>")
     if core_event:
-        parts.append(core_event)
+        parts.append(f"AI总结：{core_event}")
     
     formatted_content = "\n\n".join(parts)
     
