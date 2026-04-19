@@ -23,6 +23,23 @@ if /i "%MODE%"=="Y" (
 
 echo.
 echo ========================================
+echo    Building Frontend...
+echo ========================================
+echo.
+
+cd frontend
+echo Running npm run build...
+call npm run build
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Frontend build failed!
+    pause
+    exit /b 1
+)
+cd ..
+
+echo.
+echo ========================================
 echo    Starting Services...
 echo ========================================
 echo.
