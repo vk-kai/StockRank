@@ -4,7 +4,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # 创建必要的目录结构
-RUN mkdir -p /app/backend /app/data /app/logs /app/data/daily /app/data/realtime
+RUN mkdir -p /app/backend /app/config /app/data /app/logs /app/data/daily /app/data/realtime
 
 # 升级pip并设置清华PyPI镜像
 RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --upgrade pip

@@ -11,11 +11,11 @@ services:
       - "5000:5000"
     volumes:
       - ../backend:/app/backend
-      - ../data:/app/data
       - ../config:/app/config
+      - ../data:/app/data
       - ../logs:/app/logs
       - /etc/localtime:/etc/localtime:ro    # 同步本地时间
-      - /etc/timezone:/etc/timezone:ro      # 同步时区
+      - /etc/timezone:/etc/timezone:ro    # 同步时区
     restart: unless-stopped
     networks:
       - stock-network
