@@ -87,11 +87,9 @@ if __name__ == '__main__':
         
         if not data_collection_thread.is_alive():
             data_collection_thread.start()
-            system_logger.info("数据采集线程已启动")
         
         if not news_collection_thread.is_alive():
             news_collection_thread.start()
-            system_logger.info("新闻采集线程已启动")
         
         monitor_process = multiprocessing.Process(target=monitor_loop, daemon=True)
         monitor_process.start()
