@@ -21,8 +21,14 @@ def check_health():
     try:
         response = requests.get(HEALTH_CHECK_URL, timeout=5)
         if response.status_code == 200:
-            return response.json()
-        return None
+            try:
+                return response.json()
+            except Exception as json_err:
+                error_logger.error(f"健康检查返回非JSON: {response.text[:200]}")
+                return None
+        else:
+            error_logger.error(f"健康检查失败: HTTP {response.status_code}, {response.text[:200]}")
+            return None
     except Exception as e:
         error_logger.error(f"健康检查请求失败: {e}")
         return None
