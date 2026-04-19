@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getSSLStatus } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 
@@ -28,8 +28,7 @@ export default {
       currentNewsIndex: 0,
       newsRotationInterval: null,
       threadStatus: {},
-      healthCheckInterval: null,
-      sslStatus: null
+      healthCheckInterval: null
     }
   },
   computed: {
@@ -52,7 +51,6 @@ export default {
     this.fetchLatestNews()
     this.startNewsRotation()
     this.fetchSystemHealth()
-    this.fetchSSLStatus()
     this.startHealthCheck()
     window.addEventListener('resize', this.handleResize)
   },
@@ -410,27 +408,14 @@ export default {
       }
     },
 
-    async fetchSSLStatus() {
-      try {
-        const response = await getSSLStatus()
-        if (response.success) {
-          this.sslStatus = response.data
-        }
-      } catch (err) {
-        console.error('获取SSL证书状态失败:', err)
-      }
-    },
-
     startHealthCheck() {
       this.healthCheckInterval = setInterval(() => {
         this.fetchSystemHealth()
-        this.fetchSSLStatus()
       }, 30000)
     },
 
     refreshHealth() {
       this.fetchSystemHealth()
-      this.fetchSSLStatus()
     },
 
     getThreadLabel(key) {

@@ -197,16 +197,6 @@ export async function getSystemHealth() {
   }
 }
 
-export async function getSSLStatus() {
-  try {
-    const response = await apiClient.get('/system/ssl-status')
-    return response.data
-  } catch (error) {
-    console.error('获取SSL证书状态失败:', error)
-    throw error
-  }
-}
-
 export async function getLogList() {
   try {
     const response = await apiClient.get('/log/list')
