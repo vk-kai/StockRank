@@ -14,8 +14,8 @@ services:
       - ../config:/app/config
       - ../data:/app/data
       - ../logs:/app/logs
-      - /etc/localtime:/etc/localtime:ro    # 同步本地时间
-      - /etc/timezone:/etc/timezone:ro    # 同步时区
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     restart: unless-stopped
     networks:
       - stock-network
@@ -26,12 +26,15 @@ services:
     container_name: a-stock-nginx
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ../frontend/dist:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf
       - ../logs/nginx:/var/log/nginx
-      - /etc/localtime:/etc/localtime:ro    # 同步本地时间
-      - /etc/timezone:/etc/timezone:ro      # 同步时区
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - backend
     restart: unless-stopped
