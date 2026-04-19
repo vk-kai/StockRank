@@ -343,10 +343,26 @@
   .news-controls {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
   }
   
   .news-item {
+    flex-direction: column;
     padding: 15px;
+    gap: 12px;
+  }
+  
+  .news-time {
+    min-width: auto;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    order: 2;
+    padding-top: 0;
+  }
+  
+  .news-content {
+    order: 1;
   }
   
   .news-title {
@@ -355,5 +371,15 @@
   
   .news-preview {
     font-size: 13px;
+  }
+  
+  .news-header {
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .news-source-badge {
+    align-self: flex-start;
   }
 }
