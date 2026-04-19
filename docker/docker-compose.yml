@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # 后端服务
   backend:
     build:
       context: ../backend 
@@ -19,8 +18,13 @@ services:
     restart: unless-stopped
     networks:
       - stock-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # Nginx反向代理
   nginx:
     image: nginx:alpine
     container_name: a-stock-nginx
@@ -36,7 +40,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - stock-network
