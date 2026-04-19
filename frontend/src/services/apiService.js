@@ -109,7 +109,9 @@ export async function saveAIConfig(config) {
 
 export async function testAIConnection() {
   try {
-    const response = await apiClient.post('/config/ai/test', {})
+    const response = await apiClient.post('/config/ai/test', {}, {
+      timeout: 30000
+    })
     return response.data
   } catch (error) {
     console.error('测试AI连接失败:', error)

@@ -67,7 +67,7 @@ def data_collection_thread():
                     else:
                         data_logger.error("获取数据失败")
                 else:
-                    data_logger.info(f"非交易时间，跳过数据采集")
+                    data_logger.debug(f"非交易时间，跳过数据采集")
         except Exception as e:
             error_logger.error(f"数据采集线程异常: {e}")
         

@@ -27,7 +27,7 @@
           下次刷新: {{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
         <button class="config-button" @click="goToConfig">
-          ⚙️ 配置
+          🤖 AI配置
         </button>
         <button class="log-button" @click="goToLogs">
           📋 日志

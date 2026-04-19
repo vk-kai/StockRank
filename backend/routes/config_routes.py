@@ -99,7 +99,7 @@ def test_ai_connection():
             "max_tokens": 10
         }
         
-        response = requests.post(api_url, headers=headers, json=test_payload, timeout=10)
+        response = requests.post(api_url, headers=headers, json=test_payload, timeout=30)
         
         try:
             response_data = response.json()
@@ -120,7 +120,7 @@ def test_ai_connection():
     except Exception as e:
         error_logger.error(f"测试AI连接失败: {e}")
         return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': str(e)}), 500
-
+    return jsonify({'success': True, 'status_code': response.status_code, 'api_url': api_url, 'data': response_data}), 200
 # ==================== 飞书配置 ====================
 @config_bp.route('/feishu', methods=['GET'])
 def get_feishu_config():
