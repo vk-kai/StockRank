@@ -1,5 +1,5 @@
 {
-    "api_base_url": "http://0vk.top",
+    "api_base_url": "https://0vk.top",
     "check_interval": 30,
     "alert_threshold": 120,
     "restart_cooldown": 300

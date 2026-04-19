@@ -38,12 +38,17 @@ def create_app():
             'threads': get_all_status()
         })
     
-    @app.route('/api/system/restart', methods=['POST'])
+    @app.route('/api/system/restart', methods=['POST', 'OPTIONS'])
     def restart_thread():
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True})
+        
         global data_collection_thread, news_collection_thread
         
         data = request.get_json() or {}
         thread_name = data.get('thread', '')
+        
+        system_logger.info(f"[重启] 收到重启请求: {thread_name}")
         
         if thread_name == 'data_collector':
             if data_collection_thread.is_alive():

@@ -40,20 +40,27 @@ def restart_thread(thread_name):
     last_restart = _last_restart_time.get(thread_name, 0)
     
     if now - last_restart < RESTART_COOLDOWN:
+        system_logger.info(f"[监控] 重启冷却中，跳过 {thread_name}")
         return False
     
     _last_restart_time[thread_name] = now
     
     try:
-        response = requests.post(RESTART_URL, json={"thread": thread_name}, timeout=10)
+        system_logger.info(f"[监控] 尝试重启线程: {thread_name}, URL: {RESTART_URL}")
+        response = requests.post(
+            RESTART_URL, 
+            json={"thread": thread_name}, 
+            timeout=10,
+            headers={'Content-Type': 'application/json'}
+        )
         if response.status_code == 200:
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
             return True
         else:
-            error_logger.error(f"[监控] 重启线程失败: {thread_name}, HTTP {response.status_code}")
+            error_logger.error(f"[监控] 重启线程失败: {thread_name}, HTTP {response.status_code}, 响应: {response.text[:200]}")
             return False
     except Exception as e:
-        error_logger.error(f"[监控] 重启线程请求失败: {e}")
+        error_logger.error(f"[监控] 重启线程请求失败: {thread_name}, 错误: {e}")
         return False
 
 def wait_for_backend(max_wait=60):

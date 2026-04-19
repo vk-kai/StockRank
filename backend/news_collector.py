@@ -14,6 +14,7 @@ def process_news_with_ai_and_push(news_list):
     try:
         existing_news = load_today_news()
         existing_ids = {item['id'] for item in existing_news}
+        existing_keys = {(item.get('title', '').strip(), item.get('time', '')) for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
         
         new_items = []
@@ -22,9 +23,16 @@ def process_news_with_ai_and_push(news_list):
         
         for news_item in news_list:
             news_id = news_item.get('id')
+            news_title = news_item.get('title', '').strip()
+            news_time = news_item.get('time', '')
+            news_key = (news_title, news_time)
             
             if news_id in existing_ids:
                 existing_dict[news_id] = existing_dict.get(news_id, news_item)
+                continue
+            
+            if news_title and news_key in existing_keys:
+                info_logger.debug(f"跳过重复新闻: {news_title} (时间: {news_time})")
                 continue
             
             news_item['ai_analyzed'] = False
@@ -39,6 +47,8 @@ def process_news_with_ai_and_push(news_list):
             
             new_items.append(news_item)
             existing_dict[news_id] = news_item
+            if news_title:
+                existing_keys.add(news_key)
         
         if not new_items:
             return list(existing_dict.values()), [], [], []

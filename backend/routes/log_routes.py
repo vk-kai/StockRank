@@ -35,6 +35,10 @@ NGINX_LEVEL_MAP = {
     'emerg': 'CRITICAL'
 }
 
+NGINX_FILTER_PATTERNS = [
+    'an upstream response is buffered to a temporary file',
+]
+
 @log_bp.route('/list', methods=['GET'])
 def get_log_list():
     try:
@@ -62,6 +66,10 @@ def get_log_list():
         return jsonify({'success': False, 'message': '获取日志列表失败'}), 500
 
 def parse_nginx_line(line):
+    for pattern in NGINX_FILTER_PATTERNS:
+        if pattern in line.lower():
+            return None
+    
     match = NGINX_LOG_PATTERN.match(line)
     if match:
         timestamp, level, pid, tid, message = match.groups()
@@ -117,6 +125,8 @@ def get_log_content(log_type):
             
             if log_type == 'nginx':
                 parsed = parse_nginx_line(line)
+                if parsed is None:
+                    continue
             else:
                 parsed = parse_python_log_line(line)
             
