@@ -109,16 +109,17 @@ def test_ai_connection():
         return jsonify({
             'success': response.status_code == 200,
             'status_code': response.status_code,
+            'api_url': api_url,
             'data': response_data
         })
             
     except requests.exceptions.Timeout:
-        return jsonify({'success': False, 'status_code': None, 'error': '连接超时'}), 400
+        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': '连接超时'}), 400
     except requests.exceptions.ConnectionError as e:
-        return jsonify({'success': False, 'status_code': None, 'error': f'连接失败: {str(e)}'}), 400
+        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': f'连接失败: {str(e)}'}), 400
     except Exception as e:
         error_logger.error(f"测试AI连接失败: {e}")
-        return jsonify({'success': False, 'status_code': None, 'error': str(e)}), 500
+        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': str(e)}), 500
 
 # ==================== 飞书配置 ====================
 @config_bp.route('/feishu', methods=['GET'])
