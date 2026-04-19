@@ -56,7 +56,25 @@ def restart_thread(thread_name):
         error_logger.error(f"[监控] 重启线程请求失败: {e}")
         return False
 
+def wait_for_backend(max_wait=60):
+    system_logger.info(f"等待后端服务启动...")
+    start_time = time.time()
+    
+    while time.time() - start_time < max_wait:
+        try:
+            response = requests.get(HEALTH_CHECK_URL, timeout=5)
+            if response.status_code == 200:
+                system_logger.info("后端服务已就绪")
+                return True
+        except:
+            pass
+        time.sleep(2)
+    
+    system_logger.warning(f"等待后端超时({max_wait}秒)，继续启动监控...")
+    return False
+
 def monitor_loop():
+    wait_for_backend()
     system_logger.info(f"监控进程启动，监控地址: {API_BASE_URL}")
     
     while True:
