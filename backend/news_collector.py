@@ -47,9 +47,13 @@ def process_news_with_ai_and_push(news_list):
         ignored_items = []
         
         if important_items:
-            analysis_results = batch_analyze_news(important_items)
+            items_to_analyze = important_items[:5]
+            if len(important_items) > 5:
+                info_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
             
-            for news_item in important_items:
+            analysis_results = batch_analyze_news(items_to_analyze)
+            
+            for news_item in items_to_analyze:
                 news_id = news_item.get('id')
                 analysis = analysis_results.get(news_id)
                 news_item['ai_analyzed'] = True
@@ -78,6 +82,10 @@ def process_news_with_ai_and_push(news_list):
                         'reason': 'AI分析失败',
                         'level': '未知'
                     })
+            
+            for news_item in important_items[5:]:
+                news_item['ai_analyzed'] = False
+                news_item['core_event'] = ''
         
         for news_item in new_items:
             should_push, matched_stocks = should_push_news(news_item)

@@ -26,6 +26,56 @@ def load_ai_prompt():
         error_logger.error(f"加载AI提示词失败: {e}")
         return None
 
+def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+    
+    return requests.post(
+        api_url,
+        headers=headers,
+        json=payload,
+        timeout=timeout
+    )
+
+def parse_ai_response(content):
+    try:
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+        if json_match:
+            content = json_match.group(1)
+        
+        first_bracket = content.find('[')
+        last_bracket = content.rfind(']')
+        if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+            content = content[first_bracket:last_bracket + 1]
+        else:
+            first_brace = content.find('{')
+            last_brace = content.rfind('}')
+            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                content = '[' + content[first_brace:last_brace + 1] + ']'
+        
+        analysis_list = json.loads(content)
+        
+        results = {}
+        for item in analysis_list:
+            item_id = item.get('id', '')
+            if item_id:
+                results[item_id] = item
+        
+        return results
+    except json.JSONDecodeError as e:
+        error_logger.error(f"AI返回内容不是有效JSON: {e}")
+        error_logger.error(f"原始返回内容: {content[:500]}")
+        return None
+
 def batch_analyze_news(news_items):
     global last_ai_call_time
     
@@ -53,6 +103,8 @@ def batch_analyze_news(news_items):
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 2000)
     timeout = config.get('timeout', 60)
+    retry_count = config.get('retry_count', 3)
+    retry_interval = 10
     
     if not api_url or not api_key:
         error_logger.error("AI配置不完整：缺少api_url或api_key")
@@ -77,65 +129,76 @@ def batch_analyze_news(news_items):
         {"role": "user", "content": combined_text}
     ]
     
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
-    
-    try:
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json=payload,
-            timeout=timeout
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+    for attempt in range(1, retry_count + 1):
+        try:
+            response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
             
-            try:
-                json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
-                if json_match:
-                    content = json_match.group(1)
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
                 
-                first_bracket = content.find('[')
-                last_bracket = content.rfind(']')
-                if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
-                    content = content[first_bracket:last_bracket + 1]
-                else:
-                    first_brace = content.find('{')
-                    last_brace = content.rfind('}')
-                    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-                        content = '[' + content[first_brace:last_brace + 1] + ']'
+                results = parse_ai_response(content)
+                if results is not None:
+                    missing_ids = []
+                    for item in news_items:
+                        if item.get('id') not in results:
+                            missing_ids.append(item.get('id'))
+                    if missing_ids:
+                        info_logger.warning(f"AI返回结果缺少以下新闻ID: {missing_ids}")
+                    info_logger.info(f"AI分析成功，处理 {len(results)}/{len(news_items)} 条新闻")
+                    return results
                 
-                analysis_list = json.loads(content)
-                
-                results = {}
-                for item in analysis_list:
-                    item_id = item.get('id', '')
-                    if item_id:
-                        results[item_id] = item
-                
-                return results
-            except json.JSONDecodeError as e:
-                error_logger.error(f"AI返回内容不是有效JSON: {e}")
-                error_logger.error(f"原始返回内容: {content[:500]}")
+                if attempt < retry_count:
+                    info_logger.info(f"AI返回解析失败，{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
+                    time.sleep(retry_interval)
+                    continue
                 return {}
-        else:
-            error_logger.error(f"AI API调用失败: {response.status_code} - {response.text[:200]}")
+            
+            elif response.status_code == 429:
+                retry_after = response.headers.get('Retry-After', str(retry_interval))
+                try:
+                    wait_time = int(retry_after)
+                except:
+                    wait_time = retry_interval
+                error_logger.error(f"AI API速率限制(429)，等待 {wait_time} 秒")
+                if attempt < retry_count:
+                    time.sleep(wait_time)
+                    continue
+                return {}
+            
+            else:
+                error_logger.error(f"AI API调用失败: {response.status_code} - {response.text[:200]}")
+                if attempt < retry_count:
+                    info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
+                    time.sleep(retry_interval)
+                    continue
+                return {}
+                
+        except requests.exceptions.Timeout:
+            error_logger.error(f"AI API请求超时 (timeout={timeout}秒)，新闻数量: {len(news_items)}")
+            if attempt < retry_count:
+                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
+                time.sleep(retry_interval)
+                continue
             return {}
             
-    except Exception as e:
-        error_logger.error(f"AI批量分析异常: {e}")
-        return {}
+        except requests.exceptions.ConnectionError as e:
+            error_logger.error(f"AI API连接失败: {str(e)}")
+            if attempt < retry_count:
+                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
+                time.sleep(retry_interval)
+                continue
+            return {}
+            
+        except Exception as e:
+            error_logger.error(f"AI批量分析异常: {e}")
+            if attempt < retry_count:
+                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
+                time.sleep(retry_interval)
+                continue
+            return {}
+    
+    return {}
 
 def is_important_news(analysis_result):
     if not analysis_result:
