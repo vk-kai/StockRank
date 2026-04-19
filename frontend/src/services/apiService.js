@@ -197,6 +197,16 @@ export async function getSystemHealth() {
   }
 }
 
+export async function getSSLStatus() {
+  try {
+    const response = await apiClient.get('/system/ssl-status')
+    return response.data
+  } catch (error) {
+    console.error('获取SSL证书状态失败:', error)
+    throw error
+  }
+}
+
 export async function getLogList() {
   try {
     const response = await apiClient.get('/log/list')
@@ -207,11 +217,14 @@ export async function getLogList() {
   }
 }
 
-export async function getLogContent(logType, level = '', lines = 200) {
+export async function getLogContent(logType, level = '', lines = 200, search = '') {
   try {
     const params = { lines }
     if (level) {
       params.level = level
+    }
+    if (search) {
+      params.search = search
     }
     const response = await apiClient.get(`/log/content/${logType}`, { params })
     return response.data

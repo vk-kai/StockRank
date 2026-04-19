@@ -30,6 +30,17 @@
           <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
         </select>
       </div>
+      <div class="search-box">
+        <input 
+          type="text" 
+          v-model="searchKeyword" 
+          placeholder="搜索日志内容..." 
+          @keyup.enter="onSearch"
+          class="search-input"
+        >
+        <button class="search-btn" @click="onSearch">🔍 搜索</button>
+        <button v-if="searchKeyword" class="clear-btn" @click="clearSearch">✕ 清除</button>
+      </div>
       <div class="lines-control">
         <label>每页行数：</label>
         <select v-model="pageSize" @change="onPageSizeChange">

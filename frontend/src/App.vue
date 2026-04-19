@@ -50,7 +50,20 @@
           <span class="monitor-name">{{ getThreadLabel(key) }}</span>
           <span class="monitor-text">{{ thread.status === 'running' ? '运行正常' : '已停止' }}</span>
         </div>
-        <div v-if="Object.keys(threadStatus).length === 0" class="monitor-card-row monitor-loading">
+        <div v-if="sslStatus" class="monitor-card-row" :class="sslStatus.enabled && sslStatus.is_valid ? 'monitor-ok' : 'monitor-warning'">
+          <span class="monitor-dot"></span>
+          <span class="monitor-name">🔒 SSL证书</span>
+          <span class="monitor-text" v-if="sslStatus.enabled && sslStatus.is_valid">
+            有效 ({{ sslStatus.days_remaining }}天)
+          </span>
+          <span class="monitor-text" v-else-if="sslStatus.enabled && !sslStatus.is_valid">
+            已过期
+          </span>
+          <span class="monitor-text" v-else>
+            {{ sslStatus.message || '未配置' }}
+          </span>
+        </div>
+        <div v-if="Object.keys(threadStatus).length === 0 && !sslStatus" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
         </div>

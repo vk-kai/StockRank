@@ -8,6 +8,7 @@ export default {
       logLevels: [],
       activeLog: 'system',
       selectedLevel: '',
+      searchKeyword: '',
       pageSize: 100,
       logLines: [],
       totalLines: 0,
@@ -105,7 +106,7 @@ export default {
     async loadLogContent() {
       this.loading = true
       try {
-        const response = await getLogContent(this.activeLog, this.selectedLevel, 5000)
+        const response = await getLogContent(this.activeLog, this.selectedLevel, 5000, this.searchKeyword)
         if (response.success) {
           this.logLines = response.data.lines
           this.totalLines = response.data.total
@@ -127,6 +128,17 @@ export default {
     },
 
     onFilterChange() {
+      this.currentPage = 1
+      this.loadLogContent()
+    },
+
+    onSearch() {
+      this.currentPage = 1
+      this.loadLogContent()
+    },
+
+    clearSearch() {
+      this.searchKeyword = ''
       this.currentPage = 1
       this.loadLogContent()
     },

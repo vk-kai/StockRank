@@ -3,6 +3,9 @@ from flask_cors import CORS
 import threading
 import multiprocessing
 import os
+import ssl
+import socket
+from datetime import datetime
 
 from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
@@ -37,6 +40,52 @@ def create_app():
             'status': 'ok',
             'threads': get_all_status()
         })
+    
+    @app.route('/api/system/ssl-status', methods=['GET'])
+    def ssl_status():
+        try:
+            cert_path = '/etc/letsencrypt/live/0vk.top/fullchain.pem'
+            
+            if not os.path.exists(cert_path):
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'enabled': False,
+                        'message': 'SSL证书未配置'
+                    }
+                })
+            
+            context = ssl.create_default_context()
+            with socket.create_connection(('0vk.top', 443), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname='0vk.top') as ssock:
+                    cert = ssock.getpeercert()
+            
+            not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
+            days_remaining = (not_after - datetime.utcnow()).days
+            
+            issuer = dict(x[0] for x in cert['issuer'])
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'enabled': True,
+                    'domain': '0vk.top',
+                    'issuer': issuer.get('organizationName', 'Unknown'),
+                    'valid_from': cert['notBefore'],
+                    'valid_to': cert['notAfter'],
+                    'days_remaining': days_remaining,
+                    'is_valid': days_remaining > 0,
+                    'message': f'证书有效，剩余 {days_remaining} 天' if days_remaining > 0 else '证书已过期'
+                }
+            })
+        except Exception as e:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'enabled': False,
+                    'message': f'SSL检测失败: {str(e)}'
+                }
+            })
     
     @app.route('/api/system/restart', methods=['POST'])
     def restart_thread():

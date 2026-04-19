@@ -58,6 +58,7 @@ def get_log_content(log_type):
             return jsonify({'success': True, 'data': {'lines': [], 'total': 0}})
         
         level_filter = request.args.get('level', '').upper()
+        search_keyword = request.args.get('search', '').strip()
         lines_limit = min(int(request.args.get('lines', 200)), 10000)
         
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -76,6 +77,9 @@ def get_log_content(log_type):
                 if level_filter and level != level_filter:
                     continue
                 
+                if search_keyword and search_keyword.lower() not in line.lower():
+                    continue
+                
                 parsed_lines.append({
                     'timestamp': timestamp,
                     'level': level,
@@ -85,15 +89,18 @@ def get_log_content(log_type):
                     'raw': line
                 })
             else:
-                if not level_filter:
-                    parsed_lines.append({
-                        'timestamp': '',
-                        'level': '',
-                        'source': '',
-                        'lineno': 0,
-                        'message': line,
-                        'raw': line
-                    })
+                if level_filter:
+                    continue
+                if search_keyword and search_keyword.lower() not in line.lower():
+                    continue
+                parsed_lines.append({
+                    'timestamp': '',
+                    'level': '',
+                    'source': '',
+                    'lineno': 0,
+                    'message': line,
+                    'raw': line
+                })
         
         total = len(parsed_lines)
         recent_lines = parsed_lines[-lines_limit:] if len(parsed_lines) > lines_limit else parsed_lines
@@ -104,7 +111,7 @@ def get_log_content(log_type):
             'data': {
                 'lines': recent_lines,
                 'total': total,
-                'filtered': level_filter != ''
+                'filtered': level_filter != '' or search_keyword != ''
             }
         })
     except Exception as e:

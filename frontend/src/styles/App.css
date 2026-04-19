@@ -135,18 +135,18 @@
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
-  margin-top: 50px;
+  margin-top: 80px;
 }
 
 @media (max-width: 1200px) {
   .chart-container {
-    margin-top: 50px;
+    margin-top: 80px;
   }
 }
 
 @media (max-width: 768px) {
   .chart-container {
-    margin-top: 50px;
+    margin-top: 80px;
   }
 }
 
@@ -778,6 +778,12 @@
   animation: blink-dot 1s infinite;
 }
 
+.monitor-warning .monitor-dot {
+  background: #ff9800;
+  box-shadow: 0 0 8px #ff9800;
+  animation: blink-dot 1s infinite;
+}
+
 .monitor-loading .monitor-dot {
   background: #ffc107;
   box-shadow: 0 0 6px #ffc107;
@@ -795,6 +801,12 @@
 
 .monitor-error .monitor-text {
   color: #ef5350;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.monitor-warning .monitor-text {
+  color: #ffb74d;
   font-weight: 600;
   margin-left: auto;
 }
