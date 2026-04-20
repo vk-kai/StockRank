@@ -1,10 +1,11 @@
 import time
 import requests
 from datetime import datetime
-from logger import setup_logging
+from logger import get_logger
 from config import load_monitor_config
 
-error_logger, system_logger, _ = setup_logging()
+error_logger = get_logger('error')
+system_logger = get_logger('monitor')
 
 _last_restart_time = {}
 _last_config_reload = 0

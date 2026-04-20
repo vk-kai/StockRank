@@ -1,7 +1,8 @@
 import time
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, system_logger, _ = setup_logging()
+error_logger = get_logger('error')
+system_logger = get_logger('monitor')
 
 _thread_status = {}
 _dead_logged = {}

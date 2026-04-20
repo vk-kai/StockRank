@@ -209,7 +209,7 @@ export async function getLogList() {
   }
 }
 
-export async function getLogContent(logType, level = '', lines = 200, search = '') {
+export async function getLogContent(logType, level = '', lines = 200, search = '', module = '') {
   try {
     const params = { lines }
     if (level) {
@@ -217,6 +217,9 @@ export async function getLogContent(logType, level = '', lines = 200, search = '
     }
     if (search) {
       params.search = search
+    }
+    if (module) {
+      params.module = module
     }
     const response = await apiClient.get(`/log/content/${logType}`, { params })
     return response.data
@@ -232,6 +235,16 @@ export async function getLogLevels() {
     return response.data
   } catch (error) {
     console.error('获取日志级别失败:', error)
+    throw error
+  }
+}
+
+export async function getLogModules() {
+  try {
+    const response = await apiClient.get('/log/modules')
+    return response.data
+  } catch (error) {
+    console.error('获取功能模块失败:', error)
     throw error
   }
 }

@@ -7,14 +7,47 @@ from config import LOG_DIR, is_dev_mode
 _loggers_initialized = False
 _loggers = {}
 
-LOG_MODULES = {
-    'error': {'file': 'error.log', 'level': logging.ERROR, 'desc': '错误日志'},
-    'system': {'file': 'system.log', 'level': logging.INFO, 'desc': '系统日志'},
-    'data': {'file': 'data.log', 'level': logging.INFO, 'desc': '数据采集'},
-    'news': {'file': 'news.log', 'level': logging.INFO, 'desc': '新闻采集'},
-    'ai': {'file': 'ai.log', 'level': logging.INFO, 'desc': 'AI分析'},
-    'monitor': {'file': 'monitor.log', 'level': logging.INFO, 'desc': '线程监控'},
+MODULE_NAMES = {
+    'data': '数据采集',
+    'news': '新闻采集',
+    'ai': 'AI分析',
+    'monitor': '线程监控',
+    'system': '系统运行',
+    'error': '错误日志'
 }
+
+class ModuleFormatter(logging.Formatter):
+    def format(self, record):
+        module_name = getattr(record, 'module_name', 'system')
+        module_display = MODULE_NAMES.get(module_name, module_name)
+        record.module_display = module_display
+        return super().format(record)
+
+class ModuleLogger:
+    def __init__(self, logger, module_name):
+        self.logger = logger
+        self.module_name = module_name
+    
+    def _log(self, level, msg, *args, **kwargs):
+        extra = kwargs.get('extra', {})
+        extra['module_name'] = self.module_name
+        kwargs['extra'] = extra
+        self.logger.log(level, msg, *args, **kwargs)
+    
+    def info(self, msg, *args, **kwargs):
+        self._log(logging.INFO, msg, *args, **kwargs)
+    
+    def debug(self, msg, *args, **kwargs):
+        self._log(logging.DEBUG, msg, *args, **kwargs)
+    
+    def warning(self, msg, *args, **kwargs):
+        self._log(logging.WARNING, msg, *args, **kwargs)
+    
+    def error(self, msg, *args, **kwargs):
+        self._log(logging.ERROR, msg, *args, **kwargs)
+    
+    def critical(self, msg, *args, **kwargs):
+        self._log(logging.CRITICAL, msg, *args, **kwargs)
 
 def ensure_directories():
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -25,64 +58,52 @@ def cleanup_old_logs(hours=48):
     cutoff = now - timedelta(hours=hours)
     
     cleaned_files = []
+    log_file = os.path.join(LOG_DIR, 'data.log')
     
-    for module_name, config in LOG_MODULES.items():
-        log_file = os.path.join(LOG_DIR, config['file'])
-        if os.path.exists(log_file):
+    for filename in os.listdir(LOG_DIR):
+        if filename.endswith('.log') or filename.endswith('.log.'):
+            file_path = os.path.join(LOG_DIR, filename)
             try:
-                file_mtime = datetime.fromtimestamp(os.path.getmtime(log_file))
+                file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
                 if file_mtime < cutoff:
-                    os.remove(log_file)
-                    cleaned_files.append(config['file'])
-            except Exception as e:
-                pass
-    
-    for backup_file in os.listdir(LOG_DIR):
-        if backup_file.endswith('.log.') or 'backup' in backup_file.lower():
-            backup_path = os.path.join(LOG_DIR, backup_file)
-            try:
-                file_mtime = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                if file_mtime < cutoff:
-                    os.remove(backup_path)
-                    cleaned_files.append(backup_file)
+                    os.remove(file_path)
+                    cleaned_files.append(filename)
             except Exception as e:
                 pass
     
     return cleaned_files
 
-def get_logger(module_name):
+def get_logger(module_name='system'):
     global _loggers
     
-    if module_name in _loggers:
-        return _loggers[module_name]
+    cache_key = f'module_{module_name}'
+    if cache_key in _loggers:
+        return _loggers[cache_key]
     
-    if module_name not in LOG_MODULES:
-        module_name = 'system'
+    ensure_directories()
     
-    config = LOG_MODULES[module_name]
-    logger = logging.getLogger(f'{module_name}_logger')
+    base_logger = logging.getLogger('stockrank')
     
-    if not logger.handlers:
-        ensure_directories()
-        
-        log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s')
+    if not base_logger.handlers:
+        log_formatter = ModuleFormatter('%(asctime)s | %(levelname)s | %(module_display)s | %(module)s:%(lineno)d | %(message)s')
         
         if is_dev_mode():
-            logger.setLevel(logging.DEBUG)
+            base_logger.setLevel(logging.DEBUG)
         else:
-            logger.setLevel(config['level'])
+            base_logger.setLevel(logging.INFO)
         
         handler = RotatingFileHandler(
-            os.path.join(LOG_DIR, config['file']),
+            os.path.join(LOG_DIR, 'data.log'),
             maxBytes=10*1024*1024,
             backupCount=5,
             encoding='utf-8'
         )
         handler.setFormatter(log_formatter)
-        logger.addHandler(handler)
+        base_logger.addHandler(handler)
     
-    _loggers[module_name] = logger
-    return logger
+    module_logger = ModuleLogger(base_logger, module_name)
+    _loggers[cache_key] = module_logger
+    return module_logger
 
 def setup_logging():
     global _loggers_initialized
@@ -101,13 +122,10 @@ def setup_logging():
     return error_logger, data_logger, system_logger
 
 def get_log_modules():
-    return {name: {'file': config['file'], 'desc': config['desc']} for name, config in LOG_MODULES.items()}
+    return {name: {'desc': desc} for name, desc in MODULE_NAMES.items()}
 
-def read_recent_logs(module_name, lines=100):
-    if module_name not in LOG_MODULES:
-        return []
-    
-    log_file = os.path.join(LOG_DIR, LOG_MODULES[module_name]['file'])
+def read_recent_logs(lines=500):
+    log_file = os.path.join(LOG_DIR, 'data.log')
     
     if not os.path.exists(log_file):
         return []

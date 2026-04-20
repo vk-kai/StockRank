@@ -3,9 +3,11 @@ import json
 from datetime import datetime, timedelta
 import os
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, data_logger, system_logger = setup_logging()
+error_logger = get_logger('error')
+data_logger = get_logger('data')
+system_logger = get_logger('system')
 
 # 全局变量存储最新数据
 latest_data = []

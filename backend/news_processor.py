@@ -3,9 +3,10 @@ import json
 from datetime import datetime, timedelta
 import os
 from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, is_dev_mode, DEV_NEWS_URL, get_random_user_agent
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, info_logger, _ = setup_logging()
+error_logger = get_logger('error')
+info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
     dev_mode = is_dev_mode()

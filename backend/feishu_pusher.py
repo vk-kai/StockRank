@@ -5,9 +5,9 @@ import hashlib
 import base64
 import requests
 from config import FEISHU_CONFIG_FILE
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, _, _ = setup_logging()
+error_logger = get_logger('error')
 
 def load_feishu_config():
     try:

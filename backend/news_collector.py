@@ -5,10 +5,11 @@ from news_processor import get_news_data, save_news_data, cleanup_old_news, load
 from ai_analyzer import batch_analyze_news, is_important_news
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
-from logger import setup_logging, cleanup_old_logs
+from logger import get_logger, cleanup_old_logs
 from thread_monitor import heartbeat, register_thread, set_busy
 
-error_logger, info_logger, _ = setup_logging()
+error_logger = get_logger('error')
+info_logger = get_logger('news')
 
 last_cleanup_time = 0
 CLEANUP_INTERVAL = 3600

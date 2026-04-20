@@ -30,6 +30,13 @@
           <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
         </select>
       </div>
+      <div class="module-filter" v-if="activeLog === 'data'">
+        <label>功能模块：</label>
+        <select v-model="selectedModule" @change="onFilterChange">
+          <option value="">全部</option>
+          <option v-for="(info, key) in logModules" :key="key" :value="key">{{ info.desc }}</option>
+        </select>
+      </div>
       <div class="search-box">
         <input 
           type="text" 
@@ -72,6 +79,7 @@
         <div class="log-header-row">
           <span class="log-timestamp">时间</span>
           <span class="log-level-header">级别</span>
+          <span class="log-module-header" v-if="activeLog === 'data'">模块</span>
           <span class="log-source">来源</span>
           <span class="log-message">消息</span>
           <span class="log-action">操作</span>
@@ -84,6 +92,7 @@
           >
             <span class="log-timestamp">{{ line.timestamp }}</span>
             <span :class="['log-level', (line.level || '').toLowerCase()]">{{ line.level || '-' }}</span>
+            <span class="log-module" v-if="activeLog === 'data'" :style="{ color: getModuleColor(line.module) }">{{ line.module || '-' }}</span>
             <span class="log-source">{{ line.source }}:{{ line.lineno }}</span>
             <span class="log-message" :title="line.message">{{ truncateMessage(line.message) }}</span>
             <span class="log-action">
@@ -158,6 +167,10 @@
           <div class="detail-row">
             <span class="detail-label">级别：</span>
             <span :class="['detail-value', 'level-badge', (selectedLog.level || '').toLowerCase()]">{{ selectedLog.level || '-' }}</span>
+          </div>
+          <div class="detail-row" v-if="activeLog === 'data'">
+            <span class="detail-label">模块：</span>
+            <span class="detail-value" :style="{ color: getModuleColor(selectedLog.module) }">{{ selectedLog.module || '-' }}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">来源：</span>

@@ -3,9 +3,10 @@ import requests
 import time
 import re
 from config import AI_CONFIG_FILE, AI_PROMPT_FILE
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, info_logger, _ = setup_logging()
+error_logger = get_logger('error')
+info_logger = get_logger('ai')
 
 last_ai_call_time = 0
 AI_CALL_INTERVAL = 20

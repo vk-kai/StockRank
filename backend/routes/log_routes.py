@@ -9,29 +9,24 @@ from logger import get_log_modules
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
 
 LOG_FILES = {
-    'error': 'error.log',
-    'system': 'system.log',
     'data': 'data.log',
-    'news': 'news.log',
-    'ai': 'ai.log',
-    'monitor': 'monitor.log',
     'nginx': 'nginx/error.log'
 }
 
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 
 LOG_MODULES_INFO = {
-    'error': {'desc': '错误日志', 'color': '#f56c6c'},
-    'system': {'desc': '系统日志', 'color': '#409eff'},
     'data': {'desc': '数据采集', 'color': '#67c23a'},
     'news': {'desc': '新闻采集', 'color': '#e6a23c'},
     'ai': {'desc': 'AI分析', 'color': '#909399'},
     'monitor': {'desc': '线程监控', 'color': '#b37feb'},
+    'system': {'desc': '系统运行', 'color': '#409eff'},
+    'error': {'desc': '错误日志', 'color': '#f56c6c'},
     'nginx': {'desc': 'Nginx日志', 'color': '#ff85c0'}
 }
 
 LOG_PATTERN = re.compile(
-    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (DEBUG|INFO|WARNING|ERROR|CRITICAL) - ([\w\.]+):(\d+) - (.*)$'
+    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| ([\u4e00-\u9fa5\w]+) \| ([\w\.]+):(\d+) \| (.*)$'
 )
 
 NGINX_LOG_PATTERN = re.compile(
@@ -96,6 +91,7 @@ def parse_nginx_line(line):
         return {
             'timestamp': timestamp,
             'level': mapped_level,
+            'module': 'nginx',
             'source': f'nginx[{pid}]',
             'lineno': int(tid),
             'message': message,
@@ -106,10 +102,11 @@ def parse_nginx_line(line):
 def parse_python_log_line(line):
     match = LOG_PATTERN.match(line)
     if match:
-        timestamp, level, source, lineno, message = match.groups()
+        timestamp, level, module, source, lineno, message = match.groups()
         return {
             'timestamp': timestamp,
             'level': level,
+            'module': module,
             'source': source,
             'lineno': int(lineno),
             'message': message,
@@ -130,6 +127,7 @@ def get_log_content(log_type):
             return jsonify({'success': True, 'data': {'lines': [], 'total': 0}})
         
         level_filter = request.args.get('level', '').upper()
+        module_filter = request.args.get('module', '').strip()
         search_keyword = request.args.get('search', '').strip()
         lines_limit = min(int(request.args.get('lines', 200)), 10000)
         
@@ -153,18 +151,22 @@ def get_log_content(log_type):
                 if level_filter and parsed['level'] != level_filter:
                     continue
                 
+                if module_filter and parsed.get('module', '') != module_filter:
+                    continue
+                
                 if search_keyword and search_keyword.lower() not in line.lower():
                     continue
                 
                 parsed_lines.append(parsed)
             else:
-                if level_filter:
+                if level_filter or module_filter:
                     continue
                 if search_keyword and search_keyword.lower() not in line.lower():
                     continue
                 parsed_lines.append({
                     'timestamp': '',
                     'level': '',
+                    'module': '',
                     'source': '',
                     'lineno': 0,
                     'message': line,
@@ -180,7 +182,7 @@ def get_log_content(log_type):
             'data': {
                 'lines': recent_lines,
                 'total': total,
-                'filtered': level_filter != '' or search_keyword != ''
+                'filtered': level_filter != '' or module_filter != '' or search_keyword != ''
             }
         })
     except Exception as e:
@@ -190,3 +192,7 @@ def get_log_content(log_type):
 @log_bp.route('/levels', methods=['GET'])
 def get_log_levels():
     return jsonify({'success': True, 'data': LOG_LEVELS})
+
+@log_bp.route('/modules', methods=['GET'])
+def get_log_modules_list():
+    return jsonify({'success': True, 'data': LOG_MODULES_INFO})

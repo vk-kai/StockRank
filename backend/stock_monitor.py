@@ -2,9 +2,9 @@ import json
 import time
 import os
 from config import STOCK_MONITOR_CONFIG_FILE
-from logger import setup_logging
+from logger import get_logger
 
-error_logger, _, _ = setup_logging()
+error_logger = get_logger('error')
 
 _cached_config = None
 _cache_time = 0

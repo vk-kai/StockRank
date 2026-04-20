@@ -1,4 +1,4 @@
-import { getLogList, getLogContent, getLogLevels } from '../../services/apiService'
+import { getLogList, getLogContent, getLogLevels, getLogModules } from '../../services/apiService'
 
 export default {
   name: 'LogPage',
@@ -6,8 +6,10 @@ export default {
     return {
       logList: [],
       logLevels: [],
-      activeLog: 'system',
+      logModules: {},
+      activeLog: 'data',
       selectedLevel: '',
+      selectedModule: '',
       searchKeyword: '',
       pageSize: 100,
       logLines: [],
@@ -62,6 +64,7 @@ export default {
   mounted() {
     this.loadLogList()
     this.loadLogLevels()
+    this.loadLogModules()
     this.loadLogContent()
   },
   beforeUnmount() {
@@ -103,10 +106,21 @@ export default {
       }
     },
 
+    async loadLogModules() {
+      try {
+        const response = await getLogModules()
+        if (response.success) {
+          this.logModules = response.data
+        }
+      } catch (error) {
+        console.error('加载功能模块失败:', error)
+      }
+    },
+
     async loadLogContent() {
       this.loading = true
       try {
-        const response = await getLogContent(this.activeLog, this.selectedLevel, 5000, this.searchKeyword)
+        const response = await getLogContent(this.activeLog, this.selectedLevel, 5000, this.searchKeyword, this.selectedModule)
         if (response.success) {
           this.logLines = response.data.lines
           this.totalLines = response.data.total
@@ -203,9 +217,14 @@ export default {
     async copyToClipboard() {
       if (!this.selectedLog) return
       
-      const text = `时间: ${this.selectedLog.timestamp}
-级别: ${this.selectedLog.level || '-'}
-来源: ${this.selectedLog.source}:${this.selectedLog.lineno}
+      let text = `时间: ${this.selectedLog.timestamp}
+级别: ${this.selectedLog.level || '-'}`
+      
+      if (this.activeLog === 'data' && this.selectedLog.module) {
+        text += `\n模块: ${this.selectedLog.module}`
+      }
+      
+      text += `\n来源: ${this.selectedLog.source}:${this.selectedLog.lineno}
 消息: ${this.selectedLog.message}`
       
       try {
@@ -245,6 +264,18 @@ export default {
     getLevelClass(level) {
       if (!level) return ''
       return `level-${level.toLowerCase()}`
+    },
+
+    getModuleColor(module) {
+      const colors = {
+        '数据采集': '#67c23a',
+        '新闻采集': '#e6a23c',
+        'AI分析': '#909399',
+        '线程监控': '#b37feb',
+        '系统运行': '#409eff',
+        '错误日志': '#f56c6c'
+      }
+      return colors[module] || '#606266'
     },
 
     showToast(message, type = 'success') {
