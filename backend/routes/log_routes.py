@@ -4,17 +4,31 @@ import re
 
 from config import LOG_DIR
 from data_processor import error_logger
+from logger import get_log_modules
 
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
 
 LOG_FILES = {
     'error': 'error.log',
-    'data': 'data.log',
     'system': 'system.log',
+    'data': 'data.log',
+    'news': 'news.log',
+    'ai': 'ai.log',
+    'monitor': 'monitor.log',
     'nginx': 'nginx/error.log'
 }
 
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+
+LOG_MODULES_INFO = {
+    'error': {'desc': '错误日志', 'color': '#f56c6c'},
+    'system': {'desc': '系统日志', 'color': '#409eff'},
+    'data': {'desc': '数据采集', 'color': '#67c23a'},
+    'news': {'desc': '新闻采集', 'color': '#e6a23c'},
+    'ai': {'desc': 'AI分析', 'color': '#909399'},
+    'monitor': {'desc': '线程监控', 'color': '#b37feb'},
+    'nginx': {'desc': 'Nginx日志', 'color': '#ff85c0'}
+}
 
 LOG_PATTERN = re.compile(
     r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (DEBUG|INFO|WARNING|ERROR|CRITICAL) - ([\w\.]+):(\d+) - (.*)$'
@@ -45,20 +59,25 @@ def get_log_list():
         logs = []
         for log_type, filename in LOG_FILES.items():
             file_path = os.path.join(LOG_DIR, filename)
+            module_info = LOG_MODULES_INFO.get(log_type, {'desc': log_type, 'color': '#909399'})
             if os.path.exists(file_path):
                 size = os.path.getsize(file_path)
                 logs.append({
                     'type': log_type,
                     'filename': filename,
                     'size': size,
-                    'exists': True
+                    'exists': True,
+                    'desc': module_info['desc'],
+                    'color': module_info['color']
                 })
             else:
                 logs.append({
                     'type': log_type,
                     'filename': filename,
                     'size': 0,
-                    'exists': False
+                    'exists': False,
+                    'desc': module_info['desc'],
+                    'color': module_info['color']
                 })
         return jsonify({'success': True, 'data': logs})
     except Exception as e:

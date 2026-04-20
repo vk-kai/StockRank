@@ -36,8 +36,16 @@ def get_sector_flow_data():
             sectors = []
             for item in data['data']['diff']:
                 sector_name = item.get('f14', '')
-                net_inflow = item.get('f62', 0) / 10000
-                change = item.get('f3', 0) / 100
+                
+                try:
+                    f62_value = item.get('f62', 0)
+                    net_inflow = float(f62_value) / 10000 if f62_value else 0
+                    
+                    f3_value = item.get('f3', 0)
+                    change = float(f3_value) / 100 if f3_value else 0
+                except (ValueError, TypeError) as e:
+                    error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
+                    continue
                 
                 if sector_name and net_inflow is not None:
                     sectors.append({

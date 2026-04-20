@@ -9,6 +9,9 @@ error_logger, system_logger, _ = setup_logging()
 _last_restart_time = {}
 _last_config_reload = 0
 CONFIG_RELOAD_INTERVAL = 300
+_restart_fail_count = {}
+MAX_RESTART_FAILS = 3
+_fail_reset_time = {}
 
 def get_current_config():
     global _last_config_reload
@@ -32,13 +35,24 @@ def check_health(api_base_url):
         return None
 
 def restart_thread(thread_name, restart_url, restart_cooldown):
-    global _last_restart_time
+    global _last_restart_time, _restart_fail_count, _fail_reset_time
     
     now = time.time()
     last_restart = _last_restart_time.get(thread_name, 0)
     
     if now - last_restart < restart_cooldown:
         system_logger.info(f"[监控] 重启冷却中，跳过 {thread_name}")
+        return False
+    
+    fail_count = _restart_fail_count.get(thread_name, 0)
+    last_fail_reset = _fail_reset_time.get(thread_name, 0)
+    
+    if now - last_fail_reset > 600:
+        _restart_fail_count[thread_name] = 0
+        fail_count = 0
+    
+    if fail_count >= MAX_RESTART_FAILS:
+        system_logger.warning(f"[监控] {thread_name} 连续重启失败 {fail_count} 次，暂停重启尝试")
         return False
     
     _last_restart_time[thread_name] = now
@@ -53,12 +67,17 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
         )
         if response.status_code == 200:
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
+            _restart_fail_count[thread_name] = 0
             return True
         else:
             error_logger.error(f"[监控] 重启线程失败: {thread_name}, HTTP {response.status_code}, 响应: {response.text[:200]}")
+            _restart_fail_count[thread_name] = fail_count + 1
+            _fail_reset_time[thread_name] = now
             return False
     except Exception as e:
         error_logger.error(f"[监控] 重启线程请求失败: {thread_name}, 错误: {e}")
+        _restart_fail_count[thread_name] = fail_count + 1
+        _fail_reset_time[thread_name] = now
         return False
 
 def wait_for_backend(api_base_url, max_wait=60):
@@ -120,6 +139,11 @@ def monitor_loop():
                 status = thread_info.get('status', 'unknown')
                 elapsed = thread_info.get('elapsed', 0)
                 alive = thread_info.get('alive', False)
+                is_busy = thread_info.get('busy', False)
+                
+                if is_busy:
+                    system_logger.debug(f"[监控] 线程 {thread_name} 处于忙碌状态，跳过重启检查")
+                    continue
                 
                 if not alive or status == 'stopped':
                     error_logger.critical(f"[监控] 线程 {thread_name} 已停止运行，状态: {status}, 尝试重启...")

@@ -5,8 +5,8 @@ from news_processor import get_news_data, save_news_data, cleanup_old_news, load
 from ai_analyzer import batch_analyze_news, is_important_news
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
-from logger import setup_logging
-from thread_monitor import heartbeat, register_thread
+from logger import setup_logging, cleanup_old_logs
+from thread_monitor import heartbeat, register_thread, set_busy
 
 error_logger, info_logger, _ = setup_logging()
 
@@ -64,7 +64,11 @@ def process_news_with_ai_and_push(news_list):
             if len(important_items) > 5:
                 info_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
             
-            analysis_results = batch_analyze_news(items_to_analyze)
+            set_busy('news_collector', True)
+            try:
+                analysis_results = batch_analyze_news(items_to_analyze)
+            finally:
+                set_busy('news_collector', False)
             
             for news_item in items_to_analyze:
                 news_id = news_item.get('id')
@@ -168,6 +172,9 @@ def news_collection_thread():
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
                 cleanup_old_news()
+                cleaned_logs = cleanup_old_logs(hours=48)
+                if cleaned_logs:
+                    info_logger.info(f"清理过期日志文件: {cleaned_logs}")
                 last_cleanup_time = current_time
                 info_logger.info(f"执行定时清理任务，下次清理时间: {CLEANUP_INTERVAL} 秒后")
             
