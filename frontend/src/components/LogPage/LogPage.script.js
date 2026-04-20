@@ -138,6 +138,7 @@ export default {
     async switchLog(logType) {
       this.activeLog = logType
       this.currentPage = 1
+      this.selectedModule = ''
       await this.loadLogContent()
     },
 

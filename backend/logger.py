@@ -4,22 +4,31 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from config import LOG_DIR, is_dev_mode
 
-_loggers_initialized = False
 _loggers = {}
 
-MODULE_NAMES = {
+MODULE_DISPLAY_NAMES = {
     'data': '数据采集',
+    'data_collect': '数据采集—数据获取',
     'news': '新闻采集',
+    'news_collect': '新闻采集—数据获取',
+    'news_add': '新闻采集—新增新闻',
+    'news_important': '新闻采集—重要新闻',
     'ai': 'AI分析',
+    'ai_analyze': 'AI分析—内容分析',
+    'ai_push': 'AI分析—飞书推送',
     'monitor': '线程监控',
+    'monitor_check': '线程监控—状态检测',
+    'monitor_restart': '线程监控—线程重启',
     'system': '系统运行',
+    'system_start': '系统运行—服务启动',
+    'system_cleanup': '系统运行—数据清理',
     'error': '错误日志'
 }
 
 class ModuleFormatter(logging.Formatter):
     def format(self, record):
         module_name = getattr(record, 'module_name', 'system')
-        module_display = MODULE_NAMES.get(module_name, module_name)
+        module_display = MODULE_DISPLAY_NAMES.get(module_name, module_name)
         record.module_display = module_display
         return super().format(record)
 
@@ -58,7 +67,6 @@ def cleanup_old_logs(hours=48):
     cutoff = now - timedelta(hours=hours)
     
     cleaned_files = []
-    log_file = os.path.join(LOG_DIR, 'data.log')
     
     for filename in os.listdir(LOG_DIR):
         if filename.endswith('.log') or filename.endswith('.log.'):
@@ -82,7 +90,11 @@ def get_logger(module_name='system'):
     
     ensure_directories()
     
-    base_logger = logging.getLogger('stockrank')
+    is_system = module_name == 'system' or module_name.startswith('system_')
+    log_file = 'system.log' if is_system else 'data.log'
+    logger_name = 'system_logger' if is_system else 'data_logger'
+    
+    base_logger = logging.getLogger(logger_name)
     
     if not base_logger.handlers:
         log_formatter = ModuleFormatter('%(asctime)s | %(levelname)s | %(module_display)s | %(module)s:%(lineno)d | %(message)s')
@@ -93,7 +105,7 @@ def get_logger(module_name='system'):
             base_logger.setLevel(logging.INFO)
         
         handler = RotatingFileHandler(
-            os.path.join(LOG_DIR, 'data.log'),
+            os.path.join(LOG_DIR, log_file),
             maxBytes=10*1024*1024,
             backupCount=5,
             encoding='utf-8'
@@ -106,23 +118,24 @@ def get_logger(module_name='system'):
     return module_logger
 
 def setup_logging():
-    global _loggers_initialized
-    
     ensure_directories()
     
     error_logger = get_logger('error')
     data_logger = get_logger('data')
     system_logger = get_logger('system')
     
-    if _loggers_initialized:
-        return error_logger, data_logger, system_logger
-    
-    _loggers_initialized = True
-    
     return error_logger, data_logger, system_logger
 
 def get_log_modules():
-    return {name: {'desc': desc} for name, desc in MODULE_NAMES.items()}
+    main_modules = {
+        'data': '数据采集',
+        'news': '新闻采集',
+        'ai': 'AI分析',
+        'monitor': '线程监控',
+        'system': '系统运行',
+        'error': '错误日志'
+    }
+    return {name: {'desc': desc} for name, desc in main_modules.items()}
 
 def read_recent_logs(lines=500):
     log_file = os.path.join(LOG_DIR, 'data.log')

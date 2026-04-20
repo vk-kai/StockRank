@@ -9,6 +9,7 @@ from logger import get_log_modules
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
 
 LOG_FILES = {
+    'system': 'system.log',
     'data': 'data.log',
     'nginx': 'nginx/error.log'
 }
@@ -26,7 +27,7 @@ LOG_MODULES_INFO = {
 }
 
 LOG_PATTERN = re.compile(
-    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| ([\u4e00-\u9fa5\w]+) \| ([\w\.]+):(\d+) \| (.*)$'
+    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| ([\u4e00-\u9fa5\w—\-]+) \| ([\w\.]+):(\d+) \| (.*)$'
 )
 
 NGINX_LOG_PATTERN = re.compile(
@@ -114,6 +115,17 @@ def parse_python_log_line(line):
         }
     return None
 
+def match_module(log_module, filter_module):
+    if not filter_module:
+        return True
+    if log_module == filter_module:
+        return True
+    if log_module.startswith(filter_module):
+        return True
+    if filter_module in log_module:
+        return True
+    return False
+
 @log_bp.route('/content/<log_type>', methods=['GET'])
 def get_log_content(log_type):
     try:
@@ -151,7 +163,7 @@ def get_log_content(log_type):
                 if level_filter and parsed['level'] != level_filter:
                     continue
                 
-                if module_filter and parsed.get('module', '') != module_filter:
+                if module_filter and not match_module(parsed.get('module', ''), module_filter):
                     continue
                 
                 if search_keyword and search_keyword.lower() not in line.lower():

@@ -9,7 +9,10 @@ from logger import get_logger, cleanup_old_logs
 from thread_monitor import heartbeat, register_thread, set_busy
 
 error_logger = get_logger('error')
-info_logger = get_logger('news')
+news_logger = get_logger('news')
+news_add_logger = get_logger('news_add')
+news_important_logger = get_logger('news_important')
+ai_logger = get_logger('ai')
 
 last_cleanup_time = 0
 CLEANUP_INTERVAL = 3600
@@ -36,7 +39,7 @@ def process_news_with_ai_and_push(news_list):
                 continue
             
             if news_title and news_key in existing_keys:
-                info_logger.debug(f"跳过重复新闻: {news_title} (时间: {news_time})")
+                news_logger.debug(f"跳过重复新闻: {news_title} (时间: {news_time})")
                 continue
             
             news_item['ai_analyzed'] = False
@@ -63,7 +66,7 @@ def process_news_with_ai_and_push(news_list):
         if important_items:
             items_to_analyze = important_items[:5]
             if len(important_items) > 5:
-                info_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
+                ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
             
             set_busy('news_collector', True)
             try:
@@ -160,24 +163,24 @@ def news_collection_thread():
             total_new = len(normal_items) + len(pushed_items) + len(ignored_items)
             if total_new > 0:
                 for item in normal_items:
-                    info_logger.info(f"新增普通新闻，标题: {item.get('title', '')}")
+                    news_add_logger.info(f"新增普通新闻，标题: {item.get('title', '')}")
                 
                 for item in pushed_items:
-                    info_logger.info(f"新增重要新闻并推送，标题: {item['title']}，推送理由: {item['reason']}")
+                    news_important_logger.info(f"新增重要新闻并推送，标题: {item['title']}，推送理由: {item['reason']}")
                 
                 for item in ignored_items:
-                    info_logger.info(f"新增重要新闻但忽略，标题: {item['title']}，忽略理由: {item['reason']} (级别: {item['level']})")
+                    news_important_logger.info(f"新增重要新闻但忽略，标题: {item['title']}，忽略理由: {item['reason']} (级别: {item['level']})")
                 
-                info_logger.info(f"本轮新增 {total_new} 条，当前共 {len(all_news)} 条")
+                news_logger.info(f"本轮新增 {total_new} 条，当前共 {len(all_news)} 条")
             
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
                 cleanup_old_news()
                 cleaned_logs = cleanup_old_logs(hours=48)
                 if cleaned_logs:
-                    info_logger.info(f"清理过期日志文件: {cleaned_logs}")
+                    news_logger.info(f"清理过期日志文件: {cleaned_logs}")
                 last_cleanup_time = current_time
-                info_logger.info(f"执行定时清理任务，下次清理时间: {CLEANUP_INTERVAL} 秒后")
+                news_logger.info(f"执行定时清理任务，下次清理时间: {CLEANUP_INTERVAL} 秒后")
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")
@@ -196,8 +199,8 @@ def init_news_data():
                 if 'core_event' not in item:
                     item['core_event'] = ''
             save_news_data(news_data)
-            info_logger.info(f"初始化 {len(news_data)} 条数据成功，普通{normal_count}条，重要{important_count}条")
+            news_logger.info(f"初始化 {len(news_data)} 条数据成功，普通{normal_count}条，重要{important_count}条")
         else:
-            info_logger.info("初始化新闻数据：API未返回数据")
+            news_logger.info("初始化新闻数据：API未返回数据")
     except Exception as e:
         error_logger.error(f"初始化新闻数据失败: {e}")
