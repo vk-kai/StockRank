@@ -30,6 +30,7 @@ class ModuleFormatter(logging.Formatter):
         module_name = getattr(record, 'module_name', 'system')
         module_display = MODULE_DISPLAY_NAMES.get(module_name, module_name)
         record.module_display = module_display
+        record.module_key = module_name
         return super().format(record)
 
 class ModuleLogger:
@@ -90,14 +91,19 @@ def get_logger(module_name='system'):
     
     ensure_directories()
     
-    is_system = module_name == 'system' or module_name.startswith('system_')
+    is_system = (
+        module_name == 'system' or 
+        module_name.startswith('system_') or 
+        module_name == 'monitor' or 
+        module_name.startswith('monitor_')
+    )
     log_file = 'system.log' if is_system else 'data.log'
     logger_name = 'system_logger' if is_system else 'data_logger'
     
     base_logger = logging.getLogger(logger_name)
     
     if not base_logger.handlers:
-        log_formatter = ModuleFormatter('%(asctime)s | %(levelname)s | %(module_display)s | %(module)s:%(lineno)d | %(message)s')
+        log_formatter = ModuleFormatter('%(asctime)s | %(levelname)s | %(module_key)s | %(module_display)s | %(module)s:%(lineno)d | %(message)s')
         
         if is_dev_mode():
             base_logger.setLevel(logging.DEBUG)
@@ -131,8 +137,8 @@ def get_log_modules():
         'data': '数据采集',
         'news': '新闻采集',
         'ai': 'AI分析',
-        'monitor': '线程监控',
         'system': '系统运行',
+        'monitor': '线程监控',
         'error': '错误日志'
     }
     return {name: {'desc': desc} for name, desc in main_modules.items()}

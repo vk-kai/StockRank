@@ -221,8 +221,8 @@ export default {
       let text = `时间: ${this.selectedLog.timestamp}
 级别: ${this.selectedLog.level || '-'}`
       
-      if (this.activeLog === 'data' && this.selectedLog.module) {
-        text += `\n模块: ${this.selectedLog.module}`
+      if ((this.activeLog === 'data' || this.activeLog === 'system') && this.selectedLog.module) {
+        text += `\n模块: ${this.selectedLog.module_display || this.selectedLog.module}`
       }
       
       text += `\n来源: ${this.selectedLog.source}:${this.selectedLog.lineno}
@@ -269,14 +269,22 @@ export default {
 
     getModuleColor(module) {
       const colors = {
-        '数据采集': '#67c23a',
-        '新闻采集': '#e6a23c',
-        'AI分析': '#909399',
-        '线程监控': '#b37feb',
-        '系统运行': '#409eff',
-        '错误日志': '#f56c6c'
+        'data': '#67c23a',
+        'news': '#e6a23c',
+        'ai': '#909399',
+        'system': '#409eff',
+        'error': '#f56c6c',
+        'monitor': '#b37feb'
       }
-      return colors[module] || '#606266'
+      if (colors[module]) {
+        return colors[module]
+      }
+      if (module && module.startsWith('data')) return '#67c23a'
+      if (module && module.startsWith('news')) return '#e6a23c'
+      if (module && module.startsWith('ai')) return '#909399'
+      if (module && module.startsWith('system')) return '#409eff'
+      if (module && module.startsWith('monitor')) return '#b37feb'
+      return '#606266'
     },
 
     showToast(message, type = 'success') {

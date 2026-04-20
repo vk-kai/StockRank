@@ -20,13 +20,17 @@ LOG_MODULES_INFO = {
     'data': {'desc': '数据采集', 'color': '#67c23a'},
     'news': {'desc': '新闻采集', 'color': '#e6a23c'},
     'ai': {'desc': 'AI分析', 'color': '#909399'},
-    'monitor': {'desc': '线程监控', 'color': '#b37feb'},
     'system': {'desc': '系统运行', 'color': '#409eff'},
+    'monitor': {'desc': '线程监控', 'color': '#b37feb'},
     'error': {'desc': '错误日志', 'color': '#f56c6c'},
     'nginx': {'desc': 'Nginx日志', 'color': '#ff85c0'}
 }
 
 LOG_PATTERN = re.compile(
+    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| ([\w_]+) \| ([\u4e00-\u9fa5\w—\-]+) \| ([\w\.]+):(\d+) \| (.*)$'
+)
+
+OLD_LOG_PATTERN = re.compile(
     r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \| (DEBUG|INFO|WARNING|ERROR|CRITICAL) \| ([\u4e00-\u9fa5\w—\-]+) \| ([\w\.]+):(\d+) \| (.*)$'
 )
 
@@ -93,6 +97,7 @@ def parse_nginx_line(line):
             'timestamp': timestamp,
             'level': mapped_level,
             'module': 'nginx',
+            'module_display': 'Nginx日志',
             'source': f'nginx[{pid}]',
             'lineno': int(tid),
             'message': message,
@@ -103,11 +108,26 @@ def parse_nginx_line(line):
 def parse_python_log_line(line):
     match = LOG_PATTERN.match(line)
     if match:
-        timestamp, level, module, source, lineno, message = match.groups()
+        timestamp, level, module_key, module_display, source, lineno, message = match.groups()
         return {
             'timestamp': timestamp,
             'level': level,
-            'module': module,
+            'module': module_key,
+            'module_display': module_display,
+            'source': source,
+            'lineno': int(lineno),
+            'message': message,
+            'raw': line
+        }
+    
+    match = OLD_LOG_PATTERN.match(line)
+    if match:
+        timestamp, level, module_display, source, lineno, message = match.groups()
+        return {
+            'timestamp': timestamp,
+            'level': level,
+            'module': module_display,
+            'module_display': module_display,
             'source': source,
             'lineno': int(lineno),
             'message': message,
@@ -120,9 +140,9 @@ def match_module(log_module, filter_module):
         return True
     if log_module == filter_module:
         return True
-    if log_module.startswith(filter_module):
+    if log_module.startswith(filter_module + '_'):
         return True
-    if filter_module in log_module:
+    if log_module.startswith(filter_module):
         return True
     return False
 
@@ -179,6 +199,7 @@ def get_log_content(log_type):
                     'timestamp': '',
                     'level': '',
                     'module': '',
+                    'module_display': '',
                     'source': '',
                     'lineno': 0,
                     'message': line,
