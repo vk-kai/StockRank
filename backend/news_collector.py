@@ -168,7 +168,7 @@ def news_collection_thread():
             total_new = len(normal_items) + len(pushed_items) + len(ignored_items)
             if total_new > 0:
                 for item in normal_items:
-                    news_add_logger.info(f"新增普通新闻，标题: {item.get('title', '')}")
+                    news_add_logger.debug(f"新增普通新闻，标题: {item.get('title', '')}")
                 
                 for item in pushed_items:
                     news_important_logger.info(f"新增重要新闻并推送，标题: {item['title']}，推送理由: {item['reason']}")

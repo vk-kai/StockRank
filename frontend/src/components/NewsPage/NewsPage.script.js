@@ -71,9 +71,9 @@ export default {
           if (this.newsList.length > 0 && this.enableNotification) {
             const latestId = newNews[0]?.id
             if (latestId && latestId !== this.lastNewsId) {
-              const importantNews = newNews.find(n => n.id === latestId && this.isImportant(n.importance))
-              if (importantNews) {
-                this.sendNotification(importantNews)
+              const latestNews = newNews.find(n => n.id === latestId)
+              if (latestNews) {
+                this.sendNotification(latestNews)
               }
             }
           }
@@ -199,11 +199,13 @@ export default {
         return
       }
       
-      const notification = new Notification('重要新闻提醒', {
+      const title = this.isImportant(news.importance) ? '重要新闻提醒' : '新闻提醒'
+      
+      const notification = new Notification(title, {
         body: news.title,
         icon: '/favicon.ico',
         tag: news.id,
-        requireInteraction: true
+        requireInteraction: this.isImportant(news.importance)
       })
       
       notification.onclick = () => {
