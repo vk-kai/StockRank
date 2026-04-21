@@ -176,7 +176,26 @@ def news_collection_thread():
                 for item in ignored_items:
                     news_important_logger.info(f"新增重要新闻但忽略，标题: {item['title']}，忽略理由: {item['reason']} (级别: {item['level']})")
                 
-                news_logger.info(f"本轮新增 {total_new} 条，当前共 {len(all_news)} 条")
+                normal_count = len(normal_items)
+                important_count = len(pushed_items) + len(ignored_items)
+                pushed_count = len(pushed_items)
+                
+                summary_parts = [f"本轮新增 {total_new} 条"]
+                
+                type_parts = []
+                if normal_count > 0:
+                    type_parts.append(f"普通 {normal_count} 条")
+                if important_count > 0:
+                    type_parts.append(f"重要 {important_count} 条")
+                if type_parts:
+                    summary_parts.append(f"（{', '.join(type_parts)}）")
+                
+                if pushed_count > 0:
+                    summary_parts.append(f"，推送 {pushed_count} 条")
+                
+                summary_parts.append(f"，当前共 {len(all_news)} 条")
+                
+                news_logger.info("".join(summary_parts))
             
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
