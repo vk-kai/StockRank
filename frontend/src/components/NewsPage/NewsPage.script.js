@@ -248,10 +248,16 @@ export default {
       
       const permission = await Notification.requestPermission()
       if (permission === 'granted') {
-        new Notification('通知已开启', {
-          body: '您将收到重要新闻的推送提醒',
-          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
-        })
+        try {
+          if (typeof Notification === 'function') {
+            new Notification('通知已开启', {
+              body: '您将收到重要新闻的推送提醒',
+              icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
+            })
+          }
+        } catch (e) {
+          console.log('当前浏览器不支持直接创建通知')
+        }
       } else if (permission === 'denied') {
         alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
         this.enableNotification = false
@@ -267,25 +273,29 @@ export default {
         return
       }
       
-      const title = news.title
-      let body = news.content || ''
-      if (body.length > 100) {
-        body = body.substring(0, 100) + '...'
-      }
-      
-      const notification = new Notification(title, {
-        body: body,
-        icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
-        tag: news.id,
-        requireInteraction: this.isImportant(news.importance)
-      })
-      
-      notification.onclick = () => {
-        window.focus()
-        if (news.url) {
-          window.open(news.url, '_blank')
+      try {
+        const title = news.title
+        let body = news.content || ''
+        if (body.length > 100) {
+          body = body.substring(0, 100) + '...'
         }
-        notification.close()
+        
+        const notification = new Notification(title, {
+          body: body,
+          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
+          tag: news.id,
+          requireInteraction: this.isImportant(news.importance)
+        })
+        
+        notification.onclick = () => {
+          window.focus()
+          if (news.url) {
+            window.open(news.url, '_blank')
+          }
+          notification.close()
+        }
+      } catch (e) {
+        console.log('发送通知失败，当前浏览器可能不支持:', e.message)
       }
     },
 
