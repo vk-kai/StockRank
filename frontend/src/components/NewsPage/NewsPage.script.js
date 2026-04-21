@@ -66,14 +66,14 @@ export default {
   },
   methods: {
     goBack() {
-      this.$router.go(-1)
+      window.location.href = '/'
     },
 
     async fetchNews() {
       try {
         this.loading = true
         this.error = null
-        const response = await getNews(200)
+        const response = await getNews(2000)
         if (response.success) {
           const newNews = response.data
           

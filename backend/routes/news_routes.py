@@ -9,7 +9,7 @@ news_bp = Blueprint('news', __name__, url_prefix='/api')
 def get_news():
     try:
         limit = request.args.get('limit', '50', type=int)
-        limit = min(limit, 200)
+        limit = min(limit, 2000)
         
         news_data = get_recent_news(limit)
         
