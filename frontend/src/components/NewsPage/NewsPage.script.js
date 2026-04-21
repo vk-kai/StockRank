@@ -199,10 +199,14 @@ export default {
         return
       }
       
-      const title = this.isImportant(news.importance) ? '重要新闻提醒' : '新闻提醒'
+      const title = news.title
+      let body = news.content || ''
+      if (body.length > 100) {
+        body = body.substring(0, 100) + '...'
+      }
       
       const notification = new Notification(title, {
-        body: news.title,
+        body: body,
         icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
         tag: news.id,
         requireInteraction: this.isImportant(news.importance)
