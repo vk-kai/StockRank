@@ -182,7 +182,7 @@ export default {
       if (permission === 'granted') {
         new Notification('通知已开启', {
           body: '您将收到重要新闻的推送提醒',
-          icon: '/favicon.ico'
+          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
         })
       } else if (permission === 'denied') {
         alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
@@ -203,7 +203,7 @@ export default {
       
       const notification = new Notification(title, {
         body: news.title,
-        icon: '/favicon.ico',
+        icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
         tag: news.id,
         requireInteraction: this.isImportant(news.importance)
       })
