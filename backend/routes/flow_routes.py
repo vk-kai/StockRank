@@ -39,11 +39,11 @@ def get_current_flow():
                 if dates_sorted:
                     latest_date = dates_sorted[0]
                     latest_record = recent_history[latest_date]
-                    if latest_record and 'data' in latest_record:
+                    if latest_record and isinstance(latest_record, list) and len(latest_record) > 0:
                         return jsonify({
                             'success': True,
-                            'data': latest_record['data'],
-                            'timestamp': latest_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                            'data': latest_record,
+                            'timestamp': datetime.now().astimezone().isoformat(),
                             'message': f'非交易时间，返回最近历史数据({latest_date})'
                         })
             
