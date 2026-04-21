@@ -195,6 +195,24 @@ def news_collection_thread():
                 summary_parts.append(f"，当前共 {recent_news_result['total']} 条")
                 
                 news_logger.info("".join(summary_parts))
+                
+                if normal_items:
+                    normal_titles = [item.get('title', '')[:30] for item in normal_items[:5]]
+                    if len(normal_items) > 5:
+                        normal_titles.append(f"...等{len(normal_items)}条")
+                    news_logger.info(f"普通新闻: {', '.join(normal_titles)}")
+                
+                if pushed_items:
+                    pushed_titles = [item['title'][:30] for item in pushed_items[:5]]
+                    if len(pushed_items) > 5:
+                        pushed_titles.append(f"...等{len(pushed_items)}条")
+                    news_logger.info(f"重要新闻(已推送): {', '.join(pushed_titles)}")
+                
+                if ignored_items:
+                    ignored_titles = [item['title'][:30] for item in ignored_items[:5]]
+                    if len(ignored_items) > 5:
+                        ignored_titles.append(f"...等{len(ignored_items)}条")
+                    news_logger.info(f"重要新闻(未推送): {', '.join(ignored_titles)}")
             
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
