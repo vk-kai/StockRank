@@ -1,4 +1,4 @@
-import { getNews, getSystemHealth } from '../../services/apiService'
+import { getNews, getSystemHealth, searchNews } from '../../services/apiService'
 
 export default {
   name: 'NewsPage',
@@ -16,7 +16,10 @@ export default {
       lastNewsId: null,
       showOnlyImportant: false,
       threadStatus: {},
-      healthCheckInterval: null
+      healthCheckInterval: null,
+      searchKeyword: '',
+      searchTimer: null,
+      isSearching: false
     }
   },
   computed: {
@@ -24,10 +27,13 @@ export default {
       return this.countdown.toString().padStart(2, '0')
     },
     filteredNewsList() {
+      let result = this.newsList
+      
       if (this.showOnlyImportant) {
-        return this.newsList.filter(news => this.isImportant(news.importance))
+        result = result.filter(news => this.isImportant(news.importance))
       }
-      return this.newsList
+      
+      return result
     },
     displayNewsList() {
       return this.filteredNewsList.slice(0, this.currentPage * this.pageSize)
@@ -53,6 +59,9 @@ export default {
     }
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval)
+    }
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer)
     }
   },
   methods: {
@@ -145,6 +154,51 @@ export default {
       this.showOnlyImportant = !this.showOnlyImportant
       localStorage.setItem('newsShowOnlyImportant', this.showOnlyImportant.toString())
       this.currentPage = 1
+    },
+
+    handleSearch() {
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer)
+      }
+      
+      this.searchTimer = setTimeout(() => {
+        this.performSearch()
+      }, 500)
+    },
+
+    async performSearch() {
+      if (!this.searchKeyword || !this.searchKeyword.trim()) {
+        this.fetchNews()
+        return
+      }
+      
+      try {
+        this.isSearching = true
+        this.loading = true
+        this.error = null
+        
+        const response = await searchNews(this.searchKeyword, 200)
+        
+        if (response.success) {
+          this.newsList = response.data
+          this.currentPage = 1
+          this.lastUpdate = new Date(response.timestamp).toLocaleString('zh-CN')
+        } else {
+          this.error = response.message || '搜索失败'
+        }
+      } catch (err) {
+        console.error('搜索新闻失败:', err)
+        this.error = '搜索新闻失败: ' + err.message
+      } finally {
+        this.loading = false
+        this.isSearching = false
+      }
+    },
+
+    clearSearch() {
+      this.searchKeyword = ''
+      this.currentPage = 1
+      this.fetchNews()
     },
 
     toggleNotification() {

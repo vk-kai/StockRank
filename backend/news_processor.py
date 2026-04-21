@@ -218,3 +218,60 @@ def get_recent_news(limit=50):
     except Exception as e:
         error_logger.error(f"获取最近新闻失败: {e}")
         return []
+
+def search_news(keyword, limit=200):
+    ensure_news_dir()
+    
+    if not keyword or not keyword.strip():
+        return []
+    
+    keyword = keyword.strip().lower()
+    all_news = []
+    cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
+    
+    try:
+        for filename in os.listdir(NEWS_DIR):
+            if filename.endswith('.json'):
+                file_path = os.path.join(NEWS_DIR, filename)
+                try:
+                    if os.path.getsize(file_path) == 0:
+                        continue
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        news_data = json.load(f)
+                        
+                        if not isinstance(news_data, list):
+                            continue
+                        
+                        filtered_news = [
+                            item for item in news_data 
+                            if datetime.fromisoformat(item.get('timestamp', datetime.now().isoformat())) >= cutoff_time
+                        ]
+                        all_news.extend(filtered_news)
+                except json.JSONDecodeError:
+                    continue
+                except Exception as e:
+                    error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
+                    continue
+        
+        seen_ids = set()
+        unique_news = []
+        for news in all_news:
+            news_id = news.get('id')
+            if news_id and news_id not in seen_ids:
+                seen_ids.add(news_id)
+                unique_news.append(news)
+        
+        search_results = []
+        for news in unique_news:
+            title = news.get('title', '').lower()
+            content = news.get('content', '').lower()
+            
+            if keyword in title or keyword in content:
+                search_results.append(news)
+        
+        search_results.sort(key=lambda x: x.get('time', ''), reverse=True)
+        
+        return search_results[:limit]
+    except Exception as e:
+        error_logger.error(f"搜索新闻失败: {e}")
+        return []

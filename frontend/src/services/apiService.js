@@ -87,6 +87,24 @@ export async function getNews(limit = 50) {
   }
 }
 
+/**
+ * 搜索新闻
+ * @param {string} keyword - 搜索关键词
+ * @param {number} limit - 数量限制
+ * @returns {Promise<Object>} 搜索结果
+ */
+export async function searchNews(keyword, limit = 200) {
+  try {
+    const response = await apiClient.get('/news/search', {
+      params: { keyword: keyword, limit: limit }
+    })
+    return response.data
+  } catch (error) {
+    console.error('搜索新闻失败:', error)
+    throw error
+  }
+}
+
 export async function getAIConfig() {
   try {
     const response = await apiClient.get('/config/ai')

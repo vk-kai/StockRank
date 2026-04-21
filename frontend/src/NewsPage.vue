@@ -23,6 +23,26 @@
       >
         {{ enableNotification ? '🔔 提醒已开启' : '🔕 提醒已关闭' }}
       </button>
+      <div class="search-box">
+        <input 
+          type="text" 
+          v-model="searchKeyword" 
+          :placeholder="isSearching ? '搜索中...' : '搜索新闻...'" 
+          class="search-input"
+          :class="{ 'searching': isSearching }"
+          @input="handleSearch"
+          :disabled="isSearching"
+        />
+        <button 
+          v-if="searchKeyword && !isSearching" 
+          class="search-clear" 
+          @click="clearSearch"
+          title="清除搜索"
+        >
+          ✕
+        </button>
+        <div v-if="isSearching" class="search-spinner"></div>
+      </div>
       <div class="last-update" v-if="lastUpdate">
         最后更新: {{ lastUpdate }}
       </div>
