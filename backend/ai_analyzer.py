@@ -171,6 +171,8 @@ def batch_analyze_news(news_items):
         {"role": "user", "content": combined_text}
     ]
     
+    failure_reasons = []
+    
     for attempt in range(1, retry_count + 1):
         try:
             if _heartbeat_callback:
@@ -193,8 +195,8 @@ def batch_analyze_news(news_items):
                     info_logger.info(f"AI分析成功，处理 {len(results)}/{len(news_items)} 条新闻")
                     return results
                 
+                failure_reasons.append(f"第{attempt}次: AI返回解析失败")
                 if attempt < retry_count:
-                    info_logger.info(f"AI返回解析失败，{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                     time.sleep(retry_interval)
                     continue
                 return {}
@@ -205,48 +207,46 @@ def batch_analyze_news(news_items):
                     wait_time = int(retry_after)
                 except:
                     wait_time = retry_interval
-                error_logger.error(f"AI API速率限制(429)，等待 {wait_time} 秒")
+                failure_reasons.append(f"第{attempt}次: API速率限制(429)，等待{wait_time}秒")
                 if attempt < retry_count:
                     time.sleep(wait_time)
                     continue
                 return {}
             
             else:
-                error_logger.error(f"AI API调用失败: {response.status_code} - {response.text[:200]}")
+                failure_reasons.append(f"第{attempt}次: HTTP {response.status_code} - {response.text[:200]}")
                 if response.status_code == 422:
-                    error_logger.error(f"422错误详情 - 新闻数量: {len(news_items)}, 消息长度: {len(combined_text)}")
-                    error_logger.error(f"消息内容预览: {combined_text[:500]}")
+                    failure_reasons[-1] += f" | 422错误详情 - 新闻数量: {len(news_items)}, 消息长度: {len(combined_text)}"
                 if response.status_code == 524:
-                    error_logger.error(f"524超时错误 - AI API响应时间过长，建议减少新闻数量或增加timeout")
+                    failure_reasons[-1] += " | 524超时错误 - AI API响应时间过长"
                 if attempt < retry_count:
-                    info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                     time.sleep(retry_interval)
                     continue
                 return {}
                 
         except requests.exceptions.Timeout:
-            error_logger.error(f"AI API请求超时 (timeout={timeout}秒)，新闻数量: {len(news_items)}")
+            failure_reasons.append(f"第{attempt}次: 请求超时(timeout={timeout}秒)，新闻数量: {len(news_items)}")
             if attempt < retry_count:
-                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                 time.sleep(retry_interval)
                 continue
             return {}
             
         except requests.exceptions.ConnectionError as e:
-            error_logger.error(f"AI API连接失败: {str(e)}")
+            failure_reasons.append(f"第{attempt}次: 连接失败 - {str(e)}")
             if attempt < retry_count:
-                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                 time.sleep(retry_interval)
                 continue
             return {}
             
         except Exception as e:
-            error_logger.error(f"AI批量分析异常: {e}")
+            failure_reasons.append(f"第{attempt}次: 异常 - {str(e)}")
             if attempt < retry_count:
-                info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                 time.sleep(retry_interval)
                 continue
             return {}
+    
+    if failure_reasons:
+        error_logger.error(f"AI分析失败，共重试{retry_count}次，失败原因:\n" + "\n".join(failure_reasons))
     
     return {}
 
