@@ -175,10 +175,21 @@ def news_collection_thread():
                 important_count = len(pushed_items) + len(ignored_items)
                 pushed_count = len(pushed_items)
                 
+                all_titles = []
+                for item in normal_items[:5]:
+                    all_titles.append(item.get('title', '')[:30])
+                for item in pushed_items[:5]:
+                    all_titles.append(item['title'][:30])
+                for item in ignored_items[:5]:
+                    all_titles.append(item['title'][:30])
+                
+                if len(normal_items) + len(pushed_items) + len(ignored_items) > 5:
+                    all_titles.append(f"...等{total_new}条")
+                
                 if actual_new_count == total_new:
-                    summary_parts = [f"本轮新增 {total_new} 条"]
+                    summary = f"本轮新增 {total_new} 条"
                 else:
-                    summary_parts = [f"本轮采集 {total_new} 条，实际新增 {actual_new_count} 条"]
+                    summary = f"本轮采集 {total_new} 条，实际新增 {actual_new_count} 条"
                 
                 type_parts = []
                 if normal_count > 0:
@@ -186,33 +197,30 @@ def news_collection_thread():
                 if important_count > 0:
                     type_parts.append(f"重要 {important_count} 条")
                 if type_parts:
-                    summary_parts.append(f"（{', '.join(type_parts)}）")
+                    summary += f"（{', '.join(type_parts)}）"
                 
                 if pushed_count > 0:
-                    summary_parts.append(f"，推送 {pushed_count} 条")
+                    summary += f"，推送 {pushed_count} 条"
+                
+                if all_titles:
+                    summary += f" 标题：{'|'.join(all_titles)}"
                 
                 recent_news_result = get_recent_news(1, 10000)
-                summary_parts.append(f"，当前共 {recent_news_result['total']} 条")
+                summary += f"，当前共 {recent_news_result['total']} 条"
                 
-                news_logger.info("".join(summary_parts))
-                
-                if normal_items:
-                    normal_titles = [item.get('title', '')[:30] for item in normal_items[:5]]
-                    if len(normal_items) > 5:
-                        normal_titles.append(f"...等{len(normal_items)}条")
-                    news_logger.info(f"普通新闻: {', '.join(normal_titles)}")
+                news_logger.info(summary)
                 
                 if pushed_items:
                     pushed_titles = [item['title'][:30] for item in pushed_items[:5]]
                     if len(pushed_items) > 5:
                         pushed_titles.append(f"...等{len(pushed_items)}条")
-                    news_logger.info(f"重要新闻(已推送): {', '.join(pushed_titles)}")
+                    news_logger.info(f"重要新闻(已推送): {'|'.join(pushed_titles)}")
                 
                 if ignored_items:
                     ignored_titles = [item['title'][:30] for item in ignored_items[:5]]
                     if len(ignored_items) > 5:
                         ignored_titles.append(f"...等{len(ignored_items)}条")
-                    news_logger.info(f"重要新闻(未推送): {', '.join(ignored_titles)}")
+                    news_logger.info(f"重要新闻(未推送): {'|'.join(ignored_titles)}")
             
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
