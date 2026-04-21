@@ -22,13 +22,37 @@ def get_current_flow():
                     'timestamp': datetime.now().astimezone().isoformat(),
                     'message': '非交易时间，返回缓存数据'
                 })
-            else:
+            
+            today = datetime.now().strftime('%Y-%m-%d')
+            today_daily_record = load_daily_data(today)
+            if today_daily_record and 'data' in today_daily_record:
                 return jsonify({
                     'success': True,
-                    'data': [],
-                    'timestamp': datetime.now().astimezone().isoformat(),
-                    'message': '非交易时间，暂无数据'
+                    'data': today_daily_record['data'],
+                    'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                    'message': '非交易时间，返回今日历史数据'
                 })
+            
+            recent_history = load_recent_daily_data(7)
+            if recent_history:
+                dates_sorted = sorted(recent_history.keys(), reverse=True)
+                if dates_sorted:
+                    latest_date = dates_sorted[0]
+                    latest_record = recent_history[latest_date]
+                    if latest_record and 'data' in latest_record:
+                        return jsonify({
+                            'success': True,
+                            'data': latest_record['data'],
+                            'timestamp': latest_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                            'message': f'非交易时间，返回最近历史数据({latest_date})'
+                        })
+            
+            return jsonify({
+                'success': True,
+                'data': [],
+                'timestamp': datetime.now().astimezone().isoformat(),
+                'message': '非交易时间，暂无数据'
+            })
         
         if not latest_data:
             data = get_sector_flow_data()
