@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime, timedelta
 import calendar
-from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, error_logger, data_logger, system_logger
+from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger
 from thread_monitor import heartbeat, register_thread
 
 _last_daily_summary_date = None
@@ -24,6 +24,21 @@ def is_trading_time(time):
         return True
     if 13 <= hour < 15:
         return True
+    
+    return False
+
+def should_generate_daily_summary(now):
+    global _last_daily_summary_date
+    
+    today = now.strftime('%Y-%m-%d')
+    
+    if _last_daily_summary_date == today:
+        return False
+    
+    if now.hour >= 15:
+        realtime_data = load_realtime_data(today)
+        if realtime_data:
+            return True
     
     return False
 
@@ -61,6 +76,15 @@ def data_collection_thread():
                         system_logger.info("清理过期数据成功")
                     else:
                         system_logger.error("清理过期数据失败")
+            
+            if should_generate_daily_summary(now):
+                system_logger.info(f"收盘后生成今日({today})的每日汇总...")
+                success = generate_daily_summary_for_date(today)
+                if success:
+                    system_logger.info(f"成功生成今日({today})的每日汇总")
+                    _last_daily_summary_date = today
+                else:
+                    system_logger.error(f"生成今日({today})的每日汇总失败")
             
             if current_minute % 5 == 0:
                 if is_trading_day(now) and is_trading_time(now):

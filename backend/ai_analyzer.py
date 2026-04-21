@@ -137,7 +137,7 @@ def batch_analyze_news(news_items):
     model = config.get('model', 'gpt-3.5-turbo')
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 2000)
-    timeout = min(config.get('timeout', 60), 30)
+    timeout = min(config.get('timeout', 120), 120)
     retry_count = config.get('retry_count', 3)
     retry_interval = min(config.get('retry_interval', 10), 10)
     
