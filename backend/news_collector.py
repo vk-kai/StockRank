@@ -209,18 +209,6 @@ def news_collection_thread():
                 summary += f"，当前共 {recent_news_result['total']} 条"
                 
                 news_logger.info(summary)
-                
-                if pushed_items:
-                    pushed_titles = [item['title'][:30] for item in pushed_items[:5]]
-                    if len(pushed_items) > 5:
-                        pushed_titles.append(f"...等{len(pushed_items)}条")
-                    news_logger.info(f"重要新闻(已推送): {'|'.join(pushed_titles)}")
-                
-                if ignored_items:
-                    ignored_titles = [item['title'][:30] for item in ignored_items[:5]]
-                    if len(ignored_items) > 5:
-                        ignored_titles.append(f"...等{len(ignored_items)}条")
-                    news_logger.info(f"重要新闻(未推送): {'|'.join(ignored_titles)}")
             
             current_time = time.time()
             if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
