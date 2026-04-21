@@ -193,10 +193,23 @@ def get_recent_news(limit=50):
                         if not isinstance(news_data, list):
                             continue
                         
-                        filtered_news = [
-                            item for item in news_data 
-                            if datetime.fromisoformat(item.get('timestamp', datetime.now().isoformat())) >= cutoff_time
-                        ]
+                        filtered_news = []
+                        for item in news_data:
+                            news_time = item.get('time', '')
+                            if news_time:
+                                try:
+                                    if isinstance(news_time, str) and news_time.isdigit():
+                                        news_datetime = datetime.fromtimestamp(int(news_time))
+                                    elif isinstance(news_time, (int, float)):
+                                        news_datetime = datetime.fromtimestamp(news_time)
+                                    else:
+                                        continue
+                                    
+                                    if news_datetime >= cutoff_time:
+                                        filtered_news.append(item)
+                                except (ValueError, OSError):
+                                    continue
+                        
                         all_news.extend(filtered_news)
                 except json.JSONDecodeError:
                     continue
@@ -242,10 +255,23 @@ def search_news(keyword, limit=200):
                         if not isinstance(news_data, list):
                             continue
                         
-                        filtered_news = [
-                            item for item in news_data 
-                            if datetime.fromisoformat(item.get('timestamp', datetime.now().isoformat())) >= cutoff_time
-                        ]
+                        filtered_news = []
+                        for item in news_data:
+                            news_time = item.get('time', '')
+                            if news_time:
+                                try:
+                                    if isinstance(news_time, str) and news_time.isdigit():
+                                        news_datetime = datetime.fromtimestamp(int(news_time))
+                                    elif isinstance(news_time, (int, float)):
+                                        news_datetime = datetime.fromtimestamp(news_time)
+                                    else:
+                                        continue
+                                    
+                                    if news_datetime >= cutoff_time:
+                                        filtered_news.append(item)
+                                except (ValueError, OSError):
+                                    continue
+                        
                         all_news.extend(filtered_news)
                 except json.JSONDecodeError:
                     continue
