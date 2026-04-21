@@ -249,11 +249,17 @@ def get_recent_news(page=1, page_size=40):
             'total_pages': 0
         }
 
-def search_news(keyword, limit=200):
+def search_news(keyword, page=1, page_size=40):
     ensure_news_dir()
     
     if not keyword or not keyword.strip():
-        return []
+        return {
+            'news': [],
+            'total': 0,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': 0
+        }
     
     keyword = keyword.strip().lower()
     all_news = []
@@ -314,7 +320,24 @@ def search_news(keyword, limit=200):
         
         search_results.sort(key=lambda x: x.get('time', ''), reverse=True)
         
-        return search_results[:limit]
+        total_count = len(search_results)
+        
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        
+        return {
+            'news': search_results[start_index:end_index],
+            'total': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total_count + page_size - 1) // page_size
+        }
     except Exception as e:
         error_logger.error(f"搜索新闻失败: {e}")
-        return []
+        return {
+            'news': [],
+            'total': 0,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': 0
+        }

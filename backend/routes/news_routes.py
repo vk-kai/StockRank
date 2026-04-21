@@ -39,8 +39,11 @@ def get_news():
 def search_news_api():
     try:
         keyword = request.args.get('keyword', '', type=str)
-        limit = request.args.get('limit', '200', type=int)
-        limit = min(limit, 200)
+        page = request.args.get('page', '1', type=int)
+        page_size = request.args.get('page_size', '40', type=int)
+        
+        page = max(1, page)
+        page_size = max(1, min(100, page_size))
         
         if not keyword or not keyword.strip():
             return jsonify({
@@ -48,12 +51,18 @@ def search_news_api():
                 'message': '搜索关键词不能为空'
             }), 400
         
-        search_results = search_news(keyword, limit)
+        result = search_news(keyword, page, page_size)
         
         return jsonify({
             'success': True,
-            'data': search_results,
-            'count': len(search_results),
+            'data': result['news'],
+            'pagination': {
+                'total': result['total'],
+                'page': result['page'],
+                'page_size': result['page_size'],
+                'total_pages': result['total_pages'],
+                'has_more': result['page'] < result['total_pages']
+            },
             'keyword': keyword,
             'timestamp': datetime.now().astimezone().isoformat()
         })

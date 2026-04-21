@@ -194,7 +194,7 @@ def news_collection_thread():
                     summary_parts.append(f"，推送 {pushed_count} 条")
                 
                 recent_news_result = get_recent_news(1, 10000)
-                summary_parts.append(f"，当前共 {recent_news_result['total']} 条（48小时内）")
+                summary_parts.append(f"，当前共 {recent_news_result['total']} 条")
                 
                 news_logger.info("".join(summary_parts))
             

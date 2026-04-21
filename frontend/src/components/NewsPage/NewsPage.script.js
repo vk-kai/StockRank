@@ -21,7 +21,8 @@ export default {
       healthCheckInterval: null,
       searchKeyword: '',
       searchTimer: null,
-      isSearching: false
+      isSearching: false,
+      currentSearchPage: 1
     }
   },
   computed: {
@@ -185,13 +186,17 @@ export default {
         this.isSearching = true
         this.loading = true
         this.error = null
+        this.currentSearchPage = 1
+        this.newsList = []
         
-        const response = await searchNews(this.searchKeyword, 200)
+        const response = await searchNews(this.searchKeyword, 1, this.pageSize)
         
         if (response.success) {
           this.newsList = response.data
-          this.hasMore = false
-          this.total = response.data.length
+          if (response.pagination) {
+            this.total = response.pagination.total
+            this.hasMore = response.pagination.has_more
+          }
           this.lastUpdate = new Date(response.timestamp).toLocaleString('zh-CN')
         } else {
           this.error = response.message || '搜索失败'
@@ -405,21 +410,35 @@ export default {
       
       try {
         this.loading = true
-        this.currentApiPage++
         
-        const response = await getNews(this.currentApiPage, this.pageSize)
-        if (response.success) {
-          const newNews = response.data
-          
-          this.newsList = [...this.newsList, ...newNews]
-          
-          if (response.pagination) {
-            this.hasMore = response.pagination.has_more
+        if (this.isSearching && this.searchKeyword && this.searchKeyword.trim()) {
+          this.currentSearchPage++
+          const response = await searchNews(this.searchKeyword, this.currentSearchPage, this.pageSize)
+          if (response.success) {
+            const newNews = response.data
+            this.newsList = [...this.newsList, ...newNews]
+            if (response.pagination) {
+              this.hasMore = response.pagination.has_more
+            }
+          }
+        } else {
+          this.currentApiPage++
+          const response = await getNews(this.currentApiPage, this.pageSize)
+          if (response.success) {
+            const newNews = response.data
+            this.newsList = [...this.newsList, ...newNews]
+            if (response.pagination) {
+              this.hasMore = response.pagination.has_more
+            }
           }
         }
       } catch (err) {
         console.error('加载更多新闻失败:', err)
-        this.currentApiPage--
+        if (this.isSearching && this.searchKeyword && this.searchKeyword.trim()) {
+          this.currentSearchPage--
+        } else {
+          this.currentApiPage--
+        }
       } finally {
         this.loading = false
       }

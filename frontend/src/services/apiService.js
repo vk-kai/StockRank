@@ -91,13 +91,14 @@ export async function getNews(page = 1, pageSize = 40) {
 /**
  * 搜索新闻
  * @param {string} keyword - 搜索关键词
- * @param {number} limit - 数量限制
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
  * @returns {Promise<Object>} 搜索结果
  */
-export async function searchNews(keyword, limit = 200) {
+export async function searchNews(keyword, page = 1, pageSize = 40) {
   try {
     const response = await apiClient.get('/news/search', {
-      params: { keyword: keyword, limit: limit }
+      params: { keyword: keyword, page: page, page_size: pageSize }
     })
     return response.data
   } catch (error) {
