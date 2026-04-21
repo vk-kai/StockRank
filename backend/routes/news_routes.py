@@ -29,7 +29,7 @@ def get_news():
             'timestamp': datetime.now().astimezone().isoformat()
         })
     except Exception as e:
-        error_logger.error(f"API /api/news 异常: {e}")
+        error_logger.error(f"API /api/news 异常: {e}, 参数: page={page}, page_size={page_size}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -67,7 +67,7 @@ def search_news_api():
             'timestamp': datetime.now().astimezone().isoformat()
         })
     except Exception as e:
-        error_logger.error(f"API /api/news/search 异常: {e}")
+        error_logger.error(f"API /api/news/search 异常: {e}, 参数: keyword={keyword}, page={page}, page_size={page_size}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

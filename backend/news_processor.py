@@ -225,7 +225,15 @@ def get_recent_news(page=1, page_size=40):
                 seen_ids.add(news_id)
                 unique_news.append(news)
         
-        unique_news.sort(key=lambda x: x.get('time', ''), reverse=True)
+        def get_sort_time(news):
+            time_val = news.get('time', 0)
+            if isinstance(time_val, str) and time_val.isdigit():
+                return int(time_val)
+            elif isinstance(time_val, (int, float)):
+                return int(time_val)
+            return 0
+        
+        unique_news.sort(key=get_sort_time, reverse=True)
         
         total_count = len(unique_news)
         
@@ -318,7 +326,15 @@ def search_news(keyword, page=1, page_size=40):
             if keyword in title or keyword in content:
                 search_results.append(news)
         
-        search_results.sort(key=lambda x: x.get('time', ''), reverse=True)
+        def get_sort_time(news):
+            time_val = news.get('time', 0)
+            if isinstance(time_val, str) and time_val.isdigit():
+                return int(time_val)
+            elif isinstance(time_val, (int, float)):
+                return int(time_val)
+            return 0
+        
+        search_results.sort(key=get_sort_time, reverse=True)
         
         total_count = len(search_results)
         
