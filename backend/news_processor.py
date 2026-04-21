@@ -125,7 +125,15 @@ def save_news_data(news_list):
         
         all_news = list(existing_dict.values())
         
-        all_news.sort(key=lambda x: x.get('time', ''), reverse=True)
+        def get_sort_time(news):
+            time_val = news.get('time', 0)
+            if isinstance(time_val, str) and time_val.isdigit():
+                return int(time_val)
+            elif isinstance(time_val, (int, float)):
+                return int(time_val)
+            return 0
+        
+        all_news.sort(key=get_sort_time, reverse=True)
         
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(all_news, f, ensure_ascii=False, indent=2)
