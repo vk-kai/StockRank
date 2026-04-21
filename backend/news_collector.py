@@ -1,7 +1,7 @@
 import os
 import time
 from datetime import datetime
-from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news
+from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
@@ -193,7 +193,8 @@ def news_collection_thread():
                 if pushed_count > 0:
                     summary_parts.append(f"，推送 {pushed_count} 条")
                 
-                summary_parts.append(f"，当前共 {len(all_news)} 条")
+                recent_news = get_recent_news(10000)
+                summary_parts.append(f"，当前共 {len(recent_news)} 条（48小时内）")
                 
                 news_logger.info("".join(summary_parts))
             
