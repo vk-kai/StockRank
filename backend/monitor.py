@@ -70,6 +70,11 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
             _restart_fail_count[thread_name] = 0
             return True
+        elif response.status_code == 405:
+            error_logger.error(f"[监控] 重启API返回405错误，可能URL错误或方法不允许: {restart_url}")
+            _restart_fail_count[thread_name] = fail_count + 1
+            _fail_reset_time[thread_name] = now
+            return False
         else:
             error_logger.error(f"[监控] 重启线程失败: {thread_name}, HTTP {response.status_code}, 响应: {response.text[:200]}")
             _restart_fail_count[thread_name] = fail_count + 1

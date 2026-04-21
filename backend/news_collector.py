@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news
-from ai_analyzer import batch_analyze_news, is_important_news
+from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
 from logger import get_logger, cleanup_old_logs
@@ -16,6 +16,11 @@ ai_logger = get_logger('ai')
 
 last_cleanup_time = 0
 CLEANUP_INTERVAL = 3600
+
+def ai_heartbeat():
+    heartbeat('news_collector')
+
+set_heartbeat_callback(ai_heartbeat)
 
 def process_news_with_ai_and_push(news_list):
     try:

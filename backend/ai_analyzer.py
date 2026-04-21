@@ -2,6 +2,7 @@ import json
 import requests
 import time
 import re
+import threading
 from config import AI_CONFIG_FILE, AI_PROMPT_FILE
 from logger import get_logger
 
@@ -10,6 +11,11 @@ info_logger = get_logger('ai')
 
 last_ai_call_time = 0
 AI_CALL_INTERVAL = 20
+_heartbeat_callback = None
+
+def set_heartbeat_callback(callback):
+    global _heartbeat_callback
+    _heartbeat_callback = callback
 
 def clean_text(text):
     if not text:
@@ -131,9 +137,9 @@ def batch_analyze_news(news_items):
     model = config.get('model', 'gpt-3.5-turbo')
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 2000)
-    timeout = config.get('timeout', 60)
+    timeout = min(config.get('timeout', 60), 30)
     retry_count = config.get('retry_count', 3)
-    retry_interval = 10
+    retry_interval = min(config.get('retry_interval', 10), 10)
     
     if not api_url or not api_key:
         error_logger.error("AI配置不完整：缺少api_url或api_key")
@@ -167,6 +173,9 @@ def batch_analyze_news(news_items):
     
     for attempt in range(1, retry_count + 1):
         try:
+            if _heartbeat_callback:
+                _heartbeat_callback()
+            
             response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
             
             if response.status_code == 200:
@@ -207,6 +216,8 @@ def batch_analyze_news(news_items):
                 if response.status_code == 422:
                     error_logger.error(f"422错误详情 - 新闻数量: {len(news_items)}, 消息长度: {len(combined_text)}")
                     error_logger.error(f"消息内容预览: {combined_text[:500]}")
+                if response.status_code == 524:
+                    error_logger.error(f"524超时错误 - AI API响应时间过长，建议减少新闻数量或增加timeout")
                 if attempt < retry_count:
                     info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                     time.sleep(retry_interval)
