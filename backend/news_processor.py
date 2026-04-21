@@ -111,9 +111,30 @@ def save_news_data(news_list):
     file_path = get_news_file_path()
     
     try:
+        cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
+        all_existing_keys = set()
+        
+        for filename in os.listdir(NEWS_DIR):
+            if filename.endswith('.json'):
+                other_file_path = os.path.join(NEWS_DIR, filename)
+                try:
+                    if os.path.getsize(other_file_path) == 0:
+                        continue
+                    with open(other_file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            for item in data:
+                                news_id = item.get('id')
+                                news_title = item.get('title', '').strip()
+                                if news_id and news_title:
+                                    all_existing_keys.add((news_id, news_title))
+                except (json.JSONDecodeError, Exception) as e:
+                    continue
+        
         existing_news = load_today_news()
         existing_dict = {item['id']: item for item in existing_news}
         
+        new_count = 0
         for item in news_list:
             if 'ai_analyzed' not in item:
                 item['ai_analyzed'] = False
@@ -121,7 +142,18 @@ def save_news_data(news_list):
                 item['pushed'] = False
             if 'core_event' not in item:
                 item['core_event'] = ''
-            existing_dict[item['id']] = item
+            
+            news_id = item.get('id')
+            news_title = item.get('title', '').strip()
+            
+            if news_id and news_title:
+                news_key = (news_id, news_title)
+                if news_key not in all_existing_keys:
+                    existing_dict[news_id] = item
+                    new_count += 1
+                    all_existing_keys.add(news_key)
+                elif news_id in existing_dict:
+                    existing_dict[news_id] = item
         
         all_news = list(existing_dict.values())
         
@@ -138,10 +170,10 @@ def save_news_data(news_list):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(all_news, f, ensure_ascii=False, indent=2)
         
-        return True
+        return new_count
     except Exception as e:
         error_logger.error(f"保存新闻数据失败: {e}")
-        return False
+        return 0
 
 def cleanup_old_news():
     try:
@@ -225,13 +257,16 @@ def get_recent_news(page=1, page_size=40):
                     error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
                     continue
         
-        seen_ids = set()
+        seen_keys = set()
         unique_news = []
         for news in all_news:
             news_id = news.get('id')
-            if news_id and news_id not in seen_ids:
-                seen_ids.add(news_id)
-                unique_news.append(news)
+            news_title = news.get('title', '').strip()
+            if news_id and news_title:
+                news_key = (news_id, news_title)
+                if news_key not in seen_keys:
+                    seen_keys.add(news_key)
+                    unique_news.append(news)
         
         def get_sort_time(news):
             time_val = news.get('time', 0)
@@ -318,13 +353,16 @@ def search_news(keyword, page=1, page_size=40):
                     error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
                     continue
         
-        seen_ids = set()
+        seen_keys = set()
         unique_news = []
         for news in all_news:
             news_id = news.get('id')
-            if news_id and news_id not in seen_ids:
-                seen_ids.add(news_id)
-                unique_news.append(news)
+            news_title = news.get('title', '').strip()
+            if news_id and news_title:
+                news_key = (news_id, news_title)
+                if news_key not in seen_keys:
+                    seen_keys.add(news_key)
+                    unique_news.append(news)
         
         search_results = []
         for news in unique_news:

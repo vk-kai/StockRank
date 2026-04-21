@@ -25,8 +25,7 @@ set_heartbeat_callback(ai_heartbeat)
 def process_news_with_ai_and_push(news_list):
     try:
         existing_news = load_today_news()
-        existing_ids = {item['id'] for item in existing_news}
-        existing_keys = {(item.get('title', '').strip(), item.get('time', '')) for item in existing_news}
+        existing_keys = {(item.get('id'), item.get('title', '').strip()) for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
         
         new_items = []
@@ -36,15 +35,11 @@ def process_news_with_ai_and_push(news_list):
         for news_item in news_list:
             news_id = news_item.get('id')
             news_title = news_item.get('title', '').strip()
-            news_time = news_item.get('time', '')
-            news_key = (news_title, news_time)
+            news_key = (news_id, news_title)
             
-            if news_id in existing_ids:
-                existing_dict[news_id] = existing_dict.get(news_id, news_item)
-                continue
-            
-            if news_title and news_key in existing_keys:
-                news_logger.debug(f"跳过重复新闻: {news_title} (时间: {news_time})")
+            if news_id and news_title and news_key in existing_keys:
+                if news_id in existing_dict:
+                    existing_dict[news_id] = existing_dict.get(news_id, news_item)
                 continue
             
             news_item['ai_analyzed'] = False
@@ -163,10 +158,10 @@ def news_collection_thread():
             pushed_items = result[2]
             ignored_items = result[3]
             
-            save_news_data(all_news)
+            actual_new_count = save_news_data(all_news)
             
             total_new = len(normal_items) + len(pushed_items) + len(ignored_items)
-            if total_new > 0:
+            if actual_new_count > 0:
                 for item in normal_items:
                     news_add_logger.debug(f"新增普通新闻，标题: {item.get('title', '')}")
                 
@@ -180,7 +175,10 @@ def news_collection_thread():
                 important_count = len(pushed_items) + len(ignored_items)
                 pushed_count = len(pushed_items)
                 
-                summary_parts = [f"本轮新增 {total_new} 条"]
+                if actual_new_count == total_new:
+                    summary_parts = [f"本轮新增 {total_new} 条"]
+                else:
+                    summary_parts = [f"本轮采集 {total_new} 条，实际新增 {actual_new_count} 条"]
                 
                 type_parts = []
                 if normal_count > 0:
