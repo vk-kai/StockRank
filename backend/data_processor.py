@@ -41,10 +41,16 @@ def get_sector_flow_data():
                 
                 try:
                     f62_value = item.get('f62', 0)
-                    net_inflow = float(f62_value) / 10000 if f62_value else 0
+                    if f62_value == '-' or f62_value is None:
+                        net_inflow = 0
+                    else:
+                        net_inflow = float(f62_value) / 10000
                     
                     f3_value = item.get('f3', 0)
-                    change = float(f3_value) / 100 if f3_value else 0
+                    if f3_value == '-' or f3_value is None:
+                        change = 0
+                    else:
+                        change = float(f3_value) / 100
                 except (ValueError, TypeError) as e:
                     error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
                     continue

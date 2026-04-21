@@ -5,12 +5,31 @@ from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, error_logger
 )
+from data_collector import is_trading_day, is_trading_time
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
 
 @flow_bp.route('/current', methods=['GET'])
 def get_current_flow():
     try:
+        now = datetime.now().astimezone()
+        
+        if not is_trading_day(now) or not is_trading_time(now):
+            if latest_data:
+                return jsonify({
+                    'success': True,
+                    'data': latest_data,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '非交易时间，返回缓存数据'
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'data': [],
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '非交易时间，暂无数据'
+                })
+        
         if not latest_data:
             data = get_sector_flow_data()
         else:
@@ -38,7 +57,12 @@ def get_history():
         
         today = datetime.now().strftime('%Y-%m-%d')
         today_daily_record = load_daily_data(today)
-        today_last_data = get_sector_flow_data()
+        
+        now = datetime.now().astimezone()
+        if is_trading_day(now) and is_trading_time(now):
+            today_last_data = get_sector_flow_data()
+        else:
+            today_last_data = None
         
         if today_daily_record and 'data' in today_daily_record:
             if today not in history:

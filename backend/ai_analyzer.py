@@ -11,6 +11,29 @@ info_logger = get_logger('ai')
 last_ai_call_time = 0
 AI_CALL_INTERVAL = 20
 
+def clean_text(text):
+    if not text:
+        return ""
+    
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    
+    text = text.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    text = text.replace('\t', ' ')
+    
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    text = re.sub(r'\s+', ' ', text)
+    
+    text = text.strip()
+    
+    return text
+
+def truncate_text(text, max_length=1000):
+    if not text or len(text) <= max_length:
+        return text
+    
+    return text[:max_length] + "..."
+
 def load_ai_config():
     try:
         with open(AI_CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -40,12 +63,17 @@ def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messa
         "max_tokens": max_tokens
     }
     
-    return requests.post(
-        api_url,
-        headers=headers,
-        json=payload,
-        timeout=timeout
-    )
+    try:
+        return requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        )
+    except Exception as e:
+        error_logger.error(f"AI API请求异常: {e}")
+        error_logger.error(f"请求payload: {json.dumps(payload, ensure_ascii=False)[:1000]}")
+        raise
 
 def parse_ai_response(content):
     try:
@@ -117,11 +145,18 @@ def batch_analyze_news(news_items):
     news_texts = []
     for item in news_items:
         news_id = item.get('id', '')
-        title = item.get('title', '')
-        content = item.get('content', '')
+        title = clean_text(item.get('title', ''))
+        content = clean_text(item.get('content', ''))
+        
+        title = truncate_text(title, 200)
+        content = truncate_text(content, 800)
+        
         news_texts.append(f"[id:{news_id}]\n标题：{title}\n内容：{content}")
     
     combined_text = "\n\n---\n\n".join(news_texts)
+    
+    if len(combined_text) > 8000:
+        combined_text = combined_text[:8000] + "\n\n[内容过长，已截断...]"
     
     batch_prompt = prompt + "\n\n注意：本次输入包含多条新闻，每条新闻以[id:xxx]开头标识。请返回一个JSON数组，每个元素包含id字段和对应的分析结果，格式如下：\n[\n  {\"id\": \"新闻id\", \"level\": \"重大/一般\", \"impact_type\": \"即时影响/延迟影响\", \"event_type\": \"新闻/行情异动\", \"core_event\": \"一句话总结\", \"reason\": \"对A股的影响逻辑\", \"impact_market\": \"A股/美股/全球\", \"related_sector\": [\"板块1\",\"板块2\"], \"action_suggestion\": \"立即推送/忽略\"},\n  ...\n]\n只输出JSON数组，不要解释。"
     
@@ -169,6 +204,9 @@ def batch_analyze_news(news_items):
             
             else:
                 error_logger.error(f"AI API调用失败: {response.status_code} - {response.text[:200]}")
+                if response.status_code == 422:
+                    error_logger.error(f"422错误详情 - 新闻数量: {len(news_items)}, 消息长度: {len(combined_text)}")
+                    error_logger.error(f"消息内容预览: {combined_text[:500]}")
                 if attempt < retry_count:
                     info_logger.info(f"{retry_interval}秒后重试 (第{attempt}/{retry_count}次)")
                     time.sleep(retry_interval)
