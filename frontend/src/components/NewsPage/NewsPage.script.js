@@ -10,8 +10,10 @@ export default {
       lastUpdate: null,
       countdown: 30,
       countdownInterval: null,
-      currentPage: 1,
-      pageSize: 20,
+      currentApiPage: 1,
+      pageSize: 40,
+      hasMore: true,
+      total: 0,
       enableNotification: true,
       lastNewsId: null,
       showOnlyImportant: false,
@@ -36,13 +38,13 @@ export default {
       return result
     },
     displayNewsList() {
-      return this.filteredNewsList.slice(0, this.currentPage * this.pageSize)
+      return this.filteredNewsList
     },
     hasMoreNews() {
-      return this.currentPage * this.pageSize < this.filteredNewsList.length
+      return this.hasMore
     },
     remainingNews() {
-      return this.filteredNewsList.length - this.currentPage * this.pageSize
+      return this.total - this.newsList.length
     }
   },
   mounted() {
@@ -73,11 +75,14 @@ export default {
       try {
         this.loading = true
         this.error = null
-        const response = await getNews(2000)
+        this.currentApiPage = 1
+        this.newsList = []
+        
+        const response = await getNews(1, this.pageSize)
         if (response.success) {
           const newNews = response.data
           
-          if (this.newsList.length > 0 && this.enableNotification) {
+          if (newNews.length > 0 && this.enableNotification) {
             const latestId = newNews[0]?.id
             if (latestId && latestId !== this.lastNewsId) {
               const latestNews = newNews.find(n => n.id === latestId)
@@ -90,6 +95,11 @@ export default {
           this.newsList = newNews
           if (newNews.length > 0) {
             this.lastNewsId = newNews[0].id
+          }
+          
+          if (response.pagination) {
+            this.total = response.pagination.total
+            this.hasMore = response.pagination.has_more
           }
           
           const timestamp = new Date(response.timestamp)
@@ -153,7 +163,6 @@ export default {
     toggleImportantFilter() {
       this.showOnlyImportant = !this.showOnlyImportant
       localStorage.setItem('newsShowOnlyImportant', this.showOnlyImportant.toString())
-      this.currentPage = 1
     },
 
     handleSearch() {
@@ -181,7 +190,8 @@ export default {
         
         if (response.success) {
           this.newsList = response.data
-          this.currentPage = 1
+          this.hasMore = false
+          this.total = response.data.length
           this.lastUpdate = new Date(response.timestamp).toLocaleString('zh-CN')
         } else {
           this.error = response.message || '搜索失败'
@@ -197,7 +207,6 @@ export default {
 
     clearSearch() {
       this.searchKeyword = ''
-      this.currentPage = 1
       this.fetchNews()
     },
 
@@ -384,7 +393,36 @@ export default {
     },
 
     loadMore() {
-      this.currentPage++
+      if (this.hasMore && !this.loading) {
+        this.loadNextPage()
+      }
+    },
+    
+    async loadNextPage() {
+      if (this.loading || !this.hasMore) {
+        return
+      }
+      
+      try {
+        this.loading = true
+        this.currentApiPage++
+        
+        const response = await getNews(this.currentApiPage, this.pageSize)
+        if (response.success) {
+          const newNews = response.data
+          
+          this.newsList = [...this.newsList, ...newNews]
+          
+          if (response.pagination) {
+            this.hasMore = response.pagination.has_more
+          }
+        }
+      } catch (err) {
+        console.error('加载更多新闻失败:', err)
+        this.currentApiPage--
+      } finally {
+        this.loading = false
+      }
     },
 
     getNewsSource(news) {

@@ -8,15 +8,24 @@ news_bp = Blueprint('news', __name__, url_prefix='/api')
 @news_bp.route('/news', methods=['GET'])
 def get_news():
     try:
-        limit = request.args.get('limit', '50', type=int)
-        limit = min(limit, 2000)
+        page = request.args.get('page', '1', type=int)
+        page_size = request.args.get('page_size', '40', type=int)
         
-        news_data = get_recent_news(limit)
+        page = max(1, page)
+        page_size = max(1, min(100, page_size))
+        
+        result = get_recent_news(page, page_size)
         
         return jsonify({
             'success': True,
-            'data': news_data,
-            'count': len(news_data),
+            'data': result['news'],
+            'pagination': {
+                'total': result['total'],
+                'page': result['page'],
+                'page_size': result['page_size'],
+                'total_pages': result['total_pages'],
+                'has_more': result['page'] < result['total_pages']
+            },
             'timestamp': datetime.now().astimezone().isoformat()
         })
     except Exception as e:

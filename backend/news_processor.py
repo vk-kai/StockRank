@@ -174,7 +174,7 @@ def cleanup_old_news():
         error_logger.error(f"清理过期新闻失败: {e}")
         return False
 
-def get_recent_news(limit=50):
+def get_recent_news(page=1, page_size=40):
     ensure_news_dir()
     
     all_news = []
@@ -227,10 +227,27 @@ def get_recent_news(limit=50):
         
         unique_news.sort(key=lambda x: x.get('time', ''), reverse=True)
         
-        return unique_news[:limit]
+        total_count = len(unique_news)
+        
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        
+        return {
+            'news': unique_news[start_index:end_index],
+            'total': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total_count + page_size - 1) // page_size
+        }
     except Exception as e:
         error_logger.error(f"获取最近新闻失败: {e}")
-        return []
+        return {
+            'news': [],
+            'total': 0,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': 0
+        }
 
 def search_news(keyword, limit=200):
     ensure_news_dir()

@@ -72,13 +72,14 @@ export async function getLatestData() {
 
 /**
  * 获取新闻数据
- * @param {number} limit - 数量限制
+ * @param {number} page - 页码
+ * @param {number} pageSize - 每页数量
  * @returns {Promise<Object>} 新闻数据
  */
-export async function getNews(limit = 50) {
+export async function getNews(page = 1, pageSize = 40) {
   try {
     const response = await apiClient.get('/news', {
-      params: { limit: limit }
+      params: { page: page, page_size: pageSize }
     })
     return response.data
   } catch (error) {
