@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback
 from feishu_pusher import push_important_news
@@ -13,9 +13,9 @@ news_logger = get_logger('news')
 news_add_logger = get_logger('news_add')
 news_important_logger = get_logger('news_important')
 ai_logger = get_logger('ai')
+cleanup_logger = get_logger('cleanup_news')
 
-last_cleanup_time = 0
-CLEANUP_INTERVAL = 3600
+_last_cleanup_date = None
 
 def ai_heartbeat():
     heartbeat('news_collector')
@@ -25,7 +25,7 @@ set_heartbeat_callback(ai_heartbeat)
 def process_news_with_ai_and_push(news_list):
     try:
         existing_news = load_today_news()
-        existing_keys = {(item.get('id'), item.get('title', '').strip()) for item in existing_news}
+        existing_keys = {(item.get('title', '').strip(), item.get('content', '').strip()) for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
         
         new_items = []
@@ -35,11 +35,16 @@ def process_news_with_ai_and_push(news_list):
         for news_item in news_list:
             news_id = news_item.get('id')
             news_title = news_item.get('title', '').strip()
-            news_key = (news_id, news_title)
+            news_content = news_item.get('content', '').strip()
+            news_key = (news_title, news_content)
             
-            if news_id and news_title and news_key in existing_keys:
-                if news_id in existing_dict:
-                    existing_dict[news_id] = existing_dict.get(news_id, news_item)
+            if news_title and news_content and news_key in existing_keys:
+                for existing_id, existing_item in existing_dict.items():
+                    if existing_item.get('title', '').strip() == news_title and existing_item.get('content', '').strip() == news_content:
+                        existing_item['url'] = news_item.get('url', existing_item.get('url', ''))
+                        existing_item['time'] = news_item.get('time', existing_item.get('time', ''))
+                        existing_item['importance'] = news_item.get('importance', existing_item.get('importance', '0'))
+                        break
                 continue
             
             news_item['ai_analyzed'] = False
@@ -54,7 +59,7 @@ def process_news_with_ai_and_push(news_list):
             
             new_items.append(news_item)
             existing_dict[news_id] = news_item
-            if news_title:
+            if news_title and news_content:
                 existing_keys.add(news_key)
         
         if not new_items:
@@ -84,13 +89,16 @@ def process_news_with_ai_and_push(news_list):
                     news_item['core_event'] = analysis.get('core_event', '')
                     
                     if is_important_news(analysis):
-                        push_important_news(news_item, analysis)
-                        news_item['pushed'] = True
-                        pushed_items.append({
-                            'title': news_item.get('title', ''),
-                            'reason': analysis.get('reason', ''),
-                            'core_event': analysis.get('core_event', '')
-                        })
+                        if not news_item.get('pushed', False):
+                            push_important_news(news_item, analysis)
+                            news_item['pushed'] = True
+                            pushed_items.append({
+                                'title': news_item.get('title', ''),
+                                'reason': analysis.get('reason', ''),
+                                'core_event': analysis.get('core_event', '')
+                            })
+                        else:
+                            ai_logger.info(f"新闻已推送过，跳过重复推送: {news_item.get('title', '')}")
                     else:
                         ignored_items.append({
                             'title': news_item.get('title', ''),
@@ -142,14 +150,37 @@ def process_news_with_ai_and_push(news_list):
         return news_list, [], [], []
 
 def news_collection_thread():
-    global last_cleanup_time
+    global _last_cleanup_date
     register_thread('news_collector')
-    cleanup_old_news()
-    last_cleanup_time = time.time()
     
     while True:
         try:
             heartbeat('news_collector')
+            now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+            current_hour = now.hour
+            current_minute = now.minute
+            
+            if current_hour == 0 and current_minute == 0:
+                if _last_cleanup_date != today:
+                    cleanup_logger.info("开始执行每日清理任务...")
+                    
+                    news_cleanup_result = cleanup_old_news()
+                    if news_cleanup_result['cleaned']:
+                        cleanup_logger.info(f"新闻数据清理完成: 删除 {news_cleanup_result['deleted_count']} 个文件，"
+                                          f"释放空间 {news_cleanup_result['freed_bytes']} 字节")
+                    else:
+                        cleanup_logger.info(f"新闻数据无需清理: {news_cleanup_result['reason']}")
+                    
+                    log_cleanup_result = cleanup_old_logs(hours=48)
+                    if log_cleanup_result:
+                        cleanup_logger.info(f"日志文件清理完成: 删除 {len(log_cleanup_result)} 个文件: {', '.join(log_cleanup_result)}")
+                    else:
+                        cleanup_logger.info("日志文件无需清理: 无过期文件")
+                    
+                    _last_cleanup_date = today
+                    cleanup_logger.info("每日清理任务执行完成")
+            
             news_data = get_news_data(page=1, pagesize=30)
             
             result = process_news_with_ai_and_push(news_data or [])
@@ -209,15 +240,6 @@ def news_collection_thread():
                 summary += f"，当前共 {recent_news_result['total']} 条"
                 
                 news_logger.info(summary)
-            
-            current_time = time.time()
-            if current_time - last_cleanup_time >= CLEANUP_INTERVAL:
-                cleanup_old_news()
-                cleaned_logs = cleanup_old_logs(hours=48)
-                if cleaned_logs:
-                    news_logger.info(f"清理过期日志文件: {cleaned_logs}")
-                last_cleanup_time = current_time
-                news_logger.info(f"执行定时清理任务，下次清理时间: {CLEANUP_INTERVAL} 秒后")
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")

@@ -21,7 +21,10 @@ MODULE_DISPLAY_NAMES = {
     'monitor_restart': '线程监控—线程重启',
     'system': '系统运行',
     'system_start': '系统运行—服务启动',
-    'system_cleanup': '系统运行—数据清理',
+    'cleanup': '定时清理',
+    'cleanup_news': '定时清理—新闻数据',
+    'cleanup_flow': '定时清理—资金流向',
+    'cleanup_log': '定时清理—日志文件',
     'error': '错误日志'
 }
 
@@ -95,7 +98,9 @@ def get_logger(module_name='system'):
         module_name == 'system' or 
         module_name.startswith('system_') or 
         module_name == 'monitor' or 
-        module_name.startswith('monitor_')
+        module_name.startswith('monitor_') or
+        module_name == 'cleanup' or
+        module_name.startswith('cleanup_')
     )
     log_file = 'system.log' if is_system else 'data.log'
     logger_name = 'system_logger' if is_system else 'data_logger'
@@ -139,6 +144,7 @@ def get_log_modules():
         'ai': 'AI分析',
         'system': '系统运行',
         'monitor': '线程监控',
+        'cleanup': '定时清理',
         'error': '错误日志'
     }
     return {name: {'desc': desc} for name, desc in main_modules.items()}

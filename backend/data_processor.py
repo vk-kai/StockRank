@@ -8,6 +8,7 @@ from logger import get_logger
 error_logger = get_logger('error')
 data_logger = get_logger('data')
 system_logger = get_logger('system')
+cleanup_logger = get_logger('cleanup_flow')
 
 # 全局变量存储最新数据
 latest_data = []
@@ -149,32 +150,60 @@ def save_realtime_data(date_str, minute_key, data):
 
 # 清理过期数据（超过30天的数据）
 def cleanup_old_data():
+    result = {
+        'cleaned': False,
+        'daily_deleted': 0,
+        'realtime_deleted': 0,
+        'freed_bytes': 0,
+        'reason': ''
+    }
+    
     try:
         cutoff_date = (datetime.now() - timedelta(days=MAX_DAYS)).strftime('%Y-%m-%d')
         
-        # 清理每日数据
         deleted_daily = 0
+        deleted_realtime = 0
+        freed_bytes = 0
+        
         for filename in os.listdir(DAILY_DIR):
             if filename.endswith('.json'):
                 date_str = filename.replace('.json', '')
                 if date_str < cutoff_date:
-                    os.remove(os.path.join(DAILY_DIR, filename))
-                    deleted_daily += 1
+                    file_path = os.path.join(DAILY_DIR, filename)
+                    try:
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        deleted_daily += 1
+                        freed_bytes += file_size
+                    except Exception as e:
+                        error_logger.error(f"删除每日数据文件失败 ({filename}): {e}")
         
-        # 清理实时数据
-        deleted_realtime = 0
         for filename in os.listdir(REALTIME_DIR):
             if filename.endswith('.json'):
                 date_str = filename.replace('.json', '')
                 if date_str < cutoff_date:
-                    os.remove(os.path.join(REALTIME_DIR, filename))
-                    deleted_realtime += 1
+                    file_path = os.path.join(REALTIME_DIR, filename)
+                    try:
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        deleted_realtime += 1
+                        freed_bytes += file_size
+                    except Exception as e:
+                        error_logger.error(f"删除实时数据文件失败 ({filename}): {e}")
         
-        system_logger.info(f"清理过期数据完成: 每日数据 {deleted_daily} 个, 实时数据 {deleted_realtime} 个")
-        return True
+        if deleted_daily > 0 or deleted_realtime > 0:
+            result['cleaned'] = True
+            result['daily_deleted'] = deleted_daily
+            result['realtime_deleted'] = deleted_realtime
+            result['freed_bytes'] = freed_bytes
+        else:
+            result['reason'] = f"当前所有数据文件均在 {MAX_DAYS} 天保留期内"
+        
+        return result
     except Exception as e:
         error_logger.error(f"清理过期数据失败: {e}")
-        return False
+        result['reason'] = f"清理失败: {str(e)}"
+        return result
 
 # 生成当天的每日数据（取最强的10个板块）
 def generate_daily_summary():

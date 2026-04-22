@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 import calendar
 from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger
 from thread_monitor import heartbeat, register_thread
+from logger import get_logger
 
 _last_daily_summary_date = None
+cleanup_logger = get_logger('cleanup_flow')
 
 def is_trading_day(date):
     if date.weekday() >= 5:
@@ -47,8 +49,6 @@ def data_collection_thread():
     register_thread('data_collector')
     system_logger.info("启动数据采集线程，每5分钟采集一次数据...")
     
-    cleanup_old_data()
-    
     while True:
         try:
             heartbeat('data_collector')
@@ -71,11 +71,13 @@ def data_collection_thread():
                         else:
                             system_logger.error(f"生成昨天({yesterday})的每日汇总失败")
                     
-                    cleanup_success = cleanup_old_data()
-                    if cleanup_success:
-                        system_logger.info("清理过期数据成功")
+                    cleanup_result = cleanup_old_data()
+                    if cleanup_result['cleaned']:
+                        cleanup_logger.info(f"资金流向数据清理完成: 每日数据 {cleanup_result['daily_deleted']} 个, "
+                                          f"实时数据 {cleanup_result['realtime_deleted']} 个, "
+                                          f"释放空间 {cleanup_result['freed_bytes']} 字节")
                     else:
-                        system_logger.error("清理过期数据失败")
+                        cleanup_logger.info(f"资金流向数据无需清理: {cleanup_result['reason']}")
             
             if should_generate_daily_summary(now):
                 system_logger.info(f"收盘后生成今日({today})的每日汇总...")

@@ -124,10 +124,10 @@ def save_news_data(news_list):
                         data = json.load(f)
                         if isinstance(data, list):
                             for item in data:
-                                news_id = item.get('id')
                                 news_title = item.get('title', '').strip()
-                                if news_id and news_title:
-                                    all_existing_keys.add((news_id, news_title))
+                                news_content = item.get('content', '').strip()
+                                if news_title and news_content:
+                                    all_existing_keys.add((news_title, news_content))
                 except (json.JSONDecodeError, Exception) as e:
                     continue
         
@@ -145,15 +145,29 @@ def save_news_data(news_list):
             
             news_id = item.get('id')
             news_title = item.get('title', '').strip()
+            news_content = item.get('content', '').strip()
             
-            if news_id and news_title:
-                news_key = (news_id, news_title)
+            if news_title and news_content:
+                news_key = (news_title, news_content)
                 if news_key not in all_existing_keys:
                     existing_dict[news_id] = item
                     new_count += 1
                     all_existing_keys.add(news_key)
-                elif news_id in existing_dict:
-                    existing_dict[news_id] = item
+                else:
+                    for existing_id, existing_item in existing_dict.items():
+                        if existing_item.get('title', '').strip() == news_title and existing_item.get('content', '').strip() == news_content:
+                            existing_item['url'] = item.get('url', existing_item.get('url', ''))
+                            existing_item['time'] = item.get('time', existing_item.get('time', ''))
+                            existing_item['importance'] = item.get('importance', existing_item.get('importance', '0'))
+                            if item.get('ai_analyzed', False):
+                                existing_item['ai_analyzed'] = True
+                            if item.get('pushed', False):
+                                existing_item['pushed'] = True
+                            if item.get('core_event'):
+                                existing_item['core_event'] = item.get('core_event')
+                            if item.get('ai_analysis'):
+                                existing_item['ai_analysis'] = item.get('ai_analysis')
+                            break
         
         all_news = list(existing_dict.values())
         
@@ -176,13 +190,20 @@ def save_news_data(news_list):
         return 0
 
 def cleanup_old_news():
+    result = {
+        'cleaned': False,
+        'deleted_count': 0,
+        'freed_bytes': 0,
+        'deleted_files': [],
+        'kept_count': 0,
+        'reason': ''
+    }
+    
     try:
         ensure_news_dir()
         cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
         cutoff_date = cutoff_time.strftime('%Y-%m-%d')
         
-        deleted_files = []
-        kept_files = []
         total_files = 0
         
         for filename in os.listdir(NEWS_DIR):
@@ -195,24 +216,24 @@ def cleanup_old_news():
                     try:
                         file_size = os.path.getsize(file_path)
                         os.remove(file_path)
-                        deleted_files.append({'name': filename, 'size': file_size})
-                        info_logger.info(f"清理过期新闻文件: {filename} (大小: {file_size} 字节)")
+                        result['deleted_files'].append(filename)
+                        result['deleted_count'] += 1
+                        result['freed_bytes'] += file_size
                     except Exception as e:
                         error_logger.error(f"删除新闻文件失败 ({filename}): {e}")
                 else:
-                    kept_files.append(filename)
+                    result['kept_count'] += 1
         
-        if deleted_files:
-            total_deleted_size = sum(f['size'] for f in deleted_files)
-            info_logger.info(f"新闻清理完成: 共扫描 {total_files} 个文件, 删除 {len(deleted_files)} 个过期文件, "
-                           f"保留 {len(kept_files)} 个文件, 释放空间 {total_deleted_size} 字节")
+        if result['deleted_count'] > 0:
+            result['cleaned'] = True
         else:
-            info_logger.debug(f"新闻清理检查: 共 {total_files} 个文件, 无过期文件需要删除")
+            result['reason'] = f"当前共 {total_files} 个文件，均在 {MAX_NEWS_HOURS} 小时保留期内"
         
-        return True
+        return result
     except Exception as e:
         error_logger.error(f"清理过期新闻失败: {e}")
-        return False
+        result['reason'] = f"清理失败: {str(e)}"
+        return result
 
 def get_recent_news(page=1, page_size=40):
     ensure_news_dir()
@@ -260,10 +281,10 @@ def get_recent_news(page=1, page_size=40):
         seen_keys = set()
         unique_news = []
         for news in all_news:
-            news_id = news.get('id')
             news_title = news.get('title', '').strip()
-            if news_id and news_title:
-                news_key = (news_id, news_title)
+            news_content = news.get('content', '').strip()
+            if news_title and news_content:
+                news_key = (news_title, news_content)
                 if news_key not in seen_keys:
                     seen_keys.add(news_key)
                     unique_news.append(news)
@@ -356,10 +377,10 @@ def search_news(keyword, page=1, page_size=40):
         seen_keys = set()
         unique_news = []
         for news in all_news:
-            news_id = news.get('id')
             news_title = news.get('title', '').strip()
-            if news_id and news_title:
-                news_key = (news_id, news_title)
+            news_content = news.get('content', '').strip()
+            if news_title and news_content:
+                news_key = (news_title, news_content)
                 if news_key not in seen_keys:
                     seen_keys.add(news_key)
                     unique_news.append(news)
