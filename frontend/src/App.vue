@@ -79,6 +79,61 @@
       </div>
     </div>
 
+    <div class="market-overview" v-if="marketData">
+      <div class="market-section">
+        <div class="market-title">📊 大盘指数</div>
+        <div class="index-cards">
+          <div 
+            v-for="(index, code) in marketData.indices" 
+            :key="code" 
+            class="index-card"
+            :class="{ 'up': index.change > 0, 'down': index.change < 0 }"
+          >
+            <div class="index-name">{{ index.name }}</div>
+            <div class="index-price">{{ index.price.toFixed(2) }}</div>
+            <div class="index-change">
+              <span class="change-percent">{{ index.change > 0 ? '+' : '' }}{{ (index.change * 100).toFixed(2) }}%</span>
+              <span class="change-amount">{{ index.change_amount > 0 ? '+' : '' }}{{ index.change_amount.toFixed(2) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="market-section">
+        <div class="market-title">📈 涨跌统计</div>
+        <div class="stats-cards">
+          <div class="stat-card up">
+            <div class="stat-value">{{ marketData.stats.up_count }}</div>
+            <div class="stat-label">上涨</div>
+          </div>
+          <div class="stat-card down">
+            <div class="stat-value">{{ marketData.stats.down_count }}</div>
+            <div class="stat-label">下跌</div>
+          </div>
+          <div class="stat-card flat">
+            <div class="stat-value">{{ marketData.stats.flat_count }}</div>
+            <div class="stat-label">平盘</div>
+          </div>
+          <div class="stat-card limit-up">
+            <div class="stat-value">{{ marketData.stats.limit_up_count }}</div>
+            <div class="stat-label">涨停</div>
+          </div>
+          <div class="stat-card limit-down">
+            <div class="stat-value">{{ marketData.stats.limit_down_count }}</div>
+            <div class="stat-label">跌停</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="market-section">
+        <div class="market-title">💰 成交量</div>
+        <div class="volume-info">
+          <div class="volume-value">{{ formatVolume(marketData.stats.total_volume) }}</div>
+          <div class="volume-label">今日总成交额</div>
+        </div>
+      </div>
+    </div>
+
     <div class="chart-container" ref="chartContainer">
       <div ref="chart" class="chart"></div>
     </div>

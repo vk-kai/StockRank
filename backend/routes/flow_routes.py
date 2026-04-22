@@ -4,7 +4,7 @@ from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
-    load_realtime_data, error_logger
+    load_realtime_data, error_logger, get_market_overview
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 
@@ -182,6 +182,29 @@ def get_minute_data():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/minute 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/market', methods=['GET'])
+def get_market():
+    try:
+        market_data = get_market_overview()
+        
+        if market_data:
+            return jsonify({
+                'success': True,
+                'data': market_data,
+                'timestamp': datetime.now().astimezone().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '获取大盘数据失败'
+            }), 500
+    except Exception as e:
+        error_logger.error(f"API /api/flow/market 异常: {e}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

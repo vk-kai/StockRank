@@ -440,3 +440,147 @@ def load_recent_realtime_data(hours):
     except Exception as e:
         error_logger.error(f"加载最近实时数据失败: {e}")
         return {}
+
+MARKET_INDEX_URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
+STOCK_STAT_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+
+latest_market_data = {}
+
+def get_market_index_data():
+    global latest_market_data
+    
+    headers = {
+        'User-Agent': get_random_user_agent()
+    }
+    
+    params = {
+        'fltt': 2,
+        'invt': 2,
+        'fields': 'f1,f2,f3,f4,f12,f13,f14',
+        'secids': '1.000001,0.399001,0.399006'
+    }
+    
+    try:
+        response = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        data = response.json()
+        
+        if 'data' in data and 'diff' in data['data']:
+            indices = {}
+            for item in data['data']['diff']:
+                code = item.get('f12', '')
+                name = item.get('f14', '')
+                price = item.get('f2', 0)
+                change = item.get('f3', 0)
+                change_amount = item.get('f4', 0)
+                
+                if price == '-' or price is None:
+                    price = 0
+                if change == '-' or change is None:
+                    change = 0
+                if change_amount == '-' or change_amount is None:
+                    change_amount = 0
+                
+                indices[code] = {
+                    'code': code,
+                    'name': name,
+                    'price': float(price) if price else 0,
+                    'change': float(change) / 100 if change else 0,
+                    'change_amount': float(change_amount) if change_amount else 0
+                }
+            
+            latest_market_data['indices'] = indices
+            return indices
+        else:
+            error_logger.error(f"获取大盘指数数据格式异常: {data}")
+    except Exception as e:
+        error_logger.error(f"获取大盘指数数据失败: {e}")
+    
+    return None
+
+def get_stock_statistics():
+    global latest_market_data
+    
+    headers = {
+        'User-Agent': get_random_user_agent()
+    }
+    
+    params = {
+        'pn': 1,
+        'pz': 5000,
+        'po': 1,
+        'np': 1,
+        'ut': 'bd1d9ddb04089700cf9c27f6f7426281',
+        'fltt': 2,
+        'invt': 2,
+        'fid': 'f3',
+        'fs': 'm:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23',
+        'fields': 'f1,f2,f3,f12,f13,f14,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87'
+    }
+    
+    try:
+        response = requests.get(STOCK_STAT_URL, params=params, headers=headers, timeout=10)
+        data = response.json()
+        
+        if 'data' in data and 'diff' in data['data']:
+            up_count = 0
+            down_count = 0
+            flat_count = 0
+            total_volume = 0
+            limit_up_count = 0
+            limit_down_count = 0
+            
+            for item in data['data']['diff']:
+                change = item.get('f3', 0)
+                if change == '-' or change is None:
+                    change = 0
+                else:
+                    change = float(change) / 100
+                
+                if change > 0.095:
+                    limit_up_count += 1
+                    up_count += 1
+                elif change < -0.095:
+                    limit_down_count += 1
+                    down_count += 1
+                elif change > 0:
+                    up_count += 1
+                elif change < 0:
+                    down_count += 1
+                else:
+                    flat_count += 1
+                
+                volume = item.get('f184', 0)
+                if volume and volume != '-':
+                    total_volume += float(volume)
+            
+            stats = {
+                'up_count': up_count,
+                'down_count': down_count,
+                'flat_count': flat_count,
+                'limit_up_count': limit_up_count,
+                'limit_down_count': limit_down_count,
+                'total_count': up_count + down_count + flat_count,
+                'total_volume': total_volume
+            }
+            
+            latest_market_data['stats'] = stats
+            return stats
+        else:
+            error_logger.error(f"获取股票统计数据格式异常: {data}")
+    except Exception as e:
+        error_logger.error(f"获取股票统计数据失败: {e}")
+    
+    return None
+
+def get_market_overview():
+    indices = get_market_index_data()
+    stats = get_stock_statistics()
+    
+    if indices and stats:
+        return {
+            'indices': indices,
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    return None

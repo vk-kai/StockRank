@@ -57,6 +57,20 @@ export async function getMinuteData(hours) {
 }
 
 /**
+ * 获取大盘概览数据
+ * @returns {Promise<Object>} 大盘数据
+ */
+export async function getMarketData() {
+  try {
+    const response = await apiClient.get('/flow/market')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘数据失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取最新资金流入数据
  * @returns {Promise<Object>} 最新数据
  */

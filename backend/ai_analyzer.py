@@ -247,6 +247,8 @@ def batch_analyze_news(news_items):
     if last_response_content:
         error_logger.error(f"AI返回内容(前500字符): {last_response_content[:500]}")
     
+    info_logger.error(f"AI分析失败，处理 {len(news_items)} 条新闻，失败原因: {failure_reasons[-1] if failure_reasons else '未知'}")
+    
     return {}
 
 def is_important_news(analysis_result):

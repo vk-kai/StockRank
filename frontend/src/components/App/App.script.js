@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getMarketData } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 
@@ -28,7 +28,8 @@ export default {
       currentNewsIndex: 0,
       newsRotationInterval: null,
       threadStatus: {},
-      healthCheckInterval: null
+      healthCheckInterval: null,
+      marketData: null
     }
   },
   computed: {
@@ -52,6 +53,7 @@ export default {
     this.startNewsRotation()
     this.fetchSystemHealth()
     this.startHealthCheck()
+    this.fetchMarketData()
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -365,6 +367,28 @@ export default {
       } catch (err) {
         console.error('获取最新新闻失败:', err)
       }
+    },
+
+    async fetchMarketData() {
+      try {
+        const response = await getMarketData()
+        if (response.success) {
+          this.marketData = response.data
+        }
+      } catch (err) {
+        console.error('获取大盘数据失败:', err)
+      }
+    },
+
+    formatVolume(value) {
+      if (!value) return '0'
+      if (value >= 100000000) {
+        return (value / 100000000).toFixed(2) + '亿'
+      }
+      if (value >= 10000) {
+        return (value / 10000).toFixed(2) + '万'
+      }
+      return value.toFixed(2)
     },
 
     startNewsRotation() {
