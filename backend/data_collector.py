@@ -6,7 +6,8 @@ from data_processor import get_sector_flow_data, save_realtime_data, load_realti
 from thread_monitor import heartbeat, register_thread
 from logger import get_logger
 
-_last_daily_summary_date = None
+_last_morning_summary_date = None
+_last_afternoon_summary_date = None
 cleanup_logger = get_logger('cleanup_flow')
 
 def is_trading_day(date):
@@ -29,15 +30,38 @@ def is_trading_time(time):
     
     return False
 
-def should_generate_daily_summary(now):
-    global _last_daily_summary_date
+def is_morning_close(now):
+    hour = now.hour
+    minute = now.minute
+    return hour == 11 and minute > 30 or hour == 12
+
+def is_afternoon_close(now):
+    return now.hour >= 15
+
+def should_generate_morning_summary(now):
+    global _last_morning_summary_date
     
     today = now.strftime('%Y-%m-%d')
     
-    if _last_daily_summary_date == today:
+    if _last_morning_summary_date == today:
         return False
     
-    if now.hour >= 15:
+    if is_morning_close(now):
+        realtime_data = load_realtime_data(today)
+        if realtime_data:
+            return True
+    
+    return False
+
+def should_generate_afternoon_summary(now):
+    global _last_afternoon_summary_date
+    
+    today = now.strftime('%Y-%m-%d')
+    
+    if _last_afternoon_summary_date == today:
+        return False
+    
+    if is_afternoon_close(now):
         realtime_data = load_realtime_data(today)
         if realtime_data:
             return True
@@ -45,7 +69,7 @@ def should_generate_daily_summary(now):
     return False
 
 def data_collection_thread():
-    global _last_daily_summary_date
+    global _last_morning_summary_date, _last_afternoon_summary_date
     register_thread('data_collector')
     system_logger.info("启动数据采集线程，每5分钟采集一次数据...")
     
@@ -60,14 +84,14 @@ def data_collection_thread():
             if current_hour == 0 and current_minute == 0:
                 yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
                 
-                if _last_daily_summary_date != yesterday:
+                if _last_afternoon_summary_date != yesterday:
                     realtime_data = load_realtime_data(yesterday)
                     if realtime_data:
                         system_logger.info(f"生成昨天({yesterday})的每日汇总...")
                         success = generate_daily_summary_for_date(yesterday)
                         if success:
                             system_logger.info(f"成功生成昨天({yesterday})的每日汇总")
-                            _last_daily_summary_date = yesterday
+                            _last_afternoon_summary_date = yesterday
                         else:
                             system_logger.error(f"生成昨天({yesterday})的每日汇总失败")
                     
@@ -79,12 +103,21 @@ def data_collection_thread():
                     else:
                         cleanup_logger.info(f"资金流向数据无需清理: {cleanup_result['reason']}")
             
-            if should_generate_daily_summary(now):
-                system_logger.info(f"收盘后生成今日({today})的每日汇总...")
+            if should_generate_morning_summary(now):
+                system_logger.info(f"上午收盘后生成今日({today})的上午汇总...")
+                success = generate_daily_summary_for_date(today)
+                if success:
+                    system_logger.info(f"成功生成今日({today})的上午汇总")
+                    _last_morning_summary_date = today
+                else:
+                    system_logger.error(f"生成今日({today})的上午汇总失败")
+            
+            if should_generate_afternoon_summary(now):
+                system_logger.info(f"下午收盘后生成今日({today})的每日汇总...")
                 success = generate_daily_summary_for_date(today)
                 if success:
                     system_logger.info(f"成功生成今日({today})的每日汇总")
-                    _last_daily_summary_date = today
+                    _last_afternoon_summary_date = today
                 else:
                     system_logger.error(f"生成今日({today})的每日汇总失败")
             

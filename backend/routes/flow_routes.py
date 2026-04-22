@@ -6,7 +6,7 @@ from data_processor import (
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger
 )
-from data_collector import is_trading_day, is_trading_time
+from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
 
@@ -18,14 +18,14 @@ def get_current_flow():
         if not is_trading_day(now) or not is_trading_time(now):
             today = datetime.now().strftime('%Y-%m-%d')
             
-            if now.hour >= 15:
+            if is_afternoon_close(now):
                 today_daily_record = load_daily_data(today)
                 if today_daily_record and 'data' in today_daily_record:
                     return jsonify({
                         'success': True,
                         'data': today_daily_record['data'],
                         'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                        'message': '收盘后，返回今日每日汇总数据'
+                        'message': '下午收盘后，返回今日每日汇总数据'
                     })
                 
                 realtime_data = load_realtime_data(today)
@@ -39,8 +39,33 @@ def get_current_flow():
                                 'success': True,
                                 'data': last_record['data'],
                                 'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                                'message': f'收盘后，返回今日最新数据({last_time_key})'
+                                'message': f'下午收盘后，返回今日最新数据({last_time_key})'
                             })
+            
+            elif is_morning_close(now):
+                today_daily_record = load_daily_data(today)
+                if today_daily_record and 'data' in today_daily_record:
+                    return jsonify({
+                        'success': True,
+                        'data': today_daily_record['data'],
+                        'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                        'message': '上午收盘后，返回今日上午汇总数据'
+                    })
+                
+                realtime_data = load_realtime_data(today)
+                if realtime_data:
+                    time_keys = sorted(realtime_data.keys(), reverse=True)
+                    if time_keys:
+                        last_time_key = time_keys[0]
+                        last_record = realtime_data[last_time_key]
+                        if last_record and 'data' in last_record:
+                            return jsonify({
+                                'success': True,
+                                'data': last_record['data'],
+                                'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                                'message': f'上午收盘后，返回今日上午数据({last_time_key})'
+                            })
+            
             else:
                 if latest_data:
                     return jsonify({
