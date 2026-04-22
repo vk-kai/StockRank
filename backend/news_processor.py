@@ -111,7 +111,6 @@ def save_news_data(news_list):
     file_path = get_news_file_path()
     
     try:
-        cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
         all_existing_keys = set()
         
         for filename in os.listdir(NEWS_DIR):
@@ -239,7 +238,6 @@ def get_recent_news(page=1, page_size=40):
     ensure_news_dir()
     
     all_news = []
-    cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
     
     try:
         for filename in os.listdir(NEWS_DIR):
@@ -254,24 +252,7 @@ def get_recent_news(page=1, page_size=40):
                         if not isinstance(news_data, list):
                             continue
                         
-                        filtered_news = []
-                        for item in news_data:
-                            news_time = item.get('time', '')
-                            if news_time:
-                                try:
-                                    if isinstance(news_time, str) and news_time.isdigit():
-                                        news_datetime = datetime.fromtimestamp(int(news_time))
-                                    elif isinstance(news_time, (int, float)):
-                                        news_datetime = datetime.fromtimestamp(news_time)
-                                    else:
-                                        continue
-                                    
-                                    if news_datetime >= cutoff_time:
-                                        filtered_news.append(item)
-                                except (ValueError, OSError):
-                                    continue
-                        
-                        all_news.extend(filtered_news)
+                        all_news.extend(news_data)
                 except json.JSONDecodeError:
                     continue
                 except Exception as e:
@@ -335,7 +316,6 @@ def search_news(keyword, page=1, page_size=40):
     
     keyword = keyword.strip().lower()
     all_news = []
-    cutoff_time = datetime.now() - timedelta(hours=MAX_NEWS_HOURS)
     
     try:
         for filename in os.listdir(NEWS_DIR):
@@ -350,24 +330,7 @@ def search_news(keyword, page=1, page_size=40):
                         if not isinstance(news_data, list):
                             continue
                         
-                        filtered_news = []
-                        for item in news_data:
-                            news_time = item.get('time', '')
-                            if news_time:
-                                try:
-                                    if isinstance(news_time, str) and news_time.isdigit():
-                                        news_datetime = datetime.fromtimestamp(int(news_time))
-                                    elif isinstance(news_time, (int, float)):
-                                        news_datetime = datetime.fromtimestamp(news_time)
-                                    else:
-                                        continue
-                                    
-                                    if news_datetime >= cutoff_time:
-                                        filtered_news.append(item)
-                                except (ValueError, OSError):
-                                    continue
-                        
-                        all_news.extend(filtered_news)
+                        all_news.extend(news_data)
                 except json.JSONDecodeError:
                     continue
                 except Exception as e:

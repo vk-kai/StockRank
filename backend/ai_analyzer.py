@@ -77,8 +77,6 @@ def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messa
             timeout=timeout
         )
     except Exception as e:
-        error_logger.error(f"AI API请求异常: {e}")
-        error_logger.error(f"请求payload: {json.dumps(payload, ensure_ascii=False)[:1000]}")
         raise
 
 def parse_ai_response(content):
@@ -107,8 +105,6 @@ def parse_ai_response(content):
         
         return results
     except json.JSONDecodeError as e:
-        error_logger.error(f"AI返回内容不是有效JSON: {e}")
-        error_logger.error(f"原始返回内容: {content[:500]}")
         return None
 
 def batch_analyze_news(news_items):
@@ -172,6 +168,7 @@ def batch_analyze_news(news_items):
     ]
     
     failure_reasons = []
+    last_response_content = None
     
     for attempt in range(1, retry_count + 1):
         try:
@@ -183,6 +180,7 @@ def batch_analyze_news(news_items):
             if response.status_code == 200:
                 result = response.json()
                 content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                last_response_content = content
                 
                 results = parse_ai_response(content)
                 if results is not None:
@@ -245,8 +243,9 @@ def batch_analyze_news(news_items):
                 continue
             return {}
     
-    if failure_reasons:
-        error_logger.error(f"AI分析失败，共重试{retry_count}次，失败原因:\n" + "\n".join(failure_reasons))
+    error_logger.error(f"AI分析失败，共重试{retry_count}次，失败原因:\n" + "\n".join(failure_reasons))
+    if last_response_content:
+        error_logger.error(f"AI返回内容(前500字符): {last_response_content[:500]}")
     
     return {}
 

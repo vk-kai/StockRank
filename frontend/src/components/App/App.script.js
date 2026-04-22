@@ -357,10 +357,10 @@ export default {
 
     async fetchLatestNews() {
       try {
-        const response = await getNews(5)
+        const response = await getNews(1, 5)
         if (response.success) {
           this.latestNews = response.data
-          this.latestNewsCount = response.count
+          this.latestNewsCount = response.pagination?.total || 0
         }
       } catch (err) {
         console.error('获取最新新闻失败:', err)
