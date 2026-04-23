@@ -14,6 +14,7 @@ export default {
       pageSize: 100,
       logLines: [],
       totalLines: 0,
+      totalPages: 0,
       loading: false,
       autoRefresh: false,
       refreshTimer: null,
@@ -30,14 +31,6 @@ export default {
     }
   },
   computed: {
-    totalPages() {
-      return Math.ceil(this.totalLines / this.pageSize) || 1
-    },
-    paginatedLines() {
-      const start = (this.currentPage - 1) * this.pageSize
-      const end = start + this.pageSize
-      return this.logLines.slice(start, end)
-    },
     visiblePages() {
       const pages = []
       const total = this.totalPages
@@ -120,12 +113,20 @@ export default {
     async loadLogContent() {
       this.loading = true
       try {
-        const response = await getLogContent(this.activeLog, this.selectedLevel, 5000, this.searchKeyword, this.selectedModule)
+        const response = await getLogContent(
+          this.activeLog, 
+          this.currentPage, 
+          this.pageSize, 
+          this.selectedLevel, 
+          this.searchKeyword, 
+          this.selectedModule
+        )
         if (response.success) {
           this.logLines = response.data.lines
           this.totalLines = response.data.total
+          this.totalPages = response.data.total_pages
           if (this.currentPage > this.totalPages) {
-            this.currentPage = this.totalPages
+            this.currentPage = Math.max(1, this.totalPages)
           }
         }
       } catch (error) {
@@ -164,8 +165,9 @@ export default {
     },
 
     goToPage(page) {
-      if (page >= 1 && page <= this.totalPages) {
+      if (page >= 1 && page <= this.totalPages && page !== this.currentPage) {
         this.currentPage = page
+        this.loadLogContent()
       }
     },
 

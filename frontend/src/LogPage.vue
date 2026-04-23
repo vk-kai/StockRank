@@ -86,7 +86,7 @@
         </div>
         <div class="log-body">
           <div 
-            v-for="(line, index) in paginatedLines" 
+            v-for="(line, index) in logLines" 
             :key="index"
             :class="['log-line', getLevelClass(line.level)]"
           >

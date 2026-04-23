@@ -260,9 +260,9 @@ export async function getLogList() {
   }
 }
 
-export async function getLogContent(logType, level = '', lines = 200, search = '', module = '') {
+export async function getLogContent(logType, page = 1, pageSize = 100, level = '', search = '', module = '') {
   try {
-    const params = { lines }
+    const params = { page, page_size: pageSize }
     if (level) {
       params.level = level
     }

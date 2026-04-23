@@ -156,12 +156,14 @@ def get_log_content(log_type):
         file_path = os.path.join(LOG_DIR, filename)
         
         if not os.path.exists(file_path):
-            return jsonify({'success': True, 'data': {'lines': [], 'total': 0}})
+            return jsonify({'success': True, 'data': {'lines': [], 'total': 0, 'page': 1, 'page_size': 100, 'total_pages': 0}})
         
         level_filter = request.args.get('level', '').upper()
         module_filter = request.args.get('module', '').strip()
         search_keyword = request.args.get('search', '').strip()
-        lines_limit = min(int(request.args.get('lines', 200)), 10000)
+        
+        page = max(1, int(request.args.get('page', 1)))
+        page_size = min(max(1, int(request.args.get('page_size', 100))), 500)
         
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -207,14 +209,22 @@ def get_log_content(log_type):
                 })
         
         total = len(parsed_lines)
-        recent_lines = parsed_lines[-lines_limit:] if len(parsed_lines) > lines_limit else parsed_lines
-        recent_lines.reverse()
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        
+        parsed_lines.reverse()
+        
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_lines = parsed_lines[start_idx:end_idx]
         
         return jsonify({
             'success': True,
             'data': {
-                'lines': recent_lines,
+                'lines': page_lines,
                 'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
                 'filtered': level_filter != '' or module_filter != '' or search_keyword != ''
             }
         })
