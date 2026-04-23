@@ -88,7 +88,7 @@
           <div 
             v-for="(line, index) in logLines" 
             :key="index"
-            :class="['log-line', getLevelClass(line.level)]"
+            :class="['log-line', getLevelClass(line.level), getMessageHighlightClass(line.message)]"
           >
             <span class="log-timestamp">{{ line.timestamp }}</span>
             <span :class="['log-level', (line.level || '').toLowerCase()]">{{ line.level || '-' }}</span>

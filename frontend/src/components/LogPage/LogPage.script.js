@@ -269,6 +269,13 @@ export default {
       return `level-${level.toLowerCase()}`
     },
 
+    getMessageHighlightClass(message) {
+      if (!message) return ''
+      if (message.includes('新增重要新闻但忽略')) return 'highlight-ignore'
+      if (message.includes('推送成功') || message.includes('已推送')) return 'highlight-push'
+      return ''
+    },
+
     getModuleColor(module) {
       const colors = {
         'data': '#67c23a',
