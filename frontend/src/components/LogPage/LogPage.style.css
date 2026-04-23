@@ -345,7 +345,7 @@
   white-space: nowrap;
 }
 
-.keyword-ignore {
+.log-message :deep(.keyword-ignore) {
   color: #FF9800;
   font-weight: bold;
   background: rgba(255, 152, 0, 0.2);
@@ -353,7 +353,7 @@
   border-radius: 3px;
 }
 
-.keyword-push {
+.log-message :deep(.keyword-push) {
   color: #4CAF50;
   font-weight: bold;
   background: rgba(76, 175, 80, 0.2);
