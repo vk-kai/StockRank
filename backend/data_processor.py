@@ -27,7 +27,7 @@ def get_sector_flow_data():
         'fltt': 2,
         'invt': 2,
         'fid': 'f62',
-        'fs': 'm:90+t:2',
+        'fs': 'm:90+s:4',
         'fields': 'f1,f2,f3,f12,f13,f14,f62,f66,f69,f72,f75,f78,f81,f84,f87,f124,f184,f204,f205,f206'
     }
     
