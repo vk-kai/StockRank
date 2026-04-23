@@ -417,6 +417,65 @@ def load_recent_daily_data_with_accumulation(days):
         error_logger.error(f"加载累计每日数据失败: {e}")
         return {}
 
+def get_accumulated_top_sectors(days):
+    try:
+        raw_data = load_recent_daily_data(days)
+        
+        if not raw_data:
+            return []
+        
+        sector_stats = {}
+        
+        for date_str, daily_data in raw_data.items():
+            if not isinstance(daily_data, list):
+                continue
+            
+            for item in daily_data:
+                sector_name = item.get('name')
+                if not sector_name:
+                    continue
+                
+                if sector_name not in sector_stats:
+                    sector_stats[sector_name] = {
+                        'name': sector_name,
+                        'total_flow': 0,
+                        'accumulated_change': 1.0,
+                        'appearances': 0
+                    }
+                
+                flow = item.get('flow', 0) or 0
+                change = item.get('change', 0) or 0
+                
+                sector_stats[sector_name]['total_flow'] += flow
+                sector_stats[sector_name]['accumulated_change'] *= (1 + change)
+                sector_stats[sector_name]['appearances'] += 1
+        
+        for sector_name, stats in sector_stats.items():
+            stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
+        
+        sorted_sectors = sorted(
+            sector_stats.values(),
+            key=lambda x: x['total_flow'],
+            reverse=True
+        )
+        
+        top_sectors = []
+        for i, sector in enumerate(sorted_sectors[:10]):
+            top_sectors.append({
+                'rank': i + 1,
+                'name': sector['name'],
+                'flow': sector['total_flow'],
+                'change': sector['accumulated_change_percent'],
+                'total_flow': sector['total_flow'],
+                'accumulated_change_percent': sector['accumulated_change_percent'],
+                'appearances': sector['appearances']
+            })
+        
+        return top_sectors
+    except Exception as e:
+        error_logger.error(f"获取累计流入TOP板块失败: {e}")
+        return []
+
 # 加载最近N小时的实时数据
 def load_recent_realtime_data(hours):
     try:

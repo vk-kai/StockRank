@@ -507,6 +507,12 @@
   font-weight: bold;
 }
 
+.sector-card .appearances {
+  font-size: 11px;
+  color: #8ba4c7;
+  margin-top: 4px;
+}
+
 .loading {
   text-align: center;
   padding: 40px;

@@ -4,7 +4,7 @@ from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
-    load_realtime_data, error_logger, get_market_overview
+    load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 
@@ -205,6 +205,27 @@ def get_market():
             }), 500
     except Exception as e:
         error_logger.error(f"API /api/flow/market 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/accumulated', methods=['GET'])
+def get_accumulated_flow():
+    try:
+        days = request.args.get('days', '7', type=int)
+        days = min(days, 30)
+        
+        top_sectors = get_accumulated_top_sectors(days)
+        
+        return jsonify({
+            'success': True,
+            'data': top_sectors,
+            'days': days,
+            'timestamp': datetime.now().astimezone().isoformat()
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/flow/accumulated 异常: {e}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

@@ -71,6 +71,23 @@ export async function getMarketData() {
 }
 
 /**
+ * 获取累计流入TOP板块
+ * @param {number} days - 天数
+ * @returns {Promise<Object>} 累计流入TOP板块数据
+ */
+export async function getAccumulatedFlow(days) {
+  try {
+    const response = await apiClient.get('/flow/accumulated', {
+      params: { days: days }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取累计流入数据失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取最新资金流入数据
  * @returns {Promise<Object>} 最新数据
  */

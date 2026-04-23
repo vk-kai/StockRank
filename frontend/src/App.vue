@@ -83,7 +83,7 @@
       <div ref="chart" class="chart"></div>
     </div>
 
-    <div class="sector-list" v-if="currentData.length > 0">
+    <div class="sector-list" v-if="selectedTimeRange === 'today' && currentData.length > 0">
       <h3 class="sector-title">今日资金流入TOP10</h3>
       <div class="sector-grid">
         <div 
@@ -103,6 +103,31 @@
               {{ sector.change > 0 ? '↑' : (sector.change < 0 ? '↓' : '→') }}
             </span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sector-list" v-if="selectedTimeRange !== 'today' && accumulatedData.length > 0">
+      <h3 class="sector-title">{{ selectedTimeRange }}日累计资金流入TOP10</h3>
+      <div class="sector-grid">
+        <div 
+          v-for="sector in accumulatedData" 
+          :key="sector.rank"
+          class="sector-card"
+          :class="{ 'top-3': sector.rank <= 3 }"
+          @mouseenter="highlightSector(sector.name)"
+          @mouseleave="unhighlightSector()"
+        >
+          <div class="rank">{{ sector.rank }}</div>
+          <div class="name">{{ sector.name }}</div>
+          <div class="flow">累计流入: {{ formatFlow(sector.total_flow) }}</div>
+          <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
+            {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
+            <span class="trend-arrow">
+              {{ sector.accumulated_change_percent > 0 ? '↑' : (sector.accumulated_change_percent < 0 ? '↓' : '→') }}
+            </span>
+          </div>
+          <div class="appearances">上榜: {{ sector.appearances }}天</div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 
@@ -10,6 +10,7 @@ export default {
     return {
       selectedTimeRange: 'today',
       currentData: [],
+      accumulatedData: [],
       historyData: {},
       minuteData: {},
       chartInstance: null,
@@ -177,20 +178,34 @@ export default {
 
     async fetchDataByTimeRange() {
       if (this.selectedTimeRange === 'today') {
+        this.accumulatedData = []
         await this.fetchCurrentData()
         await this.fetchMinuteData()
       } else {
-        await this.fetchCurrentData()
+        this.currentData = []
+        await this.fetchAccumulatedData(this.selectedTimeRange)
         await this.fetchHistoryData(this.selectedTimeRange)
       }
     },
 
     async fetchData() {
-      await this.fetchCurrentData()
       if (this.selectedTimeRange === 'today') {
+        await this.fetchCurrentData()
         await this.fetchMinuteData()
       } else {
+        await this.fetchAccumulatedData(this.selectedTimeRange)
         await this.fetchHistoryData(this.selectedTimeRange)
+      }
+    },
+
+    async fetchAccumulatedData(days) {
+      try {
+        const response = await getAccumulatedFlow(days)
+        if (response.success) {
+          this.accumulatedData = response.data
+        }
+      } catch (err) {
+        console.error('获取累计流入数据失败:', err)
       }
     },
 
