@@ -88,13 +88,13 @@
           <div 
             v-for="(line, index) in logLines" 
             :key="index"
-            :class="['log-line', getLevelClass(line.level), getMessageHighlightClass(line.message)]"
+            :class="['log-line', getLevelClass(line.level)]"
           >
             <span class="log-timestamp">{{ line.timestamp }}</span>
             <span :class="['log-level', (line.level || '').toLowerCase()]">{{ line.level || '-' }}</span>
             <span class="log-module" v-if="activeLog === 'data' || activeLog === 'system'" :style="{ color: getModuleColor(line.module) }">{{ line.module_display || line.module || '-' }}</span>
             <span class="log-source">{{ line.source }}:{{ line.lineno }}</span>
-            <span class="log-message" :title="line.message">{{ truncateMessage(line.message) }}</span>
+            <span class="log-message" :title="line.message" v-html="highlightKeywords(truncateMessage(line.message))"></span>
             <span class="log-action">
               <button class="detail-btn" @click="showDetail(line)" title="查看详情">
                 📋

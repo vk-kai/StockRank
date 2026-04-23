@@ -269,11 +269,12 @@ export default {
       return `level-${level.toLowerCase()}`
     },
 
-    getMessageHighlightClass(message) {
+    highlightKeywords(message) {
       if (!message) return ''
-      if (message.includes('新增重要新闻但忽略')) return 'highlight-ignore'
-      if (message.includes('推送成功') || message.includes('已推送')) return 'highlight-push'
-      return ''
+      let result = message
+      result = result.replace(/(忽略)/g, '<span class="keyword-ignore">$1</span>')
+      result = result.replace(/(推送)/g, '<span class="keyword-push">$1</span>')
+      return result
     },
 
     getModuleColor(module) {

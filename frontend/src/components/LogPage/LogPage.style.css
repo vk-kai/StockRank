@@ -345,22 +345,20 @@
   white-space: nowrap;
 }
 
-.log-line.highlight-ignore {
-  background: rgba(255, 152, 0, 0.15);
-  border-left: 3px solid #FF9800;
+.keyword-ignore {
+  color: #FF9800;
+  font-weight: bold;
+  background: rgba(255, 152, 0, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
-.log-line.highlight-ignore:hover {
-  background: rgba(255, 152, 0, 0.25);
-}
-
-.log-line.highlight-push {
-  background: rgba(76, 175, 80, 0.15);
-  border-left: 3px solid #4CAF50;
-}
-
-.log-line.highlight-push:hover {
-  background: rgba(76, 175, 80, 0.25);
+.keyword-push {
+  color: #4CAF50;
+  font-weight: bold;
+  background: rgba(76, 175, 80, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 .log-action {
