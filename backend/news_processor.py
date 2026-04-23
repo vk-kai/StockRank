@@ -126,7 +126,10 @@ def save_news_data(news_list):
                                 news_title = item.get('title', '').strip()
                                 news_content = item.get('content', '').strip()
                                 if news_title and news_content:
-                                    all_existing_keys.add((news_title, news_content))
+                                    # 处理标题中的细微差异（如“初盘”和“盘初”）
+                                    normalized_title = news_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
+                                    normalized_title = normalized_title.replace('午后', '盘后').replace('尾盘', '盘后')
+                                    all_existing_keys.add((normalized_title, news_content))
                 except (json.JSONDecodeError, Exception) as e:
                     continue
         
@@ -146,15 +149,26 @@ def save_news_data(news_list):
             news_title = item.get('title', '').strip()
             news_content = item.get('content', '').strip()
             
+            # 处理标题中的细微差异（如“初盘”和“盘初”）
+            normalized_title = news_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
+            normalized_title = normalized_title.replace('午后', '盘后').replace('尾盘', '盘后')
+            
             if news_title and news_content:
-                news_key = (news_title, news_content)
+                news_key = (normalized_title, news_content)
                 if news_key not in all_existing_keys:
                     existing_dict[news_id] = item
                     new_count += 1
                     all_existing_keys.add(news_key)
                 else:
                     for existing_id, existing_item in existing_dict.items():
-                        if existing_item.get('title', '').strip() == news_title and existing_item.get('content', '').strip() == news_content:
+                        existing_title = existing_item.get('title', '').strip()
+                        existing_content = existing_item.get('content', '').strip()
+                        
+                        # 处理标题中的细微差异（如“初盘”和“盘初”）
+                        normalized_existing_title = existing_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
+                        normalized_existing_title = normalized_existing_title.replace('午后', '盘后').replace('尾盘', '盘后')
+                        
+                        if normalized_existing_title == normalized_title and existing_content == news_content:
                             existing_item['url'] = item.get('url', existing_item.get('url', ''))
                             existing_item['time'] = item.get('time', existing_item.get('time', ''))
                             existing_item['importance'] = item.get('importance', existing_item.get('importance', '0'))
