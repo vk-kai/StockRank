@@ -12,7 +12,7 @@ MODULE_DISPLAY_NAMES = {
     'news': '新闻采集',
     'news_collect': '新闻采集—数据获取',
     'news_add': '新闻采集—新增新闻',
-    'news_important': '新闻采集—重要新闻',
+    'news_important': '消息推送',
     'ai': 'AI分析',
     'ai_analyze': 'AI分析—内容分析',
     'ai_push': 'AI分析—飞书推送',
@@ -141,6 +141,7 @@ def get_log_modules():
     main_modules = {
         'data': '数据采集',
         'news': '新闻采集',
+        'news_important': '消息推送',
         'ai': 'AI分析',
         'system': '系统运行',
         'monitor': '线程监控',

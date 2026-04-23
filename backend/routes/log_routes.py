@@ -19,6 +19,7 @@ LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 LOG_MODULES_INFO = {
     'data': {'desc': '数据采集', 'color': '#67c23a'},
     'news': {'desc': '新闻采集', 'color': '#e6a23c'},
+    'news_important': {'desc': '消息推送', 'color': '#ff9800'},
     'ai': {'desc': 'AI分析', 'color': '#909399'},
     'system': {'desc': '系统运行', 'color': '#409eff'},
     'monitor': {'desc': '线程监控', 'color': '#b37feb'},
@@ -140,10 +141,15 @@ def match_module(log_module, filter_module):
         return True
     if log_module == filter_module:
         return True
+    
+    if filter_module == 'news':
+        if log_module in ['news', 'news_collect', 'news_add']:
+            return True
+        return False
+    
     if log_module.startswith(filter_module + '_'):
         return True
-    if log_module.startswith(filter_module):
-        return True
+    
     return False
 
 @log_bp.route('/content/<log_type>', methods=['GET'])

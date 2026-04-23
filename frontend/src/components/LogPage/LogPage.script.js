@@ -273,6 +273,7 @@ export default {
       const colors = {
         'data': '#67c23a',
         'news': '#e6a23c',
+        'news_important': '#ff9800',
         'ai': '#909399',
         'system': '#409eff',
         'error': '#f56c6c',
@@ -281,8 +282,9 @@ export default {
       if (colors[module]) {
         return colors[module]
       }
-      if (module && module.startsWith('data')) return '#67c23a'
+      if (module && module.startsWith('news_important')) return '#ff9800'
       if (module && module.startsWith('news')) return '#e6a23c'
+      if (module && module.startsWith('data')) return '#67c23a'
       if (module && module.startsWith('ai')) return '#909399'
       if (module && module.startsWith('system')) return '#409eff'
       if (module && module.startsWith('monitor')) return '#b37feb'
