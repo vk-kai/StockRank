@@ -304,7 +304,16 @@ export default {
         }
       } else {
         const isToday = this.selectedTimeRange === 'today'
-        const topSectors = this.getTopSectors(timeData, allData, isToday)
+        let topSectors
+        
+        if (isToday && this.currentData.length > 0) {
+          topSectors = this.currentData.slice(0, 10).map(s => s.name)
+        } else if (!isToday && this.accumulatedData.length > 0) {
+          topSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
+        } else {
+          topSectors = this.getTopSectors(timeData, allData, isToday)
+        }
+        
         const series = generateSeries(topSectors, timeData, allData, this.colors, isToday)
         option = generateChartOption(timeData, series, topSectors, oldSelected, this.colors, isToday)
       }
