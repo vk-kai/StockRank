@@ -197,10 +197,10 @@ def news_collection_thread():
                     news_add_logger.debug(f"新增普通新闻，标题: {item.get('title', '')}")
                 
                 for item in pushed_items:
-                    news_important_logger.info(f"新增重要新闻并推送，标题: {item['title']}，推送理由: {item['reason']}")
+                    news_important_logger.info(f"新增重要新闻并推送，标题: 《{item['title']}》，推送理由: {item['reason']}")
                 
                 for item in ignored_items:
-                    news_important_logger.info(f"新增重要新闻但忽略，标题: {item['title']}，忽略理由: {item['reason']} (级别: {item['level']})")
+                    news_important_logger.info(f"新增重要新闻但忽略，标题: 《{item['title']}》，忽略理由: {item['reason']} (级别: {item['level']})")
                 
                 normal_count = len(normal_items)
                 important_count = len(pushed_items) + len(ignored_items)
