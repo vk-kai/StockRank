@@ -1,12 +1,13 @@
 import os
 import time
 from datetime import datetime, timedelta
-from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news
+from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
 from logger import get_logger, cleanup_old_logs
 from thread_monitor import heartbeat, register_thread, set_busy
+import json
 
 error_logger = get_logger('error')
 news_logger = get_logger('news')
@@ -22,11 +23,47 @@ def ai_heartbeat():
 
 set_heartbeat_callback(ai_heartbeat)
 
+def load_all_news_status():
+    all_status = {}
+    try:
+        if not os.path.exists(NEWS_DIR):
+            return all_status
+        for filename in os.listdir(NEWS_DIR):
+            if filename.endswith('.json'):
+                file_path = os.path.join(NEWS_DIR, filename)
+                try:
+                    if os.path.getsize(file_path) == 0:
+                        continue
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        news_data = json.load(f)
+                        if isinstance(news_data, list):
+                            for item in news_data:
+                                news_title = item.get('title', '').strip()
+                                news_content = item.get('content', '').strip()
+                                if news_title and news_content:
+                                    key = (news_title, news_content)
+                                    if key not in all_status:
+                                        all_status[key] = {
+                                            'pushed': item.get('pushed', False),
+                                            'ai_analyzed': item.get('ai_analyzed', False)
+                                        }
+                                    else:
+                                        if item.get('pushed', False):
+                                            all_status[key]['pushed'] = True
+                                        if item.get('ai_analyzed', False):
+                                            all_status[key]['ai_analyzed'] = True
+                except (json.JSONDecodeError, Exception) as e:
+                    continue
+    except Exception as e:
+        error_logger.error(f"加载所有新闻状态失败: {e}")
+    return all_status
+
 def process_news_with_ai_and_push(news_list):
     try:
         existing_news = load_today_news()
-        existing_keys = {(item.get('title', '').strip(), item.get('content', '').strip()) for item in existing_news}
+        existing_keys = {(item.get('title', '').strip(), item.get('content', '').strip()): item for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
+        all_news_status = load_all_news_status()
         
         new_items = []
         normal_items = []
@@ -39,12 +76,18 @@ def process_news_with_ai_and_push(news_list):
             news_key = (news_title, news_content)
             
             if news_title and news_content and news_key in existing_keys:
-                for existing_id, existing_item in existing_dict.items():
-                    if existing_item.get('title', '').strip() == news_title and existing_item.get('content', '').strip() == news_content:
-                        existing_item['url'] = news_item.get('url', existing_item.get('url', ''))
-                        existing_item['time'] = news_item.get('time', existing_item.get('time', ''))
-                        existing_item['importance'] = news_item.get('importance', existing_item.get('importance', '0'))
-                        break
+                existing_item = existing_keys[news_key]
+                existing_item['url'] = news_item.get('url', existing_item.get('url', ''))
+                existing_item['time'] = news_item.get('time', existing_item.get('time', ''))
+                existing_item['importance'] = news_item.get('importance', existing_item.get('importance', '0'))
+                continue
+            
+            if news_key in all_news_status:
+                status = all_news_status[news_key]
+                news_item['ai_analyzed'] = status.get('ai_analyzed', False)
+                news_item['pushed'] = status.get('pushed', False)
+                news_item['core_event'] = ''
+                normal_items.append(news_item)
                 continue
             
             news_item['ai_analyzed'] = False
@@ -60,7 +103,7 @@ def process_news_with_ai_and_push(news_list):
             new_items.append(news_item)
             existing_dict[news_id] = news_item
             if news_title and news_content:
-                existing_keys.add(news_key)
+                existing_keys[news_key] = news_item
         
         if not new_items:
             return list(existing_dict.values()), [], [], []
