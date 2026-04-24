@@ -319,7 +319,7 @@ def get_recent_news(page=1, page_size=40, importance=None):
             'total_pages': 0
         }
 
-def search_news(keyword, page=1, page_size=40):
+def search_news(keyword, page=1, page_size=40, importance=None):
     ensure_news_dir()
     
     if not keyword or not keyword.strip():
@@ -370,8 +370,11 @@ def search_news(keyword, page=1, page_size=40):
             title = news.get('title', '').lower()
             content = news.get('content', '').lower()
             
+            # 检查关键词匹配
             if keyword in title or keyword in content:
-                search_results.append(news)
+                # 检查重要性筛选
+                if importance is None or news.get('importance') == importance:
+                    search_results.append(news)
         
         def get_sort_time(news):
             time_val = news.get('time', 0)

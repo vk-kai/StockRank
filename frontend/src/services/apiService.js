@@ -129,12 +129,17 @@ export async function getNews(page = 1, pageSize = 40, importance = null) {
  * @param {string} keyword - 搜索关键词
  * @param {number} page - 页码
  * @param {number} pageSize - 每页数量
+ * @param {string} importance - 重要性筛选 (可选，如 '3' 表示重要新闻)
  * @returns {Promise<Object>} 搜索结果
  */
-export async function searchNews(keyword, page = 1, pageSize = 40) {
+export async function searchNews(keyword, page = 1, pageSize = 40, importance = null) {
   try {
+    const params = { keyword: keyword, page: page, page_size: pageSize }
+    if (importance) {
+      params.importance = importance
+    }
     const response = await apiClient.get('/news/search', {
-      params: { keyword: keyword, page: page, page_size: pageSize }
+      params: params
     })
     return response.data
   } catch (error) {

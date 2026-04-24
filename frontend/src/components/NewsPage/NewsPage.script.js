@@ -22,7 +22,8 @@ export default {
       searchKeyword: '',
       searchTimer: null,
       isSearching: false,
-      currentSearchPage: 1
+      currentSearchPage: 1,
+      showBackToTop: false
     }
   },
   computed: {
@@ -49,6 +50,9 @@ export default {
     this.startCountdown()
     this.fetchSystemHealth()
     this.startHealthCheck()
+    
+    // 监听滚动事件
+    window.addEventListener('scroll', this.handleScroll)
   },
   beforeUnmount() {
     if (this.countdownInterval) {
@@ -60,6 +64,9 @@ export default {
     if (this.searchTimer) {
       clearTimeout(this.searchTimer)
     }
+    
+    // 移除滚动监听
+    window.removeEventListener('scroll', this.handleScroll)
   },
   methods: {
     goBack() {
@@ -119,7 +126,10 @@ export default {
         if (this.countdown > 0) {
           this.countdown--
         } else {
-          this.fetchNews()
+          // 搜索状态下不刷新新闻
+          if (!this.isSearching || !this.searchKeyword.trim()) {
+            this.fetchNews()
+          }
           this.countdown = 30
         }
       }, 1000)
@@ -185,7 +195,8 @@ export default {
         this.currentSearchPage = 1
         this.newsList = []
         
-        const response = await searchNews(this.searchKeyword, 1, this.pageSize)
+        const importance = this.showOnlyImportant ? '3' : null
+        const response = await searchNews(this.searchKeyword, 1, this.pageSize, importance)
         
         if (response.success) {
           this.newsList = response.data
@@ -419,7 +430,8 @@ export default {
         
         if (this.isSearching && this.searchKeyword && this.searchKeyword.trim()) {
           this.currentSearchPage++
-          const response = await searchNews(this.searchKeyword, this.currentSearchPage, this.pageSize)
+          const importance = this.showOnlyImportant ? '3' : null
+          const response = await searchNews(this.searchKeyword, this.currentSearchPage, this.pageSize, importance)
           if (response.success) {
             const newNews = response.data
             this.newsList = [...this.newsList, ...newNews]
@@ -528,6 +540,18 @@ export default {
         return `${label}运行正常`
       }
       return `${label}已停止`
+    },
+
+    handleScroll() {
+      // 滚动超过500px时显示回到顶部按钮
+      this.showBackToTop = window.scrollY > 500
+    },
+
+    scrollToTop() {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      })
     }
   }
 }

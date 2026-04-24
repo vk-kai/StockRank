@@ -50,9 +50,15 @@ def search_news_api():
         keyword = request.args.get('keyword', '', type=str)
         page = request.args.get('page', '1', type=int)
         page_size = request.args.get('page_size', '40', type=int)
+        importance = request.args.get('importance', None, type=str)
         
         page = max(1, page)
         page_size = max(1, min(100, page_size))
+        
+        if importance is not None:
+            importance = importance.strip()
+            if not importance:
+                importance = None
         
         if not keyword or not keyword.strip():
             return jsonify({
@@ -60,7 +66,7 @@ def search_news_api():
                 'message': '搜索关键词不能为空'
             }), 400
         
-        result = search_news(keyword, page, page_size)
+        result = search_news(keyword, page, page_size, importance)
         
         return jsonify({
             'success': True,
@@ -72,11 +78,14 @@ def search_news_api():
                 'total_pages': result['total_pages'],
                 'has_more': result['page'] < result['total_pages']
             },
-            'keyword': keyword,
+            'filter': {
+                'keyword': keyword,
+                'importance': importance
+            },
             'timestamp': datetime.now().astimezone().isoformat()
         })
     except Exception as e:
-        error_logger.error(f"API /api/news/search 异常: {e}, 参数: keyword={keyword}, page={page}, page_size={page_size}")
+        error_logger.error(f"API /api/news/search 异常: {e}, 参数: keyword={keyword}, page={page}, page_size={page_size}, importance={importance}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

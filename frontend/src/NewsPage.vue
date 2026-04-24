@@ -101,6 +101,15 @@
     <div class="no-news" v-if="!loading && newsList.length === 0">
       <p>暂无新闻数据</p>
     </div>
+
+    <button 
+      class="back-to-top" 
+      @click="scrollToTop"
+      :class="{ 'visible': showBackToTop }"
+      title="回到顶部"
+    >
+      ↑
+    </button>
   </div>
 </template>
 
