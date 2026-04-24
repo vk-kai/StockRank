@@ -215,50 +215,34 @@ def generate_daily_summary():
         return False
     
     try:
-        # 收集当天所有时间段数据中的板块资金流入
-        sector_flows = {}
-        for minute_key, record in realtime_data.items():
-            data = record.get('data', [])
-            for item in data:
-                if item['name'] not in sector_flows:
-                    sector_flows[item['name']] = []
-                sector_flows[item['name']].append(item['flow'])
+        # 获取当天的最后一个时间点的数据
+        last_minute = max(realtime_data.keys())
+        last_data = realtime_data[last_minute]['data']
         
-        # 计算每个板块的平均资金流入
-        sector_avg_flows = []
-        for name, flows in sector_flows.items():
-            avg = sum(flows) / len(flows)
-            sector_avg_flows.append({'name': name, 'avg_flow': avg})
+        # 按最后一次采集到的资金流入排序
+        sorted_sectors = sorted(last_data, key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
+        top_10 = sorted_sectors[:10]
         
-        # 按平均资金流入排序，取前10个
-        sector_avg_flows.sort(key=lambda x: x['avg_flow'], reverse=True)
-        top_10 = sector_avg_flows[:10]
+        # 构建当天的代表数据
+        representative_data = []
+        for i, item in enumerate(top_10):
+            representative_data.append({
+                'rank': i + 1,
+                'name': item['name'],
+                'flow': item['flow'],
+                'change': item['change']
+            })
         
-        # 获取最新的完整数据
-        current_data = get_sector_flow_data()
-        if current_data:
-            # 构建当天的代表数据
-            representative_data = []
-            for i, item in enumerate(top_10):
-                sector_info = next((s for s in current_data if s['name'] == item['name']), None)
-                if sector_info:
-                    representative_data.append({
-                        'rank': i + 1,
-                        'name': sector_info['name'],
-                        'flow': sector_info['flow'],
-                        'change': sector_info['change']
-                    })
-            
-            if representative_data:
-                success = save_daily_data(today, representative_data)
-                if success:
-                    system_logger.info(f"已生成并保存当天({today})的每日汇总数据，共{len(representative_data)}个板块")
-                    return True
-                else:
-                    system_logger.error(f"保存当天({today})的每日汇总数据失败")
-                    return False
+        if representative_data:
+            success = save_daily_data(today, representative_data)
+            if success:
+                system_logger.info(f"已生成并保存当天({today})的每日汇总数据，共{len(representative_data)}个板块")
+                return True
+            else:
+                system_logger.error(f"保存当天({today})的每日汇总数据失败")
+                return False
         else:
-            system_logger.error(f"获取最新数据失败，无法生成当天({today})的每日汇总")
+            system_logger.error(f"无法构建当天({today})的每日汇总数据")
             return False
     except Exception as e:
         error_logger.error(f"生成每日汇总数据失败 ({today}): {e}")
@@ -273,40 +257,23 @@ def generate_daily_summary_for_date(date_str):
         return False
     
     try:
-        # 收集当天所有时间段数据中的板块资金流入
-        sector_flows = {}
-        for minute_key, record in realtime_data.items():
-            data = record.get('data', [])
-            for item in data:
-                if item['name'] not in sector_flows:
-                    sector_flows[item['name']] = []
-                sector_flows[item['name']].append(item['flow'])
-        
-        # 计算每个板块的平均资金流入
-        sector_avg_flows = []
-        for name, flows in sector_flows.items():
-            avg = sum(flows) / len(flows)
-            sector_avg_flows.append({'name': name, 'avg_flow': avg})
-        
-        # 按平均资金流入排序，取前10个
-        sector_avg_flows.sort(key=lambda x: x['avg_flow'], reverse=True)
-        top_10 = sector_avg_flows[:10]
-        
-        # 获取当天的最后一个时间点的数据来获取完整信息
+        # 获取当天的最后一个时间点的数据
         last_minute = max(realtime_data.keys())
         last_data = realtime_data[last_minute]['data']
+        
+        # 按最后一次采集到的资金流入排序
+        sorted_sectors = sorted(last_data, key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
+        top_10 = sorted_sectors[:10]
         
         # 构建当天的代表数据
         representative_data = []
         for i, item in enumerate(top_10):
-            sector_info = next((s for s in last_data if s['name'] == item['name']), None)
-            if sector_info:
-                representative_data.append({
-                    'rank': i + 1,
-                    'name': sector_info['name'],
-                    'flow': sector_info['flow'],
-                    'change': sector_info['change']
-                })
+            representative_data.append({
+                'rank': i + 1,
+                'name': item['name'],
+                'flow': item['flow'],
+                'change': item['change']
+            })
         
         if representative_data:
             success = save_daily_data(date_str, representative_data)
