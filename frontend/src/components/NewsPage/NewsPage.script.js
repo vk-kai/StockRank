@@ -30,13 +30,7 @@ export default {
       return this.countdown.toString().padStart(2, '0')
     },
     filteredNewsList() {
-      let result = this.newsList
-      
-      if (this.showOnlyImportant) {
-        result = result.filter(news => this.isImportant(news.importance))
-      }
-      
-      return result
+      return this.newsList
     },
     displayNewsList() {
       return this.filteredNewsList
@@ -79,7 +73,8 @@ export default {
         this.currentApiPage = 1
         this.newsList = []
         
-        const response = await getNews(1, this.pageSize)
+        const importance = this.showOnlyImportant ? '3' : null
+        const response = await getNews(1, this.pageSize, importance)
         if (response.success) {
           const newNews = response.data
           
@@ -164,6 +159,7 @@ export default {
     toggleImportantFilter() {
       this.showOnlyImportant = !this.showOnlyImportant
       localStorage.setItem('newsShowOnlyImportant', this.showOnlyImportant.toString())
+      this.fetchNews()
     },
 
     handleSearch() {
@@ -433,7 +429,8 @@ export default {
           }
         } else {
           this.currentApiPage++
-          const response = await getNews(this.currentApiPage, this.pageSize)
+          const importance = this.showOnlyImportant ? '3' : null
+          const response = await getNews(this.currentApiPage, this.pageSize, importance)
           if (response.success) {
             const newNews = response.data
             this.newsList = [...this.newsList, ...newNews]

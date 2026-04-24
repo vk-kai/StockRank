@@ -248,7 +248,7 @@ def cleanup_old_news():
         result['reason'] = f"清理失败: {str(e)}"
         return result
 
-def get_recent_news(page=1, page_size=40):
+def get_recent_news(page=1, page_size=40, importance=None):
     ensure_news_dir()
     
     all_news = []
@@ -293,6 +293,9 @@ def get_recent_news(page=1, page_size=40):
             return 0
         
         unique_news.sort(key=get_sort_time, reverse=True)
+        
+        if importance is not None:
+            unique_news = [news for news in unique_news if news.get('importance') == importance]
         
         total_count = len(unique_news)
         

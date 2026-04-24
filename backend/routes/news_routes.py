@@ -10,11 +10,17 @@ def get_news():
     try:
         page = request.args.get('page', '1', type=int)
         page_size = request.args.get('page_size', '40', type=int)
+        importance = request.args.get('importance', None, type=str)
         
         page = max(1, page)
         page_size = max(1, min(100, page_size))
         
-        result = get_recent_news(page, page_size)
+        if importance is not None:
+            importance = importance.strip()
+            if not importance:
+                importance = None
+        
+        result = get_recent_news(page, page_size, importance)
         
         return jsonify({
             'success': True,
@@ -26,10 +32,13 @@ def get_news():
                 'total_pages': result['total_pages'],
                 'has_more': result['page'] < result['total_pages']
             },
+            'filter': {
+                'importance': importance
+            },
             'timestamp': datetime.now().astimezone().isoformat()
         })
     except Exception as e:
-        error_logger.error(f"API /api/news 异常: {e}, 参数: page={page}, page_size={page_size}")
+        error_logger.error(f"API /api/news 异常: {e}, 参数: page={page}, page_size={page_size}, importance={importance}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

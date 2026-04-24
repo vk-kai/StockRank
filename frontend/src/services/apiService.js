@@ -105,12 +105,17 @@ export async function getLatestData() {
  * 获取新闻数据
  * @param {number} page - 页码
  * @param {number} pageSize - 每页数量
+ * @param {string} importance - 重要性筛选 (可选，如 '3' 表示重要新闻)
  * @returns {Promise<Object>} 新闻数据
  */
-export async function getNews(page = 1, pageSize = 40) {
+export async function getNews(page = 1, pageSize = 40, importance = null) {
   try {
+    const params = { page: page, page_size: pageSize }
+    if (importance) {
+      params.importance = importance
+    }
     const response = await apiClient.get('/news', {
-      params: { page: page, page_size: pageSize }
+      params: params
     })
     return response.data
   } catch (error) {
