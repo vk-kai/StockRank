@@ -154,6 +154,8 @@ export default {
       const ma12 = this.calculateMA(data.map(d => d.close), 12)
 
       const self = this
+      const totalPoints = data.length
+      const labelInterval = this.currentPeriod === 'monthly' ? 5 : 2
 
       const option = {
         animation: false,
@@ -167,30 +169,35 @@ export default {
           textStyle: {
             color: '#fff'
           },
+          confine: true,
+          triggerOn: 'mousemove',
           formatter: function(params) {
-            if (!params || params.length === 0) return ''
-            const dataIndex = params[0].dataIndex
-            const item = data[dataIndex]
-            if (!item) return ''
-            
-            const change = ((item.close - item.open) / item.open * 100).toFixed(2)
-            const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
-            
-            let dateLabel
-            if (self.currentPeriod === 'monthly') {
-              dateLabel = `${item.year}年${item.month}月`
-            } else {
-              dateLabel = item.quarter
+            try {
+              if (!params || params.length === 0) return ''
+              let dataIndex = params[0].dataIndex
+              const item = data[dataIndex]
+              if (!item) return ''
+              
+              const change = ((item.close - item.open) / item.open * 100).toFixed(2)
+              const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
+              
+              let dateLabel
+              if (self.currentPeriod === 'monthly') {
+                dateLabel = `${item.year}年${item.month}月`
+              } else {
+                dateLabel = item.quarter
+              }
+              
+              return `<div style="padding: 10px;">
+                <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">${dateLabel}</div>
+                <div style="margin-bottom: 5px;">开盘: <span style="color: #faad14;">${item.open.toFixed(2)}万元</span></div>
+                <div style="margin-bottom: 5px;">收盘: <span style="color: #1890ff;">${item.close.toFixed(2)}万元</span></div>
+                <div style="margin-bottom: 5px;">涨跌: <span style="color: ${changeColor}; font-weight: bold;">${change >= 0 ? '+' : ''}${change}%</span></div>
+              </div>`
+            } catch (e) {
+              console.error('tooltip error:', e)
+              return ''
             }
-            
-            let html = `<div style="padding: 10px;">
-              <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">${dateLabel}</div>
-              <div style="margin-bottom: 5px;">开盘: <span style="color: #faad14;">${item.open.toFixed(2)}万元</span></div>
-              <div style="margin-bottom: 5px;">收盘: <span style="color: #1890ff;">${item.close.toFixed(2)}万元</span></div>
-              <div style="margin-bottom: 5px;">涨跌: <span style="color: ${changeColor}; font-weight: bold;">${change >= 0 ? '+' : ''}${change}%</span></div>
-            </div>`
-            
-            return html
           }
         },
         legend: {
@@ -213,7 +220,7 @@ export default {
           axisLabel: {
             color: '#8ba4c7',
             fontSize: 11,
-            interval: 0,
+            interval: labelInterval,
             rotate: 0
           },
           splitLine: { show: false },
@@ -245,6 +252,9 @@ export default {
               color0: '#52c41a',
               borderColor: '#ff4d4f',
               borderColor0: '#52c41a'
+            },
+            tooltip: {
+              show: true
             }
           },
           {
