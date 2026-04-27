@@ -8,7 +8,7 @@ from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
-from routes import flow_bp, news_bp, config_bp, log_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
 
@@ -30,6 +30,7 @@ def create_app():
     app.register_blueprint(news_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(log_bp)
+    app.register_blueprint(house_bp)
     
     @app.route('/health', methods=['GET'])
     def health():

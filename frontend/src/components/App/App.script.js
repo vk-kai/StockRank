@@ -411,6 +411,10 @@ export default {
       this.$router.push('/logs')
     },
 
+    goToHouseKline() {
+      this.$router.push('/house-kline')
+    },
+
     openNews(url) {
       if (url) {
         window.open(url, '_blank')

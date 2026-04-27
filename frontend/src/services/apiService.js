@@ -321,3 +321,13 @@ export async function getDailyReport(date) {
     throw error
   }
 }
+
+export async function getHouseKline() {
+  try {
+    const response = await apiClient.get('/house/kline')
+    return response.data
+  } catch (error) {
+    console.error('获取房价K线数据失败:', error)
+    throw error
+  }
+}

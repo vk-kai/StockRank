@@ -4,6 +4,7 @@ import NewsPage from './NewsPage.vue'
 import ConfigPage from './ConfigPage.vue'
 import LogPage from './LogPage.vue'
 import DailyReport from './DailyReport.vue'
+import HouseKline from './HouseKline.vue'
 
 const routes = [
   {
@@ -30,6 +31,11 @@ const routes = [
     path: '/daily-report',
     name: 'DailyReport',
     component: DailyReport
+  },
+  {
+    path: '/house-kline',
+    name: 'HouseKline',
+    component: HouseKline
   }
 ]
 

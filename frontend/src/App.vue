@@ -32,6 +32,9 @@
         <button class="log-button" @click="goToLogs">
           📋 日志
         </button>
+        <button class="house-button" @click="goToHouseKline">
+          🏠 房价K线
+        </button>
       </div>
     </header>
 
