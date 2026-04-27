@@ -1,8 +1,12 @@
 from flask import Blueprint, jsonify
 import pandas as pd
 import numpy as np
+import traceback
+from logger import get_logger
 
 house_bp = Blueprint('house', __name__, url_prefix='/api/house')
+error_logger = get_logger('error')
+system_logger = get_logger('system')
 
 XIANY_ERSHOUFANG_HUANBI = [
     99.9, 99.8, 101.2, 100.9, 100.6, 100.6, 100.1, 100.0, 99.4, 99.3, 99.2, 99.4,
@@ -15,9 +19,18 @@ XIANY_ERSHOUFANG_HUANBI = [
     99.2, 99.9, 100.0,
 ]
 
+def get_pandas_freq(freq_type):
+    pd_version = tuple(map(int, pd.__version__.split('.')[:2]))
+    if freq_type == 'month':
+        return 'ME' if pd_version >= (2, 2) else 'M'
+    elif freq_type == 'quarter':
+        return 'QE' if pd_version >= (2, 2) else 'Q'
+    return freq_type
+
 def generate_xian_price_data():
     base_date = pd.to_datetime("2018-12-31")
-    date_range = pd.date_range(start="2019-01-31", periods=len(XIANY_ERSHOUFANG_HUANBI), freq="ME")
+    month_freq = get_pandas_freq('month')
+    date_range = pd.date_range(start="2019-01-31", periods=len(XIANY_ERSHOUFANG_HUANBI), freq=month_freq)
     
     df = pd.DataFrame(index=[base_date] + list(date_range))
     
@@ -52,7 +65,8 @@ def generate_monthly_kline(data):
     return monthly_ohlc
 
 def generate_quarterly_kline(monthly_data):
-    quarterly = monthly_data.resample('QE').agg({
+    quarter_freq = get_pandas_freq('quarter')
+    quarterly = monthly_data.resample(quarter_freq).agg({
         'open': 'first',
         'close': 'last',
         'high': 'max',
@@ -127,6 +141,10 @@ def get_kline_data():
             }
         })
     except Exception as e:
+        error_msg = f"房价K线接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/house/kline]: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

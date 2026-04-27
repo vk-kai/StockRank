@@ -1,9 +1,12 @@
 from flask import Blueprint, jsonify, request
 from datetime import datetime
+import traceback
 from news_processor import get_recent_news, search_news
 from data_processor import error_logger
+from logger import get_logger
 
 news_bp = Blueprint('news', __name__, url_prefix='/api')
+system_logger = get_logger('system')
 
 @news_bp.route('/news', methods=['GET'])
 def get_news():
@@ -39,6 +42,8 @@ def get_news():
         })
     except Exception as e:
         error_logger.error(f"API /api/news 异常: {e}, 参数: page={page}, page_size={page_size}, importance={importance}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/news]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -86,6 +91,8 @@ def search_news_api():
         })
     except Exception as e:
         error_logger.error(f"API /api/news/search 异常: {e}, 参数: keyword={keyword}, page={page}, page_size={page_size}, importance={importance}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/news/search]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

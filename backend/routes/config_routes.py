@@ -6,15 +6,18 @@ import time
 import hmac
 import hashlib
 import base64
+import traceback
 
 from config import (
     AI_CONFIG_FILE, FEISHU_CONFIG_FILE, 
     STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE
 )
 from data_processor import error_logger
+from logger import get_logger
 from .auth_routes import verify_password
 
 config_bp = Blueprint('config', __name__, url_prefix='/api/config')
+system_logger = get_logger('system')
 
 def mask_sensitive_data(data, sensitive_keys):
     for key in sensitive_keys:
@@ -34,6 +37,8 @@ def get_ai_config():
         return jsonify({'success': True, 'data': {}})
     except Exception as e:
         error_logger.error(f"获取AI配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/ai GET]: {str(e)}")
         return jsonify({'success': False, 'message': '获取AI配置失败'}), 500
 
 @config_bp.route('/ai', methods=['POST'])
@@ -63,6 +68,8 @@ def update_ai_config():
         return jsonify({'success': True, 'message': 'AI配置更新成功'})
     except Exception as e:
         error_logger.error(f"更新AI配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/ai POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新AI配置失败'}), 500
 
 @config_bp.route('/ai/test', methods=['POST'])
@@ -119,6 +126,8 @@ def test_ai_connection():
         return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': f'连接失败: {str(e)}'}), 400
     except Exception as e:
         error_logger.error(f"测试AI连接失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/ai/test]: {str(e)}")
         return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': str(e)}), 500
     return jsonify({'success': True, 'status_code': response.status_code, 'api_url': api_url, 'data': response_data}), 200
 # ==================== 飞书配置 ====================
@@ -133,6 +142,8 @@ def get_feishu_config():
         return jsonify({'success': True, 'data': {}})
     except Exception as e:
         error_logger.error(f"获取飞书配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/feishu GET]: {str(e)}")
         return jsonify({'success': False, 'message': '获取飞书配置失败'}), 500
 
 @config_bp.route('/feishu', methods=['POST'])
@@ -165,6 +176,8 @@ def update_feishu_config():
         return jsonify({'success': True, 'message': '飞书配置更新成功'})
     except Exception as e:
         error_logger.error(f"更新飞书配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/feishu POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新飞书配置失败'}), 500
 
 @config_bp.route('/feishu/test', methods=['POST'])
@@ -251,6 +264,8 @@ def test_feishu_push():
         return jsonify({'success': False, 'status_code': None, 'error': f'连接失败: {str(e)}'}), 400
     except Exception as e:
         error_logger.error(f"测试飞书推送失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/feishu/test]: {str(e)}")
         return jsonify({'success': False, 'status_code': None, 'error': str(e)}), 500
 
 # ==================== 股票监控配置 ====================
@@ -264,6 +279,8 @@ def get_stock_monitor_config():
         return jsonify({'success': True, 'data': {}})
     except Exception as e:
         error_logger.error(f"获取股票监控配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/stock-monitor GET]: {str(e)}")
         return jsonify({'success': False, 'message': '获取股票监控配置失败'}), 500
 
 @config_bp.route('/stock-monitor', methods=['POST'])
@@ -280,6 +297,8 @@ def update_stock_monitor_config():
         return jsonify({'success': True, 'message': '股票监控配置更新成功'})
     except Exception as e:
         error_logger.error(f"更新股票监控配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/stock-monitor POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新股票监控配置失败'}), 500
 
 # ==================== AI提示词配置 ====================
@@ -293,6 +312,8 @@ def get_ai_prompt():
         return jsonify({'success': True, 'data': ''})
     except Exception as e:
         error_logger.error(f"获取AI提示词失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/prompt GET]: {str(e)}")
         return jsonify({'success': False, 'message': '获取AI提示词失败'}), 500
 
 @config_bp.route('/prompt', methods=['POST'])
@@ -309,4 +330,6 @@ def update_ai_prompt():
         return jsonify({'success': True, 'message': 'AI提示词更新成功'})
     except Exception as e:
         error_logger.error(f"更新AI提示词失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/prompt POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新AI提示词失败'}), 500

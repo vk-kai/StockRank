@@ -1,12 +1,14 @@
 from flask import Blueprint, jsonify, request
 import os
 import re
+import traceback
 
 from config import LOG_DIR
 from data_processor import error_logger
-from logger import get_log_modules
+from logger import get_log_modules, get_logger
 
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
+system_logger = get_logger('system')
 
 LOG_FILES = {
     'system': 'system.log',
@@ -83,6 +85,8 @@ def get_log_list():
         return jsonify({'success': True, 'data': logs})
     except Exception as e:
         error_logger.error(f"获取日志列表失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/log/list]: {str(e)}")
         return jsonify({'success': False, 'message': '获取日志列表失败'}), 500
 
 def parse_nginx_line(line):
@@ -236,6 +240,8 @@ def get_log_content(log_type):
         })
     except Exception as e:
         error_logger.error(f"读取日志内容失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/log/content]: {str(e)}")
         return jsonify({'success': False, 'message': '读取日志内容失败'}), 500
 
 @log_bp.route('/levels', methods=['GET'])

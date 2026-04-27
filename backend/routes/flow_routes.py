@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
+import traceback
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
@@ -8,8 +9,10 @@ from data_processor import (
     get_top5_comparison_data
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
+from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
+system_logger = get_logger('system')
 
 @flow_bp.route('/current', methods=['GET'])
 def get_current_flow():
@@ -109,6 +112,8 @@ def get_current_flow():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/current 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/current]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -164,6 +169,8 @@ def get_history():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/history 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/history]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -183,6 +190,8 @@ def get_minute_data():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/minute 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/minute]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -206,6 +215,8 @@ def get_market():
             }), 500
     except Exception as e:
         error_logger.error(f"API /api/flow/market 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/market]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -227,6 +238,8 @@ def get_accumulated_flow():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/accumulated 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/accumulated]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
@@ -264,6 +277,8 @@ def get_daily_report():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/daily-report 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/daily-report]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
