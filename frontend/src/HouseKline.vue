@@ -141,6 +141,18 @@ export default {
       const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
       const ma5 = this.calculateMA(data.map(d => d.close), 5)
       const ma10 = this.calculateMA(data.map(d => d.close), 10)
+      
+      const macdData = data.map(item => item.macd || 0)
+      const signalData = data.map(item => item.signal || 0)
+      const histogramData = data.map(item => {
+        const val = item.histogram || 0
+        return {
+          value: val,
+          itemStyle: {
+            color: val >= 0 ? '#ff4d4f' : '#52c41a'
+          }
+        }
+      })
 
       const self = this
       const labelInterval = this.currentPeriod === 'monthly' ? 5 : 2
@@ -148,6 +160,12 @@ export default {
       const option = {
         animation: false,
         backgroundColor: 'transparent',
+        axisPointer: {
+          link: [{ xAxisIndex: 'all' }],
+          label: {
+            backgroundColor: '#777'
+          }
+        },
         tooltip: {
           trigger: 'item',
           backgroundColor: 'rgba(20, 25, 45, 0.95)',
@@ -160,7 +178,6 @@ export default {
           },
           confine: true,
           formatter: function(params) {
-            console.log('[HouseKline] tooltip params:', params)
             if (!params) return ''
             
             const dataIndex = params.dataIndex
@@ -177,8 +194,15 @@ export default {
             } else {
               dateLabel = item.quarter || `${item.year}年Q${item.month}`
             }
+            
+            const macdVal = item.macd || 0
+            const signalVal = item.signal || 0
+            const histogramVal = item.histogram || 0
+            const macdColor = macdVal >= 0 ? '#ff4d4f' : '#52c41a'
+            const signalColor = signalVal >= 0 ? '#faad14' : '#13c2c2'
+            const histogramColor = histogramVal >= 0 ? '#ff4d4f' : '#52c41a'
 
-            return `<div style="min-width: 180px;">
+            return `<div style="min-width: 200px;">
               <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #fff; border-bottom: 1px solid #3a4a6b; padding-bottom: 8px;">
                 📅 ${dateLabel}
               </div>
@@ -202,65 +226,134 @@ export default {
                 <span style="color: #8ba4c7;">涨跌幅：</span>
                 <span style="color: ${changeColor}; font-weight: bold; font-size: 14px;">${changePrefix}${change}%</span>
               </div>
+              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a4a6b;">
+                <div style="color: #8ba4c7; font-weight: bold; margin-bottom: 6px;">📊 MACD指标</div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span style="color: #8ba4c7;">MACD：</span>
+                  <span style="color: ${macdColor};">${macdVal.toFixed(4)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span style="color: #8ba4c7;">Signal：</span>
+                  <span style="color: ${signalColor};">${signalVal.toFixed(4)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: #8ba4c7;">Histogram：</span>
+                  <span style="color: ${histogramColor};">${histogramVal.toFixed(4)}</span>
+                </div>
+              </div>
             </div>`
           }
         },
-        grid: {
-          left: '3%',
-          right: '3%',
-          top: 30,
-          bottom: 50,
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          data: dates,
-          axisLine: {
-            lineStyle: {
-              color: '#3a4a6b',
-              width: 1
-            }
+        grid: [
+          {
+            left: '3%',
+            right: '3%',
+            top: 30,
+            height: '55%'
           },
-          axisLabel: {
-            color: '#8ba4c7',
-            fontSize: 11,
-            interval: labelInterval,
-            rotate: 0
-          },
-          axisTick: {
-            show: false
-          },
-          splitLine: {
-            show: false
+          {
+            left: '3%',
+            right: '3%',
+            top: '70%',
+            height: '18%'
           }
-        },
-        yAxis: {
-          type: 'value',
-          scale: true,
-          min: function(value) {
-            return Math.floor(value.min - 1)
-          },
-          max: function(value) {
-            return Math.ceil(value.max + 1)
-          },
-          axisLine: {
-            show: true,
-            lineStyle: {
-              color: '#3a4a6b'
+        ],
+        xAxis: [
+          {
+            type: 'category',
+            data: dates,
+            axisLine: {
+              lineStyle: {
+                color: '#3a4a6b',
+                width: 1
+              }
+            },
+            axisLabel: {
+              show: false
+            },
+            axisTick: {
+              show: false
+            },
+            splitLine: {
+              show: false
             }
           },
-          axisLabel: {
-            color: '#8ba4c7',
-            fontSize: 11,
-            formatter: '{value}'
-          },
-          splitLine: {
-            lineStyle: {
-              color: '#1a2a3b',
-              type: 'dashed'
+          {
+            type: 'category',
+            gridIndex: 1,
+            data: dates,
+            axisLine: {
+              lineStyle: {
+                color: '#3a4a6b',
+                width: 1
+              }
+            },
+            axisLabel: {
+              color: '#8ba4c7',
+              fontSize: 11,
+              interval: labelInterval
+            },
+            axisTick: {
+              show: false
+            },
+            splitLine: {
+              show: false
             }
           }
-        },
+        ],
+        yAxis: [
+          {
+            type: 'value',
+            scale: true,
+            min: function(value) {
+              return Math.floor(value.min - 1)
+            },
+            max: function(value) {
+              return Math.ceil(value.max + 1)
+            },
+            axisLine: {
+              show: true,
+              lineStyle: {
+                color: '#3a4a6b'
+              }
+            },
+            axisLabel: {
+              color: '#8ba4c7',
+              fontSize: 11,
+              formatter: '{value}'
+            },
+            splitLine: {
+              lineStyle: {
+                color: '#1a2a3b',
+                type: 'dashed'
+              }
+            }
+          },
+          {
+            type: 'value',
+            gridIndex: 1,
+            scale: true,
+            axisLine: {
+              show: true,
+              lineStyle: {
+                color: '#3a4a6b'
+              }
+            },
+            axisLabel: {
+              color: '#8ba4c7',
+              fontSize: 10,
+              formatter: function(value) {
+                return value.toFixed(2)
+              }
+            },
+            splitLine: {
+              lineStyle: {
+                color: '#1a2a3b',
+                type: 'dashed'
+              }
+            }
+          }
+        ],
         series: [
           {
             name: 'K线',
@@ -299,6 +392,38 @@ export default {
               width: 1.5,
               type: 'dotted'
             }
+          },
+          {
+            name: 'MACD',
+            type: 'line',
+            xAxisIndex: 1,
+            yAxisIndex: 1,
+            data: macdData,
+            showSymbol: false,
+            lineStyle: {
+              color: '#ff4d4f',
+              width: 1.5
+            }
+          },
+          {
+            name: 'Signal',
+            type: 'line',
+            xAxisIndex: 1,
+            yAxisIndex: 1,
+            data: signalData,
+            showSymbol: false,
+            lineStyle: {
+              color: '#faad14',
+              width: 1.5
+            }
+          },
+          {
+            name: 'Histogram',
+            type: 'bar',
+            xAxisIndex: 1,
+            yAxisIndex: 1,
+            data: histogramData,
+            barWidth: '40%'
           }
         ]
       }
@@ -423,7 +548,7 @@ export default {
 
 .main-chart {
   width: 100%;
-  height: 500px;
+  height: 600px;
 }
 
 .data-source {
@@ -461,7 +586,7 @@ export default {
   }
   
   .main-chart {
-    height: 400px;
+    height: 500px;
   }
 }
 </style>
