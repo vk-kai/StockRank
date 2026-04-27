@@ -151,7 +151,7 @@ export default {
       const dates = this.generateXAxisLabels(data)
       const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
       const ma5 = this.calculateMA(data.map(d => d.close), 5)
-      const ma12 = this.calculateMA(data.map(d => d.close), 12)
+      const ma10 = this.calculateMA(data.map(d => d.close), 10)
 
       const self = this
       const totalPoints = data.length
@@ -201,7 +201,7 @@ export default {
           }
         },
         legend: {
-          data: ['K线', 'MA5', 'MA12'],
+          data: ['K线', 'MA5', 'MA10'],
           textStyle: {
             color: '#8ba4c7'
           },
@@ -270,9 +270,9 @@ export default {
             symbol: 'none'
           },
           {
-            name: 'MA12',
+            name: 'MA10',
             type: 'line',
-            data: ma12,
+            data: ma10,
             smooth: true,
             lineStyle: {
               color: '#722ed1',
@@ -291,13 +291,13 @@ export default {
       const result = []
       for (let i = 0; i < data.length; i++) {
         if (i < period - 1) {
-          result.push('-')
+          result.push(null)
         } else {
           let sum = 0
           for (let j = 0; j < period; j++) {
             sum += data[i - j]
           }
-          result.push((sum / period).toFixed(2))
+          result.push(Number((sum / period).toFixed(2)))
         }
       }
       return result
