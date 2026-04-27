@@ -149,7 +149,7 @@ def update_feishu_config():
         else:
             config = {}
         
-        for key in ['enabled', 'msg_type']:
+        for key in ['enabled', 'msg_type', 'base_url']:
             if key in data:
                 config[key] = data[key]
         

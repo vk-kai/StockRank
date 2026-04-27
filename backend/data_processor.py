@@ -107,16 +107,72 @@ def load_daily_data(date_str):
 def save_daily_data(date_str, data):
     file_path = get_daily_file_path(date_str)
     try:
+        existing_data = load_daily_data(date_str) or {}
+        push_status = existing_data.get('push_status', {
+            'morning_pushed': False,
+            'morning_push_time': None,
+            'afternoon_pushed': False,
+            'afternoon_push_time': None
+        })
+        
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump({
                 'date': date_str,
                 'timestamp': datetime.now().isoformat(),
-                'data': data
+                'data': data,
+                'push_status': push_status
             }, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         error_logger.error(f"保存每日数据失败 ({date_str}): {e}")
         return False
+
+def update_push_status(date_str, period):
+    file_path = get_daily_file_path(date_str)
+    try:
+        daily_data = load_daily_data(date_str)
+        if not daily_data:
+            error_logger.error(f"更新推送状态失败：找不到每日数据文件 ({date_str})")
+            return False
+        
+        if 'push_status' not in daily_data:
+            daily_data['push_status'] = {
+                'morning_pushed': False,
+                'morning_push_time': None,
+                'afternoon_pushed': False,
+                'afternoon_push_time': None
+            }
+        
+        now = datetime.now().isoformat()
+        if period == '上午':
+            daily_data['push_status']['morning_pushed'] = True
+            daily_data['push_status']['morning_push_time'] = now
+        elif period == '下午':
+            daily_data['push_status']['afternoon_pushed'] = True
+            daily_data['push_status']['afternoon_push_time'] = now
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(daily_data, f, ensure_ascii=False, indent=2)
+        
+        data_logger.info(f"已更新 {date_str} {period}推送状态")
+        return True
+    except Exception as e:
+        error_logger.error(f"更新推送状态失败 ({date_str}): {e}")
+        return False
+
+def is_pushed(date_str, period):
+    daily_data = load_daily_data(date_str)
+    if not daily_data:
+        return False
+    
+    push_status = daily_data.get('push_status', {})
+    
+    if period == '上午':
+        return push_status.get('morning_pushed', False)
+    elif period == '下午':
+        return push_status.get('afternoon_pushed', False)
+    
+    return False
 
 # 加载指定日期的实时数据
 def load_realtime_data(date_str):

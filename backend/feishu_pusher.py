@@ -180,12 +180,9 @@ def push_daily_summary_feishu(comparison_data, period='上午'):
     time_str = comparison_data['time']
     top5 = comparison_data['top5']
     
-    title = f"📊 {date_str} {period}收盘TOP5板块资金流入"
+    title = f"📅 {date_str} {time_str} {period}收盘汇总"
     
     content_lines = [
-        f"**📅 {date_str} {time_str} {period}收盘汇总**",
-        "",
-        "---",
         ""
     ]
     
@@ -199,7 +196,7 @@ def push_daily_summary_feishu(comparison_data, period='上午'):
         strength = item['strength']
         flow_change_percent = item['flow_change_percent']
         
-        strength_icon = '🟢' if strength == '增强' else ('🔴' if strength == '减弱' else ('🟡' if strength == '持平' else '🆕'))
+        strength_icon = '🔴' if strength == '增强' else ('🟢' if strength == '减弱' else ('🟡' if strength == '持平' else '🔥'))
         
         content_lines.append(f"**{rank}. {name}**")
         content_lines.append(f"   💰 今日流入：**<font color='red'>{format_flow_value(today_flow)}</font>**")
@@ -218,43 +215,15 @@ def push_daily_summary_feishu(comparison_data, period='上午'):
     
     content_lines.append("---")
     content_lines.append("")
-    content_lines.append("💡 点击下方按钮查看详细报表")
     
     formatted_content = "\n".join(content_lines)
     
     timestamp = str(int(time.time()))
     
     message = {
-        "msg_type": "interactive",
-        "card": {
-            "header": {
-                "title": {
-                    "tag": "plain_text",
-                    "content": title
-                },
-                "template": "blue"
-            },
-            "elements": [
-                {
-                    "tag": "markdown",
-                    "content": formatted_content
-                },
-                {
-                    "tag": "action",
-                    "actions": [
-                        {
-                            "tag": "button",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": "📈 查看详细报表"
-                            },
-                            "url": f"{base_url}/daily-report?date={date_str}",
-                            "type": "primary"
-                        }
-                    ]
-                }
-            ]
-        }
+        "title": title,
+        "content": formatted_content,
+        "url": f"{base_url}/daily-report?date={date_str}"
     }
     
     if secret:
