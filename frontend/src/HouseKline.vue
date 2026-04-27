@@ -269,7 +269,9 @@ export default {
               }
             },
             axisLabel: {
-              show: false
+              color: '#8ba4c7',
+              fontSize: 11,
+              interval: labelInterval
             },
             axisTick: {
               show: false
@@ -289,9 +291,7 @@ export default {
               }
             },
             axisLabel: {
-              color: '#8ba4c7',
-              fontSize: 11,
-              interval: labelInterval
+              show: false
             },
             axisTick: {
               show: false
