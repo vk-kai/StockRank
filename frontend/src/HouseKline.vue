@@ -148,6 +148,8 @@ export default {
         this.mainChart = echarts.init(chartDom)
       }
 
+      this.mainChart.clear()
+
       const dates = this.generateXAxisLabels(data)
       const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
       const ma5 = this.calculateMA(data.map(d => d.close), 5)
@@ -162,7 +164,10 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: {
-            type: 'cross'
+            type: 'cross',
+            crossStyle: {
+              color: '#3a4a6b'
+            }
           },
           backgroundColor: 'rgba(20, 25, 45, 0.95)',
           borderColor: '#3a4a6b',
@@ -170,7 +175,6 @@ export default {
             color: '#fff'
           },
           confine: true,
-          triggerOn: 'mousemove',
           formatter: function(params) {
             try {
               if (!params || params.length === 0) return ''
@@ -188,10 +192,17 @@ export default {
                 dateLabel = item.quarter
               }
               
+              let highLow = ''
+              if (item.high !== undefined && item.low !== undefined) {
+                highLow = `<div style="margin-bottom: 5px;">最高: <span style="color: #ff4d4f;">${item.high.toFixed(2)}万元</span></div>
+                <div style="margin-bottom: 5px;">最低: <span style="color: #52c41a;">${item.low.toFixed(2)}万元</span></div>`
+              }
+
               return `<div style="padding: 10px;">
                 <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">${dateLabel}</div>
                 <div style="margin-bottom: 5px;">开盘: <span style="color: #faad14;">${item.open.toFixed(2)}万元</span></div>
                 <div style="margin-bottom: 5px;">收盘: <span style="color: #1890ff;">${item.close.toFixed(2)}万元</span></div>
+                ${highLow}
                 <div style="margin-bottom: 5px;">涨跌: <span style="color: ${changeColor}; font-weight: bold;">${change >= 0 ? '+' : ''}${change}%</span></div>
               </div>`
             } catch (e) {
@@ -226,6 +237,14 @@ export default {
           splitLine: { show: false },
           axisTick: {
             alignWithLabel: true
+          },
+          axisPointer: {
+            show: true,
+            type: 'shadow',
+            label: {
+              show: true,
+              color: '#8ba4c7'
+            }
           }
         },
         yAxis: {
@@ -240,6 +259,13 @@ export default {
             lineStyle: {
               color: '#2a3a5b'
             }
+          },
+          axisPointer: {
+            show: true,
+            label: {
+              show: true,
+              color: '#8ba4c7'
+            }
           }
         },
         series: [
@@ -247,20 +273,21 @@ export default {
             name: 'K线',
             type: 'candlestick',
             data: ohlc,
+            xAxisIndex: 0,
+            yAxisIndex: 0,
             itemStyle: {
               color: '#ff4d4f',
               color0: '#52c41a',
               borderColor: '#ff4d4f',
               borderColor0: '#52c41a'
-            },
-            tooltip: {
-              show: true
             }
           },
           {
             name: 'MA5',
             type: 'line',
             data: ma5,
+            xAxisIndex: 0,
+            yAxisIndex: 0,
             smooth: false,
             connectNulls: true,
             lineStyle: {
@@ -274,6 +301,8 @@ export default {
             name: 'MA10',
             type: 'line',
             data: ma10,
+            xAxisIndex: 0,
+            yAxisIndex: 0,
             smooth: false,
             connectNulls: true,
             lineStyle: {
@@ -286,7 +315,7 @@ export default {
         ]
       }
 
-      this.mainChart.setOption(option, true)
+      this.mainChart.setOption(option)
     },
 
     calculateMA(data, period) {
