@@ -184,9 +184,7 @@ export default {
             const item = data[dataIndex]
             if (!item) return ''
             
-            const change = ((item.close - item.open) / item.open * 100).toFixed(2)
-            const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
-            const changePrefix = change >= 0 ? '+' : ''
+            const seriesName = params.seriesName
             
             let dateLabel
             if (self.currentPeriod === 'monthly') {
@@ -195,38 +193,48 @@ export default {
               dateLabel = item.quarter || `${item.year}年Q${item.month}`
             }
             
-            const macdVal = item.macd || 0
-            const signalVal = item.signal || 0
-            const histogramVal = item.histogram || 0
-            const macdColor = macdVal >= 0 ? '#ff4d4f' : '#52c41a'
-            const signalColor = signalVal >= 0 ? '#faad14' : '#13c2c2'
-            const histogramColor = histogramVal >= 0 ? '#ff4d4f' : '#52c41a'
+            if (seriesName === 'K线' || seriesName === 'MA5' || seriesName === 'MA10') {
+              const change = ((item.close - item.open) / item.open * 100).toFixed(2)
+              const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
+              const changePrefix = change >= 0 ? '+' : ''
 
-            return `<div style="min-width: 200px;">
-              <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #fff; border-bottom: 1px solid #3a4a6b; padding-bottom: 8px;">
-                📅 ${dateLabel}
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="color: #8ba4c7;">开盘：</span>
-                <span style="color: #faad14; font-weight: 500;">${item.open.toFixed(2)} 万/㎡</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="color: #8ba4c7;">收盘：</span>
-                <span style="color: #1890ff; font-weight: 500;">${item.close.toFixed(2)} 万/㎡</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="color: #8ba4c7;">最高：</span>
-                <span style="color: #ff4d4f; font-weight: 500;">${item.high.toFixed(2)} 万/㎡</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="color: #8ba4c7;">最低：</span>
-                <span style="color: #52c41a; font-weight: 500;">${item.low.toFixed(2)} 万/㎡</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #3a4a6b;">
-                <span style="color: #8ba4c7;">涨跌幅：</span>
-                <span style="color: ${changeColor}; font-weight: bold; font-size: 14px;">${changePrefix}${change}%</span>
-              </div>
-              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a4a6b;">
+              return `<div style="min-width: 200px;">
+                <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #fff; border-bottom: 1px solid #3a4a6b; padding-bottom: 8px;">
+                  📅 ${dateLabel}
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                  <span style="color: #8ba4c7;">开盘：</span>
+                  <span style="color: #faad14; font-weight: 500;">${item.open.toFixed(2)} 万/㎡</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                  <span style="color: #8ba4c7;">收盘：</span>
+                  <span style="color: #1890ff; font-weight: 500;">${item.close.toFixed(2)} 万/㎡</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                  <span style="color: #8ba4c7;">最高：</span>
+                  <span style="color: #ff4d4f; font-weight: 500;">${item.high.toFixed(2)} 万/㎡</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                  <span style="color: #8ba4c7;">最低：</span>
+                  <span style="color: #52c41a; font-weight: 500;">${item.low.toFixed(2)} 万/㎡</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #3a4a6b;">
+                  <span style="color: #8ba4c7;">涨跌幅：</span>
+                  <span style="color: ${changeColor}; font-weight: bold; font-size: 14px;">${changePrefix}${change}%</span>
+                </div>
+              </div>`
+            } else if (seriesName === 'MACD' || seriesName === 'Signal' || seriesName === 'Histogram') {
+              const macdVal = item.macd || 0
+              const signalVal = item.signal || 0
+              const histogramVal = item.histogram || 0
+              const macdColor = macdVal >= 0 ? '#ff4d4f' : '#52c41a'
+              const signalColor = signalVal >= 0 ? '#faad14' : '#13c2c2'
+              const histogramColor = histogramVal >= 0 ? '#ff4d4f' : '#52c41a'
+
+              return `<div style="min-width: 180px;">
+                <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #fff; border-bottom: 1px solid #3a4a6b; padding-bottom: 8px;">
+                  📅 ${dateLabel}
+                </div>
                 <div style="color: #8ba4c7; font-weight: bold; margin-bottom: 6px;">📊 MACD指标</div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                   <span style="color: #8ba4c7;">MACD：</span>
@@ -240,8 +248,9 @@ export default {
                   <span style="color: #8ba4c7;">Histogram：</span>
                   <span style="color: ${histogramColor};">${histogramVal.toFixed(4)}</span>
                 </div>
-              </div>
-            </div>`
+              </div>`
+            }
+            return ''
           }
         },
         grid: [
