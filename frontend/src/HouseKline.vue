@@ -149,18 +149,7 @@ export default {
         animation: false,
         backgroundColor: 'transparent',
         tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'cross',
-            lineStyle: {
-              color: '#5a7a9a',
-              width: 1,
-              type: 'dashed'
-            },
-            crossStyle: {
-              color: '#5a7a9a'
-            }
-          },
+          trigger: 'item',
           backgroundColor: 'rgba(20, 25, 45, 0.95)',
           borderColor: '#3a4a6b',
           borderWidth: 1,
@@ -171,12 +160,10 @@ export default {
           },
           confine: true,
           formatter: function(params) {
-            if (!params || params.length === 0) return ''
+            console.log('[HouseKline] tooltip params:', params)
+            if (!params) return ''
             
-            const candlestickParam = params.find(p => p.seriesType === 'candlestick')
-            if (!candlestickParam) return ''
-            
-            const dataIndex = candlestickParam.dataIndex
+            const dataIndex = params.dataIndex
             const item = data[dataIndex]
             if (!item) return ''
             
@@ -190,11 +177,6 @@ export default {
             } else {
               dateLabel = item.quarter || `${item.year}年Q${item.month}`
             }
-            
-            const volumeInfo = item.huanbi ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #3a4a6b;">
-              <span style="color: #8ba4c7;">环比：</span><span style="color: #faad14;">${item.huanbi.toFixed(2)}</span>
-              <span style="color: #8ba4c7; margin-left: 15px;">同比：</span><span style="color: #1890ff;">${item.tongbi ? item.tongbi.toFixed(2) : '-'}</span>
-            </div>` : ''
 
             return `<div style="min-width: 180px;">
               <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #fff; border-bottom: 1px solid #3a4a6b; padding-bottom: 8px;">
@@ -220,24 +202,13 @@ export default {
                 <span style="color: #8ba4c7;">涨跌幅：</span>
                 <span style="color: ${changeColor}; font-weight: bold; font-size: 14px;">${changePrefix}${change}%</span>
               </div>
-              ${volumeInfo}
             </div>`
           }
-        },
-        legend: {
-          data: ['K线', 'MA5', 'MA10'],
-          textStyle: {
-            color: '#8ba4c7',
-            fontSize: 12
-          },
-          top: 10,
-          itemGap: 20,
-          icon: 'roundRect'
         },
         grid: {
           left: '3%',
           right: '3%',
-          top: 60,
+          top: 30,
           bottom: 50,
           containLabel: true
         },
