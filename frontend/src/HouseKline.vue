@@ -75,21 +75,32 @@ export default {
     },
 
     async fetchKlineData() {
+      console.log('[HouseKline] fetchKlineData 开始')
       this.loading = true
       this.error = null
       try {
         const response = await getHouseKline()
+        console.log('[HouseKline] API响应:', response)
         if (response.success) {
           this.klineData = response.data
+          console.log('[HouseKline] klineData:', this.klineData)
+          console.log('[HouseKline] monthly数据条数:', this.klineData?.monthly?.length)
+          console.log('[HouseKline] quarterly数据条数:', this.klineData?.quarterly?.length)
+          if (this.klineData?.monthly?.length > 0) {
+            console.log('[HouseKline] monthly第一条数据:', this.klineData.monthly[0])
+          }
           this.$nextTick(() => {
             setTimeout(() => {
+              console.log('[HouseKline] 延迟后准备渲染图表')
               this.renderMainChart()
             }, 100)
           })
         } else {
           this.error = '获取数据失败'
+          console.log('[HouseKline] response.success 为 false')
         }
       } catch (err) {
+        console.error('[HouseKline] fetchKlineData 错误:', err)
         this.error = '获取数据失败: ' + err.message
       } finally {
         this.loading = false
@@ -133,25 +144,52 @@ export default {
     },
 
     renderMainChart() {
-      if (!this.klineData) return
+      console.log('[HouseKline] renderMainChart 开始')
+      console.log('[HouseKline] klineData:', this.klineData)
+      console.log('[HouseKline] currentPeriod:', this.currentPeriod)
+      
+      if (!this.klineData) {
+        console.log('[HouseKline] klineData 为空，退出渲染')
+        return
+      }
 
       const data = this.currentPeriod === 'monthly' 
         ? this.klineData.monthly 
         : this.klineData.quarterly
 
-      if (!data || data.length === 0) return
+      console.log('[HouseKline] 选中数据:', data)
+      console.log('[HouseKline] 数据长度:', data?.length)
+
+      if (!data || data.length === 0) {
+        console.log('[HouseKline] 数据为空或长度为0，退出渲染')
+        return
+      }
 
       const chartDom = this.$refs.mainChart
-      if (!chartDom) return
+      console.log('[HouseKline] chartDom:', chartDom)
+      if (!chartDom) {
+        console.log('[HouseKline] chartDom 为空，退出渲染')
+        return
+      }
 
       if (!this.mainChart) {
+        console.log('[HouseKline] 初始化新的echarts实例')
         this.mainChart = echarts.init(chartDom)
+      } else {
+        console.log('[HouseKline] 使用已有的echarts实例')
       }
 
       const dates = this.generateXAxisLabels(data)
       const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
       const ma5 = this.calculateMA(data.map(d => d.close), 5)
       const ma10 = this.calculateMA(data.map(d => d.close), 10)
+
+      console.log('[HouseKline] dates长度:', dates.length)
+      console.log('[HouseKline] dates前5个:', dates.slice(0, 5))
+      console.log('[HouseKline] ohlc长度:', ohlc.length)
+      console.log('[HouseKline] ohlc前5个:', ohlc.slice(0, 5))
+      console.log('[HouseKline] ma5前10个:', ma5.slice(0, 10))
+      console.log('[HouseKline] ma10前10个:', ma10.slice(0, 10))
 
       const self = this
       const totalPoints = data.length
@@ -176,25 +214,40 @@ export default {
           confine: true,
           enterable: true,
           formatter: function(params) {
+            console.log('[HouseKline] tooltip formatter 被调用')
+            console.log('[HouseKline] params:', params)
             try {
-              if (!params || params.length === 0) return ''
+              if (!params || params.length === 0) {
+                console.log('[HouseKline] params为空或长度为0')
+                return ''
+              }
               
               let itemIndex = -1
               for (let i = 0; i < params.length; i++) {
+                console.log(`[HouseKline] params[${i}]:`, params[i])
                 if (params[i].dataIndex !== undefined && params[i].dataIndex !== null) {
                   itemIndex = params[i].dataIndex
+                  console.log(`[HouseKline] 找到 dataIndex: ${itemIndex}`)
                   break
                 }
                 if (params[i].dataIndexInAxis !== undefined && params[i].dataIndexInAxis !== null) {
                   itemIndex = params[i].dataIndexInAxis
+                  console.log(`[HouseKline] 找到 dataIndexInAxis: ${itemIndex}`)
                   break
                 }
               }
               
-              if (itemIndex === -1) return ''
+              if (itemIndex === -1) {
+                console.log('[HouseKline] 未找到有效的itemIndex')
+                return ''
+              }
               
               const item = data[itemIndex]
-              if (!item) return ''
+              console.log('[HouseKline] data[itemIndex]:', item)
+              if (!item) {
+                console.log('[HouseKline] item为空')
+                return ''
+              }
               
               const change = ((item.close - item.open) / item.open * 100).toFixed(2)
               const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
@@ -329,7 +382,20 @@ export default {
         ]
       }
 
-      this.mainChart.setOption(option, true)
+      console.log('[HouseKline] 准备调用 setOption')
+      console.log('[HouseKline] option:', option)
+      
+      try {
+        this.mainChart.setOption(option, true)
+        console.log('[HouseKline] setOption 调用成功')
+      } catch (e) {
+        console.error('[HouseKline] setOption 调用失败:', e)
+      }
+      
+      this.mainChart.on('legendselectchanged', function(params) {
+        console.log('[HouseKline] legendselectchanged 事件触发')
+        console.log('[HouseKline] legend params:', params)
+      })
     },
 
     calculateMA(data, period) {
