@@ -48,6 +48,8 @@ import * as echarts from 'echarts'
 import { getHouseKline } from './services/apiService'
 
 export default {
+  name: 'HouseKline',
+
   data() {
     return {
       loading: false,
@@ -67,19 +69,28 @@ export default {
     window.removeEventListener('resize', this.handleResize)
     if (this.mainChart) {
       this.mainChart.dispose()
+      this.mainChart = null
     }
   },
 
   methods: {
     async fetchKlineData() {
       this.loading = true
+      this.error = null
+
       try {
         const res = await getHouseKline()
         if (res.success) {
           this.klineData = res.data
-          this.$nextTick(() => this.renderMainChart())
+
+          // ✅ 延迟确保DOM有高度
+          this.$nextTick(() => {
+            setTimeout(() => {
+              this.renderMainChart()
+            }, 200)
+          })
         } else {
-          this.error = '获取失败'
+          this.error = '获取数据失败'
         }
       } catch (e) {
         this.error = e.message
@@ -95,11 +106,19 @@ export default {
     },
 
     handleResize() {
-      this.mainChart && this.mainChart.resize()
+      if (this.mainChart) {
+        this.mainChart.resize()
+      }
     },
 
     renderMainChart() {
       if (!this.klineData) return
+
+      const chartDom = this.$refs.mainChart
+      if (!chartDom || chartDom.clientHeight === 0) {
+        setTimeout(() => this.renderMainChart(), 200)
+        return
+      }
 
       const raw = this.currentPeriod === 'monthly'
         ? this.klineData.monthly
@@ -107,14 +126,27 @@ export default {
 
       if (!raw || raw.length === 0) return
 
-      // ✅ 数据清洗（核心）
-      const data = raw.filter(item =>
-        item &&
-        item.open != null &&
-        item.close != null &&
-        item.low != null &&
-        item.high != null
-      )
+      // ✅ 核心：强制数据清洗（防崩）
+      const data = raw.map(item => {
+        const open = Number(item.open)
+        const close = Number(item.close)
+        const low = Number(item.low)
+        const high = Number(item.high)
+
+        if (
+          isNaN(open) ||
+          isNaN(close) ||
+          isNaN(low) ||
+          isNaN(high)
+        ) return null
+
+        return { ...item, open, close, low, high }
+      }).filter(Boolean)
+
+      if (data.length === 0) {
+        console.error('K线数据全部无效')
+        return
+      }
 
       const dates = data.map(item =>
         this.currentPeriod === 'monthly'
@@ -122,25 +154,26 @@ export default {
           : item.quarter
       )
 
-      const ohlc = data.map(item => [
-        +item.open,
-        +item.close,
-        +item.low,
-        +item.high
-      ])
-
-      const closeList = data.map(d => +d.close)
+      const ohlc = data.map(i => [i.open, i.close, i.low, i.high])
+      const closeList = data.map(i => i.close)
 
       const ma5 = this.calculateMA(closeList, 5)
       const ma10 = this.calculateMA(closeList, 10)
 
-      // ✅ 初始化（只初始化一次）
+      // ✅ 初始化一次
       if (!this.mainChart) {
-        this.mainChart = echarts.init(this.$refs.mainChart)
+        this.mainChart = echarts.init(chartDom)
       }
 
       const option = {
         animation: false,
+
+        grid: {
+          left: '3%',
+          right: '3%',
+          top: 50,
+          bottom: 30
+        },
 
         tooltip: {
           trigger: 'axis',
@@ -205,21 +238,18 @@ export default {
             type: 'line',
             data: ma5,
             smooth: true,
-            showSymbol: false,
-            lineStyle: { width: 1 }
+            showSymbol: false
           },
           {
             name: 'MA10',
             type: 'line',
             data: ma10,
             smooth: true,
-            showSymbol: false,
-            lineStyle: { width: 1 }
+            showSymbol: false
           }
         ]
       }
 
-      // ✅ 关键：不再 dispose
       this.mainChart.setOption(option, true)
     },
 
@@ -244,7 +274,11 @@ export default {
   color: #e0e6f0;
   padding: 20px;
 }
-
+.main-chart {
+  width: 100%;
+  height: 500px;
+  min-height: 500px; /* ⭐关键 */
+}
 .kline-header {
   display: flex;
   align-items: center;
@@ -324,11 +358,6 @@ export default {
   border: 1px solid rgba(58, 74, 107, 0.5);
   padding: 20px;
   margin-bottom: 20px;
-}
-
-.main-chart {
-  width: 100%;
-  height: 500px;
 }
 
 .data-source {
