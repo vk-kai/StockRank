@@ -261,7 +261,8 @@ export default {
             name: 'MA5',
             type: 'line',
             data: ma5,
-            smooth: true,
+            smooth: false,
+            connectNulls: true,
             lineStyle: {
               color: '#faad14',
               width: 1,
@@ -273,7 +274,8 @@ export default {
             name: 'MA10',
             type: 'line',
             data: ma10,
-            smooth: true,
+            smooth: false,
+            connectNulls: true,
             lineStyle: {
               color: '#722ed1',
               width: 2,
