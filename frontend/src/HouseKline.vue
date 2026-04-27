@@ -48,7 +48,6 @@ import * as echarts from 'echarts'
 import { getHouseKline } from './services/apiService'
 
 export default {
-  name: 'HouseKline',
   data() {
     return {
       loading: false,
@@ -58,50 +57,32 @@ export default {
       mainChart: null
     }
   },
+
   mounted() {
     this.fetchKlineData()
     window.addEventListener('resize', this.handleResize)
   },
+
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
     if (this.mainChart) {
       this.mainChart.dispose()
-      this.mainChart = null
     }
   },
-  methods: {
-    goBack() {
-      this.$router.push('/')
-    },
 
+  methods: {
     async fetchKlineData() {
-      console.log('[HouseKline] fetchKlineData 开始')
       this.loading = true
-      this.error = null
       try {
-        const response = await getHouseKline()
-        console.log('[HouseKline] API响应:', response)
-        if (response.success) {
-          this.klineData = response.data
-          console.log('[HouseKline] klineData:', this.klineData)
-          console.log('[HouseKline] monthly数据条数:', this.klineData?.monthly?.length)
-          console.log('[HouseKline] quarterly数据条数:', this.klineData?.quarterly?.length)
-          if (this.klineData?.monthly?.length > 0) {
-            console.log('[HouseKline] monthly第一条数据:', this.klineData.monthly[0])
-          }
-          this.$nextTick(() => {
-            setTimeout(() => {
-              console.log('[HouseKline] 延迟后准备渲染图表')
-              this.renderMainChart()
-            }, 100)
-          })
+        const res = await getHouseKline()
+        if (res.success) {
+          this.klineData = res.data
+          this.$nextTick(() => this.renderMainChart())
         } else {
-          this.error = '获取数据失败'
-          console.log('[HouseKline] response.success 为 false')
+          this.error = '获取失败'
         }
-      } catch (err) {
-        console.error('[HouseKline] fetchKlineData 错误:', err)
-        this.error = '获取数据失败: ' + err.message
+      } catch (e) {
+        this.error = e.message
       } finally {
         this.loading = false
       }
@@ -110,240 +91,108 @@ export default {
     switchPeriod(period) {
       if (this.currentPeriod === period) return
       this.currentPeriod = period
-      this.$nextTick(() => {
-        if (this.mainChart) {
-          this.renderMainChart()
-        }
-      })
+      this.renderMainChart()
     },
 
     handleResize() {
-      if (this.mainChart) {
-        this.mainChart.resize()
-      }
-    },
-
-    generateXAxisLabels(data) {
-      const labels = []
-      let lastYear = null
-      
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i]
-        if (this.currentPeriod === 'monthly') {
-          if (item.year !== lastYear) {
-            labels.push(`${item.year}年\n${item.month}月`)
-            lastYear = item.year
-          } else {
-            labels.push(`${item.month}月`)
-          }
-        } else {
-          labels.push(item.quarter)
-        }
-      }
-      return labels
+      this.mainChart && this.mainChart.resize()
     },
 
     renderMainChart() {
-      console.log('[HouseKline] renderMainChart 开始')
-      console.log('[HouseKline] klineData:', this.klineData)
-      console.log('[HouseKline] currentPeriod:', this.currentPeriod)
-      
-      if (!this.klineData) {
-        console.log('[HouseKline] klineData 为空，退出渲染')
-        return
-      }
+      if (!this.klineData) return
 
-      const data = this.currentPeriod === 'monthly' 
-        ? this.klineData.monthly 
+      const raw = this.currentPeriod === 'monthly'
+        ? this.klineData.monthly
         : this.klineData.quarterly
 
-      console.log('[HouseKline] 选中数据:', data)
-      console.log('[HouseKline] 数据长度:', data?.length)
+      if (!raw || raw.length === 0) return
 
-      if (!data || data.length === 0) {
-        console.log('[HouseKline] 数据为空或长度为0，退出渲染')
-        return
-      }
+      // ✅ 数据清洗（核心）
+      const data = raw.filter(item =>
+        item &&
+        item.open != null &&
+        item.close != null &&
+        item.low != null &&
+        item.high != null
+      )
 
-      const chartDom = this.$refs.mainChart
-      console.log('[HouseKline] chartDom:', chartDom)
-      if (!chartDom) {
-        console.log('[HouseKline] chartDom 为空，退出渲染')
-        return
-      }
+      const dates = data.map(item =>
+        this.currentPeriod === 'monthly'
+          ? `${item.year}-${item.month}`
+          : item.quarter
+      )
 
+      const ohlc = data.map(item => [
+        +item.open,
+        +item.close,
+        +item.low,
+        +item.high
+      ])
+
+      const closeList = data.map(d => +d.close)
+
+      const ma5 = this.calculateMA(closeList, 5)
+      const ma10 = this.calculateMA(closeList, 10)
+
+      // ✅ 初始化（只初始化一次）
       if (!this.mainChart) {
-        console.log('[HouseKline] 初始化新的echarts实例')
-        this.mainChart = echarts.init(chartDom)
-      } else {
-        console.log('[HouseKline] 销毁旧实例并重新创建')
-        this.mainChart.dispose()
-        this.mainChart = echarts.init(chartDom)
+        this.mainChart = echarts.init(this.$refs.mainChart)
       }
-
-      const dates = this.generateXAxisLabels(data)
-      const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
-      const ma5 = this.calculateMA(data.map(d => d.close), 5)
-      const ma10 = this.calculateMA(data.map(d => d.close), 10)
-
-      console.log('[HouseKline] dates长度:', dates.length)
-      console.log('[HouseKline] dates前5个:', dates.slice(0, 5))
-      console.log('[HouseKline] ohlc长度:', ohlc.length)
-      console.log('[HouseKline] ohlc前5个:', ohlc.slice(0, 5))
-      console.log('[HouseKline] ma5前10个:', ma5.slice(0, 10))
-      console.log('[HouseKline] ma10前10个:', ma10.slice(0, 10))
-
-      const self = this
-      const totalPoints = data.length
-      const labelInterval = this.currentPeriod === 'monthly' ? 5 : 2
 
       const option = {
         animation: false,
+
         tooltip: {
           trigger: 'axis',
-          axisPointer: {
-            type: 'cross',
-            crossStyle: {
-              color: '#3a4a6b'
-            },
-            snap: true
-          },
-          backgroundColor: 'rgba(20, 25, 45, 0.95)',
-          borderColor: '#3a4a6b',
-          textStyle: {
-            color: '#fff'
-          },
-          confine: true,
-          enterable: true,
-          formatter: function(params) {
-            console.log('[HouseKline] tooltip formatter 被调用')
-            console.log('[HouseKline] params:', params)
-            try {
-              if (!params || params.length === 0) {
-                console.log('[HouseKline] params为空或长度为0')
-                return ''
-              }
-              
-              let itemIndex = -1
-              for (let i = 0; i < params.length; i++) {
-                console.log(`[HouseKline] params[${i}]:`, params[i])
-                if (params[i].dataIndex !== undefined && params[i].dataIndex !== null) {
-                  itemIndex = params[i].dataIndex
-                  console.log(`[HouseKline] 找到 dataIndex: ${itemIndex}`)
-                  break
-                }
-                if (params[i].dataIndexInAxis !== undefined && params[i].dataIndexInAxis !== null) {
-                  itemIndex = params[i].dataIndexInAxis
-                  console.log(`[HouseKline] 找到 dataIndexInAxis: ${itemIndex}`)
-                  break
-                }
-              }
-              
-              if (itemIndex === -1) {
-                console.log('[HouseKline] 未找到有效的itemIndex')
-                return ''
-              }
-              
-              const item = data[itemIndex]
-              console.log('[HouseKline] data[itemIndex]:', item)
-              if (!item) {
-                console.log('[HouseKline] item为空')
-                return ''
-              }
-              
-              const change = ((item.close - item.open) / item.open * 100).toFixed(2)
-              const changeColor = change >= 0 ? '#ff4d4f' : '#52c41a'
-              
-              let dateLabel
-              if (self.currentPeriod === 'monthly') {
-                dateLabel = `${item.year}年${item.month}月`
-              } else {
-                dateLabel = item.quarter
-              }
-              
-              let highLow = ''
-              if (item.high !== undefined && item.low !== undefined) {
-                highLow = `<div style="margin-bottom: 5px;">最高: <span style="color: #ff4d4f;">${item.high.toFixed(2)}万元</span></div>
-                <div style="margin-bottom: 5px;">最低: <span style="color: #52c41a;">${item.low.toFixed(2)}万元</span></div>`
-              }
+          axisPointer: { type: 'cross' },
 
-              return `<div style="padding: 10px;">
-                <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">${dateLabel}</div>
-                <div style="margin-bottom: 5px;">开盘: <span style="color: #faad14;">${item.open.toFixed(2)}万元</span></div>
-                <div style="margin-bottom: 5px;">收盘: <span style="color: #1890ff;">${item.close.toFixed(2)}万元</span></div>
-                ${highLow}
-                <div style="margin-bottom: 5px;">涨跌: <span style="color: ${changeColor}; font-weight: bold;">${change >= 0 ? '+' : ''}${change}%</span></div>
-              </div>`
-            } catch (e) {
-              console.error('tooltip error:', e, params)
-              return ''
-            }
+          formatter: (params) => {
+            const candle = params.find(p => p.seriesType === 'candlestick')
+            if (!candle) return ''
+
+            const i = candle.dataIndex
+            const item = data[i]
+            if (!item) return ''
+
+            const change = ((item.close - item.open) / item.open * 100).toFixed(2)
+            const color = change >= 0 ? '#ff4d4f' : '#52c41a'
+
+            return `
+              <div>
+                <b>${dates[i]}</b><br/>
+                开盘：${item.open}<br/>
+                收盘：${item.close}<br/>
+                最高：${item.high}<br/>
+                最低：${item.low}<br/>
+                涨跌：<span style="color:${color}">
+                  ${change}%
+                </span>
+              </div>
+            `
           }
         },
+
         legend: {
           data: ['K线', 'MA5', 'MA10'],
-          textStyle: {
-            color: '#8ba4c7'
-          },
-          top: 10
+          textStyle: { color: '#aaa' }
         },
-        grid: {
-          left: '8%',
-          right: '8%',
-          top: 60,
-          bottom: 60
-        },
+
         xAxis: {
           type: 'category',
           data: dates,
-          axisLine: { lineStyle: { color: '#3a4a6b' } },
-          axisLabel: {
-            color: '#8ba4c7',
-            fontSize: 11,
-            interval: labelInterval,
-            rotate: 0
-          },
-          splitLine: { show: false },
-          axisTick: {
-            alignWithLabel: true
-          },
-          axisPointer: {
-            show: true,
-            type: 'shadow',
-            label: {
-              show: true,
-              color: '#8ba4c7'
-            }
-          }
+          axisLine: { lineStyle: { color: '#666' } }
         },
+
         yAxis: {
-          type: 'value',
           scale: true,
-          axisLine: { lineStyle: { color: '#3a4a6b' } },
-          axisLabel: {
-            color: '#8ba4c7',
-            formatter: '{value}万'
-          },
-          splitLine: {
-            lineStyle: {
-              color: '#2a3a5b'
-            }
-          },
-          axisPointer: {
-            show: true,
-            label: {
-              show: true,
-              color: '#8ba4c7'
-            }
-          }
+          axisLine: { lineStyle: { color: '#666' } }
         },
+
         series: [
           {
             name: 'K线',
             type: 'candlestick',
             data: ohlc,
-            xAxisIndex: 0,
-            yAxisIndex: 0,
             itemStyle: {
               color: '#ff4d4f',
               color0: '#52c41a',
@@ -355,65 +204,34 @@ export default {
             name: 'MA5',
             type: 'line',
             data: ma5,
-            xAxisIndex: 0,
-            yAxisIndex: 0,
-            smooth: false,
-            connectNulls: true,
-            lineStyle: {
-              color: '#faad14',
-              width: 1,
-              type: 'dashed'
-            },
-            symbol: 'none'
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 1 }
           },
           {
             name: 'MA10',
             type: 'line',
             data: ma10,
-            xAxisIndex: 0,
-            yAxisIndex: 0,
-            smooth: false,
-            connectNulls: true,
-            lineStyle: {
-              color: '#722ed1',
-              width: 2,
-              type: 'dotted'
-            },
-            symbol: 'none'
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 1 }
           }
         ]
       }
 
-      console.log('[HouseKline] 准备调用 setOption')
-      console.log('[HouseKline] option:', option)
-      
-      try {
-        this.mainChart.setOption(option)
-        console.log('[HouseKline] setOption 调用成功')
-      } catch (e) {
-        console.error('[HouseKline] setOption 调用失败:', e)
-      }
-      
-      this.mainChart.on('legendselectchanged', function(params) {
-        console.log('[HouseKline] legendselectchanged 事件触发')
-        console.log('[HouseKline] legend params:', params)
-      })
+      // ✅ 关键：不再 dispose
+      this.mainChart.setOption(option, true)
     },
 
     calculateMA(data, period) {
-      const result = []
-      for (let i = 0; i < data.length; i++) {
-        if (i < period - 1) {
-          result.push(null)
-        } else {
-          let sum = 0
-          for (let j = 0; j < period; j++) {
-            sum += data[i - j]
-          }
-          result.push(Number((sum / period).toFixed(2)))
+      return data.map((_, i) => {
+        if (i < period - 1) return null
+        let sum = 0
+        for (let j = 0; j < period; j++) {
+          sum += data[i - j]
         }
-      }
-      return result
+        return +(sum / period).toFixed(2)
+      })
     }
   }
 }
