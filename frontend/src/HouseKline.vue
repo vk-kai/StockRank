@@ -204,19 +204,19 @@ export default {
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                   <span style="color: #8ba4c7;">开盘：</span>
-                  <span style="color: #faad14; font-weight: 500;">${item.open.toFixed(2)} 万/㎡</span>
+                  <span style="color: #faad14; font-weight: 500;">${item.open.toFixed(2)} 万</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                   <span style="color: #8ba4c7;">收盘：</span>
-                  <span style="color: #1890ff; font-weight: 500;">${item.close.toFixed(2)} 万/㎡</span>
+                  <span style="color: #1890ff; font-weight: 500;">${item.close.toFixed(2)} 万</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                   <span style="color: #8ba4c7;">最高：</span>
-                  <span style="color: #ff4d4f; font-weight: 500;">${item.high.toFixed(2)} 万/㎡</span>
+                  <span style="color: #ff4d4f; font-weight: 500;">${item.high.toFixed(2)} 万</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                   <span style="color: #8ba4c7;">最低：</span>
-                  <span style="color: #52c41a; font-weight: 500;">${item.low.toFixed(2)} 万/㎡</span>
+                  <span style="color: #52c41a; font-weight: 500;">${item.low.toFixed(2)} 万</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #3a4a6b;">
                   <span style="color: #8ba4c7;">涨跌幅：</span>
