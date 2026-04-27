@@ -148,8 +148,6 @@ export default {
         this.mainChart = echarts.init(chartDom)
       }
 
-      this.mainChart.clear()
-
       const dates = this.generateXAxisLabels(data)
       const ohlc = data.map(item => [item.open, item.close, item.low, item.high])
       const ma5 = this.calculateMA(data.map(d => d.close), 5)
@@ -167,7 +165,8 @@ export default {
             type: 'cross',
             crossStyle: {
               color: '#3a4a6b'
-            }
+            },
+            snap: true
           },
           backgroundColor: 'rgba(20, 25, 45, 0.95)',
           borderColor: '#3a4a6b',
@@ -175,11 +174,26 @@ export default {
             color: '#fff'
           },
           confine: true,
+          enterable: true,
           formatter: function(params) {
             try {
               if (!params || params.length === 0) return ''
-              let dataIndex = params[0].dataIndex
-              const item = data[dataIndex]
+              
+              let itemIndex = -1
+              for (let i = 0; i < params.length; i++) {
+                if (params[i].dataIndex !== undefined && params[i].dataIndex !== null) {
+                  itemIndex = params[i].dataIndex
+                  break
+                }
+                if (params[i].dataIndexInAxis !== undefined && params[i].dataIndexInAxis !== null) {
+                  itemIndex = params[i].dataIndexInAxis
+                  break
+                }
+              }
+              
+              if (itemIndex === -1) return ''
+              
+              const item = data[itemIndex]
               if (!item) return ''
               
               const change = ((item.close - item.open) / item.open * 100).toFixed(2)
@@ -206,7 +220,7 @@ export default {
                 <div style="margin-bottom: 5px;">涨跌: <span style="color: ${changeColor}; font-weight: bold;">${change >= 0 ? '+' : ''}${change}%</span></div>
               </div>`
             } catch (e) {
-              console.error('tooltip error:', e)
+              console.error('tooltip error:', e, params)
               return ''
             }
           }
@@ -315,7 +329,7 @@ export default {
         ]
       }
 
-      this.mainChart.setOption(option)
+      this.mainChart.setOption(option, true)
     },
 
     calculateMA(data, period) {
