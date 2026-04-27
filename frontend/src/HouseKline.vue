@@ -176,8 +176,9 @@ export default {
         console.log('[HouseKline] 初始化新的echarts实例')
         this.mainChart = echarts.init(chartDom)
       } else {
-        console.log('[HouseKline] 使用已有的echarts实例，先clear')
-        this.mainChart.clear()
+        console.log('[HouseKline] 销毁旧实例并重新创建')
+        this.mainChart.dispose()
+        this.mainChart = echarts.init(chartDom)
       }
 
       const dates = this.generateXAxisLabels(data)
