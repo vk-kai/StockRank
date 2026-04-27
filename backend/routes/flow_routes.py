@@ -1,10 +1,11 @@
 from flask import Blueprint, jsonify, request
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
-    load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors
+    load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
+    get_top5_comparison_data
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 
@@ -226,6 +227,43 @@ def get_accumulated_flow():
         })
     except Exception as e:
         error_logger.error(f"API /api/flow/accumulated 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/daily-report', methods=['GET'])
+def get_daily_report():
+    try:
+        date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # 获取当日数据
+        today_data = load_daily_data(date_str)
+        if not today_data or 'data' not in today_data:
+            return jsonify({
+                'success': False,
+                'message': f'未找到{date_str}的数据'
+            }), 404
+        
+        # 获取TOP5对比数据
+        comparison_data = get_top5_comparison_data(date_str)
+        
+        # 获取昨日数据用于对比
+        yesterday = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+        yesterday_data = load_daily_data(yesterday)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'date': date_str,
+                'today': today_data['data'],
+                'comparison': comparison_data,
+                'yesterday_exists': yesterday_data is not None
+            },
+            'timestamp': datetime.now().astimezone().isoformat()
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/flow/daily-report 异常: {e}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

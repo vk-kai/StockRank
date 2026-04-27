@@ -3,6 +3,7 @@ import App from './App.vue'
 import NewsPage from './NewsPage.vue'
 import ConfigPage from './ConfigPage.vue'
 import LogPage from './LogPage.vue'
+import DailyReport from './DailyReport.vue'
 
 const routes = [
   {
@@ -24,6 +25,11 @@ const routes = [
     path: '/logs',
     name: 'Logs',
     component: LogPage
+  },
+  {
+    path: '/daily-report',
+    name: 'DailyReport',
+    component: DailyReport
   }
 ]
 

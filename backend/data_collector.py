@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime, timedelta
 import calendar
-from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger
+from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger, get_top5_comparison_data
 from thread_monitor import heartbeat, register_thread
 from logger import get_logger
 
@@ -109,6 +109,19 @@ def data_collection_thread():
                 if success:
                     system_logger.info(f"成功生成今日({today})的上午汇总")
                     _last_morning_summary_date = today
+                    
+                    # 发送飞书推送
+                    try:
+                        from feishu_pusher import push_daily_summary_feishu
+                        comparison_data = get_top5_comparison_data(today)
+                        if comparison_data:
+                            push_result = push_daily_summary_feishu(comparison_data, period='上午')
+                            if push_result:
+                                system_logger.info(f"上午汇总飞书推送成功")
+                            else:
+                                system_logger.error(f"上午汇总飞书推送失败")
+                    except Exception as e:
+                        error_logger.error(f"上午汇总飞书推送异常: {e}")
                 else:
                     system_logger.error(f"生成今日({today})的上午汇总失败")
             
@@ -118,6 +131,19 @@ def data_collection_thread():
                 if success:
                     system_logger.info(f"成功生成今日({today})的每日汇总")
                     _last_afternoon_summary_date = today
+                    
+                    # 发送飞书推送
+                    try:
+                        from feishu_pusher import push_daily_summary_feishu
+                        comparison_data = get_top5_comparison_data(today)
+                        if comparison_data:
+                            push_result = push_daily_summary_feishu(comparison_data, period='下午')
+                            if push_result:
+                                system_logger.info(f"下午汇总飞书推送成功")
+                            else:
+                                system_logger.error(f"下午汇总飞书推送失败")
+                    except Exception as e:
+                        error_logger.error(f"下午汇总飞书推送异常: {e}")
                 else:
                     system_logger.error(f"生成今日({today})的每日汇总失败")
             

@@ -35,7 +35,8 @@ export default {
         enabled: false,
         webhook_url: '',
         secret: '',
-        msg_type: 'interactive'
+        msg_type: 'interactive',
+        base_url: 'http://localhost:5000'
       },
       stockConfig: {
         enabled: false,

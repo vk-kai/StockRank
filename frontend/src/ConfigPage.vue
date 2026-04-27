@@ -124,6 +124,16 @@
           </div>
 
           <div class="form-group">
+            <label>网站域名URL</label>
+            <input 
+              type="text" 
+              v-model="feishuConfig.base_url" 
+              placeholder="http://localhost:5000"
+            >
+            <span class="hint">用于飞书消息中的详情链接，如：https://your-domain.com</span>
+          </div>
+
+          <div class="form-group">
             <label>签名密钥(可选)</label>
             <input 
               type="password" 

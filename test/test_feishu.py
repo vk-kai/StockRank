@@ -1,5 +1,10 @@
 import sys
-sys.path.insert(0, 'backend')
+import os
+
+# 获取项目根目录
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, 'backend'))
+
 from feishu_pusher import send_feishu_message
 from datetime import datetime
 

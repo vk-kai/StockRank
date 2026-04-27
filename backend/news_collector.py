@@ -60,6 +60,15 @@ def load_all_news_status():
 
 def process_news_with_ai_and_push(news_list):
     try:
+        from ai_analyzer import load_ai_config
+        from feishu_pusher import load_feishu_config
+        
+        ai_config = load_ai_config()
+        ai_enabled = ai_config and ai_config.get('enabled', False)
+        
+        feishu_config = load_feishu_config()
+        feishu_enabled = feishu_config and feishu_config.get('enabled', False)
+        
         existing_news = load_today_news()
         existing_keys = {(item.get('title', '').strip(), item.get('content', '').strip()): item for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
@@ -112,52 +121,66 @@ def process_news_with_ai_and_push(news_list):
         ignored_items = []
         
         if important_items:
-            items_to_analyze = important_items[:5]
-            if len(important_items) > 5:
-                ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
-            
-            set_busy('news_collector', True)
-            try:
-                analysis_results = batch_analyze_news(items_to_analyze)
-            finally:
-                set_busy('news_collector', False)
-            
-            for news_item in items_to_analyze:
-                news_id = news_item.get('id')
-                analysis = analysis_results.get(news_id)
-                news_item['ai_analyzed'] = True
+            if ai_enabled:
+                items_to_analyze = important_items[:5]
+                if len(important_items) > 5:
+                    ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
                 
-                if analysis:
-                    news_item['ai_analysis'] = analysis
-                    news_item['core_event'] = analysis.get('core_event', '')
+                set_busy('news_collector', True)
+                try:
+                    analysis_results = batch_analyze_news(items_to_analyze)
+                finally:
+                    set_busy('news_collector', False)
+                
+                for news_item in items_to_analyze:
+                    news_id = news_item.get('id')
+                    analysis = analysis_results.get(news_id)
+                    news_item['ai_analyzed'] = True
                     
-                    if is_important_news(analysis):
-                        if not news_item.get('pushed', False):
-                            push_important_news(news_item, analysis)
-                            news_item['pushed'] = True
-                            pushed_items.append({
+                    if analysis:
+                        news_item['ai_analysis'] = analysis
+                        news_item['core_event'] = analysis.get('core_event', '')
+                        
+                        if is_important_news(analysis):
+                            if not news_item.get('pushed', False):
+                                push_important_news(news_item, analysis)
+                                news_item['pushed'] = True
+                                pushed_items.append({
+                                    'title': news_item.get('title', ''),
+                                    'reason': analysis.get('reason', ''),
+                                    'core_event': analysis.get('core_event', '')
+                                })
+                            else:
+                                ai_logger.info(f"新闻已推送过，跳过重复推送: {news_item.get('title', '')}")
+                        else:
+                            ignored_items.append({
                                 'title': news_item.get('title', ''),
                                 'reason': analysis.get('reason', ''),
-                                'core_event': analysis.get('core_event', '')
+                                'level': analysis.get('level', '')
                             })
-                        else:
-                            ai_logger.info(f"新闻已推送过，跳过重复推送: {news_item.get('title', '')}")
                     else:
                         ignored_items.append({
                             'title': news_item.get('title', ''),
-                            'reason': analysis.get('reason', ''),
-                            'level': analysis.get('level', '')
+                            'reason': 'AI分析失败',
+                            'level': '未知'
                         })
-                else:
-                    ignored_items.append({
-                        'title': news_item.get('title', ''),
-                        'reason': 'AI分析失败',
-                        'level': '未知'
-                    })
-            
-            for news_item in important_items[5:]:
-                news_item['ai_analyzed'] = False
-                news_item['core_event'] = ''
+                
+                for news_item in important_items[5:]:
+                    news_item['ai_analyzed'] = False
+                    news_item['core_event'] = ''
+            elif feishu_enabled:
+                ai_logger.info(f"AI未开启但飞书已开启，直接推送{len(important_items)}条重要新闻")
+                for news_item in important_items:
+                    if not news_item.get('pushed', False):
+                        push_important_news(news_item, None)
+                        news_item['pushed'] = True
+                        news_item['ai_analyzed'] = False
+                        news_item['core_event'] = ''
+                        pushed_items.append({
+                            'title': news_item.get('title', ''),
+                            'reason': '重要新闻（未配置AI）',
+                            'core_event': ''
+                        })
         
         for news_item in new_items:
             should_push, matched_stocks = should_push_news(news_item)

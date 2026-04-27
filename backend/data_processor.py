@@ -610,3 +610,70 @@ def get_market_overview():
         }
     
     return None
+
+def get_top5_comparison_data(date_str):
+    try:
+        today_data = load_daily_data(date_str)
+        if not today_data or 'data' not in today_data:
+            return None
+        
+        today_sectors = today_data['data']
+        if not today_sectors:
+            return None
+        
+        yesterday = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+        yesterday_data = load_daily_data(yesterday)
+        yesterday_sectors = yesterday_data.get('data', []) if yesterday_data else []
+        
+        yesterday_dict = {item['name']: item for item in yesterday_sectors}
+        
+        top5 = today_sectors[:5]
+        
+        comparison_data = []
+        for i, today_item in enumerate(top5):
+            sector_name = today_item['name']
+            today_flow = today_item.get('flow', 0)
+            today_change = today_item.get('change', 0)
+            
+            yesterday_item = yesterday_dict.get(sector_name)
+            
+            if yesterday_item:
+                yesterday_flow = yesterday_item.get('flow', 0)
+                yesterday_change = yesterday_item.get('change', 0)
+                
+                if yesterday_flow != 0:
+                    flow_change_percent = ((today_flow - yesterday_flow) / abs(yesterday_flow)) * 100
+                else:
+                    flow_change_percent = 100 if today_flow > 0 else 0
+                
+                if today_flow > yesterday_flow:
+                    strength = '增强'
+                elif today_flow < yesterday_flow:
+                    strength = '减弱'
+                else:
+                    strength = '持平'
+            else:
+                yesterday_flow = None
+                yesterday_change = None
+                flow_change_percent = None
+                strength = '新增'
+            
+            comparison_data.append({
+                'rank': i + 1,
+                'name': sector_name,
+                'today_flow': today_flow,
+                'today_change': today_change,
+                'yesterday_flow': yesterday_flow,
+                'yesterday_change': yesterday_change,
+                'flow_change_percent': flow_change_percent,
+                'strength': strength
+            })
+        
+        return {
+            'date': date_str,
+            'time': datetime.now().strftime('%H:%M'),
+            'top5': comparison_data
+        }
+    except Exception as e:
+        error_logger.error(f"获取TOP5对比数据失败: {e}")
+        return None

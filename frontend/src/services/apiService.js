@@ -309,3 +309,15 @@ export async function getLogModules() {
     throw error
   }
 }
+
+export async function getDailyReport(date) {
+  try {
+    const response = await apiClient.get('/flow/daily-report', {
+      params: { date: date }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取每日报表失败:', error)
+    throw error
+  }
+}

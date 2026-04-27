@@ -115,16 +115,19 @@ def send_feishu_message(title, content, analysis_result=None, url=None):
         error_logger.error(f"飞书推送异常: {e}")
         return False
 
-def push_important_news(news_item, analysis_result):
+def push_important_news(news_item, analysis_result=None):
     from datetime import datetime
     
     title = news_item.get('title', '')
     content = news_item.get('content', '')
     news_time = news_item.get('time', '')
     url = news_item.get('url')
+    
     core_event = ''
     if analysis_result:
         core_event = analysis_result.get('core_event', '')
+    else:
+        core_event = '请配置AI'
     
     if news_time:
         try:
@@ -143,3 +146,140 @@ def push_important_news(news_item, analysis_result):
     formatted_content = "\n\n".join(parts)
     
     return send_feishu_message(title, formatted_content, url=url)
+
+def format_flow_value(value):
+    if value is None:
+        return '-'
+    if abs(value) >= 10000:
+        return f"{value/10000:.2f}亿"
+    else:
+        return f"{value:.2f}万"
+
+def format_change_value(value):
+    if value is None:
+        return '-'
+    percent = value * 100
+    sign = '+' if percent >= 0 else ''
+    return f"{sign}{percent:.2f}%"
+
+def push_daily_summary_feishu(comparison_data, period='上午'):
+    config = load_feishu_config()
+    
+    if not config or not config.get('enabled'):
+        return False
+    
+    webhook_url = config.get('webhook_url')
+    secret = config.get('secret', '')
+    base_url = config.get('base_url', 'http://localhost:5000')
+    
+    if not webhook_url:
+        error_logger.error("飞书配置不完整：缺少webhook_url")
+        return False
+    
+    date_str = comparison_data['date']
+    time_str = comparison_data['time']
+    top5 = comparison_data['top5']
+    
+    title = f"📊 {date_str} {period}收盘TOP5板块资金流入"
+    
+    content_lines = [
+        f"**📅 {date_str} {time_str} {period}收盘汇总**",
+        "",
+        "---",
+        ""
+    ]
+    
+    for item in top5:
+        rank = item['rank']
+        name = item['name']
+        today_flow = item['today_flow']
+        today_change = item['today_change']
+        yesterday_flow = item['yesterday_flow']
+        yesterday_change = item['yesterday_change']
+        strength = item['strength']
+        flow_change_percent = item['flow_change_percent']
+        
+        strength_icon = '🟢' if strength == '增强' else ('🔴' if strength == '减弱' else ('🟡' if strength == '持平' else '🆕'))
+        
+        content_lines.append(f"**{rank}. {name}**")
+        content_lines.append(f"   💰 今日流入：**<font color='red'>{format_flow_value(today_flow)}</font>**")
+        content_lines.append(f"   📈 今日涨跌：**{format_change_value(today_change)}**")
+        
+        if yesterday_flow is not None:
+            content_lines.append(f"   📊 昨日流入：{format_flow_value(yesterday_flow)}")
+            content_lines.append(f"   📉 昨日涨跌：{format_change_value(yesterday_change)}")
+            if flow_change_percent is not None:
+                flow_change_sign = '+' if flow_change_percent >= 0 else ''
+                content_lines.append(f"   {strength_icon} 资金变化：**{flow_change_sign}{flow_change_percent:.1f}%** ({strength})")
+        else:
+            content_lines.append(f"   {strength_icon} {strength}板块")
+        
+        content_lines.append("")
+    
+    content_lines.append("---")
+    content_lines.append("")
+    content_lines.append("💡 点击下方按钮查看详细报表")
+    
+    formatted_content = "\n".join(content_lines)
+    
+    timestamp = str(int(time.time()))
+    
+    message = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": title
+                },
+                "template": "blue"
+            },
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": formatted_content
+                },
+                {
+                    "tag": "action",
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "📈 查看详细报表"
+                            },
+                            "url": f"{base_url}/daily-report?date={date_str}",
+                            "type": "primary"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    
+    if secret:
+        sign = generate_sign(timestamp, secret)
+        message["timestamp"] = timestamp
+        message["sign"] = sign
+    
+    try:
+        response = requests.post(
+            webhook_url,
+            json=message,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 0:
+                return True
+            else:
+                error_logger.error(f"飞书推送失败: {result}")
+                return False
+        else:
+            error_logger.error(f"飞书推送失败: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        error_logger.error(f"飞书推送异常: {e}")
+        return False
