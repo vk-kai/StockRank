@@ -176,7 +176,8 @@ export default {
         console.log('[HouseKline] 初始化新的echarts实例')
         this.mainChart = echarts.init(chartDom)
       } else {
-        console.log('[HouseKline] 使用已有的echarts实例')
+        console.log('[HouseKline] 使用已有的echarts实例，先clear')
+        this.mainChart.clear()
       }
 
       const dates = this.generateXAxisLabels(data)
@@ -386,7 +387,7 @@ export default {
       console.log('[HouseKline] option:', option)
       
       try {
-        this.mainChart.setOption(option, true)
+        this.mainChart.setOption(option)
         console.log('[HouseKline] setOption 调用成功')
       } catch (e) {
         console.error('[HouseKline] setOption 调用失败:', e)
