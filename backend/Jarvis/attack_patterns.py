@@ -8,9 +8,9 @@ import re
 class AttackPatterns:
     SQL_INJECTION = [
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE)\b)",
-        r"(\b(UNION|JOIN)\b.*\b(SELECT|FROM)\b)",
+        r"(\b(UNION|JOIN)\b[^\n]{0,50}\b(SELECT|FROM)\b)",
         r"(--\s*$|;\s*--)",
-        r"(/\*.*\*/)",
+        r"(/\*[^\n]*\*/)",
         r"(\b(OR|AND)\b\s+['\"]?\d+['\"]?\s*=\s*['\"]?\d+['\"]?)",
         r"(\b(EXEC|EXECUTE)\b)",
         r"(\b(XP_|SP_)\w+)",
@@ -29,7 +29,7 @@ class AttackPatterns:
     ]
     
     XSS = [
-        r"<\s*script[^>]*>.*?<\s*/\s*script\s*>",
+        r"<\s*script[^>]*>[^\n]{0,500}?<\s*/\s*script\s*>",
         r"javascript\s*:",
         r"on(load|error|click|mouse\w+|key\w+|focus|blur|change|submit|reset|select|abort|dragstart|drag|drop|scroll|resize)\s*=",
         r"<\s*iframe[^>]*>",
@@ -58,7 +58,6 @@ class AttackPatterns:
     ]
     
     COMMAND_INJECTION = [
-        r"[;&|`$]",
         r"\|\s*\w+",
         r">\s*/",
         r"<\s*/",

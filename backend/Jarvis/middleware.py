@@ -6,6 +6,7 @@ Flask安全中间件
 from functools import wraps
 from flask import request, jsonify, g
 import time
+import ipaddress
 
 class SecurityMiddleware:
     def __init__(self, app=None, config=None):
@@ -20,6 +21,25 @@ class SecurityMiddleware:
         
         if app:
             self.init_app(app)
+    
+    def _is_ip_in_whitelist(self, ip_str):
+        try:
+            client_ip = ipaddress.ip_address(ip_str)
+            for item in self.whitelist:
+                try:
+                    if '/' in item:
+                        network = ipaddress.ip_network(item, strict=False)
+                        if client_ip in network:
+                            return True
+                    else:
+                        if client_ip == ipaddress.ip_address(item):
+                            return True
+                except ValueError:
+                    if ip_str == item:
+                        return True
+            return False
+        except ValueError:
+            return ip_str in self.whitelist
     
     def init_app(self, app, checker=None, ip_manager=None):
         from .security import SecurityChecker
@@ -40,7 +60,10 @@ class SecurityMiddleware:
             
             client_ip = self._get_client_ip()
             
-            if client_ip in self.whitelist:
+            if self._is_ip_in_whitelist(client_ip):
+                return None
+            
+            if request.method == 'GET' and not request.args and not request.data:
                 return None
             
             if self.ip_manager.is_banned(client_ip):
