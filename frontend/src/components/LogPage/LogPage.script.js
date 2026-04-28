@@ -243,7 +243,8 @@ export default {
         'error': '❌',
         'data': '📊',
         'system': '⚙️',
-        'nginx': '🌐'
+        'nginx': '🌐',
+        'security': '🔒'
       }
       return icons[type] || '📄'
     },
@@ -253,7 +254,8 @@ export default {
         'error': '错误日志',
         'data': '数据日志',
         'system': '系统日志',
-        'nginx': 'Nginx日志'
+        'nginx': 'Nginx日志',
+        'security': '安全日志'
       }
       return names[type] || type
     },
@@ -285,7 +287,8 @@ export default {
         'ai': '#909399',
         'system': '#409eff',
         'error': '#f56c6c',
-        'monitor': '#b37feb'
+        'monitor': '#b37feb',
+        'security': '#e74c3c'
       }
       if (colors[module]) {
         return colors[module]

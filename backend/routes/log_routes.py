@@ -2,8 +2,9 @@ from flask import Blueprint, jsonify, request
 import os
 import re
 import traceback
+import json
 
-from config import LOG_DIR
+from config import LOG_DIR, DATA_DIR
 from data_processor import error_logger
 from logger import get_log_modules, get_logger
 
@@ -13,7 +14,8 @@ system_logger = get_logger('system')
 LOG_FILES = {
     'system': 'system.log',
     'data': 'data.log',
-    'nginx': 'nginx/error.log'
+    'nginx': 'nginx/error.log',
+    'security': None
 }
 
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -26,7 +28,8 @@ LOG_MODULES_INFO = {
     'system': {'desc': '系统运行', 'color': '#409eff'},
     'monitor': {'desc': '线程监控', 'color': '#b37feb'},
     'error': {'desc': '错误日志', 'color': '#f56c6c'},
-    'nginx': {'desc': 'Nginx日志', 'color': '#ff85c0'}
+    'nginx': {'desc': 'Nginx日志', 'color': '#ff85c0'},
+    'security': {'desc': '安全日志', 'color': '#e74c3c'}
 }
 
 LOG_PATTERN = re.compile(
@@ -61,27 +64,38 @@ def get_log_list():
     try:
         logs = []
         for log_type, filename in LOG_FILES.items():
-            file_path = os.path.join(LOG_DIR, filename)
             module_info = LOG_MODULES_INFO.get(log_type, {'desc': log_type, 'color': '#909399'})
-            if os.path.exists(file_path):
-                size = os.path.getsize(file_path)
+            
+            if filename is None:
                 logs.append({
                     'type': log_type,
-                    'filename': filename,
-                    'size': size,
+                    'filename': None,
+                    'size': 0,
                     'exists': True,
                     'desc': module_info['desc'],
                     'color': module_info['color']
                 })
             else:
-                logs.append({
-                    'type': log_type,
-                    'filename': filename,
-                    'size': 0,
-                    'exists': False,
-                    'desc': module_info['desc'],
-                    'color': module_info['color']
-                })
+                file_path = os.path.join(LOG_DIR, filename)
+                if os.path.exists(file_path):
+                    size = os.path.getsize(file_path)
+                    logs.append({
+                        'type': log_type,
+                        'filename': filename,
+                        'size': size,
+                        'exists': True,
+                        'desc': module_info['desc'],
+                        'color': module_info['color']
+                    })
+                else:
+                    logs.append({
+                        'type': log_type,
+                        'filename': filename,
+                        'size': 0,
+                        'exists': False,
+                        'desc': module_info['desc'],
+                        'color': module_info['color']
+                    })
         return jsonify({'success': True, 'data': logs})
     except Exception as e:
         error_logger.error(f"获取日志列表失败: {e}")
@@ -161,6 +175,9 @@ def get_log_content(log_type):
     try:
         if log_type not in LOG_FILES:
             return jsonify({'success': False, 'message': '无效的日志类型'}), 400
+        
+        if log_type == 'security':
+            return get_security_log_content()
         
         filename = LOG_FILES[log_type]
         file_path = os.path.join(LOG_DIR, filename)
@@ -243,6 +260,102 @@ def get_log_content(log_type):
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/log/content]: {str(e)}")
         return jsonify({'success': False, 'message': '读取日志内容失败'}), 500
+
+def get_security_log_content():
+    try:
+        jarvis_data_dir = os.path.join(DATA_DIR, 'jarvis')
+        security_log_file = os.path.join(jarvis_data_dir, 'security_events.json')
+        
+        if not os.path.exists(security_log_file):
+            return jsonify({
+                'success': True,
+                'data': {
+                    'lines': [],
+                    'total': 0,
+                    'page': 1,
+                    'page_size': 100,
+                    'total_pages': 0
+                }
+            })
+        
+        with open(security_log_file, 'r', encoding='utf-8') as f:
+            events = json.load(f)
+        
+        level_filter = request.args.get('level', '').upper()
+        search_keyword = request.args.get('search', '').strip()
+        
+        page = max(1, int(request.args.get('page', 1)))
+        page_size = min(max(1, int(request.args.get('page_size', 100))), 500)
+        
+        parsed_lines = []
+        for event in events:
+            event_type = event.get('type', '')
+            ip = event.get('ip', '')
+            attack_type = event.get('attack_type', '')
+            details = event.get('details', {})
+            timestamp = event.get('timestamp', '')
+            
+            level = 'WARNING'
+            if event_type == 'attack_attempt':
+                level = 'WARNING'
+            elif event_type == 'ip_banned':
+                level = 'ERROR'
+            elif event_type == 'ip_unbanned':
+                level = 'INFO'
+            
+            if level_filter and level != level_filter:
+                continue
+            
+            message_parts = [f"类型: {event_type}"]
+            if attack_type:
+                message_parts.append(f"攻击类型: {attack_type}")
+            if details:
+                if details.get('matched'):
+                    message_parts.append(f"匹配: {details['matched']}")
+                if details.get('reason'):
+                    message_parts.append(f"原因: {details['reason']}")
+            
+            message = ' | '.join(message_parts)
+            
+            if search_keyword and search_keyword.lower() not in message.lower() and search_keyword.lower() not in ip.lower():
+                continue
+            
+            parsed_lines.append({
+                'timestamp': timestamp,
+                'level': level,
+                'module': 'security',
+                'module_display': '安全日志',
+                'source': ip,
+                'lineno': 0,
+                'message': message,
+                'raw': json.dumps(event, ensure_ascii=False)
+            })
+        
+        total = len(parsed_lines)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        
+        parsed_lines.reverse()
+        
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_lines = parsed_lines[start_idx:end_idx]
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'lines': page_lines,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'filtered': level_filter != '' or search_keyword != ''
+            }
+        })
+    except Exception as e:
+        error_logger.error(f"读取安全日志失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/log/content/security]: {str(e)}")
+        return jsonify({'success': False, 'message': '读取安全日志失败'}), 500
 
 @log_bp.route('/levels', methods=['GET'])
 def get_log_levels():

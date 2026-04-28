@@ -32,9 +32,6 @@
         <button class="log-button" @click="goToLogs">
           📋 日志
         </button>
-        <button class="security-button" @click="goToSecurityLogs">
-          🔒 安全日志
-        </button>
         <button class="house-button" @click="goToHouseKline">
           🏠 房价K线
         </button>
