@@ -166,7 +166,7 @@ class SecurityChecker:
                 results.append(result)
         
         for header, value in request.headers:
-            if header.lower() in ['user-agent', 'referer', 'x-forwarded-for', 'x-real-ip']:
+            if header.lower() in ['referer', 'x-forwarded-for', 'x-real-ip']:
                 result = self._check_string(value)
                 if result:
                     result['source'] = 'header'

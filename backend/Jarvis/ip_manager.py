@@ -26,25 +26,31 @@ class IPManager:
         self._attempts = defaultdict(list)
         self._events = []
         
-        os.makedirs(self.data_dir, exist_ok=True)
-        self._load_data()
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._load_data()
+        except Exception as e:
+            print(f"[Jarvis] IPManager初始化失败: {e}")
     
     def _load_data(self):
-        with self._lock:
-            if os.path.exists(self.banned_file):
-                try:
-                    with open(self.banned_file, 'r', encoding='utf-8') as f:
-                        self._banned_ips = json.load(f)
-                except:
-                    self._banned_ips = {}
-            
-            if os.path.exists(self.attempts_file):
-                try:
-                    with open(self.attempts_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        self._attempts = defaultdict(list, data)
-                except:
-                    self._attempts = defaultdict(list)
+        try:
+            with self._lock:
+                if os.path.exists(self.banned_file):
+                    try:
+                        with open(self.banned_file, 'r', encoding='utf-8') as f:
+                            self._banned_ips = json.load(f)
+                    except:
+                        self._banned_ips = {}
+                
+                if os.path.exists(self.attempts_file):
+                    try:
+                        with open(self.attempts_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            self._attempts = defaultdict(list, data)
+                    except:
+                        self._attempts = defaultdict(list)
+        except Exception as e:
+            print(f"[Jarvis] 加载数据失败: {e}")
     
     def _save_data(self):
         with self._lock:

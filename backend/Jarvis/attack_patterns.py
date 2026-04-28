@@ -70,7 +70,7 @@ class AttackPatterns:
         r"/dev/(null|tcp|udp)",
         r"&&\s*\w+",
         r"\|\|\s*\w+",
-        r";\s*\w+",
+        r";\s*(cat|ls|pwd|whoami|id|uname|hostname|ifconfig|ipconfig|netstat|ps|top|kill|rm|mv|cp|chmod|chown|mkdir|rmdir|touch|find|grep|awk|sed|head|tail|more|less|vi|vim|nano|tar|zip|unzip|gzip|gunzip|wget|curl|nc|netcat|telnet|ssh|ftp|scp|rsync|ping|traceroute|nslookup|dig|host|nmap|sqlmap|metasploit|john|hydra|crack|exploit)\b",
     ]
     
     PATH_TRAVERSAL = [

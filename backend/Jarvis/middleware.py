@@ -51,70 +51,74 @@ class SecurityMiddleware:
         
         @app.before_request
         def security_check():
-            if not self.enabled:
-                return None
-            
-            for exempt in self.exempt_routes:
-                if request.path.startswith(exempt):
+            try:
+                if not self.enabled:
                     return None
-            
-            client_ip = self._get_client_ip()
-            
-            if self._is_ip_in_whitelist(client_ip):
+                
+                for exempt in self.exempt_routes:
+                    if request.path.startswith(exempt):
+                        return None
+                
+                client_ip = self._get_client_ip()
+                
+                if self._is_ip_in_whitelist(client_ip):
+                    return None
+                
+                if request.method == 'GET' and not request.args and not request.data:
+                    return None
+                
+                if self.ip_manager.is_banned(client_ip):
+                    ban_info = self.ip_manager.get_ban_info(client_ip)
+                    remaining = int(ban_info.get('ban_until', 0) - time.time())
+                    
+                    self._log('warning', f'已封禁IP尝试访问: {client_ip}')
+                    
+                    return jsonify({
+                        'success': False,
+                        'error': 'access_denied',
+                        'message': '您的IP已被封禁',
+                        'details': {
+                            'reason': ban_info.get('attack_type', '安全违规'),
+                            'remaining_seconds': max(0, remaining),
+                        }
+                    }), 403
+                
+                attack_result = self.checker.check_request(request)
+                
+                if attack_result:
+                    attack_type = attack_result.get('type', 'unknown')
+                    attack_name = self.checker.get_attack_type_name(attack_type)
+                    
+                    attempt_count = self.ip_manager.record_attempt(
+                        client_ip,
+                        attack_type,
+                        attack_result
+                    )
+                    
+                    self._log('warning', 
+                        f'检测到{attack_name}! IP: {client_ip}, '
+                        f'路径: {request.path}, '
+                        f'字段: {attack_result.get("field", "N/A")}, '
+                        f'匹配: {attack_result.get("matched", "N/A")[:50]}'
+                    )
+                    
+                    attempts_left = self.ip_manager.max_attempts - attempt_count
+                    
+                    return jsonify({
+                        'success': False,
+                        'error': 'security_violation',
+                        'message': f'检测到危险操作，您的IP已被记录',
+                        'details': {
+                            'attack_type': attack_name,
+                            'attempts_left': max(0, attempts_left),
+                            'ip': client_ip,
+                        }
+                    }), 400
+                
                 return None
-            
-            if request.method == 'GET' and not request.args and not request.data:
+            except Exception as e:
+                self._log('error', f'安全检查异常: {e}')
                 return None
-            
-            if self.ip_manager.is_banned(client_ip):
-                ban_info = self.ip_manager.get_ban_info(client_ip)
-                remaining = int(ban_info.get('ban_until', 0) - time.time())
-                
-                self._log('warning', f'已封禁IP尝试访问: {client_ip}')
-                
-                return jsonify({
-                    'success': False,
-                    'error': 'access_denied',
-                    'message': '您的IP已被封禁',
-                    'details': {
-                        'reason': ban_info.get('attack_type', '安全违规'),
-                        'remaining_seconds': max(0, remaining),
-                    }
-                }), 403
-            
-            attack_result = self.checker.check_request(request)
-            
-            if attack_result:
-                attack_type = attack_result.get('type', 'unknown')
-                attack_name = self.checker.get_attack_type_name(attack_type)
-                
-                attempt_count = self.ip_manager.record_attempt(
-                    client_ip,
-                    attack_type,
-                    attack_result
-                )
-                
-                self._log('warning', 
-                    f'检测到{attack_name}! IP: {client_ip}, '
-                    f'路径: {request.path}, '
-                    f'字段: {attack_result.get("field", "N/A")}, '
-                    f'匹配: {attack_result.get("matched", "N/A")[:50]}'
-                )
-                
-                attempts_left = self.ip_manager.max_attempts - attempt_count
-                
-                return jsonify({
-                    'success': False,
-                    'error': 'security_violation',
-                    'message': f'检测到危险操作，您的IP已被记录',
-                    'details': {
-                        'attack_type': attack_name,
-                        'attempts_left': max(0, attempts_left),
-                        'ip': client_ip,
-                    }
-                }), 400
-            
-            return None
         
         @app.after_request
         def add_security_headers(response):
