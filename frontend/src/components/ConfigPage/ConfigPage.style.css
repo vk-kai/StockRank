@@ -520,6 +520,50 @@
   .btn-secondary {
     width: 100%;
   }
+
+  .banned-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .banned-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .banned-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .btn-unban {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .banned-details {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .password-modal-content {
+    min-width: auto;
+    max-width: 90%;
+    padding: 20px;
+    margin: 20px;
+  }
+
+  .password-modal-footer {
+    flex-direction: column;
+  }
+
+  .btn-cancel,
+  .btn-confirm {
+    width: 100%;
+    padding: 12px;
+  }
 }
 
 .banned-header {

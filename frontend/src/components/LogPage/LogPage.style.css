@@ -748,6 +748,97 @@
   background: #2196F3;
 }
 
+@media (max-width: 768px) {
+  .log-container {
+    padding: 10px;
+  }
+
+  .log-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .log-tabs {
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+
+  .log-tab {
+    padding: 8px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .log-controls {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .log-search {
+    width: 100%;
+  }
+
+  .log-search input {
+    width: 100%;
+  }
+
+  .log-lines {
+    overflow-x: auto;
+  }
+
+  .log-header-row,
+  .log-line {
+    min-width: 800px;
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  .log-header-row.security-header,
+  .log-line.security-line {
+    min-width: 900px;
+  }
+
+  .log-body {
+    max-height: 400px;
+  }
+
+  .detail-modal-content {
+    width: 95%;
+    max-height: 80vh;
+    margin: 10px;
+  }
+
+  .detail-header h3 {
+    font-size: 16px;
+  }
+
+  .detail-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .detail-label {
+    min-width: auto;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .copy-btn,
+  .close-btn {
+    width: 100%;
+  }
+
+  .toast {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    text-align: center;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

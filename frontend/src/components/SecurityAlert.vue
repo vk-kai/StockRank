@@ -249,4 +249,45 @@ export default {
 .security-alert-leave-to .security-alert-modal {
   transform: scale(0.9);
 }
+
+@media (max-width: 768px) {
+  .security-alert-modal {
+    padding: 24px 20px;
+    margin: 20px;
+    width: 95%;
+  }
+
+  .alert-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .alert-title {
+    font-size: 1.25rem;
+  }
+
+  .alert-message {
+    font-size: 1rem;
+  }
+
+  .alert-details {
+    padding: 12px;
+  }
+
+  .detail-item {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0;
+  }
+
+  .alert-warning {
+    font-size: 0.85rem;
+    padding: 10px;
+  }
+
+  .alert-button {
+    width: 100%;
+    padding: 14px;
+  }
+}
 </style>
