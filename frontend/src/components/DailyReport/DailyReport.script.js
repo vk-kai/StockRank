@@ -1,7 +1,11 @@
 import { getDailyReport } from '../../services/apiService'
+import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
   name: 'DailyReport',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       selectedDate: this.$route.query.date || new Date().toISOString().split('T')[0],

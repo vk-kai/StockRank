@@ -18,11 +18,19 @@ apiClient.interceptors.response.use(
         detail: { error, response }
       })
       window.dispatchEvent(event)
+    } else if (!error.response) {
+      console.error('网络错误或请求被拦截:', error.message)
     }
     
     return Promise.reject(error)
   }
 )
+
+export function isSecurityError(error) {
+  return error.response && 
+         error.response.data && 
+         (error.response.data.error === 'security_violation' || error.response.data.error === 'access_denied')
+}
 
 /**
  * 获取当前板块资金流入数据

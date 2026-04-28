@@ -1,7 +1,11 @@
-import { getNews, getSystemHealth, searchNews } from '../../services/apiService'
+import { getNews, getSystemHealth, searchNews, isSecurityError } from '../../services/apiService'
+import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
   name: 'NewsPage',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       newsList: [],
@@ -210,7 +214,10 @@ export default {
         }
       } catch (err) {
         console.error('搜索新闻失败:', err)
-        this.error = '搜索新闻失败: ' + err.message
+        if (isSecurityError(err)) {
+          return
+        }
+        this.error = '搜索新闻失败: ' + (err.message || '未知错误')
       } finally {
         this.loading = false
         this.isSearching = false

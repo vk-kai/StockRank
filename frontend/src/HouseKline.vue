@@ -30,15 +30,21 @@
     <div class="data-source">
       数据来源：国家统计局
     </div>
+
+    <SecurityAlert />
   </div>
 </template>
 
 <script>
 import * as echarts from 'echarts'
 import { getHouseKline } from './services/apiService'
+import SecurityAlert from './components/SecurityAlert.vue'
 
 export default {
   name: 'HouseKline',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       loading: false,

@@ -1,7 +1,11 @@
 import { getLogList, getLogContent, getLogLevels, getLogModules } from '../../services/apiService'
+import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
   name: 'LogPage',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       logList: [],
@@ -201,10 +205,11 @@ export default {
 
     truncateMessage(message) {
       if (!message) return ''
-      if (message.length <= this.maxMessageLength) {
+      const maxLength = this.activeLog === 'security' ? 500 : this.maxMessageLength
+      if (message.length <= maxLength) {
         return message
       }
-      return message.substring(0, this.maxMessageLength) + '...'
+      return message.substring(0, maxLength) + '...'
     },
 
     showDetail(log) {

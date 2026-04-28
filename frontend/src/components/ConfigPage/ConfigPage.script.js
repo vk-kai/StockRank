@@ -10,9 +10,13 @@ import {
   getAIPrompt,
   saveAIPrompt
 } from '../../services/apiService'
+import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
   name: 'ConfigPage',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       activeTab: 'ai',

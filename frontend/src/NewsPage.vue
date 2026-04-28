@@ -110,6 +110,8 @@
     >
       ↑
     </button>
+
+    <SecurityAlert />
   </div>
 </template>
 

@@ -100,6 +100,8 @@
     <div class="no-data" v-if="!loading && !error && !reportData">
       <p>暂无数据</p>
     </div>
+
+    <SecurityAlert />
   </div>
 </template>
 

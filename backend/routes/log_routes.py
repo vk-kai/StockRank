@@ -306,16 +306,36 @@ def get_security_log_content():
             if level_filter and level != level_filter:
                 continue
             
-            message_parts = [f"类型: {event_type}"]
-            if attack_type:
-                message_parts.append(f"攻击类型: {attack_type}")
-            if details:
-                if details.get('matched'):
-                    message_parts.append(f"匹配: {details['matched']}")
-                if details.get('reason'):
-                    message_parts.append(f"原因: {details['reason']}")
+            message_lines = []
+            message_lines.append(f"[{event_type}]")
             
-            message = ' | '.join(message_parts)
+            if attack_type:
+                attack_names = {
+                    'sql_injection': 'SQL注入',
+                    'xss': 'XSS攻击',
+                    'command_injection': '命令注入',
+                    'path_traversal': '路径遍历',
+                    'ldap_injection': 'LDAP注入',
+                    'xxe': 'XXE攻击',
+                    'ssrf': 'SSRF攻击'
+                }
+                attack_name = attack_names.get(attack_type, attack_type)
+                message_lines.append(f"攻击类型: {attack_name}")
+            
+            if details:
+                if details.get('field'):
+                    message_lines.append(f"字段: {details['field']}")
+                if details.get('matched'):
+                    matched = details['matched']
+                    if len(matched) > 200:
+                        matched = matched[:200] + '...'
+                    message_lines.append(f"匹配内容: {matched}")
+                if details.get('reason'):
+                    message_lines.append(f"原因: {details['reason']}")
+                if details.get('attempt_count'):
+                    message_lines.append(f"尝试次数: {details['attempt_count']}")
+            
+            message = '\n'.join(message_lines)
             
             if search_keyword and search_keyword.lower() not in message.lower() and search_keyword.lower() not in ip.lower():
                 continue

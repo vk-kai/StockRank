@@ -191,6 +191,8 @@
     <div class="toast" v-if="toast.show" :class="toast.type">
       {{ toast.message }}
     </div>
+
+    <SecurityAlert />
   </div>
 </template>
 
