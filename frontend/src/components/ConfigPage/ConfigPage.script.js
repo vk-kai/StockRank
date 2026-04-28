@@ -8,7 +8,9 @@ import {
   getStockMonitorConfig,
   saveStockMonitorConfig,
   getAIPrompt,
-  saveAIPrompt
+  saveAIPrompt,
+  getBannedIPs,
+  unbanIP
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -24,7 +26,8 @@ export default {
         { id: 'ai', name: 'AI配置', icon: '🤖' },
         { id: 'feishu', name: '飞书推送', icon: '📢' },
         { id: 'stock', name: '股票监控', icon: '📈' },
-        { id: 'prompt', name: 'AI提示词', icon: '💬' }
+        { id: 'prompt', name: 'AI提示词', icon: '💬' },
+        { id: 'security', name: 'IP黑名单', icon: '🛡️' }
       ],
       aiConfig: {
         enabled: false,
@@ -47,6 +50,7 @@ export default {
         stocks: []
       },
       aiPrompt: '',
+      bannedIPs: [],
       passwordModal: {
         show: false,
         password: '',
@@ -92,9 +96,68 @@ export default {
         if (promptRes.success) {
           this.aiPrompt = promptRes.data
         }
+        
+        await this.loadBannedIPs()
       } catch (error) {
         this.showToast('加载配置失败', 'error')
       }
+    },
+
+    async loadBannedIPs() {
+      try {
+        const response = await getBannedIPs()
+        if (response.success) {
+          this.bannedIPs = response.data || []
+        }
+      } catch (error) {
+        console.error('加载IP黑名单失败:', error)
+      }
+    },
+
+    async handleUnbanIP(ip) {
+      this.showPasswordModal(async (password) => {
+        if (password !== 'vk666') {
+          this.showToast('密码错误', 'error')
+          return
+        }
+        
+        try {
+          const response = await unbanIP(ip)
+          if (response.success) {
+            this.showToast(`已解封IP: ${ip}`, 'success')
+            await this.loadBannedIPs()
+          } else {
+            this.showToast(response.message || '解封失败', 'error')
+          }
+        } catch (error) {
+          this.showToast('解封失败', 'error')
+        }
+      })
+    },
+
+    formatBanTime(seconds) {
+      if (!seconds || seconds <= 0) return '已过期'
+      const minutes = Math.floor(seconds / 60)
+      const hours = Math.floor(minutes / 60)
+      const days = Math.floor(hours / 24)
+      
+      if (days > 0) return `${days}天${hours % 24}小时`
+      if (hours > 0) return `${hours}小时${minutes % 60}分钟`
+      if (minutes > 0) return `${minutes}分钟`
+      return `${seconds}秒`
+    },
+
+    getAttackTypeName(type) {
+      const names = {
+        'sql_injection': 'SQL注入',
+        'xss': 'XSS攻击',
+        'command_injection': '命令注入',
+        'path_traversal': '路径遍历',
+        'ldap_injection': 'LDAP注入',
+        'xxe': 'XXE攻击',
+        'ssrf': 'SSRF攻击'
+      }
+      return names[type] || type || '未知'
     },
 
     async saveAIConfig() {

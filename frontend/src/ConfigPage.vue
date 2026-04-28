@@ -242,6 +242,41 @@
           </div>
         </div>
       </div>
+
+      <div v-if="activeTab === 'security'" class="config-section">
+        <h2>🛡️ IP黑名单管理</h2>
+        <div class="config-form">
+          <div class="banned-header">
+            <span class="banned-count">当前封禁IP: {{ bannedIPs.length }} 个</span>
+            <button @click="loadBannedIPs" class="btn-refresh">🔄 刷新</button>
+          </div>
+          
+          <div v-if="bannedIPs.length === 0" class="empty-banned">
+            <p>暂无封禁IP</p>
+          </div>
+          
+          <div v-else class="banned-list">
+            <div 
+              v-for="item in bannedIPs" 
+              :key="item.ip"
+              class="banned-item"
+            >
+              <div class="banned-info">
+                <div class="banned-ip">{{ item.ip }}</div>
+                <div class="banned-details">
+                  <span class="banned-type">{{ getAttackTypeName(item.attack_type) }}</span>
+                  <span class="banned-time">剩余: {{ formatBanTime(item.remaining_seconds) }}</span>
+                  <span class="banned-attempts">尝试次数: {{ item.attempt_count || '-' }}</span>
+                </div>
+                <div class="banned-timestamp">封禁时间: {{ item.ban_time || '-' }}</div>
+              </div>
+              <div class="banned-actions">
+                <button @click="handleUnbanIP(item.ip)" class="btn-unban">解封</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="password-modal" v-if="passwordModal.show" @click.self="closePasswordModal">

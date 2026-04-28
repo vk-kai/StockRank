@@ -71,8 +71,6 @@ class SecurityMiddleware:
                     ban_info = self.ip_manager.get_ban_info(client_ip)
                     remaining = int(ban_info.get('ban_until', 0) - time.time())
                     
-                    self._log('warning', f'已封禁IP尝试访问: {client_ip}')
-                    
                     return jsonify({
                         'success': False,
                         'error': 'access_denied',
@@ -108,13 +106,6 @@ class SecurityMiddleware:
                         client_ip,
                         attack_type,
                         security_details
-                    )
-                    
-                    self._log('warning', 
-                        f'检测到{attack_name}! IP: {client_ip}, '
-                        f'路径: {request.path}, '
-                        f'字段: {attack_result.get("field", "N/A")}, '
-                        f'匹配: {attack_result.get("matched", "N/A")[:50]}'
                     )
                     
                     attempts_left = self.ip_manager.max_attempts - attempt_count

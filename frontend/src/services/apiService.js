@@ -306,6 +306,26 @@ export const fetchSecurityEvents = async (limit = 100) => {
   }
 }
 
+export const getBannedIPs = async () => {
+  try {
+    const response = await apiClient.get('/api/jarvis/banned')
+    return response.data
+  } catch (error) {
+    console.error('获取IP黑名单失败:', error)
+    throw error
+  }
+}
+
+export const unbanIP = async (ip) => {
+  try {
+    const response = await apiClient.post('/api/jarvis/unban', { ip })
+    return response.data
+  } catch (error) {
+    console.error('解封IP失败:', error)
+    throw error
+  }
+}
+
 export async function getLogContent(logType, page = 1, pageSize = 100, level = '', search = '', module = '') {
   try {
     const params = { page, page_size: pageSize }

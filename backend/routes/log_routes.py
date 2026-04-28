@@ -292,11 +292,13 @@ def get_security_log_content():
             ip = event.get('ip', '')
             attack_type = event.get('attack_type', '')
             attack_name = event.get('attack_name', '')
-            api_path = event.get('api_path', '')
-            method = event.get('method', '')
-            keyword = event.get('keyword', '')
-            field = event.get('field', '')
             timestamp = event.get('timestamp', '')
+            
+            details = event.get('details', {})
+            api_path = event.get('api_path') or details.get('api_path', '')
+            method = event.get('method') or details.get('method', '')
+            keyword = event.get('keyword') or details.get('keyword', '')
+            field = event.get('field') or details.get('field', '')
             
             level = 'WARNING'
             if event_type == 'attack_attempt':

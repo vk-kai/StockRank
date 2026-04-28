@@ -521,3 +521,130 @@
     width: 100%;
   }
 }
+
+.banned-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.banned-count {
+  font-size: 16px;
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn-refresh {
+  background: rgba(79, 195, 247, 0.2);
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  color: #4fc3f7;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.3s;
+}
+
+.btn-refresh:hover {
+  background: rgba(79, 195, 247, 0.3);
+}
+
+.empty-banned {
+  text-align: center;
+  padding: 60px 20px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.empty-banned p {
+  font-size: 16px;
+}
+
+.banned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.banned-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s;
+}
+
+.banned-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+.banned-info {
+  flex: 1;
+}
+
+.banned-ip {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ff9800;
+  font-family: monospace;
+  margin-bottom: 8px;
+}
+
+.banned-details {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.banned-type {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.banned-time {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.banned-attempts {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+}
+
+.banned-timestamp {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.banned-actions {
+  margin-left: 20px;
+}
+
+.btn-unban {
+  background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+  border: none;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.btn-unban:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
