@@ -7,7 +7,7 @@ import os
 import json
 import time
 from datetime import datetime, timedelta
-from threading import Lock
+from threading import RLock
 from collections import defaultdict
 
 class IPManager:
@@ -21,7 +21,7 @@ class IPManager:
         self.attempts_file = os.path.join(self.data_dir, 'attempts.json')
         self.log_file = os.path.join(self.data_dir, 'security_events.json')
         
-        self._lock = Lock()
+        self._lock = RLock()
         self._banned_ips = {}
         self._attempts = defaultdict(list)
         self._events = []
@@ -53,12 +53,15 @@ class IPManager:
             print(f"[Jarvis] 加载数据失败: {e}")
     
     def _save_data(self):
-        with self._lock:
-            with open(self.banned_file, 'w', encoding='utf-8') as f:
-                json.dump(self._banned_ips, f, ensure_ascii=False, indent=2)
-            
-            with open(self.attempts_file, 'w', encoding='utf-8') as f:
-                json.dump(dict(self._attempts), f, ensure_ascii=False, indent=2)
+        try:
+            with self._lock:
+                with open(self.banned_file, 'w', encoding='utf-8') as f:
+                    json.dump(self._banned_ips, f, ensure_ascii=False, indent=2)
+                
+                with open(self.attempts_file, 'w', encoding='utf-8') as f:
+                    json.dump(dict(self._attempts), f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Jarvis] 保存数据失败: {e}")
     
     def _log_event(self, event):
         event['timestamp'] = datetime.now().isoformat()
@@ -95,29 +98,33 @@ class IPManager:
             return self._banned_ips.get(ip, None)
     
     def record_attempt(self, ip, attack_type, details=None):
-        with self._lock:
-            now = time.time()
-            cutoff = now - self.attempt_window
-            
-            self._attempts[ip] = [
-                t for t in self._attempts[ip] if t > cutoff
-            ]
-            self._attempts[ip].append(now)
-            
-            self._log_event({
-                'type': 'attack_attempt',
-                'ip': ip,
-                'attack_type': attack_type,
-                'details': details,
-            })
-            
-            attempt_count = len(self._attempts[ip])
-            
-            if attempt_count >= self.max_attempts:
-                self._ban_ip(ip, attack_type, attempt_count)
-            
-            self._save_data()
-            return attempt_count
+        try:
+            with self._lock:
+                now = time.time()
+                cutoff = now - self.attempt_window
+                
+                self._attempts[ip] = [
+                    t for t in self._attempts[ip] if t > cutoff
+                ]
+                self._attempts[ip].append(now)
+                
+                self._log_event({
+                    'type': 'attack_attempt',
+                    'ip': ip,
+                    'attack_type': attack_type,
+                    'details': details,
+                })
+                
+                attempt_count = len(self._attempts[ip])
+                
+                if attempt_count >= self.max_attempts:
+                    self._ban_ip(ip, attack_type, attempt_count)
+                
+                self._save_data()
+                return attempt_count
+        except Exception as e:
+            print(f"[Jarvis] 记录攻击尝试失败: {e}")
+            return 1
     
     def _ban_ip(self, ip, attack_type, attempt_count):
         ban_until = time.time() + self.ban_duration

@@ -118,7 +118,13 @@ class SecurityMiddleware:
                 return None
             except Exception as e:
                 self._log('error', f'安全检查异常: {e}')
-                return None
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': 'security_check_error',
+                    'message': '安全检查异常'
+                }), 500
         
         @app.after_request
         def add_security_headers(response):
