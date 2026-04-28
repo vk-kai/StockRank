@@ -323,10 +323,7 @@ def get_security_log_content():
                 }
                 attack_name = attack_names.get(attack_type, attack_type or '未知')
             
-            message = f"[{event_type}]"
-            if attack_name:
-                message += f" {attack_name}"
-            
+            # 处理封禁和解封事件
             if event_type == 'ip_banned':
                 ban_duration = event.get('ban_duration', 3600)
                 ban_time = event.get('ban_time', '')
@@ -336,8 +333,12 @@ def get_security_log_content():
                     message = f"{ip} 执行 {attack_name} 已被永久封禁，封禁时间：{ban_time}"
                 else:
                     message = f"{ip} 执行 {attack_name} 已被封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
+                attack_type = 'banned'
+                attack_name = 'IP封禁'
             elif event_type == 'ip_unbanned':
                 message = f"{ip} 已被手动解封"
+                attack_type = 'unbanned'
+                attack_name = 'IP解封'
             elif event_type == 'ip_banned_manual':
                 ban_duration = event.get('ban_duration', 3600)
                 ban_time = event.get('ban_time', '')
@@ -345,6 +346,12 @@ def get_security_log_content():
                     message = f"{ip} 已被手动永久封禁，封禁时间：{ban_time}"
                 else:
                     message = f"{ip} 已被手动封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
+                attack_type = 'manual_banned'
+                attack_name = '手动封禁'
+            else:
+                message = f"[{event_type}]"
+                if attack_name:
+                    message += f" {attack_name}"
             
             if search_keyword:
                 search_text = f"{message} {ip} {api_path} {keyword} {attack_name}".lower()
