@@ -171,6 +171,8 @@ class IPManager:
         with self._lock:
             if ip in self._banned_ips:
                 del self._banned_ips[ip]
+                if ip in self._attempts:
+                    del self._attempts[ip]
                 self._log_event({
                     'type': 'ip_unbanned',
                     'ip': ip,
