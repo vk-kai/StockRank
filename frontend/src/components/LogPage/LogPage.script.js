@@ -220,16 +220,6 @@ export default {
       return keyword.substring(0, 30) + '...'
     },
 
-    formatRawData(raw) {
-      if (!raw) return '-'
-      try {
-        const data = typeof raw === 'string' ? JSON.parse(raw) : raw
-        return JSON.stringify(data, null, 2)
-      } catch {
-        return raw
-      }
-    },
-
     showDetail(log) {
       this.selectedLog = log
       this.showModal = true

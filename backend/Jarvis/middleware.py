@@ -96,10 +96,6 @@ class SecurityMiddleware:
                         'method': request.method,
                         'field': attack_result.get('field', 'unknown'),
                         'keyword': attack_result.get('matched', 'unknown')[:100],
-                        'pattern': attack_result.get('pattern', ''),
-                        'source': attack_result.get('source', 'unknown'),
-                        'user_agent': request.headers.get('User-Agent', 'unknown')[:200],
-                        'referer': request.headers.get('Referer', '')[:200],
                     }
                     
                     attempt_count = self.ip_manager.record_attempt(

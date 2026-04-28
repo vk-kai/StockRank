@@ -340,7 +340,6 @@ def get_security_log_content():
                 'source': ip,
                 'lineno': 0,
                 'message': message,
-                'raw': json.dumps(event, ensure_ascii=False),
                 'security_info': {
                     'ip': ip,
                     'attack_type': attack_type,

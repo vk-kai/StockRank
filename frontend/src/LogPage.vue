@@ -218,10 +218,6 @@
             <span class="detail-label">消息：</span>
             <pre class="detail-message">{{ selectedLog.message }}</pre>
           </div>
-          <div class="detail-row" v-if="selectedLog.raw">
-            <span class="detail-label">原始数据：</span>
-            <pre class="detail-raw">{{ formatRawData(selectedLog.raw) }}</pre>
-          </div>
         </div>
         <div class="modal-footer">
           <button class="copy-btn" @click="copyToClipboard">📋 复制内容</button>
