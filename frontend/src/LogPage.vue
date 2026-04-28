@@ -82,8 +82,8 @@
           <span class="log-module-header" v-if="activeLog === 'data' || activeLog === 'system'">模块</span>
           <span class="log-source" v-if="activeLog !== 'security'">来源</span>
           <span class="log-ip" v-if="activeLog === 'security'">IP</span>
-          <span class="log-attack" v-if="activeLog === 'security'">攻击类型</span>
-          <span class="log-api" v-if="activeLog === 'security'">API路径</span>
+          <span class="log-attack" v-if="activeLog === 'security'">类型</span>
+          <span class="log-api" v-if="activeLog === 'security'">路径/消息</span>
           <span class="log-keyword" v-if="activeLog === 'security'">关键词</span>
           <span class="log-message" v-if="activeLog !== 'security'">消息</span>
           <span class="log-action">操作</span>
@@ -100,7 +100,7 @@
             <span class="log-source" v-if="activeLog !== 'security'">{{ line.source }}:{{ line.lineno }}</span>
             <span class="log-ip" v-if="activeLog === 'security'">{{ line.security_info?.ip || line.source || '-' }}</span>
             <span class="log-attack" v-if="activeLog === 'security'">{{ line.security_info?.attack_name || '-' }}</span>
-            <span class="log-api" v-if="activeLog === 'security'">{{ line.security_info?.api_path || '-' }}</span>
+            <span class="log-api" v-if="activeLog === 'security'" :title="line.security_info?.api_path || line.message || ''">{{ line.security_info?.api_path || truncateMessage(line.message, 30) }}</span>
             <span class="log-keyword" v-if="activeLog === 'security'" :title="line.security_info?.keyword || ''">{{ truncateKeyword(line.security_info?.keyword) }}</span>
             <span class="log-message" v-if="activeLog !== 'security'" :title="line.message" v-html="highlightKeywords(truncateMessage(line.message))"></span>
             <span class="log-action">
@@ -212,6 +212,10 @@
             <div class="detail-row">
               <span class="detail-label">事件类型：</span>
               <span class="detail-value">{{ selectedLog.security_info.event_type || '-' }}</span>
+            </div>
+            <div class="detail-row" v-if="selectedLog.message && !selectedLog.security_info.api_path">
+              <span class="detail-label">详细信息：</span>
+              <pre class="detail-message">{{ selectedLog.message }}</pre>
             </div>
           </template>
           <div class="detail-row" v-if="activeLog !== 'security'">

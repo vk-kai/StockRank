@@ -203,9 +203,9 @@ export default {
       }
     },
 
-    truncateMessage(message) {
+    truncateMessage(message, customMaxLength) {
       if (!message) return ''
-      const maxLength = this.activeLog === 'security' ? 500 : this.maxMessageLength
+      const maxLength = customMaxLength || (this.activeLog === 'security' ? 500 : this.maxMessageLength)
       if (message.length <= maxLength) {
         return message
       }
