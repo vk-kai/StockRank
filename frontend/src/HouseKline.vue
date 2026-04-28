@@ -484,7 +484,29 @@ export default {
 
     detectKeyPoints(data) {
           const points = []
-          const lookback = 5
+          
+          if (data.length === 0) return points
+          
+          let maxHigh = -Infinity
+          let maxHighIndex = -1
+          
+          data.forEach((item, index) => {
+            if (item.high > maxHigh) {
+              maxHigh = item.high
+              maxHighIndex = index
+            }
+          })
+          
+          if (maxHighIndex >= 0) {
+            points.push({
+              name: '最高点',
+              coord: [maxHighIndex, maxHigh],
+              itemStyle: { color: '#ff4d4f' },
+              label: { formatter: '最高点' }
+            })
+          }
+          
+          const lookback = 10
           
           for (let i = lookback; i < data.length - lookback; i++) {
             const current = data[i]
@@ -496,73 +518,22 @@ export default {
               nextPoints.push(data[i + j])
             }
             
-            const isHighPoint = current.high >= Math.max(...prevPoints.map(p => p.high)) &&
-                               current.high >= Math.max(...nextPoints.map(p => p.high))
-            
             const isLowPoint = current.low <= Math.min(...prevPoints.map(p => p.low)) &&
                               current.low <= Math.min(...nextPoints.map(p => p.low))
             
-            if (isHighPoint) {
-              const prevTrend = prevPoints[prevPoints.length - 1].close > prevPoints[0].close
-              const nextTrend = nextPoints[nextPoints.length - 1].close < nextPoints[0].close
-              
-              if (prevTrend && nextTrend) {
-                points.push({
-                  name: '拐点',
-                  coord: [i, current.high],
-                  itemStyle: { color: '#ff4d4f' },
-                  label: { formatter: '拐点' }
-                })
-              }
-            }
-            
-            if (isLowPoint) {
-              const prevTrend = prevPoints[prevPoints.length - 1].close < prevPoints[0].close
-              const nextTrend = nextPoints[nextPoints.length - 1].close > nextPoints[0].close
-              
-              if (prevTrend && nextTrend) {
-                points.push({
-                  name: '反弹',
-                  coord: [i, current.low],
-                  itemStyle: { color: '#52c41a' },
-                  label: { formatter: '反弹' }
-                })
-              }
-            }
-            
-            if (i >= lookback + 2) {
-              const recent = data.slice(i - 4, i + 1)
-              const changes = recent.map(p => p.close - p.open)
-              
-              const allDown = changes.every(c => c < 0)
-              const accelerating = Math.abs(changes[0]) > Math.abs(changes[1]) * 1.5
-              
-              if (allDown && accelerating) {
-                points.push({
-                  name: '加速下行',
-                  coord: [i, current.low],
-                  itemStyle: { color: '#faad14' },
-                  label: { formatter: '加速下行' }
-                })
-              }
-              
-              const allUp = changes.every(c => c > 0)
-              const acceleratingUp = Math.abs(changes[0]) > Math.abs(changes[1]) * 1.5
-              
-              if (allUp && acceleratingUp) {
-                points.push({
-                  name: '加速上行',
-                  coord: [i, current.high],
-                  itemStyle: { color: '#1890ff' },
-                  label: { formatter: '加速上行' }
-                })
-              }
+            if (isLowPoint && i !== maxHighIndex) {
+              points.push({
+                name: '阶段低点',
+                coord: [i, current.low],
+                itemStyle: { color: '#52c41a' },
+                label: { formatter: '阶段低点' }
+              })
             }
           }
           
           return points.filter((point, index, self) => 
             index === self.findIndex(p => p.coord[0] === point.coord[0])
-          ).slice(0, 8)
+          )
         }
   }
 }

@@ -3,6 +3,7 @@ import os
 import re
 import traceback
 import json
+from datetime import datetime
 
 from config import LOG_DIR, DATA_DIR
 from data_processor import error_logger
@@ -17,6 +18,15 @@ LOG_FILES = {
     'nginx': 'nginx/error.log',
     'security': None
 }
+
+def format_datetime(iso_string):
+    if not iso_string:
+        return '-'
+    try:
+        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+    except:
+        return iso_string
 
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 
@@ -326,33 +336,33 @@ def get_security_log_content():
             # 处理封禁和解封事件
             if event_type == 'ip_banned':
                 ban_duration = event.get('ban_duration', 3600)
-                ban_time = event.get('ban_time', '')
+                ban_time = format_datetime(event.get('ban_time', ''))
                 ban_reason = event.get('ban_reason', '安全违规')
                 if ban_duration == 3600:
-                    message = f"{ip} 因{ban_reason}已被封禁1小时，封禁时间：{ban_time}"
+                    message = f"因{ban_reason}已被封禁1小时，封禁时间：{ban_time}"
                 elif ban_duration == 0:
-                    message = f"{ip} 因{ban_reason}已被永久封禁，封禁时间：{ban_time}"
+                    message = f"因{ban_reason}已被永久封禁，封禁时间：{ban_time}"
                 else:
-                    message = f"{ip} 因{ban_reason}已被封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
+                    message = f"因{ban_reason}已被封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
                 attack_type = 'banned'
                 attack_name = 'IP封禁'
             elif event_type == 'ip_unbanned':
                 unban_type = event.get('unban_type', 'manual')
-                unban_time = event.get('unban_time', '')
+                unban_time = format_datetime(event.get('unban_time', ''))
                 if unban_type == 'auto':
-                    message = f"{ip} 封禁到期自动解封，解封时间：{unban_time}"
+                    message = f"封禁到期自动解封，解封时间：{unban_time}"
                     attack_name = '自动解封'
                 else:
-                    message = f"{ip} 已被手动解封，解封时间：{unban_time}"
+                    message = f"已被手动解封，解封时间：{unban_time}"
                     attack_name = '手动解封'
                 attack_type = 'unbanned'
             elif event_type == 'ip_banned_manual':
                 ban_duration = event.get('ban_duration', 3600)
-                ban_time = event.get('ban_time', '')
+                ban_time = format_datetime(event.get('ban_time', ''))
                 if ban_duration == 0:
-                    message = f"{ip} 已被手动永久封禁，封禁时间：{ban_time}"
+                    message = f"已被手动永久封禁，封禁时间：{ban_time}"
                 else:
-                    message = f"{ip} 已被手动封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
+                    message = f"已被手动封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
                 attack_type = 'manual_banned'
                 attack_name = '手动封禁'
             else:
