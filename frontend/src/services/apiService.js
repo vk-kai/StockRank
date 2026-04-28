@@ -286,6 +286,18 @@ export async function getLogList() {
   }
 }
 
+export const fetchSecurityEvents = async (limit = 100) => {
+  try {
+    const response = await apiClient.get('/api/jarvis/events', {
+      params: { limit }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取安全日志失败:', error)
+    throw error
+  }
+}
+
 export async function getLogContent(logType, page = 1, pageSize = 100, level = '', search = '', module = '') {
   try {
     const params = { page, page_size: pageSize }

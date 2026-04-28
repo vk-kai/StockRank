@@ -415,6 +415,10 @@ export default {
       this.$router.push('/logs')
     },
 
+    goToSecurityLogs() {
+      this.$router.push('/security-logs')
+    },
+
     goToHouseKline() {
       this.$router.push('/house-kline')
     },
