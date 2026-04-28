@@ -327,18 +327,25 @@ def get_security_log_content():
             if event_type == 'ip_banned':
                 ban_duration = event.get('ban_duration', 3600)
                 ban_time = event.get('ban_time', '')
+                ban_reason = event.get('ban_reason', '安全违规')
                 if ban_duration == 3600:
-                    message = f"{ip} 执行 {attack_name} 已被封禁1小时，封禁时间：{ban_time}"
+                    message = f"{ip} 因{ban_reason}已被封禁1小时，封禁时间：{ban_time}"
                 elif ban_duration == 0:
-                    message = f"{ip} 执行 {attack_name} 已被永久封禁，封禁时间：{ban_time}"
+                    message = f"{ip} 因{ban_reason}已被永久封禁，封禁时间：{ban_time}"
                 else:
-                    message = f"{ip} 执行 {attack_name} 已被封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
+                    message = f"{ip} 因{ban_reason}已被封禁{ban_duration//3600}小时，封禁时间：{ban_time}"
                 attack_type = 'banned'
                 attack_name = 'IP封禁'
             elif event_type == 'ip_unbanned':
-                message = f"{ip} 已被手动解封"
+                unban_type = event.get('unban_type', 'manual')
+                unban_time = event.get('unban_time', '')
+                if unban_type == 'auto':
+                    message = f"{ip} 封禁到期自动解封，解封时间：{unban_time}"
+                    attack_name = '自动解封'
+                else:
+                    message = f"{ip} 已被手动解封，解封时间：{unban_time}"
+                    attack_name = '手动解封'
                 attack_type = 'unbanned'
-                attack_name = 'IP解封'
             elif event_type == 'ip_banned_manual':
                 ban_duration = event.get('ban_duration', 3600)
                 ban_time = event.get('ban_time', '')

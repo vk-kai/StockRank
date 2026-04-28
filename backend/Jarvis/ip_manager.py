@@ -146,6 +146,8 @@ class IPManager:
             'attack_type': attack_type,
             'attempt_count': attempt_count,
             'ban_duration': self.ban_duration,
+            'ban_time': datetime.now().isoformat(),
+            'ban_reason': f'连续{attempt_count}次攻击尝试',
         })
     
     def ban_ip(self, ip, reason='manual', duration=None):
@@ -176,6 +178,8 @@ class IPManager:
                 self._log_event({
                     'type': 'ip_unbanned',
                     'ip': ip,
+                    'unban_type': 'manual',
+                    'unban_time': datetime.now().isoformat(),
                 })
                 self._save_data()
                 return True
@@ -220,6 +224,12 @@ class IPManager:
             ]
             for ip in expired_ips:
                 del self._banned_ips[ip]
+                self._log_event({
+                    'type': 'ip_unbanned',
+                    'ip': ip,
+                    'unban_type': 'auto',
+                    'unban_time': datetime.now().isoformat(),
+                })
             
             cutoff = now - self.attempt_window
             for ip in list(self._attempts.keys()):

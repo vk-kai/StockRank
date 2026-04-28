@@ -244,7 +244,7 @@
 }
 
 .log-header-row.security-header {
-  grid-template-columns: 180px 70px 130px 140px 120px 130px 50px;
+  grid-template-columns: 180px 70px 130px 140px 180px 180px 50px;
 }
 
 .log-body {
@@ -281,7 +281,7 @@
 }
 
 .log-line.security-line {
-  grid-template-columns: 180px 70px 130px 140px 120px 130px 50px;
+  grid-template-columns: 180px 70px 130px 140px 180px 180px 50px;
 }
 
 .log-line:hover {
