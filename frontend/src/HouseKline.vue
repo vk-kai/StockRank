@@ -154,6 +154,8 @@ export default {
         }
       })
 
+      const markPoints = this.detectKeyPoints(data)
+
       const self = this
       const labelInterval = this.currentPeriod === 'monthly' ? 5 : 2
 
@@ -374,7 +376,25 @@ export default {
               borderColor: '#ff4d4f',
               borderColor0: '#52c41a'
             },
-            barWidth: '60%'
+            barWidth: '60%',
+            markPoint: {
+              symbol: 'pin',
+              symbolSize: 50,
+              itemStyle: {
+                shadowBlur: 8,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              },
+              label: {
+                show: true,
+                color: '#fff',
+                fontSize: 10,
+                fontWeight: 'bold',
+                formatter: function(params) {
+                  return params.name
+                }
+              },
+              data: markPoints
+            }
           },
           {
             name: 'MA5',
@@ -454,6 +474,111 @@ export default {
         }
       }
       return result
+    },
+
+    detectKeyPoints(data) {
+      const points = []
+      const lookback = 3
+      
+      for (let i = lookback; i < data.length - lookback; i++) {
+        const current = data[i]
+        const prev1 = data[i - 1]
+        const prev2 = data[i - 2]
+        const next1 = data[i + 1]
+        const next2 = data[i + 2]
+        
+        const isHighPoint = current.high >= prev1.high && current.high >= prev2.high &&
+                           current.high >= next1.high && current.high >= next2.high
+        
+        const isLowPoint = current.low <= prev1.low && current.low <= prev2.low &&
+                          current.low <= next1.low && current.low <= next2.low
+        
+        if (isHighPoint) {
+          const prevTrend = prev2.close < prev1.close
+          const nextTrend = next1.close > next2.close
+          
+          if (prevTrend && nextTrend) {
+            points.push({
+              name: '拐点',
+              coord: [i, current.high],
+              itemStyle: { color: '#ff4d4f' },
+              label: { formatter: '拐点' }
+            })
+          }
+        }
+        
+        if (isLowPoint) {
+          const prevTrend = prev2.close > prev1.close
+          const nextTrend = next1.close < next2.close
+          
+          if (prevTrend && nextTrend) {
+            points.push({
+              name: '反弹',
+              coord: [i, current.low],
+              itemStyle: { color: '#52c41a' },
+              label: { formatter: '反弹' }
+            })
+          }
+        }
+        
+        if (i >= 4) {
+          const changes = []
+          for (let j = 0; j < 5; j++) {
+            changes.push(data[i - j].close - data[i - j].open)
+          }
+          
+          const allDown = changes.every(c => c < 0)
+          const accelerating = Math.abs(changes[0]) > Math.abs(changes[1]) * 1.2
+          
+          if (allDown && accelerating) {
+            points.push({
+              name: '加速下行',
+              coord: [i, current.low],
+              itemStyle: { color: '#faad14' },
+              label: { formatter: '加速下行' }
+            })
+          }
+          
+          const allUp = changes.every(c => c > 0)
+          const acceleratingUp = Math.abs(changes[0]) > Math.abs(changes[1]) * 1.2
+          
+          if (allUp && acceleratingUp) {
+            points.push({
+              name: '加速上行',
+              coord: [i, current.high],
+              itemStyle: { color: '#1890ff' },
+              label: { formatter: '加速上行' }
+            })
+          }
+        }
+        
+        if (current.macd !== undefined && i >= 1) {
+          const prevMacd = data[i - 1].macd || 0
+          const currMacd = current.macd || 0
+          
+          if (prevMacd < 0 && currMacd >= 0) {
+            points.push({
+              name: '金叉',
+              coord: [i, current.low],
+              itemStyle: { color: '#52c41a' },
+              label: { formatter: '金叉' }
+            })
+          }
+          
+          if (prevMacd > 0 && currMacd <= 0) {
+            points.push({
+              name: '死叉',
+              coord: [i, current.high],
+              itemStyle: { color: '#ff4d4f' },
+              label: { formatter: '死叉' }
+            })
+          }
+        }
+      }
+      
+      return points.filter((point, index, self) => 
+        index === self.findIndex(p => p.coord[0] === point.coord[0])
+      ).slice(0, 15)
     }
   }
 }
