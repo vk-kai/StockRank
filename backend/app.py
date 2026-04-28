@@ -3,9 +3,6 @@ from flask_cors import CORS
 import threading
 import multiprocessing
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
@@ -39,7 +36,7 @@ def create_app():
         'attempt_window': 300,
         'whitelist': ['127.0.0.1', '::1'],
         'exempt_routes': ['/health', '/api/jarvis'],
-        'data_dir': os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'jarvis'),
+        'data_dir': os.path.join(DATA_DIR, 'jarvis'),
         'log_func': lambda level, msg: system_logger.info(f"[Jarvis] {msg}") if level == 'info' else system_logger.warning(f"[Jarvis] {msg}")
     })
     
