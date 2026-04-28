@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     'whitelist': ['127.0.0.1', '::1'],
     'exempt_routes': ['/api/health', '/api/ping', '/favicon.ico'],
     'data_dir': 'data/jarvis',
+    'log_dir': 'logs',
 }
 
 def get_config(overrides=None):

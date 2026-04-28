@@ -37,6 +37,7 @@ def create_app():
         'whitelist': ['127.0.0.1', '::1'],
         'exempt_routes': ['/health', '/api/jarvis'],
         'data_dir': os.path.join(DATA_DIR, 'jarvis'),
+        'log_dir': LOG_DIR,
         'log_func': lambda level, msg: system_logger.info(f"[Jarvis] {msg}") if level == 'info' else system_logger.warning(f"[Jarvis] {msg}")
     })
     

@@ -89,10 +89,25 @@ class SecurityMiddleware:
                     attack_type = attack_result.get('type', 'unknown')
                     attack_name = self.checker.get_attack_type_name(attack_type)
                     
+                    security_details = {
+                        'type': 'attack_attempt',
+                        'ip': client_ip,
+                        'attack_type': attack_type,
+                        'attack_name': attack_name,
+                        'api_path': request.path,
+                        'method': request.method,
+                        'field': attack_result.get('field', 'unknown'),
+                        'keyword': attack_result.get('matched', 'unknown')[:100],
+                        'pattern': attack_result.get('pattern', ''),
+                        'source': attack_result.get('source', 'unknown'),
+                        'user_agent': request.headers.get('User-Agent', 'unknown')[:200],
+                        'referer': request.headers.get('Referer', '')[:200],
+                    }
+                    
                     attempt_count = self.ip_manager.record_attempt(
                         client_ip,
                         attack_type,
-                        attack_result
+                        security_details
                     )
                     
                     self._log('warning', 
@@ -112,6 +127,8 @@ class SecurityMiddleware:
                             'attack_type': attack_name,
                             'attempts_left': max(0, attempts_left),
                             'ip': client_ip,
+                            'api_path': request.path,
+                            'keyword': attack_result.get('matched', 'unknown')[:50],
                         }
                     }), 400
                 

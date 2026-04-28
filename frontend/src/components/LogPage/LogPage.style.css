@@ -243,6 +243,10 @@
   top: 0;
 }
 
+.log-header-row.security-header {
+  grid-template-columns: 180px 70px 130px 140px 120px 130px 50px;
+}
+
 .log-body {
   max-height: 500px;
   overflow-y: auto;
@@ -274,6 +278,10 @@
   border-radius: 4px;
   margin-bottom: 2px;
   transition: background 0.2s;
+}
+
+.log-line.security-line {
+  grid-template-columns: 180px 70px 130px 140px 120px 130px 50px;
 }
 
 .log-line:hover {
@@ -335,6 +343,31 @@
 .log-source {
   color: rgba(255, 255, 255, 0.7);
   font-size: 12px;
+}
+
+.log-ip {
+  font-size: 12px;
+  color: #ff9800;
+  font-family: monospace;
+}
+
+.log-attack {
+  font-size: 12px;
+  color: #f44336;
+  font-weight: 500;
+}
+
+.log-api {
+  font-size: 11px;
+  color: #4fc3f7;
+  font-family: monospace;
+}
+
+.log-keyword {
+  font-size: 11px;
+  color: #e91e63;
+  font-family: monospace;
+  cursor: help;
 }
 
 .log-message {
@@ -641,6 +674,30 @@
 .detail-message::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
+}
+
+.security-attack {
+  color: #f44336;
+  font-weight: bold;
+}
+
+.security-keyword {
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.detail-raw {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px;
+  border-radius: 8px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .modal-footer {

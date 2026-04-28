@@ -76,25 +76,33 @@
       </div>
       
       <div v-else class="log-lines">
-        <div class="log-header-row">
+        <div :class="['log-header-row', { 'security-header': activeLog === 'security' }]">
           <span class="log-timestamp">时间</span>
           <span class="log-level-header">级别</span>
           <span class="log-module-header" v-if="activeLog === 'data' || activeLog === 'system'">模块</span>
-          <span class="log-source">来源</span>
-          <span class="log-message">消息</span>
+          <span class="log-source" v-if="activeLog !== 'security'">来源</span>
+          <span class="log-ip" v-if="activeLog === 'security'">IP</span>
+          <span class="log-attack" v-if="activeLog === 'security'">攻击类型</span>
+          <span class="log-api" v-if="activeLog === 'security'">API路径</span>
+          <span class="log-keyword" v-if="activeLog === 'security'">关键词</span>
+          <span class="log-message" v-if="activeLog !== 'security'">消息</span>
           <span class="log-action">操作</span>
         </div>
         <div class="log-body">
           <div 
             v-for="(line, index) in logLines" 
             :key="index"
-            :class="['log-line', getLevelClass(line.level)]"
+            :class="['log-line', getLevelClass(line.level), { 'security-line': activeLog === 'security' }]"
           >
             <span class="log-timestamp">{{ line.timestamp }}</span>
             <span :class="['log-level', (line.level || '').toLowerCase()]">{{ line.level || '-' }}</span>
             <span class="log-module" v-if="activeLog === 'data' || activeLog === 'system'" :style="{ color: getModuleColor(line.module) }">{{ line.module_display || line.module || '-' }}</span>
-            <span class="log-source">{{ line.source }}:{{ line.lineno }}</span>
-            <span class="log-message" :title="line.message" v-html="highlightKeywords(truncateMessage(line.message))"></span>
+            <span class="log-source" v-if="activeLog !== 'security'">{{ line.source }}:{{ line.lineno }}</span>
+            <span class="log-ip" v-if="activeLog === 'security'">{{ line.security_info?.ip || line.source || '-' }}</span>
+            <span class="log-attack" v-if="activeLog === 'security'">{{ line.security_info?.attack_name || '-' }}</span>
+            <span class="log-api" v-if="activeLog === 'security'">{{ line.security_info?.api_path || '-' }}</span>
+            <span class="log-keyword" v-if="activeLog === 'security'" :title="line.security_info?.keyword || ''">{{ truncateKeyword(line.security_info?.keyword) }}</span>
+            <span class="log-message" v-if="activeLog !== 'security'" :title="line.message" v-html="highlightKeywords(truncateMessage(line.message))"></span>
             <span class="log-action">
               <button class="detail-btn" @click="showDetail(line)" title="查看详情">
                 📋
@@ -172,13 +180,47 @@
             <span class="detail-label">模块：</span>
             <span class="detail-value" :style="{ color: getModuleColor(selectedLog.module) }">{{ selectedLog.module_display || selectedLog.module || '-' }}</span>
           </div>
-          <div class="detail-row">
+          <div class="detail-row" v-if="activeLog !== 'security'">
             <span class="detail-label">来源：</span>
             <span class="detail-value">{{ selectedLog.source }}:{{ selectedLog.lineno }}</span>
           </div>
-          <div class="detail-row">
+          <template v-if="activeLog === 'security' && selectedLog.security_info">
+            <div class="detail-row">
+              <span class="detail-label">IP地址：</span>
+              <span class="detail-value">{{ selectedLog.security_info.ip || '-' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">攻击类型：</span>
+              <span class="detail-value security-attack">{{ selectedLog.security_info.attack_name || '-' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">API路径：</span>
+              <span class="detail-value">{{ selectedLog.security_info.api_path || '-' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">请求方法：</span>
+              <span class="detail-value">{{ selectedLog.security_info.method || '-' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">触发字段：</span>
+              <span class="detail-value">{{ selectedLog.security_info.field || '-' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">关键词：</span>
+              <pre class="detail-message security-keyword">{{ selectedLog.security_info.keyword || '-' }}</pre>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">事件类型：</span>
+              <span class="detail-value">{{ selectedLog.security_info.event_type || '-' }}</span>
+            </div>
+          </template>
+          <div class="detail-row" v-if="activeLog !== 'security'">
             <span class="detail-label">消息：</span>
             <pre class="detail-message">{{ selectedLog.message }}</pre>
+          </div>
+          <div class="detail-row" v-if="selectedLog.raw">
+            <span class="detail-label">原始数据：</span>
+            <pre class="detail-raw">{{ formatRawData(selectedLog.raw) }}</pre>
           </div>
         </div>
         <div class="modal-footer">

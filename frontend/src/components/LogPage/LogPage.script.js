@@ -212,6 +212,24 @@ export default {
       return message.substring(0, maxLength) + '...'
     },
 
+    truncateKeyword(keyword) {
+      if (!keyword) return '-'
+      if (keyword.length <= 30) {
+        return keyword
+      }
+      return keyword.substring(0, 30) + '...'
+    },
+
+    formatRawData(raw) {
+      if (!raw) return '-'
+      try {
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw
+        return JSON.stringify(data, null, 2)
+      } catch {
+        return raw
+      }
+    },
+
     showDetail(log) {
       this.selectedLog = log
       this.showModal = true
@@ -228,12 +246,22 @@ export default {
       let text = `时间: ${this.selectedLog.timestamp}
 级别: ${this.selectedLog.level || '-'}`
       
-      if ((this.activeLog === 'data' || this.activeLog === 'system') && this.selectedLog.module) {
-        text += `\n模块: ${this.selectedLog.module_display || this.selectedLog.module}`
+      if (this.activeLog === 'security' && this.selectedLog.security_info) {
+        const info = this.selectedLog.security_info
+        text += `\nIP地址: ${info.ip || '-'}`
+        text += `\n攻击类型: ${info.attack_name || '-'}`
+        text += `\nAPI路径: ${info.api_path || '-'}`
+        text += `\n请求方法: ${info.method || '-'}`
+        text += `\n触发字段: ${info.field || '-'}`
+        text += `\n关键词: ${info.keyword || '-'}`
+        text += `\n事件类型: ${info.event_type || '-'}`
+      } else {
+        if ((this.activeLog === 'data' || this.activeLog === 'system') && this.selectedLog.module) {
+          text += `\n模块: ${this.selectedLog.module_display || this.selectedLog.module}`
+        }
+        text += `\n来源: ${this.selectedLog.source}:${this.selectedLog.lineno}`
+        text += `\n消息: ${this.selectedLog.message}`
       }
-      
-      text += `\n来源: ${this.selectedLog.source}:${this.selectedLog.lineno}
-消息: ${this.selectedLog.message}`
       
       try {
         await navigator.clipboard.writeText(text)

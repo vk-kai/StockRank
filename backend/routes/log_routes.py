@@ -263,8 +263,7 @@ def get_log_content(log_type):
 
 def get_security_log_content():
     try:
-        jarvis_data_dir = os.path.join(DATA_DIR, 'jarvis')
-        security_log_file = os.path.join(jarvis_data_dir, 'security_events.json')
+        security_log_file = os.path.join(LOG_DIR, 'security_events.json')
         
         if not os.path.exists(security_log_file):
             return jsonify({
@@ -292,7 +291,11 @@ def get_security_log_content():
             event_type = event.get('type', '')
             ip = event.get('ip', '')
             attack_type = event.get('attack_type', '')
-            details = event.get('details', {})
+            attack_name = event.get('attack_name', '')
+            api_path = event.get('api_path', '')
+            method = event.get('method', '')
+            keyword = event.get('keyword', '')
+            field = event.get('field', '')
             timestamp = event.get('timestamp', '')
             
             level = 'WARNING'
@@ -306,10 +309,7 @@ def get_security_log_content():
             if level_filter and level != level_filter:
                 continue
             
-            message_lines = []
-            message_lines.append(f"[{event_type}]")
-            
-            if attack_type:
+            if not attack_name:
                 attack_names = {
                     'sql_injection': 'SQL注入',
                     'xss': 'XSS攻击',
@@ -319,26 +319,16 @@ def get_security_log_content():
                     'xxe': 'XXE攻击',
                     'ssrf': 'SSRF攻击'
                 }
-                attack_name = attack_names.get(attack_type, attack_type)
-                message_lines.append(f"攻击类型: {attack_name}")
+                attack_name = attack_names.get(attack_type, attack_type or '未知')
             
-            if details:
-                if details.get('field'):
-                    message_lines.append(f"字段: {details['field']}")
-                if details.get('matched'):
-                    matched = details['matched']
-                    if len(matched) > 200:
-                        matched = matched[:200] + '...'
-                    message_lines.append(f"匹配内容: {matched}")
-                if details.get('reason'):
-                    message_lines.append(f"原因: {details['reason']}")
-                if details.get('attempt_count'):
-                    message_lines.append(f"尝试次数: {details['attempt_count']}")
+            message = f"[{event_type}]"
+            if attack_name:
+                message += f" {attack_name}"
             
-            message = '\n'.join(message_lines)
-            
-            if search_keyword and search_keyword.lower() not in message.lower() and search_keyword.lower() not in ip.lower():
-                continue
+            if search_keyword:
+                search_text = f"{message} {ip} {api_path} {keyword} {attack_name}".lower()
+                if search_keyword.lower() not in search_text:
+                    continue
             
             parsed_lines.append({
                 'timestamp': timestamp,
@@ -348,7 +338,17 @@ def get_security_log_content():
                 'source': ip,
                 'lineno': 0,
                 'message': message,
-                'raw': json.dumps(event, ensure_ascii=False)
+                'raw': json.dumps(event, ensure_ascii=False),
+                'security_info': {
+                    'ip': ip,
+                    'attack_type': attack_type,
+                    'attack_name': attack_name,
+                    'api_path': api_path,
+                    'method': method,
+                    'keyword': keyword,
+                    'field': field,
+                    'event_type': event_type
+                }
             })
         
         total = len(parsed_lines)

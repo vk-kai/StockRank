@@ -16,10 +16,13 @@ class IPManager:
         self.ban_duration = self.config.get('ban_duration', 3600)
         self.max_attempts = self.config.get('max_attempts', 5)
         self.attempt_window = self.config.get('attempt_window', 300)
+        
         self.data_dir = self.config.get('data_dir', 'data/jarvis')
+        self.log_dir = self.config.get('log_dir', 'logs')
+        
         self.banned_file = os.path.join(self.data_dir, 'banned_ips.json')
         self.attempts_file = os.path.join(self.data_dir, 'attempts.json')
-        self.log_file = os.path.join(self.data_dir, 'security_events.json')
+        self.log_file = os.path.join(self.log_dir, 'security_events.json')
         
         self._lock = RLock()
         self._banned_ips = {}
@@ -28,6 +31,7 @@ class IPManager:
         
         try:
             os.makedirs(self.data_dir, exist_ok=True)
+            os.makedirs(self.log_dir, exist_ok=True)
             self._load_data()
         except Exception as e:
             print(f"[Jarvis] IPManager初始化失败: {e}")
@@ -75,8 +79,8 @@ class IPManager:
             existing.append(event)
             with open(self.log_file, 'w', encoding='utf-8') as f:
                 json.dump(existing[-1000:], f, ensure_ascii=False, indent=2)
-        except:
-            pass
+        except Exception as e:
+            print(f"[Jarvis] 记录安全事件失败: {e}")
     
     def is_banned(self, ip):
         with self._lock:
