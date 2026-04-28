@@ -3,9 +3,13 @@ import { formatFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
+import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
   name: 'App',
+  components: {
+    SecurityAlert
+  },
   data() {
     return {
       selectedTimeRange: 'today',

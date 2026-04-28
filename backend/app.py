@@ -3,6 +3,9 @@ from flask_cors import CORS
 import threading
 import multiprocessing
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
@@ -11,6 +14,9 @@ from news_collector import news_collection_thread as news_collection_func, init_
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
+from Jarvis import SecurityMiddleware
+from Jarvis.middleware import create_security_blueprint
+from Jarvis.config import get_config as get_jarvis_config
 
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
@@ -25,6 +31,22 @@ def create_app():
             "allow_headers": ["Content-Type", "Authorization"]
         }
     })
+    
+    jarvis_config = get_jarvis_config({
+        'enabled': True,
+        'ban_duration': 3600,
+        'max_attempts': 5,
+        'attempt_window': 300,
+        'whitelist': ['127.0.0.1', '::1'],
+        'exempt_routes': ['/health', '/api/jarvis'],
+        'data_dir': os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'jarvis'),
+        'log_func': lambda level, msg: system_logger.info(f"[Jarvis] {msg}") if level == 'info' else system_logger.warning(f"[Jarvis] {msg}")
+    })
+    
+    security = SecurityMiddleware(app, jarvis_config)
+    
+    jarvis_bp = create_security_blueprint(security)
+    app.register_blueprint(jarvis_bp)
     
     app.register_blueprint(flow_bp)
     app.register_blueprint(news_bp)

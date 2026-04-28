@@ -8,6 +8,22 @@ const apiClient = axios.create({
   timeout: 10000
 })
 
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const response = error.response?.data
+    
+    if (response && (response.error === 'security_violation' || response.error === 'access_denied')) {
+      const event = new CustomEvent('security-error', {
+        detail: { error, response }
+      })
+      window.dispatchEvent(event)
+    }
+    
+    return Promise.reject(error)
+  }
+)
+
 /**
  * 获取当前板块资金流入数据
  * @returns {Promise<Object>} 资金流入数据

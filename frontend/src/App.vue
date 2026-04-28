@@ -144,6 +144,8 @@
       <p>{{ error }}</p>
       <button @click="retry">重试</button>
     </div>
+    
+    <SecurityAlert />
   </div>
 </template>
 
