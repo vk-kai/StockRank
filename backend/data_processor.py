@@ -15,7 +15,22 @@ latest_data = []
 
 def get_sector_flow_data():
     headers = {
-        'User-Agent': get_random_user_agent()
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
+        'Referer': 'https://data.eastmoney.com/',
+        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
     }
     
     params = {
@@ -542,7 +557,22 @@ def get_market_index_data():
     global latest_market_data
     
     headers = {
-        'User-Agent': get_random_user_agent()
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
+        'Referer': 'https://data.eastmoney.com/',
+        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
     }
     
     params = {
@@ -593,7 +623,22 @@ def get_stock_statistics():
     global latest_market_data
     
     headers = {
-        'User-Agent': get_random_user_agent()
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
+        'Referer': 'https://data.eastmoney.com/',
+        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
     }
     
     params = {
