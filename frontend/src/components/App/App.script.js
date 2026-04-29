@@ -155,9 +155,18 @@ export default {
           if (response.data.request_url) {
             console.log('请求的URL:', response.data.request_url)
           }
+        } else {
+          // 临时打印错误时的请求URL
+          if (response.request_url) {
+            console.log('请求的URL:', response.request_url)
+          }
         }
       } catch (error) {
         console.error('获取板块个股数据失败:', error)
+        // 临时打印错误时的请求URL
+        if (error.response && error.response.data && error.response.data.request_url) {
+          console.log('请求的URL:', error.response.data.request_url)
+        }
       } finally {
         this.loadingSectorStocks = false
       }

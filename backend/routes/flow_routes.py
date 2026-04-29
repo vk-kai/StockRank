@@ -424,10 +424,14 @@ def get_sector_stocks():
             last_error = f'请求异常: {str(e)}'
             break
     else:
+        # 临时返回请求URL
+        import urllib.parse
+        full_url = f"{SECTOR_STOCKS_URL}?{urllib.parse.urlencode(params)}"
         system_logger.error(f"API错误 [/api/flow/sector-stocks]: 获取板块 {sector_code} 个股数据失败 - {last_error}")
         return jsonify({
             'success': False,
-            'message': f'获取数据失败: {last_error}'
+            'message': f'获取数据失败: {last_error}',
+            'request_url': full_url  # 临时添加
         }), 500
     
     stocks = []
