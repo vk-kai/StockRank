@@ -355,20 +355,26 @@ def get_daily_report():
 @flow_bp.route('/sector-stocks', methods=['GET'])
 def get_sector_stocks():
     try:
-        sector_name = request.args.get('sector', '')
+        sector = request.args.get('sector', '')
+        sector_code = request.args.get('code', '')
         
-        if not sector_name:
+        if not sector and not sector_code:
             return jsonify({
                 'success': False,
-                'message': '板块名称不能为空'
+                'message': '板块名称或代码不能为空'
             }), 400
         
-        sector_code = SECTOR_CODE_MAP.get(sector_name)
-        if not sector_code:
-            return jsonify({
-                'success': False,
-                'message': f'未找到板块 {sector_name} 的代码映射'
-            }), 404
+        if sector_code:
+            pass
+        elif sector.startswith('BK'):
+            sector_code = sector
+        else:
+            sector_code = SECTOR_CODE_MAP.get(sector)
+            if not sector_code:
+                return jsonify({
+                    'success': False,
+                    'message': f'未找到板块 {sector} 的代码映射'
+                }), 404
         
         headers = {
             'User-Agent': get_random_user_agent(),

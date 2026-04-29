@@ -103,7 +103,7 @@
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
-          @click="showSectorStocks(sector.name)"
+          @click="showSectorStocks(sector.name, sector.code)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -170,10 +170,22 @@
               <span class="col-rank">排名</span>
               <span class="col-code">代码</span>
               <span class="col-name">名称</span>
-              <span class="col-price">现价</span>
-              <span class="col-change">涨跌幅</span>
-              <span class="col-flow">主力净流入</span>
-              <span class="col-ratio">净占比</span>
+              <span class="col-price sortable" @click="sortStocks('price')">
+                现价
+                <span class="sort-icon" v-if="sortField === 'price'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </span>
+              <span class="col-change sortable" @click="sortStocks('change_percent')">
+                涨跌幅
+                <span class="sort-icon" v-if="sortField === 'change_percent'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </span>
+              <span class="col-flow sortable" @click="sortStocks('main_flow')">
+                主力净流入
+                <span class="sort-icon" v-if="sortField === 'main_flow'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </span>
+              <span class="col-ratio sortable" @click="sortStocks('main_flow_ratio')">
+                净占比
+                <span class="sort-icon" v-if="sortField === 'main_flow_ratio'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </span>
             </div>
             <div 
               class="stock-item" 

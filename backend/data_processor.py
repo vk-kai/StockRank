@@ -56,11 +56,14 @@ def get_sector_flow_data():
                     error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
                     continue
                 
+                sector_code = item.get('f12', '')
+                
                 if sector_name and net_inflow is not None:
                     sectors.append({
                         'name': sector_name,
                         'flow': net_inflow,
-                        'change': change
+                        'change': change,
+                        'code': sector_code
                     })
             
             sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
@@ -69,7 +72,8 @@ def get_sector_flow_data():
                 'rank': i + 1,
                 'name': s['name'],
                 'flow': s['flow'],
-                'change': s['change']
+                'change': s['change'],
+                'code': s['code']
             } for i, s in enumerate(sectors[:50])]
             
             global latest_data

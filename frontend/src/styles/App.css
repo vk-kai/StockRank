@@ -519,25 +519,25 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
 }
 
 .sector-modal {
-  background: linear-gradient(135deg, #1a1d29 0%, #252a3a 100%);
+  background: rgba(26, 29, 41, 0.95);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   max-width: 900px;
   width: 90%;
   max-height: 80vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(12px);
 }
 
 .modal-header {
@@ -616,6 +616,22 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.stocks-header .sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.stocks-header .sortable:hover {
+  color: #5470c6;
+}
+
+.stocks-header .sortable .sort-icon {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #5470c6;
 }
 
 .stock-item {

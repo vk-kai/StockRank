@@ -40,7 +40,9 @@ export default {
       showSectorModal: false,
       selectedSectorName: '',
       sectorStocks: [],
-      loadingSectorStocks: false
+      loadingSectorStocks: false,
+      sortField: 'main_flow',
+      sortOrder: 'desc'
     }
   },
   computed: {
@@ -137,14 +139,16 @@ export default {
       })
     },
 
-    async showSectorStocks(sectorName) {
+    async showSectorStocks(sectorName, sectorCode) {
       this.selectedSectorName = sectorName
       this.showSectorModal = true
       this.loadingSectorStocks = true
       this.sectorStocks = []
+      this.sortField = 'main_flow'
+      this.sortOrder = 'desc'
       
       try {
-        const response = await getSectorStocks(sectorName)
+        const response = await getSectorStocks(sectorName, sectorCode)
         if (response.success && response.data) {
           this.sectorStocks = response.data.stocks || []
         }
@@ -153,6 +157,31 @@ export default {
       } finally {
         this.loadingSectorStocks = false
       }
+    },
+
+    sortStocks(field) {
+      if (this.sortField === field) {
+        this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc'
+      } else {
+        this.sortField = field
+        this.sortOrder = 'desc'
+      }
+      
+      this.sectorStocks.sort((a, b) => {
+        let aVal = a[field] || 0
+        let bVal = b[field] || 0
+        
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase()
+          bVal = bVal.toLowerCase()
+        }
+        
+        if (this.sortOrder === 'desc') {
+          return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
+        } else {
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+        }
+      })
     },
 
     closeSectorModal() {
@@ -181,12 +210,7 @@ export default {
           this.currentData = response.data
           const timestamp = new Date(response.timestamp)
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
-          
-          if (this.selectedTimeRange === 'today') {
-            await this.fetchMinuteData()
-          } else {
-            this.updateChart()
-          }
+          await this.fetchMinuteData()
         }
       } catch (err) {
         console.error('获取当前数据失败:', err)
@@ -239,7 +263,6 @@ export default {
       if (this.selectedTimeRange === 'today') {
         this.accumulatedData = []
         await this.fetchCurrentData()
-        await this.fetchMinuteData()
       } else {
         this.currentData = []
         await this.fetchAccumulatedData(this.selectedTimeRange)
@@ -250,10 +273,9 @@ export default {
     async fetchData() {
       if (this.selectedTimeRange === 'today') {
         await this.fetchCurrentData()
-        await this.fetchMinuteData()
       } else {
-        await this.fetchAccumulatedData(this.selectedTimeRange)
         await this.fetchHistoryData(this.selectedTimeRange)
+        await this.fetchAccumulatedData(this.selectedTimeRange)
       }
     },
 
