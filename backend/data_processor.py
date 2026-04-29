@@ -294,7 +294,8 @@ def generate_daily_summary():
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
-                'change': item['change']
+                'change': item['change'],
+                'code': item.get('code', '')
             })
         
         if representative_data:
@@ -336,7 +337,8 @@ def generate_daily_summary_for_date(date_str):
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
-                'change': item['change']
+                'change': item['change'],
+                'code': item.get('code', '')
             })
         
         if representative_data:

@@ -298,15 +298,33 @@ def get_sector_stocks():
     sector_code = ''
     
     if sector:
+        if not latest_data:
+            get_sector_flow_data()
+        
         for item in latest_data:
             if item.get('name') == sector:
                 sector_code = item.get('code', '')
                 break
         
         if not sector_code:
+            recent_data = load_recent_daily_data(7)
+            for date_str in sorted(recent_data.keys(), reverse=True):
+                day_data = recent_data[date_str]
+                if isinstance(day_data, list):
+                    for item in day_data:
+                        if item.get('name') == sector:
+                            sector_code = item.get('code', '')
+                            if sector_code:
+                                break
+                if sector_code:
+                    break
+        
+        if not sector_code:
+            available_names = [item.get('name') for item in latest_data[:10]] if latest_data else []
             return jsonify({
                 'success': False,
-                'message': f'未找到板块 "{sector}" 对应的代码'
+                'message': f'未找到板块 "{sector}" 对应的代码',
+                'available_sectors': available_names
             }), 400
     
     if not sector_code:
