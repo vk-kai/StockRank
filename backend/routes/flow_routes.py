@@ -298,7 +298,8 @@ def get_sector_stocks():
     sector_code = request.args.get('code', '')
     
     if not sector_code and sector:
-        for item in latest_data:
+        sector_flow_data = get_sector_flow_data()
+        for item in sector_flow_data:
             if item.get('name') == sector:
                 sector_code = item.get('code', '')
                 break
