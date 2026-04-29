@@ -72,13 +72,19 @@ class IPManager:
         self._events.append(event)
         
         try:
-            existing = []
-            if os.path.exists(self.log_file):
-                with open(self.log_file, 'r', encoding='utf-8') as f:
-                    existing = json.load(f)
-            existing.append(event)
-            with open(self.log_file, 'w', encoding='utf-8') as f:
-                json.dump(existing[-1000:], f, ensure_ascii=False, indent=2)
+            with self._lock:
+                existing = []
+                if os.path.exists(self.log_file):
+                    try:
+                        with open(self.log_file, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                            if content:
+                                existing = json.loads(content)
+                    except:
+                        existing = []
+                existing.append(event)
+                with open(self.log_file, 'w', encoding='utf-8') as f:
+                    json.dump(existing[-1000:], f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[Jarvis] 记录安全事件失败: {e}")
     
@@ -224,6 +230,8 @@ class IPManager:
             ]
             for ip in expired_ips:
                 del self._banned_ips[ip]
+                if ip in self._attempts:
+                    del self._attempts[ip]
                 self._log_event({
                     'type': 'ip_unbanned',
                     'ip': ip,
