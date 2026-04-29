@@ -2,6 +2,8 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 import traceback
 import requests
+import json
+import urllib3
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
@@ -16,71 +18,6 @@ flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
 system_logger = get_logger('system')
 
 SECTOR_STOCKS_URL = "https://push2.eastmoney.com/api/qt/clist/get"
-
-SECTOR_CODE_MAP = {
-    '电力行业': 'BK0428',
-    '光伏设备': 'BK0415',
-    '汽车整车': 'BK0488',
-    '化学制药': 'BK0440',
-    '电池': 'BK1033',
-    '锂电池': 'BK1033',
-    '小金属': 'BK0556',
-    '医疗器械': 'BK0444',
-    '半导体': 'BK0872',
-    '电子元件': 'BK0722',
-    '软件开发': 'BK0733',
-    '互联网服务': 'BK0734',
-    '通信设备': 'BK0730',
-    '消费电子': 'BK0822',
-    '光学光电子': 'BK0821',
-    '汽车零部件': 'BK0489',
-    '专用设备': 'BK0438',
-    '通用设备': 'BK0437',
-    '有色金属': 'BK0478',
-    '钢铁行业': 'BK0421',
-    '煤炭行业': 'BK0430',
-    '石油行业': 'BK0431',
-    '化学制品': 'BK0442',
-    '化肥行业': 'BK0443',
-    '农药兽药': 'BK0444',
-    '塑料橡胶': 'BK0445',
-    '玻璃玻纤': 'BK0446',
-    '水泥建材': 'BK0447',
-    '装修建材': 'BK0448',
-    '房地产': 'BK0451',
-    '银行': 'BK0473',
-    '保险': 'BK0474',
-    '证券': 'BK0475',
-    '多元金融': 'BK0476',
-    '航空航天': 'BK0435',
-    '船舶制造': 'BK0436',
-    '仪器仪表': 'BK0439',
-    '电机': 'BK0441',
-    '电网设备': 'BK0449',
-    '风电设备': 'BK0450',
-    '燃气': 'BK0452',
-    '水务': 'BK0453',
-    '环保行业': 'BK0454',
-    '工程建设': 'BK0455',
-    '工程咨询': 'BK0456',
-    '专业服务': 'BK0457',
-    '旅游酒店': 'BK0458',
-    '航空机场': 'BK0459',
-    '港口航运': 'BK0460',
-    '物流行业': 'BK0461',
-    '商业百货': 'BK0462',
-    '贸易行业': 'BK0463',
-    '酿酒行业': 'BK0470',
-    '食品饮料': 'BK0468',
-    '农牧饲渔': 'BK0469',
-    '中药': 'BK0471',
-    '生物制品': 'BK0472',
-    '医疗美容': 'BK0477',
-    '教育': 'BK0464',
-    '文化传媒': 'BK0465',
-    '游戏': 'BK0466',
-    '家电行业': 'BK0467',
-}
 
 @flow_bp.route('/current', methods=['GET'])
 def get_current_flow():
@@ -360,23 +297,11 @@ def get_sector_stocks():
     sector = request.args.get('sector', '')
     sector_code = request.args.get('code', '')
     
-    if not sector and not sector_code:
+    if not sector_code:
         return jsonify({
             'success': False,
-            'message': '板块名称或代码不能为空'
+            'message': '板块代码不能为空，请传递code参数'
         }), 400
-    
-    if sector_code:
-        pass
-    elif sector.startswith('BK'):
-        sector_code = sector
-    else:
-        sector_code = SECTOR_CODE_MAP.get(sector)
-        if not sector_code:
-            return jsonify({
-                'success': False,
-                'message': f'未找到板块 {sector} 的代码映射'
-            }), 404
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -406,44 +331,35 @@ def get_sector_stocks():
     last_error = None
     data = None
     
-    # 创建新的Session，避免连接池问题
-    session = requests.Session()
-    session.trust_env = False  # 忽略环境变量中的代理设置
+    # 使用urllib3直接请求，避免requests的连接池问题
+    import urllib3
+    from urllib.parse import urlencode
     
-    for attempt in range(max_retries):
-        try:
-            response = session.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
-            data = response.json()
-            break
-        except requests.exceptions.ConnectionError as e:
-            last_error = f'网络连接错误: {str(e)}'
-            if attempt < max_retries - 1:
-                import time
-                time.sleep(1)
-                continue
-        except requests.exceptions.Timeout as e:
-            last_error = f'请求超时: {str(e)}'
-            if attempt < max_retries - 1:
-                import time
-                time.sleep(1)
-                continue
-        except requests.exceptions.SSLError as e:
-            last_error = f'SSL证书错误: {str(e)}'
-            if attempt < max_retries - 1:
-                # 尝试不验证证书
-                response = session.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
-                data = response.json()
-                break
-        except Exception as e:
-            last_error = f'请求异常: {str(e)}'
-            break
-        finally:
-            session.close()
+    http = urllib3.PoolManager(
+        retries=urllib3.Retry(total=3, backoff_factor=0.5),
+        timeout=urllib3.Timeout(connect=10.0, read=15.0)
+    )
+    
+    full_url = f"{SECTOR_STOCKS_URL}?{urlencode(params)}"
+    
+    try:
+        response = http.request('GET', full_url, headers=headers)
+        if response.status == 200:
+            data = json.loads(response.data.decode('utf-8'))
+        else:
+            last_error = f'HTTP状态码错误: {response.status}'
+    except urllib3.exceptions.HTTPError as e:
+        last_error = f'HTTP错误: {str(e)}'
+    except urllib3.exceptions.TimeoutError as e:
+        last_error = f'请求超时: {str(e)}'
+    except Exception as e:
+        last_error = f'请求异常: {str(e)}'
+    finally:
+        http.clear()
     
     if data is None:
         # 临时返回请求URL
         import urllib.parse
-        full_url = f"{SECTOR_STOCKS_URL}?{urllib.parse.urlencode(params)}"
         system_logger.error(f"API错误 [/api/flow/sector-stocks]: 获取板块 {sector_code} 个股数据失败 - {last_error}")
         return jsonify({
             'success': False,
@@ -526,7 +442,7 @@ def get_sector_stocks():
 
 @flow_bp.route('/test-network', methods=['GET'])
 def test_network():
-    import urllib.parse
+    from urllib.parse import urlencode
     
     test_url = "https://push2.eastmoney.com/api/qt/clist/get"
     test_params = {
@@ -548,11 +464,34 @@ def test_network():
     }
     
     results = {
-        'test_url': f"{test_url}?{urllib.parse.urlencode(test_params)}",
+        'test_url': f"{test_url}?{urlencode(test_params)}",
         'tests': []
     }
     
-    # 测试1: 直接requests.get
+    # 测试1: urllib3方式
+    try:
+        http = urllib3.PoolManager(
+            retries=urllib3.Retry(total=3, backoff_factor=0.5),
+            timeout=urllib3.Timeout(connect=10.0, read=10.0)
+        )
+        full_url = f"{test_url}?{urlencode(test_params)}"
+        response = http.request('GET', full_url, headers=headers)
+        http.clear()
+        
+        results['tests'].append({
+            'method': 'urllib3',
+            'status': 'success',
+            'status_code': response.status,
+            'data_length': len(response.data)
+        })
+    except Exception as e:
+        results['tests'].append({
+            'method': 'urllib3',
+            'status': 'failed',
+            'error': str(e)
+        })
+    
+    # 测试2: requests方式
     try:
         response = requests.get(test_url, params=test_params, headers=headers, timeout=10, verify=False)
         results['tests'].append({
@@ -564,25 +503,6 @@ def test_network():
     except Exception as e:
         results['tests'].append({
             'method': 'requests.get',
-            'status': 'failed',
-            'error': str(e)
-        })
-    
-    # 测试2: Session方式
-    try:
-        session = requests.Session()
-        session.trust_env = False
-        response = session.get(test_url, params=test_params, headers=headers, timeout=10, verify=False)
-        session.close()
-        results['tests'].append({
-            'method': 'Session.get',
-            'status': 'success',
-            'status_code': response.status_code,
-            'response_time': response.elapsed.total_seconds()
-        })
-    except Exception as e:
-        results['tests'].append({
-            'method': 'Session.get',
             'status': 'failed',
             'error': str(e)
         })
