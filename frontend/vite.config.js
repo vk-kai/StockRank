@@ -15,5 +15,15 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'vue-router'],
+          'echarts': ['echarts', 'vue-echarts']
+        }
+      }
+    }
   }
 })
