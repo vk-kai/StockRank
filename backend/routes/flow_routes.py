@@ -297,10 +297,22 @@ def get_sector_stocks():
     sector = request.args.get('sector', '')
     sector_code = request.args.get('code', '')
     
+    if not sector_code and sector:
+        for item in latest_data:
+            if item.get('name') == sector:
+                sector_code = item.get('code', '')
+                break
+        
+        if not sector_code:
+            return jsonify({
+                'success': False,
+                'message': f'未找到板块 "{sector}" 对应的代码'
+            }), 400
+    
     if not sector_code:
         return jsonify({
             'success': False,
-            'message': '板块代码不能为空，请传递code参数'
+            'message': '板块代码不能为空，请传递sector或code参数'
         }), 400
     
     headers = {
