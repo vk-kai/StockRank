@@ -318,18 +318,21 @@ def get_daily_report():
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
         
-        # 获取当日数据
         today_data = load_daily_data(date_str)
         if not today_data or 'data' not in today_data:
             return jsonify({
                 'success': False,
-                'message': f'未找到{date_str}的数据'
+                'message': f'未找到{date_str}的数据，请确保当天有数据采集'
             }), 404
         
-        # 获取TOP5对比数据
         comparison_data = get_top5_comparison_data(date_str)
+        if not comparison_data:
+            comparison_data = {
+                'date': date_str,
+                'time': datetime.now().strftime('%H:%M'),
+                'top5': []
+            }
         
-        # 获取昨日数据用于对比
         yesterday = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
         yesterday_data = load_daily_data(yesterday)
         

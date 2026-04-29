@@ -111,6 +111,8 @@ def load_daily_data(date_str):
 def save_daily_data(date_str, data):
     file_path = get_daily_file_path(date_str)
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
         existing_data = load_daily_data(date_str) or {}
         push_status = existing_data.get('push_status', {
             'morning_pushed': False,
@@ -194,6 +196,8 @@ def load_realtime_data(date_str):
 def save_realtime_data(date_str, minute_key, data):
     file_path = get_realtime_file_path(date_str)
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
         realtime_data = load_realtime_data(date_str)
         
         realtime_data[minute_key] = {

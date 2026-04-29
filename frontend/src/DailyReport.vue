@@ -34,7 +34,7 @@
     </div>
 
     <div class="report-content" v-if="!loading && !error && reportData">
-      <div class="comparison-section">
+      <div class="comparison-section" v-if="reportData.comparison && reportData.comparison.top5 && reportData.comparison.top5.length > 0">
         <h2>📈 TOP5 板块对比</h2>
         <div class="comparison-table">
           <div class="table-header">
@@ -75,7 +75,7 @@
         </div>
       </div>
 
-      <div class="all-sectors-section">
+      <div class="all-sectors-section" v-if="reportData.today && reportData.today.length > 0">
         <h2>📋 全部板块数据</h2>
         <div class="sectors-grid">
           <div 
