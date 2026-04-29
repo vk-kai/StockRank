@@ -7,10 +7,11 @@ import urllib3
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
-    load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
+    load_recent_daily_data_with_accumulation, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_random_user_agent
 )
+import data_processor
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from logger import get_logger
 
@@ -76,10 +77,10 @@ def get_current_flow():
                             })
             
             else:
-                if latest_data:
+                if data_processor.latest_data:
                     return jsonify({
                         'success': True,
-                        'data': latest_data,
+                        'data': data_processor.latest_data,
                         'timestamp': datetime.now().astimezone().isoformat(),
                         'message': '非交易时间，返回缓存数据'
                     })
@@ -105,10 +106,10 @@ def get_current_flow():
                 'message': '非交易时间，暂无数据'
             })
         
-        if not latest_data:
+        if not data_processor.latest_data:
             data = get_sector_flow_data()
         else:
-            data = latest_data
+            data = data_processor.latest_data
         
         return jsonify({
             'success': True,
@@ -298,10 +299,10 @@ def get_sector_stocks():
     sector_code = ''
     
     if sector:
-        if not latest_data:
+        if not data_processor.latest_data:
             get_sector_flow_data()
         
-        for item in latest_data:
+        for item in data_processor.latest_data:
             if item.get('name') == sector:
                 sector_code = item.get('code', '')
                 break
@@ -320,7 +321,7 @@ def get_sector_stocks():
                     break
         
         if not sector_code:
-            available_names = [item.get('name') for item in latest_data[:10]] if latest_data else []
+            available_names = [item.get('name') for item in data_processor.latest_data[:10]] if data_processor.latest_data else []
             return jsonify({
                 'success': False,
                 'message': f'未找到板块 "{sector}" 对应的代码',
