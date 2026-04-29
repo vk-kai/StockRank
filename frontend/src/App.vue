@@ -103,6 +103,7 @@
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
+          @click="showSectorStocks(sector.name)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -127,6 +128,7 @@
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
+          @click="showSectorStocks(sector.name)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -150,6 +152,55 @@
     <div class="error" v-if="error">
       <p>{{ error }}</p>
       <button @click="retry">重试</button>
+    </div>
+    
+    <div class="sector-modal-overlay" v-if="showSectorModal" @click.self="closeSectorModal">
+      <div class="sector-modal">
+        <div class="modal-header">
+          <h3>{{ selectedSectorName }} - 个股资金流入</h3>
+          <button class="close-btn" @click="closeSectorModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="loading-stocks" v-if="loadingSectorStocks">
+            <div class="spinner"></div>
+            <p>加载个股数据...</p>
+          </div>
+          <div class="stocks-list" v-else-if="sectorStocks.length > 0">
+            <div class="stocks-header">
+              <span class="col-rank">排名</span>
+              <span class="col-code">代码</span>
+              <span class="col-name">名称</span>
+              <span class="col-price">现价</span>
+              <span class="col-change">涨跌幅</span>
+              <span class="col-flow">主力净流入</span>
+              <span class="col-ratio">净占比</span>
+            </div>
+            <div 
+              class="stock-item" 
+              v-for="(stock, index) in sectorStocks" 
+              :key="stock.code"
+              :class="{ 'top-flow': index < 3 }"
+            >
+              <span class="col-rank">{{ index + 1 }}</span>
+              <span class="col-code">{{ stock.code }}</span>
+              <span class="col-name">{{ stock.name }}</span>
+              <span class="col-price">{{ stock.price.toFixed(2) }}</span>
+              <span class="col-change" :class="{ 'positive': stock.change_percent > 0, 'negative': stock.change_percent < 0 }">
+                {{ stock.change_percent > 0 ? '+' : '' }}{{ (stock.change_percent * 100).toFixed(2) }}%
+              </span>
+              <span class="col-flow" :class="{ 'positive': stock.main_flow > 0, 'negative': stock.main_flow < 0 }">
+                {{ formatStockFlow(stock.main_flow) }}
+              </span>
+              <span class="col-ratio" :class="{ 'positive': stock.main_flow_ratio > 0, 'negative': stock.main_flow_ratio < 0 }">
+                {{ stock.main_flow_ratio > 0 ? '+' : '' }}{{ stock.main_flow_ratio.toFixed(2) }}%
+              </span>
+            </div>
+          </div>
+          <div class="no-data" v-else>
+            <p>暂无个股数据</p>
+          </div>
+        </div>
+      </div>
     </div>
     
     <SecurityAlert />

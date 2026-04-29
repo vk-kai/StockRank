@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -36,7 +36,11 @@ export default {
       threadStatus: {},
       healthCheckInterval: null,
       enableNotification: true,
-      lastNewsId: null
+      lastNewsId: null,
+      showSectorModal: false,
+      selectedSectorName: '',
+      sectorStocks: [],
+      loadingSectorStocks: false
     }
   },
   computed: {
@@ -90,6 +94,11 @@ export default {
     initChart() {
       this.$nextTick(() => {
         this.chartInstance = echarts.init(this.$refs.chart)
+        this.chartInstance.on('click', (params) => {
+          if (params.componentType === 'series' && params.seriesName) {
+            this.showSectorStocks(params.seriesName)
+          }
+        })
       })
     },
 
@@ -126,6 +135,41 @@ export default {
       this.chartInstance.dispatchAction({
         type: 'downplay'
       })
+    },
+
+    async showSectorStocks(sectorName) {
+      this.selectedSectorName = sectorName
+      this.showSectorModal = true
+      this.loadingSectorStocks = true
+      this.sectorStocks = []
+      
+      try {
+        const response = await getSectorStocks(sectorName)
+        if (response.success && response.data) {
+          this.sectorStocks = response.data.stocks || []
+        }
+      } catch (error) {
+        console.error('获取板块个股数据失败:', error)
+      } finally {
+        this.loadingSectorStocks = false
+      }
+    },
+
+    closeSectorModal() {
+      this.showSectorModal = false
+      this.selectedSectorName = ''
+      this.sectorStocks = []
+    },
+
+    formatStockFlow(value) {
+      if (value === 0) return '0'
+      const absValue = Math.abs(value)
+      if (absValue >= 100000000) {
+        return (value / 100000000).toFixed(2) + '亿'
+      } else if (absValue >= 10000) {
+        return (value / 10000).toFixed(2) + '万'
+      }
+      return value.toFixed(2)
     },
 
     async fetchCurrentData() {

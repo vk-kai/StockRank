@@ -387,3 +387,15 @@ export async function getHouseKline() {
     throw error
   }
 }
+
+export async function getSectorStocks(sectorName) {
+  try {
+    const response = await apiClient.get('/flow/sector-stocks', {
+      params: { sector: sectorName }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取板块个股数据失败:', error)
+    throw error
+  }
+}
