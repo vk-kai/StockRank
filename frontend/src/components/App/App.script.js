@@ -32,6 +32,7 @@ export default {
       latestNewsCount: 0,
       currentNewsIndex: 0,
       newsRotationInterval: null,
+      newsScrollInterval: null,
       threadStatus: {},
       healthCheckInterval: null,
       enableNotification: true,
@@ -49,6 +50,10 @@ export default {
       return this.latestNews.filter(news => 
         news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
       ).slice(0, 10)
+    },
+    currentNewsItem() {
+      if (this.latestNews.length === 0) return null
+      return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
     }
   },
   mounted() {
@@ -73,6 +78,9 @@ export default {
     }
     if (this.newsRotationInterval) {
       clearInterval(this.newsRotationInterval)
+    }
+    if (this.newsScrollInterval) {
+      clearInterval(this.newsScrollInterval)
     }
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval)
@@ -402,11 +410,15 @@ export default {
             }
           }
           
+          const previousFirstId = this.latestNews.length > 0 ? this.latestNews[0].id : null
           this.latestNews = newNews
           this.latestNewsCount = response.pagination?.total || 0
           
           if (newNews.length > 0) {
             this.lastNewsId = newNews[0].id
+            if (previousFirstId !== newNews[0].id) {
+              this.currentNewsIndex = 0
+            }
           }
         }
       } catch (err) {
@@ -415,6 +427,12 @@ export default {
     },
 
     startNewsRotation() {
+      this.newsScrollInterval = setInterval(() => {
+        if (this.latestNews.length > 0) {
+          this.currentNewsIndex = (this.currentNewsIndex + 1) % Math.min(this.latestNews.length, 5)
+        }
+      }, 4000)
+      
       this.newsRotationInterval = setInterval(() => {
         this.fetchLatestNews()
       }, 30000)
@@ -464,12 +482,12 @@ export default {
     },
 
     toggleNotification() {
-      if (!this.enableNotification) {
-        this.enableNotification = true
+      this.enableNotification = !this.enableNotification
+      
+      if (this.enableNotification) {
         localStorage.setItem('homeNewsNotificationEnabled', 'true')
         this.requestNotificationPermission()
       } else {
-        this.enableNotification = false
         localStorage.setItem('homeNewsNotificationEnabled', 'false')
       }
     },
