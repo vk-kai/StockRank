@@ -334,17 +334,6 @@ def get_sector_stocks():
             'message': '板块代码不能为空，请传递sector参数'
         }), 400
     
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://data.eastmoney.com/',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-    }
-    
     params = {
         'fid': 'f62',
         'po': '1',
@@ -358,33 +347,41 @@ def get_sector_stocks():
         'fields': 'f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f124,f1,f13'
     }
     
-    max_retries = 3
     last_error = None
     data = None
     
     from urllib.parse import urlencode
+    from data_processor import get_random_user_agent
     
     full_url = f"{SECTOR_STOCKS_URL}?{urlencode(params)}"
     
-    try:
-        response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-        else:
-            last_error = f'HTTP状态码错误: {response.status_code}'
-    except requests.exceptions.RequestException as e:
-        last_error = f'请求错误: {str(e)}'
-    except Exception as e:
-        last_error = f'请求异常: {str(e)}'
+    for attempt in range(3):
+        try:
+            headers = {
+                'User-Agent': get_random_user_agent(),
+                'Referer': 'https://data.eastmoney.com/',
+                'Accept': '*/*',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+            }
+            response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                break
+            else:
+                last_error = f'HTTP状态码错误: {response.status_code}'
+        except requests.exceptions.RequestException as e:
+            last_error = f'请求错误: {str(e)}'
+            import time
+            time.sleep(1)
+        except Exception as e:
+            last_error = f'请求异常: {str(e)}'
     
     if data is None:
-        # 临时返回请求URL
-        import urllib.parse
         system_logger.error(f"API错误 [/api/flow/sector-stocks]: 获取板块 {sector_code} 个股数据失败 - {last_error}")
         return jsonify({
             'success': False,
             'message': f'获取数据失败: {last_error}',
-            'request_url': full_url  # 临时添加
+            'request_url': full_url
         }), 500
     
     stocks = []
