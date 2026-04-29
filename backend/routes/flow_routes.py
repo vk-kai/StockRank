@@ -295,25 +295,24 @@ def get_daily_report():
 @flow_bp.route('/sector-stocks', methods=['GET'])
 def get_sector_stocks():
     sector = request.args.get('sector', '')
-    sector_code = request.args.get('code', '')
     
-    if not sector_code and sector:
-        sector_flow_data = get_sector_flow_data()
-        for item in sector_flow_data:
-            if item.get('name') == sector:
-                sector_code = item.get('code', '')
-                break
-        
-        if not sector_code:
-            return jsonify({
-                'success': False,
-                'message': f'未找到板块 "{sector}" 对应的代码'
-            }), 400
+    if not sector:
+        return jsonify({
+            'success': False,
+            'message': '板块名称不能为空，请传递sector参数'
+        }), 400
+    
+    sector_flow_data = get_sector_flow_data()
+    sector_code = ''
+    for item in sector_flow_data:
+        if item.get('name') == sector:
+            sector_code = item.get('code', '')
+            break
     
     if not sector_code:
         return jsonify({
             'success': False,
-            'message': '板块代码不能为空，请传递sector或code参数'
+            'message': f'未找到板块 "{sector}" 对应的代码'
         }), 400
     
     headers = {
