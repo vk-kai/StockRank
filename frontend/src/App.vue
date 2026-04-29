@@ -63,22 +63,32 @@
     <div class="news-ticker-container" v-if="latestNews.length > 0">
       <div class="news-ticker-header">
         <span class="ticker-label">📰 最新新闻</span>
-        <button class="view-more-news" @click="goToNews">更多 →</button>
+        <div class="header-controls">
+          <label class="notification-toggle">
+            <input type="checkbox" v-model="enableNotification" @change="toggleNotification">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">{{ enableNotification ? '🔔 已开启' : '🔕 已关闭' }}</span>
+          </label>
+          <button class="view-more-news" @click="goToNews">更多 →</button>
+        </div>
       </div>
-      <div class="news-ticker-content">
-        <transition name="fade" mode="out-in">
-          <div 
-            :key="currentNewsIndex" 
-            class="ticker-item" 
-            @click="openNews(latestNews[currentNewsIndex].url)"
-          >
-            <div class="news-time">{{ formatNewsTime(latestNews[currentNewsIndex].timestamp) }}</div>
+      <div class="news-list">
+        <div 
+          v-for="(news, index) in latestNews.slice(0, 5)" 
+          :key="news.id"
+          class="news-item"
+          :class="{ 'important': news.importance === '3' }"
+          @click="openNews(news.url)"
+        >
+          <div class="news-index">{{ index + 1 }}</div>
+          <div class="news-content">
             <div class="news-title">
-              <span v-if="latestNews[currentNewsIndex].importance === '3'" class="important-badge">重要</span>
-              {{ latestNews[currentNewsIndex].title }}
+              <span v-if="news.importance === '3'" class="important-badge">重要</span>
+              {{ news.title }}
             </div>
+            <div class="news-time">{{ formatNewsTime(news.timestamp) }}</div>
           </div>
-        </transition>
+        </div>
       </div>
     </div>
 

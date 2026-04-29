@@ -33,7 +33,9 @@ export default {
       currentNewsIndex: 0,
       newsRotationInterval: null,
       threadStatus: {},
-      healthCheckInterval: null
+      healthCheckInterval: null,
+      enableNotification: true,
+      lastNewsId: null
     }
   },
   computed: {
@@ -50,6 +52,7 @@ export default {
     }
   },
   mounted() {
+    this.loadNotificationState()
     this.initChart()
     this.fetchDataByTimeRange()
     this.startCountdown()
@@ -387,8 +390,24 @@ export default {
       try {
         const response = await getNews(1, 5)
         if (response.success) {
-          this.latestNews = response.data
+          const newNews = response.data
+          
+          if (newNews.length > 0 && this.enableNotification) {
+            const latestId = newNews[0]?.id
+            if (latestId && latestId !== this.lastNewsId && this.lastNewsId !== null) {
+              const latestNewsItem = newNews.find(n => n.id === latestId)
+              if (latestNewsItem) {
+                this.sendNotification(latestNewsItem)
+              }
+            }
+          }
+          
+          this.latestNews = newNews
           this.latestNewsCount = response.pagination?.total || 0
+          
+          if (newNews.length > 0) {
+            this.lastNewsId = newNews[0].id
+          }
         }
       } catch (err) {
         console.error('获取最新新闻失败:', err)
@@ -397,10 +416,8 @@ export default {
 
     startNewsRotation() {
       this.newsRotationInterval = setInterval(() => {
-        if (this.latestNews.length > 0) {
-          this.currentNewsIndex = (this.currentNewsIndex + 1) % this.latestNews.length
-        }
-      }, 3000)
+        this.fetchLatestNews()
+      }, 30000)
     },
 
     goToNews() {
@@ -417,6 +434,117 @@ export default {
 
     goToHouseKline() {
       this.$router.push('/house-kline')
+    },
+
+    loadNotificationState() {
+      if (!('Notification' in window)) {
+        this.enableNotification = false
+        return
+      }
+      
+      const saved = localStorage.getItem('homeNewsNotificationEnabled')
+      const browserGranted = Notification.permission === 'granted'
+      
+      if (saved !== null) {
+        this.enableNotification = saved === 'true'
+      } else {
+        this.enableNotification = true
+        localStorage.setItem('homeNewsNotificationEnabled', 'true')
+      }
+      
+      if (browserGranted && !this.enableNotification) {
+        this.enableNotification = true
+        localStorage.setItem('homeNewsNotificationEnabled', 'true')
+      }
+      
+      if (!browserGranted && this.enableNotification) {
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+      }
+    },
+
+    toggleNotification() {
+      if (!this.enableNotification) {
+        this.enableNotification = true
+        localStorage.setItem('homeNewsNotificationEnabled', 'true')
+        this.requestNotificationPermission()
+      } else {
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+      }
+    },
+
+    async requestNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('您的浏览器不支持系统通知功能')
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+        return
+      }
+      
+      if (Notification.permission === 'granted') {
+        return
+      }
+      
+      if (Notification.permission === 'denied') {
+        const guide = '您之前已禁止通知权限。\n\n请在浏览器地址栏左侧点击"锁"图标，\n找到"通知"选项并选择"允许"，\n然后刷新页面即可。'
+        alert(guide)
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+        return
+      }
+      
+      const permission = await Notification.requestPermission()
+      if (permission === 'granted') {
+        try {
+          if (typeof Notification === 'function') {
+            new Notification('通知已开启', {
+              body: '您将收到最新新闻的推送提醒',
+              icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
+            })
+          }
+        } catch (e) {
+          console.log('当前浏览器不支持直接创建通知')
+        }
+      } else if (permission === 'denied') {
+        alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+      } else {
+        this.enableNotification = false
+        localStorage.setItem('homeNewsNotificationEnabled', 'false')
+      }
+    },
+
+    sendNotification(news) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return
+      }
+      
+      try {
+        const title = news.title
+        let body = news.content || ''
+        if (body.length > 100) {
+          body = body.substring(0, 100) + '...'
+        }
+        
+        const notification = new Notification(title, {
+          body: body,
+          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
+          tag: news.id,
+          requireInteraction: news.importance === '3'
+        })
+        
+        notification.onclick = () => {
+          window.focus()
+          if (news.url) {
+            window.open(news.url, '_blank')
+          }
+          notification.close()
+        }
+      } catch (e) {
+        console.log('发送通知失败:', e)
+      }
     },
 
     openNews(url) {

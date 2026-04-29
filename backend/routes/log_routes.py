@@ -77,10 +77,19 @@ def get_log_list():
             module_info = LOG_MODULES_INFO.get(log_type, {'desc': log_type, 'color': '#909399'})
             
             if filename is None:
+                if log_type == 'security':
+                    security_file = os.path.join(LOG_DIR, 'security_events.json')
+                    if os.path.exists(security_file):
+                        size = os.path.getsize(security_file)
+                    else:
+                        size = 0
+                else:
+                    size = 0
+                
                 logs.append({
                     'type': log_type,
                     'filename': None,
-                    'size': 0,
+                    'size': size,
                     'exists': True,
                     'desc': module_info['desc'],
                     'color': module_info['color']
