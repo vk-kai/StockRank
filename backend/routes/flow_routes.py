@@ -357,51 +357,81 @@ def get_daily_report():
 
 @flow_bp.route('/sector-stocks', methods=['GET'])
 def get_sector_stocks():
-    try:
-        sector = request.args.get('sector', '')
-        sector_code = request.args.get('code', '')
-        
-        if not sector and not sector_code:
+    sector = request.args.get('sector', '')
+    sector_code = request.args.get('code', '')
+    
+    if not sector and not sector_code:
+        return jsonify({
+            'success': False,
+            'message': '板块名称或代码不能为空'
+        }), 400
+    
+    if sector_code:
+        pass
+    elif sector.startswith('BK'):
+        sector_code = sector
+    else:
+        sector_code = SECTOR_CODE_MAP.get(sector)
+        if not sector_code:
             return jsonify({
                 'success': False,
-                'message': '板块名称或代码不能为空'
-            }), 400
-        
-        if sector_code:
-            pass
-        elif sector.startswith('BK'):
-            sector_code = sector
-        else:
-            sector_code = SECTOR_CODE_MAP.get(sector)
-            if not sector_code:
-                return jsonify({
-                    'success': False,
-                    'message': f'未找到板块 {sector} 的代码映射'
-                }), 404
-        
-        headers = {
-            'User-Agent': get_random_user_agent(),
-            'Referer': 'https://data.eastmoney.com/',
-            'Accept': '*/*',
-        }
-        
-        params = {
-            'fid': 'f62',
-            'po': '1',
-            'pz': '50',
-            'pn': '1',
-            'np': '1',
-            'fltt': '2',
-            'invt': '2',
-            'ut': '8dec03ba335b81bf4ebdf7b29ec27d15',
-            'fs': f'b:{sector_code}',
-            'fields': 'f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f124,f1,f13'
-        }
-        
-        response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=10)
-        data = response.json()
-        
-        stocks = []
+                'message': f'未找到板块 {sector} 的代码映射'
+            }), 404
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://data.eastmoney.com/',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+    }
+    
+    params = {
+        'fid': 'f62',
+        'po': '1',
+        'pz': '50',
+        'pn': '1',
+        'np': '1',
+        'fltt': '2',
+        'invt': '2',
+        'ut': '8dec03ba335b81bf4ebdf7b29ec27d15',
+        'fs': f'b:{sector_code}',
+        'fields': 'f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f124,f1,f13'
+    }
+    
+    max_retries = 3
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15)
+            data = response.json()
+            break
+        except requests.exceptions.ConnectionError as e:
+            last_error = f'网络连接错误: {str(e)}'
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(1)
+                continue
+        except requests.exceptions.Timeout as e:
+            last_error = f'请求超时: {str(e)}'
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(1)
+                continue
+        except Exception as e:
+            last_error = f'请求异常: {str(e)}'
+            break
+    else:
+        system_logger.error(f"API错误 [/api/flow/sector-stocks]: 获取板块 {sector_code} 个股数据失败 - {last_error}")
+        return jsonify({
+            'success': False,
+            'message': f'获取数据失败: {last_error}'
+        }), 500
+    
+    stocks = []
+    try:
         if 'data' in data and 'diff' in data['data']:
             for item in data['data']['diff']:
                 code = item.get('f12', '')
@@ -453,7 +483,7 @@ def get_sector_stocks():
         return jsonify({
             'success': True,
             'data': {
-                'sector_name': sector_name,
+                'sector_name': sector,
                 'sector_code': sector_code,
                 'stocks': stocks,
                 'total': len(stocks)
@@ -462,10 +492,8 @@ def get_sector_stocks():
         })
         
     except Exception as e:
-        error_logger.error(f"API /api/flow/sector-stocks 异常: {e}")
-        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/flow/sector-stocks]: {str(e)}")
+        system_logger.error(f"API错误 [/api/flow/sector-stocks]: 解析板块 {sector_code} 数据失败 - {str(e)}")
         return jsonify({
             'success': False,
-            'message': '服务器内部错误'
+            'message': f'解析数据失败: {str(e)}'
         }), 500
