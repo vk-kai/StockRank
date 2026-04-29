@@ -151,6 +151,10 @@ export default {
         const response = await getSectorStocks(sectorName, sectorCode)
         if (response.success && response.data) {
           this.sectorStocks = response.data.stocks || []
+          // 临时打印请求URL
+          if (response.data.request_url) {
+            console.log('请求的URL:', response.data.request_url)
+          }
         }
       } catch (error) {
         console.error('获取板块个股数据失败:', error)

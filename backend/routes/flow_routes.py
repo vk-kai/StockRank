@@ -480,13 +480,18 @@ def get_sector_stocks():
         
         stocks.sort(key=lambda x: x['main_flow'], reverse=True)
         
+        # 临时返回请求的URL
+        import urllib.parse
+        full_url = f"{SECTOR_STOCKS_URL}?{urllib.parse.urlencode(params)}"
+        
         return jsonify({
             'success': True,
             'data': {
                 'sector_name': sector,
                 'sector_code': sector_code,
                 'stocks': stocks,
-                'total': len(stocks)
+                'total': len(stocks),
+                'request_url': full_url  # 临时添加
             },
             'timestamp': datetime.now().astimezone().isoformat()
         })
