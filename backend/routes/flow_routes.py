@@ -385,6 +385,8 @@ def get_sector_stocks():
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
     }
     
     params = {
@@ -405,7 +407,7 @@ def get_sector_stocks():
     
     for attempt in range(max_retries):
         try:
-            response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15)
+            response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
             data = response.json()
             break
         except requests.exceptions.ConnectionError as e:
@@ -420,6 +422,13 @@ def get_sector_stocks():
                 import time
                 time.sleep(1)
                 continue
+        except requests.exceptions.SSLError as e:
+            last_error = f'SSL证书错误: {str(e)}'
+            if attempt < max_retries - 1:
+                # 尝试不验证证书
+                response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
+                data = response.json()
+                break
         except Exception as e:
             last_error = f'请求异常: {str(e)}'
             break
