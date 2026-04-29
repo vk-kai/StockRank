@@ -295,24 +295,24 @@ def get_daily_report():
 @flow_bp.route('/sector-stocks', methods=['GET'])
 def get_sector_stocks():
     sector = request.args.get('sector', '')
-    
-    if not sector:
-        return jsonify({
-            'success': False,
-            'message': '板块名称不能为空，请传递sector参数'
-        }), 400
-    
-    sector_flow_data = get_sector_flow_data()
     sector_code = ''
-    for item in sector_flow_data:
-        if item.get('name') == sector:
-            sector_code = item.get('code', '')
-            break
+    
+    if sector:
+        for item in latest_data:
+            if item.get('name') == sector:
+                sector_code = item.get('code', '')
+                break
+        
+        if not sector_code:
+            return jsonify({
+                'success': False,
+                'message': f'未找到板块 "{sector}" 对应的代码'
+            }), 400
     
     if not sector_code:
         return jsonify({
             'success': False,
-            'message': f'未找到板块 "{sector}" 对应的代码'
+            'message': '板块代码不能为空，请传递sector参数'
         }), 400
     
     headers = {
@@ -343,31 +343,20 @@ def get_sector_stocks():
     last_error = None
     data = None
     
-    # 使用urllib3直接请求，避免requests的连接池问题
-    import urllib3
     from urllib.parse import urlencode
-    
-    http = urllib3.PoolManager(
-        retries=urllib3.Retry(total=3, backoff_factor=0.5),
-        timeout=urllib3.Timeout(connect=10.0, read=15.0)
-    )
     
     full_url = f"{SECTOR_STOCKS_URL}?{urlencode(params)}"
     
     try:
-        response = http.request('GET', full_url, headers=headers)
-        if response.status == 200:
-            data = json.loads(response.data.decode('utf-8'))
+        response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
         else:
-            last_error = f'HTTP状态码错误: {response.status}'
-    except urllib3.exceptions.HTTPError as e:
-        last_error = f'HTTP错误: {str(e)}'
-    except urllib3.exceptions.TimeoutError as e:
-        last_error = f'请求超时: {str(e)}'
+            last_error = f'HTTP状态码错误: {response.status_code}'
+    except requests.exceptions.RequestException as e:
+        last_error = f'请求错误: {str(e)}'
     except Exception as e:
         last_error = f'请求异常: {str(e)}'
-    finally:
-        http.clear()
     
     if data is None:
         # 临时返回请求URL
