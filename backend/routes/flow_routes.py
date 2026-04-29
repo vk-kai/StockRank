@@ -404,10 +404,15 @@ def get_sector_stocks():
     
     max_retries = 3
     last_error = None
+    data = None
+    
+    # 创建新的Session，避免连接池问题
+    session = requests.Session()
+    session.trust_env = False  # 忽略环境变量中的代理设置
     
     for attempt in range(max_retries):
         try:
-            response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
+            response = session.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
             data = response.json()
             break
         except requests.exceptions.ConnectionError as e:
@@ -426,13 +431,16 @@ def get_sector_stocks():
             last_error = f'SSL证书错误: {str(e)}'
             if attempt < max_retries - 1:
                 # 尝试不验证证书
-                response = requests.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
+                response = session.get(SECTOR_STOCKS_URL, params=params, headers=headers, timeout=15, verify=False)
                 data = response.json()
                 break
         except Exception as e:
             last_error = f'请求异常: {str(e)}'
             break
-    else:
+        finally:
+            session.close()
+    
+    if data is None:
         # 临时返回请求URL
         import urllib.parse
         full_url = f"{SECTOR_STOCKS_URL}?{urllib.parse.urlencode(params)}"
@@ -515,3 +523,68 @@ def get_sector_stocks():
             'success': False,
             'message': f'解析数据失败: {str(e)}'
         }), 500
+
+@flow_bp.route('/test-network', methods=['GET'])
+def test_network():
+    import urllib.parse
+    
+    test_url = "https://push2.eastmoney.com/api/qt/clist/get"
+    test_params = {
+        'fid': 'f62',
+        'po': '1',
+        'pz': '5',
+        'pn': '1',
+        'np': '1',
+        'fltt': '2',
+        'invt': '2',
+        'ut': '8dec03ba335b81bf4ebdf7b29ec27d15',
+        'fs': 'b:BK1033',
+        'fields': 'f12,f14,f2,f3,f62'
+    }
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://data.eastmoney.com/',
+    }
+    
+    results = {
+        'test_url': f"{test_url}?{urllib.parse.urlencode(test_params)}",
+        'tests': []
+    }
+    
+    # 测试1: 直接requests.get
+    try:
+        response = requests.get(test_url, params=test_params, headers=headers, timeout=10, verify=False)
+        results['tests'].append({
+            'method': 'requests.get',
+            'status': 'success',
+            'status_code': response.status_code,
+            'response_time': response.elapsed.total_seconds()
+        })
+    except Exception as e:
+        results['tests'].append({
+            'method': 'requests.get',
+            'status': 'failed',
+            'error': str(e)
+        })
+    
+    # 测试2: Session方式
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(test_url, params=test_params, headers=headers, timeout=10, verify=False)
+        session.close()
+        results['tests'].append({
+            'method': 'Session.get',
+            'status': 'success',
+            'status_code': response.status_code,
+            'response_time': response.elapsed.total_seconds()
+        })
+    except Exception as e:
+        results['tests'].append({
+            'method': 'Session.get',
+            'status': 'failed',
+            'error': str(e)
+        })
+    
+    return jsonify(results)
