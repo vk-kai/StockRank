@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 
 from config import LOG_DIR, DATA_DIR
-from data_processor import error_logger
 from logger import get_log_modules, get_logger
 
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
@@ -117,9 +116,7 @@ def get_log_list():
                     })
         return jsonify({'success': True, 'data': logs})
     except Exception as e:
-        error_logger.error(f"获取日志列表失败: {e}")
-        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/log/list]: {str(e)}")
+        system_logger.error(f"获取日志列表失败: {str(e)} | 堆栈: {traceback.format_exc().replace(chr(10), ' | ')}")
         return jsonify({'success': False, 'message': '获取日志列表失败'}), 500
 
 def parse_nginx_line(line):
@@ -275,9 +272,7 @@ def get_log_content(log_type):
             }
         })
     except Exception as e:
-        error_logger.error(f"读取日志内容失败: {e}")
-        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/log/content]: {str(e)}")
+        system_logger.error(f"读取日志内容失败: {str(e)} | 堆栈: {traceback.format_exc().replace(chr(10), ' | ')}")
         return jsonify({'success': False, 'message': '读取日志内容失败'}), 500
 
 def get_security_log_content():
@@ -296,8 +291,25 @@ def get_security_log_content():
                 }
             })
         
-        with open(security_log_file, 'r', encoding='utf-8') as f:
-            events = json.load(f)
+        try:
+            with open(security_log_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if not content:
+                    events = []
+                else:
+                    events = json.loads(content)
+        except json.JSONDecodeError as e:
+            system_logger.error(f"读取安全日志失败: {str(e)} | 堆栈: {traceback.format_exc().replace(chr(10), ' | ')}")
+            return jsonify({
+                'success': True,
+                'data': {
+                    'lines': [],
+                    'total': 0,
+                    'page': 1,
+                    'page_size': 100,
+                    'total_pages': 0
+                }
+            })
         
         level_filter = request.args.get('level', '').upper()
         search_keyword = request.args.get('search', '').strip()
@@ -425,9 +437,7 @@ def get_security_log_content():
             }
         })
     except Exception as e:
-        error_logger.error(f"读取安全日志失败: {e}")
-        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/log/content/security]: {str(e)}")
+        system_logger.error(f"读取安全日志失败: {str(e)} | 堆栈: {traceback.format_exc().replace(chr(10), ' | ')}")
         return jsonify({'success': False, 'message': '读取安全日志失败'}), 500
 
 @log_bp.route('/levels', methods=['GET'])

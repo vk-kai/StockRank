@@ -220,7 +220,11 @@
           </template>
           <div class="detail-row" v-if="activeLog !== 'security'">
             <span class="detail-label">消息：</span>
-            <pre class="detail-message">{{ selectedLog.message }}</pre>
+            <pre class="detail-message">{{ getDisplayMessage(selectedLog.message) }}</pre>
+          </div>
+          <div class="detail-row" v-if="hasStackTrace(selectedLog.message)">
+            <span class="detail-label">堆栈信息：</span>
+            <pre class="detail-message stack-trace">{{ getStackTrace(selectedLog.message) }}</pre>
           </div>
         </div>
         <div class="modal-footer">

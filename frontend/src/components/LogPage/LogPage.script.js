@@ -205,6 +205,12 @@ export default {
 
     truncateMessage(message, customMaxLength) {
       if (!message) return ''
+      
+      if (message.includes(' | 堆栈:')) {
+        const parts = message.split(' | 堆栈:')
+        return parts[0]
+      }
+      
       const maxLength = customMaxLength || (this.activeLog === 'security' ? 500 : this.maxMessageLength)
       if (message.length <= maxLength) {
         return message
@@ -218,6 +224,25 @@ export default {
         return keyword
       }
       return keyword.substring(0, 30) + '...'
+    },
+
+    hasStackTrace(message) {
+      return message && message.includes(' | 堆栈:')
+    },
+
+    getDisplayMessage(message) {
+      if (!message) return ''
+      if (message.includes(' | 堆栈:')) {
+        const parts = message.split(' | 堆栈:')
+        return parts[0]
+      }
+      return message
+    },
+
+    getStackTrace(message) {
+      if (!message || !message.includes(' | 堆栈:')) return ''
+      const parts = message.split(' | 堆栈:')
+      return parts[1] ? parts[1].replace(/ \| /g, '\n') : ''
     },
 
     showDetail(log) {
@@ -250,7 +275,11 @@ export default {
           text += `\n模块: ${this.selectedLog.module_display || this.selectedLog.module}`
         }
         text += `\n来源: ${this.selectedLog.source}:${this.selectedLog.lineno}`
-        text += `\n消息: ${this.selectedLog.message}`
+        text += `\n消息: ${this.getDisplayMessage(this.selectedLog.message)}`
+        
+        if (this.hasStackTrace(this.selectedLog.message)) {
+          text += `\n\n堆栈信息:\n${this.getStackTrace(this.selectedLog.message)}`
+        }
       }
       
       try {

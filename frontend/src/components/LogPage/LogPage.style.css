@@ -686,6 +686,29 @@
   border: 1px solid rgba(244, 67, 54, 0.3);
 }
 
+.stack-trace {
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  color: #ffb74d;
+  font-size: 11px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.stack-trace::-webkit-scrollbar {
+  width: 6px;
+}
+
+.stack-trace::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.stack-trace::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
