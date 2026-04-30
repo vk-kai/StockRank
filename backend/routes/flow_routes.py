@@ -14,69 +14,81 @@ from logger import get_logger
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
 system_logger = get_logger('system')
 
+def _is_realtime_data_invalid(realtime_data):
+    if not realtime_data:
+        return True
+    if realtime_data.get('_invalid'):
+        return True
+    time_keys = [k for k in realtime_data.keys() if not k.startswith('_')]
+    if not time_keys:
+        return True
+    return False
+
+def _get_latest_from_realtime_data(realtime_data):
+    if not realtime_data or realtime_data.get('_invalid'):
+        return None, None
+    time_keys = sorted([k for k in realtime_data.keys() if not k.startswith('_')], reverse=True)
+    if not time_keys:
+        return None, None
+    last_time_key = time_keys[0]
+    last_record = realtime_data[last_time_key]
+    if last_record and 'data' in last_record:
+        return last_record['data'], last_record.get('timestamp')
+    return None, None
+
 @flow_bp.route('/current', methods=['GET'])
 def get_current_flow():
     try:
         now = datetime.now().astimezone()
+        today = now.strftime('%Y-%m-%d')
         
         if not is_trading_day(now) or not is_trading_time(now):
-            today = now.strftime('%Y-%m-%d')
+            today_daily_record = load_daily_data(today)
+            if today_daily_record and 'data' in today_daily_record:
+                period_msg = ''
+                if is_afternoon_close(now):
+                    period_msg = '下午收盘后，'
+                elif is_morning_close(now):
+                    period_msg = '上午收盘后，'
+                return jsonify({
+                    'success': True,
+                    'data': today_daily_record['data'],
+                    'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                    'message': f'{period_msg}返回今日汇总数据'
+                })
             
-            if is_afternoon_close(now):
-                today_daily_record = load_daily_data(today)
-                if today_daily_record and 'data' in today_daily_record:
+            realtime_data = load_realtime_data(today)
+            data, timestamp = _get_latest_from_realtime_data(realtime_data)
+            if data:
+                period_msg = '非交易时间，'
+                if is_afternoon_close(now):
+                    period_msg = '下午收盘后，'
+                elif is_morning_close(now):
+                    period_msg = '上午收盘后，'
+                return jsonify({
+                    'success': True,
+                    'data': data,
+                    'timestamp': timestamp or datetime.now().astimezone().isoformat(),
+                    'message': f'{period_msg}返回今日最新数据'
+                })
+            
+            if latest_data:
+                return jsonify({
+                    'success': True,
+                    'data': latest_data,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '非交易时间，返回缓存数据'
+                })
+            
+            if _is_realtime_data_invalid(realtime_data):
+                system_logger.info("非交易时间，文件无效或无数据，尝试获取最新板块数据")
+                new_data = get_sector_flow_data()
+                if new_data:
                     return jsonify({
                         'success': True,
-                        'data': today_daily_record['data'],
-                        'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                        'message': '下午收盘后，返回今日每日汇总数据'
-                    })
-                
-                realtime_data = load_realtime_data(today)
-                if realtime_data:
-                    time_keys = sorted(realtime_data.keys(), reverse=True)
-                    if time_keys:
-                        last_time_key = time_keys[0]
-                        last_record = realtime_data[last_time_key]
-                        if last_record and 'data' in last_record:
-                            return jsonify({
-                                'success': True,
-                                'data': last_record['data'],
-                                'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                                'message': f'下午收盘后，返回今日最新数据({last_time_key})'
-                            })
-            
-            elif is_morning_close(now):
-                today_daily_record = load_daily_data(today)
-                if today_daily_record and 'data' in today_daily_record:
-                    return jsonify({
-                        'success': True,
-                        'data': today_daily_record['data'],
-                        'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                        'message': '上午收盘后，返回今日上午汇总数据'
-                    })
-                
-                realtime_data = load_realtime_data(today)
-                if realtime_data:
-                    time_keys = sorted(realtime_data.keys(), reverse=True)
-                    if time_keys:
-                        last_time_key = time_keys[0]
-                        last_record = realtime_data[last_time_key]
-                        if last_record and 'data' in last_record:
-                            return jsonify({
-                                'success': True,
-                                'data': last_record['data'],
-                                'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                                'message': f'上午收盘后，返回今日上午数据({last_time_key})'
-                            })
-            
-            else:
-                if latest_data:
-                    return jsonify({
-                        'success': True,
-                        'data': latest_data,
+                        'data': new_data,
                         'timestamp': datetime.now().astimezone().isoformat(),
-                        'message': '非交易时间，返回缓存数据'
+                        'message': '非交易时间，成功获取最新板块数据'
                     })
             
             recent_history = load_recent_daily_data(7)
@@ -93,40 +105,25 @@ def get_current_flow():
                             'message': f'非交易时间，返回最近历史数据({latest_date})'
                         })
             
-            # 尝试获取最新的板块数据
-            system_logger.info("非交易时间且无缓存数据，尝试获取最新板块数据")
-            new_data = get_sector_flow_data()
-            if new_data:
-                return jsonify({
-                    'success': True,
-                    'data': new_data,
-                    'timestamp': datetime.now().astimezone().isoformat(),
-                    'message': '非交易时间，成功获取最新板块数据'
-                })
-            else:
-                return jsonify({
-                    'success': True,
-                    'data': [],
-                    'timestamp': datetime.now().astimezone().isoformat(),
-                    'message': '非交易时间，无可用数据'
-                })
+            return jsonify({
+                'success': True,
+                'data': [],
+                'timestamp': datetime.now().astimezone().isoformat(),
+                'message': '非交易时间，无可用数据'
+            })
         else:
-            # 交易时间内，尝试获取最新实时数据
             realtime_data = load_realtime_data(today)
-            if realtime_data:
-                time_keys = sorted(realtime_data.keys(), reverse=True)
-                if time_keys:
-                    last_time_key = time_keys[0]
-                    last_record = realtime_data[last_time_key]
-                    if last_record and 'data' in last_record:
-                        return jsonify({
-                            'success': True,
-                            'data': last_record['data'],
-                            'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
-                            'message': f'交易时间，返回最新实时数据({last_time_key})'
-                        })
+            data, timestamp = _get_latest_from_realtime_data(realtime_data)
+            if data:
+                time_keys = sorted([k for k in realtime_data.keys() if not k.startswith('_')], reverse=True)
+                last_time_key = time_keys[0] if time_keys else ''
+                return jsonify({
+                    'success': True,
+                    'data': data,
+                    'timestamp': timestamp or datetime.now().astimezone().isoformat(),
+                    'message': f'交易时间，返回最新实时数据({last_time_key})'
+                })
             
-            # 如果没有实时数据，尝试获取最新的每日数据
             today_daily_record = load_daily_data(today)
             if today_daily_record and 'data' in today_daily_record:
                 return jsonify({
@@ -136,7 +133,6 @@ def get_current_flow():
                     'message': '交易时间，返回今日汇总数据'
                 })
             
-            # 如果还是没有数据，尝试获取缓存的最新数据
             if latest_data:
                 return jsonify({
                     'success': True,
@@ -145,7 +141,6 @@ def get_current_flow():
                     'message': '交易时间，返回缓存数据'
                 })
             
-            # 所有尝试都失败，尝试获取最新板块数据
             system_logger.info("交易时间且无缓存数据，尝试获取最新板块数据")
             new_data = get_sector_flow_data()
             if new_data:
@@ -156,7 +151,6 @@ def get_current_flow():
                     'message': '交易时间，成功获取最新板块数据'
                 })
             else:
-                # 所有尝试都失败，返回空数据
                 return jsonify({
                     'success': True,
                     'data': [],
@@ -184,10 +178,12 @@ def get_history():
         today_daily_record = load_daily_data(today)
         
         now = datetime.now().astimezone()
-        if is_trading_day(now) and is_trading_time(now):
-            today_last_data = get_sector_flow_data()
-        else:
-            today_last_data = None
+        # 无论是否交易时间，都尝试获取最新数据
+        today_last_data = get_sector_flow_data()
+        if not today_last_data:
+            # 如果获取失败，再尝试从缓存中获取
+            if latest_data:
+                today_last_data = latest_data
         
         if today_daily_record and 'data' in today_daily_record:
             if today not in history:

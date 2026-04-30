@@ -462,10 +462,17 @@ def load_realtime_data(date_str):
     if os.path.exists(file_path):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                content = f.read().strip()
+                if not content:
+                    error_logger.warning(f"实时数据文件为空 ({date_str})")
+                    return {'_invalid': True, '_reason': 'empty'}
+                return json.loads(content)
+        except json.JSONDecodeError as e:
+            error_logger.error(f"实时数据文件不是有效JSON ({date_str}): {e}")
+            return {'_invalid': True, '_reason': 'invalid_json'}
         except Exception as e:
             error_logger.error(f"加载实时数据失败 ({date_str}): {e}")
-            return {}
+            return {'_invalid': True, '_reason': 'error'}
     return {}
 
 # 保存实时数据（追加模式）
@@ -473,6 +480,9 @@ def save_realtime_data(date_str, minute_key, data):
     file_path = get_realtime_file_path(date_str)
     try:
         realtime_data = load_realtime_data(date_str)
+        
+        if realtime_data.get('_invalid'):
+            realtime_data = {}
         
         realtime_data[minute_key] = {
             'timestamp': datetime.now().isoformat(),
@@ -787,10 +797,15 @@ def load_recent_realtime_data(hours):
         today = datetime.now().strftime('%Y-%m-%d')
         realtime_data = load_realtime_data(today)
         
+        if realtime_data.get('_invalid'):
+            return {}
+        
         result = {}
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
         for minute_key, record in realtime_data.items():
+            if minute_key.startswith('_'):
+                continue
             time_str = f"{today} {minute_key}"
             try:
                 record_time = datetime.strptime(time_str, '%Y-%m-%d %H:%M')
