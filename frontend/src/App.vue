@@ -99,10 +99,11 @@
         <div 
           v-for="sector in currentData.slice(0, 10)" 
           :key="sector.rank"
-          class="sector-card"
+          class="sector-card clickable"
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
+          @click="openStockModal(sector)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -123,10 +124,11 @@
         <div 
           v-for="sector in accumulatedData" 
           :key="sector.rank"
-          class="sector-card"
+          class="sector-card clickable"
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
+          @click="openStockModal(sector)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -153,6 +155,64 @@
     </div>
     
     <SecurityAlert />
+
+    <!-- 个股详情弹窗 -->
+    <div class="modal-overlay" v-if="showStockModal" @click="closeStockModal">
+      <div class="modal-container" @click.stop>
+        <div class="modal-header">
+          <h3>📊 {{ selectedSector?.name }} - 个股详情</h3>
+          <button class="close-btn" @click="closeStockModal">×</button>
+        </div>
+        
+        <div class="modal-controls">
+          <div class="sort-controls">
+            <label>排序方式：</label>
+            <select v-model="stockSortField" @change="sortStocks">
+              <option value="change">涨跌幅</option>
+              <option value="flow">资金流入</option>
+              <option value="price">股价</option>
+              <option value="turnover">换手率</option>
+            </select>
+            <button class="sort-order-btn" @click="toggleSortOrder">
+              {{ stockSortOrder === 'desc' ? '↓ 降序' : '↑ 升序' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <div class="stocks-table">
+            <div class="table-header">
+              <div class="col">序号</div>
+              <div class="col">代码</div>
+              <div class="col">名称</div>
+              <div class="col">涨跌幅</div>
+              <div class="col">资金流入</div>
+              <div class="col">股价</div>
+              <div class="col">换手率</div>
+              <div class="col">成交量</div>
+              <div class="col">成交额</div>
+            </div>
+            <div 
+              v-for="(stock, index) in sectorStocks" 
+              :key="stock.code || index"
+              class="table-row"
+            >
+              <div class="col">{{ index + 1 }}</div>
+              <div class="col">{{ stock.code }}</div>
+              <div class="col">{{ stock.name }}</div>
+              <div class="col" :class="stock.change >= 0 ? 'positive' : 'negative'">
+                {{ stock.change >= 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
+              </div>
+              <div class="col">{{ formatFlow(stock.flow) }}</div>
+              <div class="col">{{ stock.price }}</div>
+              <div class="col">{{ stock.turnover }}</div>
+              <div class="col">{{ stock.volume }}</div>
+              <div class="col">{{ stock.amount }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
