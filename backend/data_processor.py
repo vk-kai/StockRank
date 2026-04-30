@@ -2,6 +2,7 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
+import random
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
 from logger import get_logger
 
@@ -9,6 +10,30 @@ error_logger = get_logger('error')
 data_logger = get_logger('data')
 system_logger = get_logger('system')
 cleanup_logger = get_logger('cleanup_flow')
+
+# 代理池（从配置文件加载）
+PROXY_POOL = []
+
+def load_proxy_pool():
+    global PROXY_POOL
+    proxy_file = os.path.join(CONFIG_DIR, 'proxy_pool.txt')
+    if os.path.exists(proxy_file):
+        try:
+            with open(proxy_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        PROXY_POOL.append(f'http://{line}')
+            if not PROXY_POOL:
+                error_logger.warning("代理池配置文件为空")
+        except Exception as e:
+            error_logger.error(f"加载代理池失败: {e}")
+    else:
+        error_logger.warning("代理池配置文件不存在")
+
+# 初始化代理池
+load_proxy_pool()
 
 # 全局变量存储最新数据
 latest_data = []
@@ -31,56 +56,77 @@ def get_sector_flow_data():
         'fields': 'f1,f2,f3,f12,f13,f14,f62,f66,f69,f72,f75,f78,f81,f84,f87,f124,f184,f204,f205,f206'
     }
     
-    try:
-        response = requests.get(DATA_URL, params=params, headers=headers, timeout=10)
-        data = response.json()
-        
-        if 'data' in data and 'diff' in data['data']:
-            sectors = []
-            for item in data['data']['diff']:
-                sector_name = item.get('f14', '')
-                
-                try:
-                    f62_value = item.get('f62', 0)
-                    if f62_value == '-' or f62_value is None:
-                        net_inflow = 0
-                    else:
-                        net_inflow = float(f62_value) / 10000
+    max_retries = 5
+    for retry in range(max_retries):
+        try:
+            # 随机选择代理
+            proxies = None
+            proxy = None
+            if PROXY_POOL:
+                proxy = random.choice(PROXY_POOL)
+                proxies = {
+                    'http': proxy,
+                    'https': proxy
+                }
+            
+            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10)
+            data = response.json()
+            
+            if 'data' in data and 'diff' in data['data']:
+                sectors = []
+                for item in data['data']['diff']:
+                    sector_name = item.get('f14', '')
                     
-                    f3_value = item.get('f3', 0)
-                    if f3_value == '-' or f3_value is None:
-                        change = 0
-                    else:
-                        change = float(f3_value) / 100
-                except (ValueError, TypeError) as e:
-                    error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
-                    continue
+                    try:
+                        f62_value = item.get('f62', 0)
+                        if f62_value == '-' or f62_value is None:
+                            net_inflow = 0
+                        else:
+                            net_inflow = float(f62_value) / 10000
+                        
+                        f3_value = item.get('f3', 0)
+                        if f3_value == '-' or f3_value is None:
+                            change = 0
+                        else:
+                            change = float(f3_value) / 100
+                    except (ValueError, TypeError) as e:
+                        error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
+                        continue
+                    
+                    if sector_name and net_inflow is not None:
+                        sectors.append({
+                            'name': sector_name,
+                            'flow': net_inflow,
+                            'change': change
+                        })
                 
-                if sector_name and net_inflow is not None:
-                    sectors.append({
-                        'name': sector_name,
-                        'flow': net_inflow,
-                        'change': change
-                    })
+                sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
+                
+                result = [{
+                    'rank': i + 1,
+                    'name': s['name'],
+                    'flow': s['flow'],
+                    'change': s['change']
+                } for i, s in enumerate(sectors[:50])]
+                
+                global latest_data
+                latest_data = result
+                return result
+            else:
+                error_logger.error(f"API返回数据格式异常: {data}")
+        
+        except Exception as e:
+            if PROXY_POOL:
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败: {e}")
+            else:
+                error_logger.error(f"第 {retry+1} 次尝试获取数据失败: {e}")
             
-            sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
-            
-            result = [{
-                'rank': i + 1,
-                'name': s['name'],
-                'flow': s['flow'],
-                'change': s['change']
-            } for i, s in enumerate(sectors[:50])]
-            
-            global latest_data
-            latest_data = result
-            return result
-        else:
-            error_logger.error(f"API返回数据格式异常: {data}")
+            # 如果不是最后一次重试，等待1秒后继续
+            if retry < max_retries - 1:
+                import time
+                time.sleep(1)
     
-    except Exception as e:
-        error_logger.error(f"获取数据失败: {e}")
-    
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据")
     return []
 
 # 获取每日数据文件路径
