@@ -20,7 +20,7 @@ def get_current_flow():
         now = datetime.now().astimezone()
         
         if not is_trading_day(now) or not is_trading_time(now):
-            today = datetime.now().strftime('%Y-%m-%d')
+            today = now.strftime('%Y-%m-%d')
             
             if is_afternoon_close(now):
                 today_daily_record = load_daily_data(today)
@@ -93,23 +93,76 @@ def get_current_flow():
                             'message': f'非交易时间，返回最近历史数据({latest_date})'
                         })
             
-            return jsonify({
-                'success': True,
-                'data': [],
-                'timestamp': datetime.now().astimezone().isoformat(),
-                'message': '非交易时间，暂无数据'
-            })
-        
-        if not latest_data:
-            data = get_sector_flow_data()
+            # 尝试获取最新的板块数据
+            system_logger.info("非交易时间且无缓存数据，尝试获取最新板块数据")
+            new_data = get_sector_flow_data()
+            if new_data:
+                return jsonify({
+                    'success': True,
+                    'data': new_data,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '非交易时间，成功获取最新板块数据'
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'data': [],
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '非交易时间，无可用数据'
+                })
         else:
-            data = latest_data
-        
-        return jsonify({
-            'success': True,
-            'data': data,
-            'timestamp': datetime.now().astimezone().isoformat()
-        })
+            # 交易时间内，尝试获取最新实时数据
+            realtime_data = load_realtime_data(today)
+            if realtime_data:
+                time_keys = sorted(realtime_data.keys(), reverse=True)
+                if time_keys:
+                    last_time_key = time_keys[0]
+                    last_record = realtime_data[last_time_key]
+                    if last_record and 'data' in last_record:
+                        return jsonify({
+                            'success': True,
+                            'data': last_record['data'],
+                            'timestamp': last_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                            'message': f'交易时间，返回最新实时数据({last_time_key})'
+                        })
+            
+            # 如果没有实时数据，尝试获取最新的每日数据
+            today_daily_record = load_daily_data(today)
+            if today_daily_record and 'data' in today_daily_record:
+                return jsonify({
+                    'success': True,
+                    'data': today_daily_record['data'],
+                    'timestamp': today_daily_record.get('timestamp', datetime.now().astimezone().isoformat()),
+                    'message': '交易时间，返回今日汇总数据'
+                })
+            
+            # 如果还是没有数据，尝试获取缓存的最新数据
+            if latest_data:
+                return jsonify({
+                    'success': True,
+                    'data': latest_data,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '交易时间，返回缓存数据'
+                })
+            
+            # 所有尝试都失败，尝试获取最新板块数据
+            system_logger.info("交易时间且无缓存数据，尝试获取最新板块数据")
+            new_data = get_sector_flow_data()
+            if new_data:
+                return jsonify({
+                    'success': True,
+                    'data': new_data,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '交易时间，成功获取最新板块数据'
+                })
+            else:
+                # 所有尝试都失败，返回空数据
+                return jsonify({
+                    'success': True,
+                    'data': [],
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': '交易时间，无可用数据'
+                })
     except Exception as e:
         error_logger.error(f"API /api/flow/current 异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
