@@ -672,7 +672,7 @@
 .stocks-table .table-header,
 .stocks-table .table-row {
   display: grid;
-  grid-template-columns: 60px 80px 100px 80px 80px 80px 80px 100px 100px;
+  grid-template-columns: 60px 80px 100px 80px 80px 80px 100px;
   gap: 10px;
   padding: 12px;
   align-items: center;
@@ -713,13 +713,13 @@
 
   .stocks-table .table-header,
   .stocks-table .table-row {
-    grid-template-columns: 50px 70px 90px 70px 70px;
+    grid-template-columns: 50px 70px 90px 70px 70px 70px;
     gap: 5px;
     font-size: 12px;
   }
 
-  .stocks-table .table-header .col:nth-child(n+6),
-  .stocks-table .table-row .col:nth-child(n+6) {
+  .stocks-table .table-header .col:nth-child(n+7),
+  .stocks-table .table-row .col:nth-child(n+7) {
     display: none;
   }
 }
@@ -922,6 +922,187 @@
   background-color: #45a049;
 }
 
+.health-alert-container {
+  position: absolute;
+  top: 20px;
+  left: 380px;
+  max-width: 400px;
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.95) 0%, rgba(183, 28, 28, 0.95) 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  box-shadow: 0 4px 16px rgba(244, 67, 54, 0.3);
+  z-index: 100;
+  animation: alert-pulse 2s infinite;
+}
+
+@keyframes alert-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(244, 67, 54, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(244, 67, 54, 0.5);
+  }
+}
+
+.health-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.alert-icon {
+  font-size: 18px;
+}
+
+.alert-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.health-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.health-alert-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.alert-label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.alert-error {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.crawler-alert-container {
+  position: absolute;
+  top: 20px;
+  left: 380px;
+  max-width: 400px;
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.95) 0%, rgba(230, 126, 34, 0.95) 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(255, 152, 0, 0.5);
+  box-shadow: 0 4px 16px rgba(255, 152, 0, 0.3);
+  z-index: 100;
+}
+
+.crawler-alert-container .checking {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.95) 0%, rgba(25, 118, 210, 0.95) 100%);
+  border-color: rgba(33, 150, 243, 0.5);
+}
+
+.crawler-alert-container .failed {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.95) 0%, rgba(183, 28, 28, 0.95) 100%);
+  border-color: rgba(244, 67, 54, 0.5);
+}
+
+.crawler-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.crawler-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crawler-alert-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.crawler-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.crawler-label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.crawler-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+}
+
+.failed-status {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.crawler-message {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.crawler-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.retry-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.retry-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.spinner-small {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .monitor-card-container {
   position: absolute;
   top: 20px;
@@ -991,6 +1172,21 @@
   background: #f44336;
   box-shadow: 0 0 8px #f44336;
   animation: blink-dot 1s infinite;
+}
+
+.monitor-unknown .monitor-dot {
+  background: #9e9e9e;
+  box-shadow: 0 0 8px #9e9e9e;
+}
+
+.monitor-name {
+  color: #8ba4c7;
+  flex: 1;
+}
+
+.monitor-time {
+  color: #6b7c93;
+  font-size: 12px;
 }
 
 .monitor-warning .monitor-dot {
@@ -1182,6 +1378,24 @@
     left: auto;
     width: 100%;
     margin-bottom: 15px;
+  }
+
+  .health-alert-container {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    margin-bottom: 15px;
+    max-width: none;
+  }
+
+  .crawler-alert-container {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    margin-bottom: 15px;
+    max-width: none;
   }
 
   .news-ticker-container {

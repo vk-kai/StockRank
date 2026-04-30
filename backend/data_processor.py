@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta
 import os
 import random
+import string
+import hashlib
 from bs4 import BeautifulSoup
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
@@ -12,9 +14,10 @@ data_logger = get_logger('data')
 system_logger = get_logger('system')
 cleanup_logger = get_logger('cleanup_flow')
 
-# 代理池（从API动态获取）
 PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
+
+_current_working_headers = None
 
 def load_proxy_pool():
     if not USE_PROXY:
@@ -44,8 +47,76 @@ def load_proxy_pool():
 if USE_PROXY:
     load_proxy_pool()
 
-# 全局变量存储最新数据
 latest_data = []
+
+def _generate_random_string(length):
+    chars = string.ascii_letters + string.digits + '-_'
+    return ''.join(random.choice(chars) for _ in range(length))
+
+def _generate_random_cookie():
+    random_part = _generate_random_string(40)
+    return f'vvvv=1; v={random_part}'
+
+def _generate_random_browser_version():
+    major = random.randint(100, 150)
+    minor = random.randint(0, 9)
+    patch = random.randint(0, 9999)
+    return f'{major}.{minor}.{patch}'
+
+def generate_random_headers(host=None, referer=None):
+    browsers = ['Chrome', 'Edge']
+    browser = random.choice(browsers)
+    
+    chrome_version = _generate_random_browser_version()
+    edge_version = _generate_random_browser_version() if browser == 'Edge' else chrome_version
+    
+    cookie = _generate_random_cookie()
+    
+    sec_ch_ua = f'"{browser}";v="{chrome_version.split(".")[0]}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version.split(".")[0]}"'
+    
+    sec_fetch_sites = ['same-origin', 'none', 'same-site']
+    sec_fetch_site = random.choice(sec_fetch_sites)
+    
+    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36'
+    if browser == 'Edge':
+        user_agent += f' Edg/{edge_version}'
+    
+    accept_languages = [
+        'zh-CN,zh;q=0.9',
+        'zh-CN,zh;q=0.9,en;q=0.8',
+        'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    ]
+    
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': random.choice(accept_languages),
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Cookie': cookie,
+        'Host': host or 'data.10jqka.com.cn',
+        'Referer': referer or 'https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/',
+        'sec-ch-ua': sec_ch_ua,
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': sec_fetch_site,
+        'sec-fetch-user': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': user_agent
+    }
+    
+    return headers
+
+def get_working_headers():
+    global _current_working_headers
+    return _current_working_headers
+
+def set_working_headers(headers):
+    global _current_working_headers
+    _current_working_headers = headers
+    system_logger.info(f"已设置可用的请求头")
 
 def parse_ths_sector_html(html_content):
     """解析同花顺板块资金流向HTML"""
@@ -124,75 +195,23 @@ def parse_ths_sector_html(html_content):
             error_logger.error(f"解析板块行数据失败: {e}")
             continue
     
-    # 只保留前10个板块
     return sectors[:10]
 
-def generate_random_headers(host=None, referer=None):
-    """生成随机请求头以避免被同花顺拦截"""
-    # 随机选择浏览器版本
-    browser_versions = [
-        ('Chrome', '147.0.0.0', '147.0.0.0'),
-        ('Chrome', '146.0.0.0', '146.0.0.0'),
-        ('Chrome', '145.0.0.0', '145.0.0.0'),
-        ('Chrome', '144.0.0.0', '144.0.0.0'),
-        ('Edge', '147.0.0.0', '147.0.0.0'),
-        ('Edge', '146.0.0.0', '146.0.0.0'),
-        ('Edge', '145.0.0.0', '145.0.0.0'),
-    ]
-    
-    browser, chrome_version, edge_version = random.choice(browser_versions)
-    
-    # 随机选择Cookie值
-    cookie_values = [
-        'vvvv=1; v=A6O27T70zniOSIJMNvvOylTYMuxNmDfacSx7DtUA_4J5FM2WXWjHKoH8C1_m',
-        'vvvv=1; v=Axuic9an9lEauwql-FvGshyAqnSF8C_yKQTzpg1Y95ox7DVulcC_QjnUg_ce',
-        'vvvv=1; v=B7P38U81zpjPTKLNwwPzMvUYqzTgoE_gdTR7EuVB_6L6GN3XwXkQrKoI9_2f',
-        'vvvv=1; v=C8Q49V92aqrQUMOMxxQANwVZrAUpfH_heUS8FwWC_7M7HO4YwYlRsLpJ_3g',
-    ]
-    
-    # 随机选择sec-ch-ua值
-    sec_ch_ua_values = [
-        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
-        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
-        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
-    ]
-    
-    # 随机选择sec-fetch-site
-    sec_fetch_site_values = [
-        'same-origin',
-        'none',
-        'same-site',
-    ]
-    
-    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36'
-    if browser == 'Edge':
-        user_agent += f' Edg/{edge_version}'
-    
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cache-Control': 'max-age=0',
-        'Connection': 'keep-alive',
-        'Cookie': random.choice(cookie_values),
-        'Host': host or 'data.10jqka.com.cn',
-        'Referer': referer or 'https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/',
-        'sec-ch-ua': random.choice(sec_ch_ua_values),
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': random.choice(sec_fetch_site_values),
-        'sec-fetch-user': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': user_agent
-    }
-    
-    return headers
-
 def get_sector_flow_data():
-    """获取板块资金流向数据（从同花顺）"""
-    headers = generate_random_headers()
+    from health_checker import find_working_headers_for_sector, get_crawler_status, set_crawler_working, set_crawler_idle
+    
+    crawler_status = get_crawler_status()
+    if crawler_status.get('sector_flow', {}).get('status') == 'failed':
+        error_logger.warning("板块资金获取已停止，跳过本次获取")
+        return []
+    
+    working_headers = find_working_headers_for_sector()
+    if not working_headers:
+        error_logger.error("无法找到可用的请求头，板块资金获取已停止")
+        return []
+    
+    set_crawler_working('sector_flow')
+    headers = working_headers
     
     max_retries = 3
     for retry in range(max_retries):
@@ -211,7 +230,6 @@ def get_sector_flow_data():
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             response.raise_for_status()
             
-            # 自动检测编码
             if response.encoding == 'ISO-8859-1':
                 response.encoding = 'GBK'
             else:
@@ -223,6 +241,7 @@ def get_sector_flow_data():
                 global latest_data
                 latest_data = sectors
                 data_logger.info(f"成功获取 {len(sectors)} 个板块数据")
+                set_crawler_idle('sector_flow')
                 return sectors
             else:
                 error_logger.error("解析板块数据失败，返回空列表")
@@ -240,6 +259,7 @@ def get_sector_flow_data():
                 time.sleep(2)
     
     error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据")
+    set_crawler_idle('sector_flow')
     return []
 
 def parse_ths_stock_html(html_content):
@@ -330,21 +350,31 @@ def parse_ths_stock_html(html_content):
     return stocks
 
 def get_sector_stocks(sector_url):
-    """获取板块下的个股详情"""
+    from health_checker import find_working_headers_for_stocks, get_crawler_status, set_crawler_working, set_crawler_idle
+    
     if not sector_url:
         error_logger.error("板块URL为空")
         return []
     
-    # 修复URL协议问题，确保使用https
     if sector_url.startswith('http://'):
         sector_url = sector_url.replace('http://', 'https://')
     
-    # 提取Host
     from urllib.parse import urlparse
     parsed_url = urlparse(sector_url)
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
-    headers = generate_random_headers(host=host, referer=sector_url)
+    crawler_status = get_crawler_status()
+    if crawler_status.get('stocks', {}).get('status') == 'failed':
+        error_logger.warning("个股详情获取已停止，跳过本次获取")
+        return []
+    
+    working_headers = find_working_headers_for_stocks()
+    if not working_headers:
+        error_logger.error("无法找到可用的请求头，个股详情获取已停止")
+        return []
+    
+    set_crawler_working('stocks')
+    headers = working_headers
     
     max_retries = 3
     for retry in range(max_retries):
@@ -363,7 +393,6 @@ def get_sector_stocks(sector_url):
             response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             response.raise_for_status()
             
-            # 自动检测编码
             if response.encoding == 'ISO-8859-1':
                 response.encoding = 'GBK'
             else:
@@ -373,6 +402,7 @@ def get_sector_stocks(sector_url):
             
             if stocks:
                 data_logger.info(f"成功获取 {len(stocks)} 只个股数据")
+                set_crawler_idle('stocks')
                 return stocks
             else:
                 error_logger.error("解析个股数据失败，返回空列表")
@@ -390,6 +420,7 @@ def get_sector_stocks(sector_url):
                 time.sleep(2)
     
     error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据")
+    set_crawler_idle('stocks')
     return []
 
 # 获取每日数据文件路径

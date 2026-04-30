@@ -8,6 +8,7 @@ from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
+from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
@@ -56,44 +57,40 @@ def create_app():
     def health():
         return jsonify({
             'status': 'ok',
-            'threads': get_all_status()
+            'threads': get_all_status(),
+            'health': get_health_status(),
+            'crawler': get_crawler_status()
         })
     
-    @app.route('/api/system/restart', methods=['POST', 'OPTIONS'])
-    def restart_thread():
+    @app.route('/api/health/status', methods=['GET'])
+    def health_status():
+        return jsonify({
+            'success': True,
+            'data': get_health_status()
+        })
+    
+    @app.route('/api/crawler/status', methods=['GET'])
+    def crawler_status():
+        return jsonify({
+            'success': True,
+            'data': get_crawler_status()
+        })
+    
+    @app.route('/api/crawler/reset', methods=['POST', 'OPTIONS'])
+    def reset_crawler():
         if request.method == 'OPTIONS':
             return jsonify({'success': True})
         
-        global data_collection_thread, news_collection_thread
-        
+        from health_checker import set_crawler_idle
         data = request.get_json() or {}
-        thread_name = data.get('thread', '')
+        crawler_name = data.get('crawler', '')
         
-        system_logger.info(f"[重启] 收到重启请求: {thread_name}")
+        if crawler_name:
+            set_crawler_idle(crawler_name)
+            system_logger.info(f"[重置] 爬虫状态已重置: {crawler_name}")
+            return jsonify({'success': True, 'message': f'{crawler_name} 状态已重置'})
         
-        if thread_name == 'data_collector':
-            if data_collection_thread.is_alive():
-                system_logger.warning("[重启] 数据采集线程仍在运行，跳过重启")
-                return jsonify({'success': True, 'message': '线程仍在运行'})
-            
-            data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
-            data_collection_thread.start()
-            register_thread('data_collector')
-            system_logger.info("[重启] 数据采集线程已重启")
-            return jsonify({'success': True, 'message': '数据采集线程已重启'})
-        
-        elif thread_name == 'news_collector':
-            if news_collection_thread.is_alive():
-                system_logger.warning("[重启] 新闻采集线程仍在运行，跳过重启")
-                return jsonify({'success': True, 'message': '线程仍在运行'})
-            
-            news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
-            news_collection_thread.start()
-            register_thread('news_collector')
-            system_logger.info("[重启] 新闻采集线程已重启")
-            return jsonify({'success': True, 'message': '新闻采集线程已重启'})
-        
-        return jsonify({'success': False, 'message': f'未知线程: {thread_name}'}), 400
+        return jsonify({'success': False, 'message': '缺少 crawler 参数'}), 400
     
     return app
 
@@ -105,6 +102,8 @@ if __name__ == '__main__':
             os.makedirs(directory, exist_ok=True)
         
         init_news_data()
+        load_health_status()
+        load_crawler_status()
         
         if not data_collection_thread.is_alive():
             data_collection_thread.start()

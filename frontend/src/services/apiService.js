@@ -284,6 +284,36 @@ export async function getSystemHealth() {
   }
 }
 
+export async function getHealthStatus() {
+  try {
+    const response = await apiClient.get('/health/status')
+    return response.data
+  } catch (error) {
+    console.error('获取健康状态失败:', error)
+    throw error
+  }
+}
+
+export async function getCrawlerStatus() {
+  try {
+    const response = await apiClient.get('/crawler/status')
+    return response.data
+  } catch (error) {
+    console.error('获取爬虫状态失败:', error)
+    throw error
+  }
+}
+
+export async function resetCrawler(crawlerName) {
+  try {
+    const response = await apiClient.post('/crawler/reset', { crawler: crawlerName })
+    return response.data
+  } catch (error) {
+    console.error('重置爬虫状态失败:', error)
+    throw error
+  }
+}
+
 export async function getLogList() {
   try {
     const response = await apiClient.get('/log/list')

@@ -38,22 +38,74 @@
       </div>
     </header>
 
+    <div class="health-alert-container" v-if="hasHealthErrors">
+      <div class="health-alert-header">
+        <span class="alert-icon">⚠️</span>
+        <span class="alert-title">服务异常</span>
+      </div>
+      <div class="health-alert-body">
+        <div 
+          v-for="item in healthErrors" 
+          :key="item.key" 
+          class="health-alert-item"
+        >
+          <span class="alert-label">{{ item.label }}:</span>
+          <span class="alert-error">{{ item.error }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="crawler-alert-container" v-if="hasCrawlerAlerts">
+      <div class="crawler-alert-header">
+        <span class="alert-icon">🔄</span>
+        <span class="alert-title">爬虫状态</span>
+      </div>
+      <div class="crawler-alert-body">
+        <div 
+          v-for="item in crawlerAlerts" 
+          :key="item.key" 
+          class="crawler-alert-item"
+          :class="{ 'checking': item.status === 'checking', 'failed': item.status === 'failed' }"
+        >
+          <div class="crawler-item-header">
+            <span class="crawler-label">{{ item.label }}</span>
+            <span class="crawler-status" v-if="item.status === 'checking'">
+              <span class="spinner-small"></span>
+              检测中
+            </span>
+            <span class="crawler-status failed-status" v-else-if="item.status === 'failed'">
+              ❌ 已停止
+            </span>
+          </div>
+          <div class="crawler-message" v-if="item.message">
+            {{ item.message }}
+          </div>
+          <div class="crawler-actions" v-if="item.status === 'failed'">
+            <button class="retry-btn" @click="resetCrawlerStatus(item.key)">
+              重试
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="monitor-card-container" @click="refreshHealth">
       <div class="monitor-card-header">
         <span class="monitor-card-label">📡 服务监控</span>
       </div>
       <div class="monitor-card-body">
         <div 
-          v-for="(thread, key) in threadStatus" 
+          v-for="(item, key) in healthStatus" 
           :key="key" 
           class="monitor-card-row"
-          :class="thread.status === 'running' ? 'monitor-ok' : 'monitor-error'"
+          :class="item.status === 'ok' ? 'monitor-ok' : (item.status === 'error' ? 'monitor-error' : 'monitor-unknown')"
         >
           <span class="monitor-dot"></span>
-          <span class="monitor-name">{{ getThreadLabel(key) }}</span>
-          <span class="monitor-text">{{ thread.status === 'running' ? '运行正常' : '已停止' }}</span>
+          <span class="monitor-name">{{ getHealthLabel(key) }}</span>
+          <span class="monitor-text">{{ item.status === 'ok' ? '正常' : (item.status === 'error' ? '异常' : '检测中') }}</span>
+          <span class="monitor-time" v-if="item.response_time">{{ item.response_time }}ms</span>
         </div>
-        <div v-if="Object.keys(threadStatus).length === 0" class="monitor-card-row monitor-loading">
+        <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
         </div>
@@ -180,10 +232,6 @@
                 涨跌幅
                 <span v-if="stockSortField === 'change'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
               </div>
-              <div class="col clickable" @click="toggleSort('flow')">
-                资金流入
-                <span v-if="stockSortField === 'flow'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </div>
               <div class="col clickable" @click="toggleSort('price')">
                 股价
                 <span v-if="stockSortField === 'price'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
@@ -193,7 +241,6 @@
                 <span v-if="stockSortField === 'turnover'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
               </div>
               <div class="col">成交量</div>
-              <div class="col">成交额</div>
             </div>
             <div 
               v-for="(stock, index) in sectorStocks" 
@@ -206,11 +253,9 @@
               <div class="col" :class="stock.change >= 0 ? 'positive' : 'negative'">
                 {{ stock.change >= 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
               </div>
-              <div class="col">{{ formatFlow(stock.flow) }}</div>
               <div class="col">{{ stock.price }}</div>
               <div class="col">{{ stock.turnover }}</div>
               <div class="col">{{ stock.volume }}</div>
-              <div class="col">{{ stock.amount }}</div>
             </div>
           </div>
         </div>

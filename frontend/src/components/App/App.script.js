@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks, getHealthStatus, getCrawlerStatus, resetCrawler } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -34,6 +34,8 @@ export default {
       newsRotationInterval: null,
       newsScrollInterval: null,
       threadStatus: {},
+      healthStatus: {},
+      crawlerStatus: {},
       healthCheckInterval: null,
       enableNotification: true,
       lastNewsId: null,
@@ -61,6 +63,52 @@ export default {
     currentNewsItem() {
       if (this.latestNews.length === 0) return null
       return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
+    },
+    healthErrors() {
+      const errors = []
+      const labels = {
+        'ths_sector': '同花顺板块资金',
+        'ths_stocks': '同花顺个股详情',
+        'news': '同花顺新闻'
+      }
+      for (const [key, value] of Object.entries(this.healthStatus)) {
+        if (value.status === 'error') {
+          errors.push({
+            key,
+            label: labels[key] || key,
+            error: value.error,
+            lastCheck: value.last_check
+          })
+        }
+      }
+      return errors
+    },
+    hasHealthErrors() {
+      return this.healthErrors.length > 0
+    },
+    crawlerAlerts() {
+      const alerts = []
+      const labels = {
+        'sector_flow': '板块资金',
+        'stocks': '个股详情',
+        'news': '新闻'
+      }
+      for (const [key, value] of Object.entries(this.crawlerStatus)) {
+        if (value.status === 'checking' || value.status === 'failed') {
+          alerts.push({
+            key,
+            label: labels[key] || key,
+            status: value.status,
+            message: value.message,
+            retrying: value.retrying,
+            retryCount: value.retry_count
+          })
+        }
+      }
+      return alerts
+    },
+    hasCrawlerAlerts() {
+      return this.crawlerAlerts.length > 0
     }
   },
   mounted() {
@@ -692,25 +740,73 @@ export default {
         if (data.threads) {
           this.threadStatus = data.threads
         }
+        if (data.health) {
+          this.healthStatus = data.health
+        }
       } catch (err) {
         console.error('获取服务状态失败:', err)
       }
     },
 
+    async fetchHealthStatus() {
+      try {
+        const response = await getHealthStatus()
+        if (response.success && response.data) {
+          this.healthStatus = response.data
+        }
+      } catch (err) {
+        console.error('获取健康状态失败:', err)
+      }
+    },
+
+    async fetchCrawlerStatus() {
+      try {
+        const response = await getCrawlerStatus()
+        if (response.success && response.data) {
+          this.crawlerStatus = response.data
+        }
+      } catch (err) {
+        console.error('获取爬虫状态失败:', err)
+      }
+    },
+
+    async resetCrawlerStatus(crawlerName) {
+      try {
+        await resetCrawler(crawlerName)
+        await this.fetchCrawlerStatus()
+      } catch (err) {
+        console.error('重置爬虫状态失败:', err)
+      }
+    },
+
     startHealthCheck() {
+      this.fetchHealthStatus()
+      this.fetchCrawlerStatus()
       this.healthCheckInterval = setInterval(() => {
-        this.fetchSystemHealth()
-      }, 30000)
+        this.fetchHealthStatus()
+        this.fetchCrawlerStatus()
+      }, 5000)
     },
 
     refreshHealth() {
       this.fetchSystemHealth()
+      this.fetchHealthStatus()
+      this.fetchCrawlerStatus()
     },
 
     getThreadLabel(key) {
       const labels = {
         'data_collector': '板块资金采集',
         'news_collector': '同花顺新闻采集'
+      }
+      return labels[key] || key
+    },
+
+    getHealthLabel(key) {
+      const labels = {
+        'ths_sector': '同花顺板块资金',
+        'ths_stocks': '同花顺个股详情',
+        'news': '同花顺新闻'
       }
       return labels[key] || key
     },
