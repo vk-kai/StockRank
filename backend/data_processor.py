@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta
 import os
 import random
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent, CONFIG_DIR
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -11,34 +11,28 @@ data_logger = get_logger('data')
 system_logger = get_logger('system')
 cleanup_logger = get_logger('cleanup_flow')
 
-# 代理池（从配置文件加载）
+# 代理池（从API动态获取）
 PROXY_POOL = []
+PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
 
 def load_proxy_pool():
     global PROXY_POOL
-    proxy_file = os.path.join(CONFIG_DIR, 'proxy_pool.txt')
-    if os.path.exists(proxy_file):
-        try:
-            with open(proxy_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                for line in lines:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        if not line.startswith(('http://', 'https://')):
-                            proxy_addr = f'http://{line}'
-                        else:
-                            proxy_addr = line
-                        
-                        if ':443' in proxy_addr:
-                            PROXY_POOL.append(proxy_addr)
-                        else:
-                            error_logger.debug(f"跳过不支持HTTPS的代理: {proxy_addr}")
-            if not PROXY_POOL:
-                error_logger.warning("代理池中没有支持HTTPS的代理")
-        except Exception as e:
-            error_logger.error(f"加载代理池失败: {e}")
-    else:
-        error_logger.warning("代理池配置文件不存在")
+    try:
+        response = requests.get(PROXY_API_URL, params={
+            'protocol': 'https',
+            'count': 3,
+            'country_code': 'CN'
+        }, timeout=10)
+        data = response.json()
+        if data.get('code') == 200 and data.get('data', {}).get('proxies'):
+            proxies = data['data']['proxies']
+            for proxy in proxies:
+                PROXY_POOL.append(f'http://{proxy}')
+            system_logger.info(f"成功从API获取 {len(PROXY_POOL)} 个HTTPS代理")
+        else:
+            error_logger.warning(f"API返回异常: {data}")
+    except Exception as e:
+        error_logger.error(f"获取代理失败: {e}")
 
 # 初始化代理池
 load_proxy_pool()
