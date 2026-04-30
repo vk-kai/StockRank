@@ -24,13 +24,17 @@ def load_proxy_pool():
                 for line in lines:
                     line = line.strip()
                     if line and not line.startswith('#'):
-                        # 仅当代理地址未包含协议前缀时自动添加http://
                         if not line.startswith(('http://', 'https://')):
-                            PROXY_POOL.append(f'http://{line}')
+                            proxy_addr = f'http://{line}'
                         else:
-                            PROXY_POOL.append(line)
+                            proxy_addr = line
+                        
+                        if ':443' in proxy_addr:
+                            PROXY_POOL.append(proxy_addr)
+                        else:
+                            error_logger.debug(f"跳过不支持HTTPS的代理: {proxy_addr}")
             if not PROXY_POOL:
-                error_logger.warning("代理池配置文件为空")
+                error_logger.warning("代理池中没有支持HTTPS的代理")
         except Exception as e:
             error_logger.error(f"加载代理池失败: {e}")
     else:
