@@ -1,4 +1,4 @@
-import { getDailyReport } from '../../services/apiService'
+import { getDailyReport, getSectorStocks } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -13,7 +13,14 @@ export default {
       loading: false,
       error: null,
       lastUpdate: null,
-      aiAnalysis: null
+      aiAnalysis: null,
+      showStockModal: false,
+      selectedSector: null,
+      sectorStocks: [],
+      loadingStocks: false,
+      stocksError: null,
+      stockSortField: 'change',
+      stockSortOrder: 'desc'
     }
   },
   mounted() {
@@ -43,6 +50,69 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+
+    async openStockModal(sector) {
+      if (!sector.sector_url) {
+        alert('该板块暂无个股详情链接')
+        return
+      }
+      
+      this.showStockModal = true
+      this.selectedSector = sector
+      this.loadingStocks = true
+      this.stocksError = null
+      this.sectorStocks = []
+      
+      try {
+        const response = await getSectorStocks(sector.sector_url)
+        
+        if (response.success) {
+          this.sectorStocks = response.data
+          this.sortStocks()
+        } else {
+          this.stocksError = response.message || '获取个股数据失败'
+        }
+      } catch (err) {
+        console.error('获取个股数据失败:', err)
+        this.stocksError = '获取个股数据失败: ' + err.message
+      } finally {
+        this.loadingStocks = false
+      }
+    },
+
+    closeStockModal() {
+      this.showStockModal = false
+      this.selectedSector = null
+      this.sectorStocks = []
+      this.stocksError = null
+    },
+
+    sortStocks() {
+      if (!this.sectorStocks || this.sectorStocks.length === 0) return
+      
+      const sorted = [...this.sectorStocks].sort((a, b) => {
+        let valueA = a[this.stockSortField]
+        let valueB = b[this.stockSortField]
+        
+        if (typeof valueA === 'string') {
+          valueA = parseFloat(valueA.replace(/[^\d.-]/g, '')) || 0
+          valueB = parseFloat(valueB.replace(/[^\d.-]/g, '')) || 0
+        }
+        
+        if (this.stockSortOrder === 'desc') {
+          return valueB - valueA
+        } else {
+          return valueA - valueB
+        }
+      })
+      
+      this.sectorStocks = sorted
+    },
+
+    toggleSortOrder() {
+      this.stockSortOrder = this.stockSortOrder === 'desc' ? 'asc' : 'desc'
+      this.sortStocks()
     },
 
     formatFlow(value) {

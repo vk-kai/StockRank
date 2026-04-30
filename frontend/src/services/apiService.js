@@ -378,6 +378,18 @@ export async function getDailyReport(date) {
   }
 }
 
+export async function getSectorStocks(sectorUrl) {
+  try {
+    const response = await apiClient.get('/flow/sector-stocks', {
+      params: { url: sectorUrl }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取个股详情失败:', error)
+    throw error
+  }
+}
+
 export async function getHouseKline() {
   try {
     const response = await apiClient.get('/house/kline')
