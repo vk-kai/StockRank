@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta
 import os
 import random
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent, CONFIG_DIR
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -24,7 +24,11 @@ def load_proxy_pool():
                 for line in lines:
                     line = line.strip()
                     if line and not line.startswith('#'):
-                        PROXY_POOL.append(f'http://{line}')
+                        # 仅当代理地址未包含协议前缀时自动添加http://
+                        if not line.startswith(('http://', 'https://')):
+                            PROXY_POOL.append(f'http://{line}')
+                        else:
+                            PROXY_POOL.append(line)
             if not PROXY_POOL:
                 error_logger.warning("代理池配置文件为空")
         except Exception as e:
