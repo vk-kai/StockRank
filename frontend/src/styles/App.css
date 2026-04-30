@@ -639,19 +639,24 @@
   color: #fff;
 }
 
-.sort-order-btn {
-  background: #4fc3f7;
-  color: #fff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
+.sort-hint {
+  color: #8ba4c7;
   font-size: 14px;
-  transition: background 0.3s ease;
 }
 
-.sort-order-btn:hover {
-  background: #81d4fa;
+.sort-icon {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #4fc3f7;
+}
+
+.stocks-table .table-header .clickable {
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.stocks-table .table-header .clickable:hover {
+  color: #4fc3f7;
 }
 
 .modal-body {

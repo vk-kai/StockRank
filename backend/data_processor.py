@@ -75,6 +75,10 @@ def parse_ths_sector_html(html_content):
             sector_name = sector_link.get_text(strip=True) if sector_link else ''
             sector_url = sector_link.get('href', '') if sector_link else ''
             
+            # 修复URL协议问题，将http改为https
+            if sector_url.startswith('http://'):
+                sector_url = sector_url.replace('http://', 'https://')
+            
             sector_index = cols[2].get_text(strip=True)
             
             change_text = cols[3].get_text(strip=True)
@@ -89,6 +93,10 @@ def parse_ths_sector_html(html_content):
             lead_stock_link = cols[8].find('a')
             lead_stock_name = lead_stock_link.get_text(strip=True) if lead_stock_link else ''
             lead_stock_url = lead_stock_link.get('href', '') if lead_stock_link else ''
+            
+            # 修复URL协议问题，将http改为https
+            if lead_stock_url.startswith('http://'):
+                lead_stock_url = lead_stock_url.replace('http://', 'https://')
             
             lead_stock_change_text = cols[9].get_text(strip=True)
             lead_stock_change = float(lead_stock_change_text.replace('%', '')) / 100 if lead_stock_change_text else 0
@@ -116,7 +124,8 @@ def parse_ths_sector_html(html_content):
             error_logger.error(f"解析板块行数据失败: {e}")
             continue
     
-    return sectors
+    # 只保留前10个板块
+    return sectors[:10]
 
 def get_sector_flow_data():
     """获取板块资金流向数据（从同花顺）"""
@@ -281,6 +290,15 @@ def get_sector_stocks(sector_url):
         error_logger.error("板块URL为空")
         return []
     
+    # 修复URL协议问题，确保使用https
+    if sector_url.startswith('http://'):
+        sector_url = sector_url.replace('http://', 'https://')
+    
+    # 提取Host
+    from urllib.parse import urlparse
+    parsed_url = urlparse(sector_url)
+    host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
+    
     headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -288,7 +306,7 @@ def get_sector_stocks(sector_url):
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
         'Cookie': 'vvvv=1; v=A6O27T70zniOSIJMNvvOylTYMuxNmDfacSx7DtUA_4J5FM2WXWjHKoH8C1_m',
-        'Host': 'data.10jqka.com.cn',
+        'Host': host,
         'Referer': sector_url,
         'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
         'sec-ch-ua-mobile': '?0',

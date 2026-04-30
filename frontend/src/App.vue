@@ -166,16 +166,7 @@
         
         <div class="modal-controls">
           <div class="sort-controls">
-            <label>排序方式：</label>
-            <select v-model="stockSortField" @change="sortStocks">
-              <option value="change">涨跌幅</option>
-              <option value="flow">资金流入</option>
-              <option value="price">股价</option>
-              <option value="turnover">换手率</option>
-            </select>
-            <button class="sort-order-btn" @click="toggleSortOrder">
-              {{ stockSortOrder === 'desc' ? '↓ 降序' : '↑ 升序' }}
-            </button>
+            <span class="sort-hint">点击表头即可排序</span>
           </div>
         </div>
 
@@ -185,10 +176,22 @@
               <div class="col">序号</div>
               <div class="col">代码</div>
               <div class="col">名称</div>
-              <div class="col">涨跌幅</div>
-              <div class="col">资金流入</div>
-              <div class="col">股价</div>
-              <div class="col">换手率</div>
+              <div class="col clickable" @click="toggleSort('change')">
+                涨跌幅
+                <span v-if="stockSortField === 'change'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col clickable" @click="toggleSort('flow')">
+                资金流入
+                <span v-if="stockSortField === 'flow'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col clickable" @click="toggleSort('price')">
+                股价
+                <span v-if="stockSortField === 'price'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col clickable" @click="toggleSort('turnover')">
+                换手率
+                <span v-if="stockSortField === 'turnover'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
               <div class="col">成交量</div>
               <div class="col">成交额</div>
             </div>

@@ -599,8 +599,13 @@ export default {
       this.sectorStocks = sorted
     },
 
-    toggleSortOrder() {
-      this.stockSortOrder = this.stockSortOrder === 'desc' ? 'asc' : 'desc'
+    toggleSort(field) {
+      if (this.stockSortField === field) {
+        this.stockSortOrder = this.stockSortOrder === 'desc' ? 'asc' : 'desc'
+      } else {
+        this.stockSortField = field
+        this.stockSortOrder = 'desc'
+      }
       this.sortStocks()
     },
 
