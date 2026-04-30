@@ -68,13 +68,13 @@ def get_sector_flow_data():
             proxy = None
             if PROXY_POOL:
                 proxy = random.choice(PROXY_POOL)
-                # 区分http和https代理
+                # 不转换协议，使用原始代理地址
                 proxies = {
                     'http': proxy,
-                    'https': proxy.replace('http://', 'https://') if proxy.startswith('http://') else proxy
+                    'https': proxy
                 }
             
-            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10, verify=False)
+            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10, verify=False, allow_redirects=True)
             response.raise_for_status()
             data = response.json()
             
