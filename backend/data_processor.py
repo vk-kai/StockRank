@@ -74,7 +74,7 @@ def get_sector_flow_data():
                     'https': proxy.replace('http://', 'https://') if proxy.startswith('http://') else proxy
                 }
             
-            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10)
+            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10, verify=False)
             response.raise_for_status()
             data = response.json()
             
