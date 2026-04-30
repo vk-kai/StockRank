@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timedelta
 import os
 import random
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
+from bs4 import BeautifulSoup
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -16,121 +17,302 @@ PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
 
 def load_proxy_pool():
+    if not USE_PROXY:
+        system_logger.info("代理功能已禁用，跳过代理池加载")
+        return
+    
     global PROXY_POOL
     try:
         response = requests.get(PROXY_API_URL, params={
             'protocol': 'https',
-            'count': 3,
+            'count': 5,
             'country_code': 'CN'
-        }, timeout=10)
+        }, timeout=15)
         data = response.json()
         if data.get('code') == 200 and data.get('data', {}).get('proxies'):
             proxies = data['data']['proxies']
+            PROXY_POOL.clear()
             for proxy in proxies:
-                PROXY_POOL.append(f'http://{proxy}')
+                proxy_with_protocol = f'https://{proxy}'
+                PROXY_POOL.append(proxy_with_protocol)
             system_logger.info(f"成功从API获取 {len(PROXY_POOL)} 个HTTPS代理")
         else:
             error_logger.warning(f"API返回异常: {data}")
     except Exception as e:
         error_logger.error(f"获取代理失败: {e}")
 
-# 初始化代理池
-load_proxy_pool()
+if USE_PROXY:
+    load_proxy_pool()
 
 # 全局变量存储最新数据
 latest_data = []
 
+def parse_ths_sector_html(html_content):
+    """解析同花顺板块资金流向HTML"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    sectors = []
+    
+    table = soup.find('table', class_='m-table J-ajax-table')
+    if not table:
+        error_logger.error("未找到板块数据表格")
+        return []
+    
+    tbody = table.find('tbody')
+    if not tbody:
+        error_logger.error("未找到表格tbody")
+        return []
+    
+    rows = tbody.find_all('tr')
+    for row in rows:
+        try:
+            cols = row.find_all('td')
+            if len(cols) < 11:
+                continue
+            
+            rank = int(cols[0].get_text(strip=True))
+            
+            sector_link = cols[1].find('a')
+            sector_name = sector_link.get_text(strip=True) if sector_link else ''
+            sector_url = sector_link.get('href', '') if sector_link else ''
+            
+            sector_index = cols[2].get_text(strip=True)
+            
+            change_text = cols[3].get_text(strip=True)
+            change = float(change_text.replace('%', '')) / 100 if change_text else 0
+            
+            inflow = float(cols[4].get_text(strip=True)) if cols[4].get_text(strip=True) else 0
+            outflow = float(cols[5].get_text(strip=True)) if cols[5].get_text(strip=True) else 0
+            net_flow = float(cols[6].get_text(strip=True)) if cols[6].get_text(strip=True) else 0
+            
+            company_count = int(cols[7].get_text(strip=True)) if cols[7].get_text(strip=True) else 0
+            
+            lead_stock_link = cols[8].find('a')
+            lead_stock_name = lead_stock_link.get_text(strip=True) if lead_stock_link else ''
+            lead_stock_url = lead_stock_link.get('href', '') if lead_stock_link else ''
+            
+            lead_stock_change_text = cols[9].get_text(strip=True)
+            lead_stock_change = float(lead_stock_change_text.replace('%', '')) / 100 if lead_stock_change_text else 0
+            
+            lead_stock_price = float(cols[10].get_text(strip=True)) if cols[10].get_text(strip=True) else 0
+            
+            sectors.append({
+                'rank': rank,
+                'name': sector_name,
+                'sector_url': sector_url,
+                'sector_index': sector_index,
+                'change': change,
+                'inflow': inflow,
+                'outflow': outflow,
+                'flow': net_flow,
+                'company_count': company_count,
+                'lead_stock': {
+                    'name': lead_stock_name,
+                    'url': lead_stock_url,
+                    'change': lead_stock_change,
+                    'price': lead_stock_price
+                }
+            })
+        except Exception as e:
+            error_logger.error(f"解析板块行数据失败: {e}")
+            continue
+    
+    return sectors
+
 def get_sector_flow_data():
+    """获取板块资金流向数据（从同花顺）"""
     headers = {
-        'User-Agent': get_random_user_agent()
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': 'https://data.10jqka.com.cn/funds/hyzjl/'
     }
     
-    params = {
-        'pn': 1,
-        'pz': 100,
-        'po': 1,
-        'np': 1,
-        'ut': 'bd1d9ddb04089700cf9c27f6f7426281',
-        'fltt': 2,
-        'invt': 2,
-        'fid': 'f62',
-        'fs': 'm:90+s:4',
-        'fields': 'f1,f2,f3,f12,f13,f14,f62,f66,f69,f72,f75,f78,f81,f84,f87,f124,f184,f204,f205,f206'
-    }
-    
-    max_retries = 5
+    max_retries = 3
     for retry in range(max_retries):
         try:
-            # 随机选择代理
             proxies = None
             proxy = None
-            if PROXY_POOL:
+            if USE_PROXY and PROXY_POOL:
                 proxy = random.choice(PROXY_POOL)
-                # 不转换协议，使用原始代理地址
                 proxies = {
                     'http': proxy,
                     'https': proxy
                 }
             
-            response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10, verify=False, allow_redirects=True)
+            session = requests.Session()
+            session.trust_env = False
+            response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             response.raise_for_status()
-            data = response.json()
+            response.encoding = 'utf-8'
             
-            if 'data' in data and 'diff' in data['data']:
-                sectors = []
-                for item in data['data']['diff']:
-                    sector_name = item.get('f14', '')
-                    
-                    try:
-                        f62_value = item.get('f62', 0)
-                        if f62_value == '-' or f62_value is None:
-                            net_inflow = 0
-                        else:
-                            net_inflow = float(f62_value) / 10000
-                        
-                        f3_value = item.get('f3', 0)
-                        if f3_value == '-' or f3_value is None:
-                            change = 0
-                        else:
-                            change = float(f3_value) / 100
-                    except (ValueError, TypeError) as e:
-                        error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
-                        continue
-                    
-                    if sector_name and net_inflow is not None:
-                        sectors.append({
-                            'name': sector_name,
-                            'flow': net_inflow,
-                            'change': change
-                        })
-                
-                sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
-                
-                result = [{
-                    'rank': i + 1,
-                    'name': s['name'],
-                    'flow': s['flow'],
-                    'change': s['change']
-                } for i, s in enumerate(sectors[:50])]
-                
+            sectors = parse_ths_sector_html(response.text)
+            
+            if sectors:
                 global latest_data
-                latest_data = result
-                return result
+                latest_data = sectors
+                data_logger.info(f"成功获取 {len(sectors)} 个板块数据")
+                return sectors
             else:
-                error_logger.error(f"API返回数据格式异常: {data}")
+                error_logger.error("解析板块数据失败，返回空列表")
         
         except Exception as e:
-            if PROXY_POOL:
+            if USE_PROXY and PROXY_POOL:
                 error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败: {e}")
             else:
                 error_logger.error(f"第 {retry+1} 次尝试获取数据失败: {e}")
             
-            # 如果不是最后一次重试，等待1秒后继续
             if retry < max_retries - 1:
+                if USE_PROXY:
+                    load_proxy_pool()
                 import time
-                time.sleep(1)
+                time.sleep(2)
     
     error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据")
+    return []
+
+def parse_ths_stock_html(html_content):
+    """解析同花顺个股详情HTML"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    stocks = []
+    
+    table = soup.find('table', class_='m-table m-pager-table')
+    if not table:
+        error_logger.error("未找到个股数据表格")
+        return []
+    
+    tbody = table.find('tbody')
+    if not tbody:
+        error_logger.error("未找到表格tbody")
+        return []
+    
+    rows = tbody.find_all('tr')
+    for row in rows:
+        try:
+            cols = row.find_all('td')
+            if len(cols) < 14:
+                continue
+            
+            rank = int(cols[0].get_text(strip=True))
+            
+            code_link = cols[1].find('a')
+            code = code_link.get_text(strip=True) if code_link else ''
+            stock_url = code_link.get('href', '') if code_link else ''
+            
+            name_link = cols[2].find('a')
+            name = name_link.get_text(strip=True) if name_link else ''
+            
+            price_text = cols[3].get_text(strip=True)
+            price = float(price_text) if price_text and price_text != '--' else 0
+            
+            change_text = cols[4].get_text(strip=True)
+            change = float(change_text) / 100 if change_text and change_text != '--' else 0
+            
+            change_value_text = cols[5].get_text(strip=True)
+            change_value = float(change_value_text) if change_value_text and change_value_text != '--' else 0
+            
+            speed_text = cols[6].get_text(strip=True)
+            speed = float(speed_text) / 100 if speed_text and speed_text != '--' else 0
+            
+            turnover_text = cols[7].get_text(strip=True)
+            turnover = float(turnover_text) if turnover_text and turnover_text != '--' else 0
+            
+            volume_ratio_text = cols[8].get_text(strip=True)
+            volume_ratio = float(volume_ratio_text) if volume_ratio_text and volume_ratio_text != '--' else 0
+            
+            amplitude_text = cols[9].get_text(strip=True)
+            amplitude = float(amplitude_text) / 100 if amplitude_text and amplitude_text != '--' else 0
+            
+            volume_text = cols[10].get_text(strip=True)
+            volume = volume_text if volume_text else ''
+            
+            circulation_text = cols[11].get_text(strip=True)
+            circulation = circulation_text if circulation_text else ''
+            
+            market_cap_text = cols[12].get_text(strip=True)
+            market_cap = market_cap_text if market_cap_text else ''
+            
+            pe_text = cols[13].get_text(strip=True)
+            pe = float(pe_text) if pe_text and pe_text != '--' else 0
+            
+            stocks.append({
+                'rank': rank,
+                'code': code,
+                'name': name,
+                'url': stock_url,
+                'price': price,
+                'change': change,
+                'change_value': change_value,
+                'speed': speed,
+                'turnover': turnover,
+                'volume_ratio': volume_ratio,
+                'amplitude': amplitude,
+                'volume': volume,
+                'circulation': circulation,
+                'market_cap': market_cap,
+                'pe': pe
+            })
+        except Exception as e:
+            error_logger.error(f"解析个股行数据失败: {e}")
+            continue
+    
+    return stocks
+
+def get_sector_stocks(sector_url):
+    """获取板块下的个股详情"""
+    if not sector_url:
+        error_logger.error("板块URL为空")
+        return []
+    
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': 'https://data.10jqka.com.cn/funds/hyzjl/'
+    }
+    
+    max_retries = 3
+    for retry in range(max_retries):
+        try:
+            proxies = None
+            proxy = None
+            if USE_PROXY and PROXY_POOL:
+                proxy = random.choice(PROXY_POOL)
+                proxies = {
+                    'http': proxy,
+                    'https': proxy
+                }
+            
+            session = requests.Session()
+            session.trust_env = False
+            response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            
+            stocks = parse_ths_stock_html(response.text)
+            
+            if stocks:
+                data_logger.info(f"成功获取 {len(stocks)} 只个股数据")
+                return stocks
+            else:
+                error_logger.error("解析个股数据失败，返回空列表")
+        
+        except Exception as e:
+            if USE_PROXY and PROXY_POOL:
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取个股数据失败: {e}")
+            else:
+                error_logger.error(f"第 {retry+1} 次尝试获取个股数据失败: {e}")
+            
+            if retry < max_retries - 1:
+                if USE_PROXY:
+                    load_proxy_pool()
+                import time
+                time.sleep(2)
+    
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据")
     return []
 
 # 获取每日数据文件路径

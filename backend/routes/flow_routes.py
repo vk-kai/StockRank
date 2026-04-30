@@ -6,7 +6,7 @@ from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
-    get_top5_comparison_data
+    get_top5_comparison_data, get_sector_stocks
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from logger import get_logger
@@ -279,6 +279,39 @@ def get_daily_report():
         error_logger.error(f"API /api/flow/daily-report 异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/daily-report]: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/sector-stocks', methods=['GET'])
+def get_sector_stocks_api():
+    try:
+        sector_url = request.args.get('url', '')
+        
+        if not sector_url:
+            return jsonify({
+                'success': False,
+                'message': '缺少板块URL参数'
+            }), 400
+        
+        stocks = get_sector_stocks(sector_url)
+        
+        if stocks:
+            return jsonify({
+                'success': True,
+                'data': stocks,
+                'timestamp': datetime.now().astimezone().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '获取个股数据失败'
+            }), 500
+    except Exception as e:
+        error_logger.error(f"API /api/flow/sector-stocks 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/sector-stocks]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
