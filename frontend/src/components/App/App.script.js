@@ -137,8 +137,6 @@ export default {
 
     async fetchCurrentData() {
       try {
-        this.loading = true
-        this.error = null
         const response = await getCurrentFlow()
         if (response.success) {
           this.currentData = response.data
@@ -154,14 +152,10 @@ export default {
       } catch (err) {
         console.error('获取当前数据失败:', err)
         this.error = '获取当前数据失败: ' + err.message
-      } finally {
-        this.loading = false
       }
     },
 
     async fetchHistoryData(days) {
-      this.loading = true
-      this.error = null
       try {
         const response = await getHistoryData(days)
         if (response.success) {
@@ -177,14 +171,10 @@ export default {
         }
       } catch (err) {
         this.error = '获取历史数据失败: ' + err.message
-      } finally {
-        this.loading = false
       }
     },
 
     async fetchMinuteData() {
-      this.loading = true
-      this.error = null
       try {
         const response = await getMinuteData(24)
         if (response.success) {
@@ -193,30 +183,44 @@ export default {
         }
       } catch (err) {
         this.error = '获取分钟数据失败: ' + err.message
+      }
+    },
+
+    async fetchDataByTimeRange() {
+      this.loading = true
+      this.error = null
+      try {
+        if (this.selectedTimeRange === 'today') {
+          this.accumulatedData = []
+          await this.fetchCurrentData()
+        } else {
+          this.currentData = []
+          await this.fetchAccumulatedData(this.selectedTimeRange)
+          await this.fetchHistoryData(this.selectedTimeRange)
+        }
+      } catch (err) {
+        console.error('获取数据失败:', err)
+        this.error = '获取数据失败: ' + err.message
       } finally {
         this.loading = false
       }
     },
 
-    async fetchDataByTimeRange() {
-      if (this.selectedTimeRange === 'today') {
-        this.accumulatedData = []
-        await this.fetchCurrentData()
-        await this.fetchMinuteData()
-      } else {
-        this.currentData = []
-        await this.fetchAccumulatedData(this.selectedTimeRange)
-        await this.fetchHistoryData(this.selectedTimeRange)
-      }
-    },
-
     async fetchData() {
-      if (this.selectedTimeRange === 'today') {
-        await this.fetchCurrentData()
-        await this.fetchMinuteData()
-      } else {
-        await this.fetchAccumulatedData(this.selectedTimeRange)
-        await this.fetchHistoryData(this.selectedTimeRange)
+      this.loading = true
+      this.error = null
+      try {
+        if (this.selectedTimeRange === 'today') {
+          await this.fetchCurrentData()
+        } else {
+          await this.fetchAccumulatedData(this.selectedTimeRange)
+          await this.fetchHistoryData(this.selectedTimeRange)
+        }
+      } catch (err) {
+        console.error('获取数据失败:', err)
+        this.error = '获取数据失败: ' + err.message
+      } finally {
+        this.loading = false
       }
     },
 
@@ -228,11 +232,13 @@ export default {
         }
       } catch (err) {
         console.error('获取累计流入数据失败:', err)
+        this.error = '获取累计流入数据失败: ' + err.message
       }
     },
 
     retry() {
       this.error = null
+      this.loading = true
       this.fetchDataByTimeRange()
     },
 

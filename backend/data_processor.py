@@ -127,27 +127,72 @@ def parse_ths_sector_html(html_content):
     # 只保留前10个板块
     return sectors[:10]
 
-def get_sector_flow_data():
-    """获取板块资金流向数据（从同花顺）"""
+def generate_random_headers(host=None, referer=None):
+    """生成随机请求头以避免被同花顺拦截"""
+    # 随机选择浏览器版本
+    browser_versions = [
+        ('Chrome', '147.0.0.0', '147.0.0.0'),
+        ('Chrome', '146.0.0.0', '146.0.0.0'),
+        ('Chrome', '145.0.0.0', '145.0.0.0'),
+        ('Chrome', '144.0.0.0', '144.0.0.0'),
+        ('Edge', '147.0.0.0', '147.0.0.0'),
+        ('Edge', '146.0.0.0', '146.0.0.0'),
+        ('Edge', '145.0.0.0', '145.0.0.0'),
+    ]
+    
+    browser, chrome_version, edge_version = random.choice(browser_versions)
+    
+    # 随机选择Cookie值
+    cookie_values = [
+        'vvvv=1; v=A6O27T70zniOSIJMNvvOylTYMuxNmDfacSx7DtUA_4J5FM2WXWjHKoH8C1_m',
+        'vvvv=1; v=Axuic9an9lEauwql-FvGshyAqnSF8C_yKQTzpg1Y95ox7DVulcC_QjnUg_ce',
+        'vvvv=1; v=B7P38U81zpjPTKLNwwPzMvUYqzTgoE_gdTR7EuVB_6L6GN3XwXkQrKoI9_2f',
+        'vvvv=1; v=C8Q49V92aqrQUMOMxxQANwVZrAUpfH_heUS8FwWC_7M7HO4YwYlRsLpJ_3g',
+    ]
+    
+    # 随机选择sec-ch-ua值
+    sec_ch_ua_values = [
+        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
+        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
+        f'"{browser}";v="{chrome_version}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version}"',
+    ]
+    
+    # 随机选择sec-fetch-site
+    sec_fetch_site_values = [
+        'same-origin',
+        'none',
+        'same-site',
+    ]
+    
+    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36'
+    if browser == 'Edge':
+        user_agent += f' Edg/{edge_version}'
+    
     headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br, zstd',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
-        'Cookie': 'vvvv=1; v=A6O27T70zniOSIJMNvvOylTYMuxNmDfacSx7DtUA_4J5FM2WXWjHKoH8C1_m',
-        'Host': 'data.10jqka.com.cn',
-        'Referer': 'https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/',
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        'Cookie': random.choice(cookie_values),
+        'Host': host or 'data.10jqka.com.cn',
+        'Referer': referer or 'https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/',
+        'sec-ch-ua': random.choice(sec_ch_ua_values),
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'document',
         'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin',
+        'sec-fetch-site': random.choice(sec_fetch_site_values),
         'sec-fetch-user': '?1',
         'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0'
+        'User-Agent': user_agent
     }
+    
+    return headers
+
+def get_sector_flow_data():
+    """获取板块资金流向数据（从同花顺）"""
+    headers = generate_random_headers()
     
     max_retries = 3
     for retry in range(max_retries):
@@ -299,25 +344,7 @@ def get_sector_stocks(sector_url):
     parsed_url = urlparse(sector_url)
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cache-Control': 'max-age=0',
-        'Connection': 'keep-alive',
-        'Cookie': 'vvvv=1; v=A6O27T70zniOSIJMNvvOylTYMuxNmDfacSx7DtUA_4J5FM2WXWjHKoH8C1_m',
-        'Host': host,
-        'Referer': sector_url,
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin',
-        'sec-fetch-user': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0'
-    }
+    headers = generate_random_headers(host=host, referer=sector_url)
     
     max_retries = 3
     for retry in range(max_retries):

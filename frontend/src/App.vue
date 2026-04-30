@@ -144,7 +144,7 @@
       </div>
     </div>
 
-    <div class="loading" v-if="loading && !chartInstance">
+    <div class="loading" v-if="loading">
       <div class="spinner"></div>
       <p>加载数据中...</p>
     </div>
