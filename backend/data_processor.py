@@ -156,7 +156,12 @@ def get_sector_flow_data():
             session.trust_env = False
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             response.raise_for_status()
-            response.encoding = 'utf-8'
+            
+            # 自动检测编码
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                response.encoding = response.apparent_encoding
             
             sectors = parse_ths_sector_html(response.text)
             
@@ -312,7 +317,12 @@ def get_sector_stocks(sector_url):
             session.trust_env = False
             response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             response.raise_for_status()
-            response.encoding = 'utf-8'
+            
+            # 自动检测编码
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                response.encoding = response.apparent_encoding
             
             stocks = parse_ths_stock_html(response.text)
             
