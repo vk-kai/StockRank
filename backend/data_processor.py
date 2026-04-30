@@ -68,12 +68,14 @@ def get_sector_flow_data():
             proxy = None
             if PROXY_POOL:
                 proxy = random.choice(PROXY_POOL)
+                # 区分http和https代理
                 proxies = {
                     'http': proxy,
-                    'https': proxy
+                    'https': proxy.replace('http://', 'https://') if proxy.startswith('http://') else proxy
                 }
             
             response = requests.get(DATA_URL, params=params, headers=headers, proxies=proxies, timeout=10)
+            response.raise_for_status()
             data = response.json()
             
             if 'data' in data and 'diff' in data['data']:
