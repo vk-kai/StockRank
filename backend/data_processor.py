@@ -50,62 +50,64 @@ if USE_PROXY:
 latest_data = []
 
 def _generate_random_string(length):
-    chars = string.ascii_letters + string.digits + '-_'
+    chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
 def _generate_random_cookie():
-    random_part = _generate_random_string(40)
-    return f'vvvv=1; v={random_part}'
+    timestamp = int(datetime.now().timestamp())
+    random_hash = ''.join(random.choices('ABCDEF0123456789', k=16))
+    hm_lvt_1 = f'{timestamp - random.randint(100, 500)}'
+    hm_lvt_2 = f'{timestamp - random.randint(100, 500)}'
+    hm_lpvt_1 = f'{timestamp}'
+    hm_lpvt_2 = f'{timestamp}'
+    v_random = _generate_random_string(40)
+    
+    return f'Hm_lvt_6dc19a3987135225beb977a0b9931a25={hm_lvt_1}; HMACCOUNT={random_hash}; Hm_lvt_9d25c03aef06fec6abea265b79509ba4={hm_lvt_2}; Hm_lpvt_6dc19a3987135225beb977a0b9931a25={hm_lpvt_1}; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4={hm_lpvt_2}; v={v_random}'
 
 def _generate_random_browser_version():
-    major = random.randint(100, 150)
-    minor = random.randint(0, 9)
-    patch = random.randint(0, 9999)
-    return f'{major}.{minor}.{patch}'
+    major = random.randint(120, 130)
+    minor = 0
+    patch = random.randint(1000, 9999)
+    build = random.randint(10, 200)
+    return f'{major}.{minor}.{patch}.{build}'
 
 def generate_random_headers(host=None, referer=None):
-    browsers = ['Chrome', 'Edge']
+    browsers = ['Edge', 'Chrome']
     browser = random.choice(browsers)
     
-    chrome_version = _generate_random_browser_version()
-    edge_version = _generate_random_browser_version() if browser == 'Edge' else chrome_version
+    browser_version = _generate_random_browser_version()
+    major_version = browser_version.split('.')[0]
     
     cookie = _generate_random_cookie()
     
-    sec_ch_ua = f'"{browser}";v="{chrome_version.split(".")[0]}", "Not.A/Brand";v="8", "Chromium";v="{chrome_version.split(".")[0]}"'
-    
-    sec_fetch_sites = ['same-origin', 'none', 'same-site']
-    sec_fetch_site = random.choice(sec_fetch_sites)
-    
-    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36'
     if browser == 'Edge':
-        user_agent += f' Edg/{edge_version}'
-    
-    accept_languages = [
-        'zh-CN,zh;q=0.9',
-        'zh-CN,zh;q=0.9,en;q=0.8',
-        'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-    ]
+        sec_ch_ua = f'"Microsoft Edge";v="{major_version}", "Not.A/Brand";v="8", "Chromium";v="{major_version}"'
+        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36 Edg/{browser_version}'
+    else:
+        sec_ch_ua = f'"Chromium";v="{major_version}", "Google Chrome";v="{major_version}", "Not-A.Brand";v="99"'
+        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36'
     
     headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': random.choice(accept_languages),
+        'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
         'Cookie': cookie,
         'Host': host or 'data.10jqka.com.cn',
-        'Referer': referer or 'https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/',
         'sec-ch-ua': sec_ch_ua,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'document',
         'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': sec_fetch_site,
+        'sec-fetch-site': 'same-site',
         'sec-fetch-user': '?1',
         'Upgrade-Insecure-Requests': '1',
         'User-Agent': user_agent
     }
+    
+    if referer:
+        headers['Referer'] = referer
     
     return headers
 

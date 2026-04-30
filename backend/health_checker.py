@@ -195,7 +195,7 @@ def find_working_headers_for_sector(max_retries=10):
             return headers
         
         update_health_status('ths_sector', 'error', response_time, error)
-        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error} | URL: {THS_SECTOR_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['sector_flow']['status'] = 'failed'
@@ -234,7 +234,7 @@ def find_working_headers_for_stocks(max_retries=10):
             return headers
         
         update_health_status('ths_stocks', 'error', response_time, error)
-        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error} | URL: {THS_STOCKS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['stocks']['status'] = 'failed'
@@ -278,7 +278,7 @@ def find_working_headers_for_news(max_retries=10):
             return headers
         
         update_health_status('news', 'error', response_time, error)
-        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error} | URL: {NEWS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['news']['status'] = 'failed'

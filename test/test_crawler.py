@@ -11,16 +11,25 @@ from backend.config import NEWS_URL
 THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/"
 THS_STOCKS_URL = "https://q.10jqka.com.cn/gn/detail/code/301466/"
 
+def print_headers(headers):
+    print("请求头详情:")
+    for key, value in headers.items():
+        if key == 'Cookie':
+            print(f"  {key}: {value[:60]}...")
+        elif key == 'User-Agent':
+            print(f"  {key}: {value[:70]}...")
+        else:
+            print(f"  {key}: {value}")
+
 def test_ths_sector():
     print("\n" + "="*60)
     print("测试同花顺板块资金接口")
     print("="*60)
     
-    for i in range(5):
+    for i in range(3):
         print(f"\n--- 第 {i+1} 次尝试 ---")
         headers = generate_random_headers()
-        print(f"User-Agent: {headers['User-Agent'][:50]}...")
-        print(f"Cookie: {headers['Cookie'][:30]}...")
+        print_headers(headers)
         
         try:
             session = requests.Session()
@@ -29,7 +38,7 @@ def test_ths_sector():
             response = session.get(THS_SECTOR_URL, headers=headers, timeout=15, verify=False)
             response_time = round((time.time() - start_time) * 1000, 2)
             
-            print(f"HTTP状态码: {response.status_code}")
+            print(f"\nHTTP状态码: {response.status_code}")
             print(f"响应时间: {response_time}ms")
             
             if response.status_code == 200:
@@ -60,11 +69,10 @@ def test_ths_stocks():
     print("测试同花顺个股详情接口")
     print("="*60)
     
-    for i in range(5):
+    for i in range(3):
         print(f"\n--- 第 {i+1} 次尝试 ---")
         headers = generate_random_headers(host='q.10jqka.com.cn', referer=THS_STOCKS_URL)
-        print(f"User-Agent: {headers['User-Agent'][:50]}...")
-        print(f"Cookie: {headers['Cookie'][:30]}...")
+        print_headers(headers)
         
         try:
             session = requests.Session()
@@ -73,7 +81,7 @@ def test_ths_stocks():
             response = session.get(THS_STOCKS_URL, headers=headers, timeout=15, verify=False)
             response_time = round((time.time() - start_time) * 1000, 2)
             
-            print(f"HTTP状态码: {response.status_code}")
+            print(f"\nHTTP状态码: {response.status_code}")
             print(f"响应时间: {response_time}ms")
             
             if response.status_code == 200:
@@ -104,16 +112,16 @@ def test_news():
     print("测试同花顺新闻接口")
     print("="*60)
     
-    for i in range(5):
+    for i in range(3):
         print(f"\n--- 第 {i+1} 次尝试 ---")
         
         headers = {
-            'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{100 + i}.0.0.0 Safari/537.36',
+            'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'zh-CN,zh;q=0.9',
             'Referer': 'https://news.10jqka.com.cn/',
         }
-        print(f"User-Agent: {headers['User-Agent'][:50]}...")
+        print(f"User-Agent: {headers['User-Agent']}")
         
         params = {
             'page': 1,
