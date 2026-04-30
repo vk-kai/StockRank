@@ -38,57 +38,6 @@
       </div>
     </header>
 
-    <div class="health-alert-container" v-if="hasHealthErrors">
-      <div class="health-alert-header">
-        <span class="alert-icon">⚠️</span>
-        <span class="alert-title">服务异常</span>
-      </div>
-      <div class="health-alert-body">
-        <div 
-          v-for="item in healthErrors" 
-          :key="item.key" 
-          class="health-alert-item"
-        >
-          <span class="alert-label">{{ item.label }}:</span>
-          <span class="alert-error">{{ item.error }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="crawler-alert-container" v-if="hasCrawlerAlerts">
-      <div class="crawler-alert-header">
-        <span class="alert-icon">🔄</span>
-        <span class="alert-title">爬虫状态</span>
-      </div>
-      <div class="crawler-alert-body">
-        <div 
-          v-for="item in crawlerAlerts" 
-          :key="item.key" 
-          class="crawler-alert-item"
-          :class="{ 'checking': item.status === 'checking', 'failed': item.status === 'failed' }"
-        >
-          <div class="crawler-item-header">
-            <span class="crawler-label">{{ item.label }}</span>
-            <span class="crawler-status" v-if="item.status === 'checking'">
-              <span class="spinner-small"></span>
-              检测中
-            </span>
-            <span class="crawler-status failed-status" v-else-if="item.status === 'failed'">
-              ❌ 已停止
-            </span>
-          </div>
-          <div class="crawler-message" v-if="item.message">
-            {{ item.message }}
-          </div>
-          <div class="crawler-actions" v-if="item.status === 'failed'">
-            <button class="retry-btn" @click="resetCrawlerStatus(item.key)">
-              重试
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="monitor-card-container" @click="refreshHealth">
       <div class="monitor-card-header">
         <span class="monitor-card-label">📡 服务监控</span>
@@ -98,12 +47,15 @@
           v-for="(item, key) in healthStatus" 
           :key="key" 
           class="monitor-card-row"
-          :class="item.status === 'ok' ? 'monitor-ok' : (item.status === 'error' ? 'monitor-error' : 'monitor-unknown')"
+          :class="getMonitorRowClass(key, item)"
         >
           <span class="monitor-dot"></span>
           <span class="monitor-name">{{ getHealthLabel(key) }}</span>
-          <span class="monitor-text">{{ item.status === 'ok' ? '正常' : (item.status === 'error' ? '异常' : '检测中') }}</span>
-          <span class="monitor-time" v-if="item.response_time">{{ item.response_time }}ms</span>
+          <span class="monitor-text">{{ getMonitorStatusText(key, item) }}</span>
+          <span class="monitor-time" v-if="item.response_time && item.status === 'ok'">{{ item.response_time }}ms</span>
+          <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
+            重试
+          </button>
         </div>
         <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>

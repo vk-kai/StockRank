@@ -109,6 +109,13 @@ export default {
     },
     hasCrawlerAlerts() {
       return this.crawlerAlerts.length > 0
+    },
+    healthToCrawlerMap() {
+      return {
+        'ths_sector': 'sector_flow',
+        'ths_stocks': 'stocks',
+        'news': 'news'
+      }
     }
   },
   mounted() {
@@ -777,6 +784,61 @@ export default {
       } catch (err) {
         console.error('重置爬虫状态失败:', err)
       }
+    },
+
+    getCrawlerKey(healthKey) {
+      const map = {
+        'ths_sector': 'sector_flow',
+        'ths_stocks': 'stocks',
+        'news': 'news'
+      }
+      return map[healthKey] || healthKey
+    },
+
+    getCrawlerStatus(healthKey) {
+      const crawlerKey = this.getCrawlerKey(healthKey)
+      return this.crawlerStatus[crawlerKey]?.status || 'idle'
+    },
+
+    getCrawlerMessage(healthKey) {
+      const crawlerKey = this.getCrawlerKey(healthKey)
+      return this.crawlerStatus[crawlerKey]?.message || ''
+    },
+
+    getMonitorRowClass(healthKey, healthItem) {
+      const crawlerStatus = this.getCrawlerStatus(healthKey)
+      if (crawlerStatus === 'checking') {
+        return 'monitor-checking'
+      }
+      if (crawlerStatus === 'failed') {
+        return 'monitor-failed'
+      }
+      if (healthItem.status === 'ok') {
+        return 'monitor-ok'
+      }
+      if (healthItem.status === 'error') {
+        return 'monitor-error'
+      }
+      return 'monitor-unknown'
+    },
+
+    getMonitorStatusText(healthKey, healthItem) {
+      const crawlerStatus = this.getCrawlerStatus(healthKey)
+      const crawlerMessage = this.getCrawlerMessage(healthKey)
+      
+      if (crawlerStatus === 'checking') {
+        return '检测中...'
+      }
+      if (crawlerStatus === 'failed') {
+        return crawlerMessage || '已停止'
+      }
+      if (healthItem.status === 'ok') {
+        return '正常'
+      }
+      if (healthItem.status === 'error') {
+        return healthItem.error || '异常'
+      }
+      return '检测中'
     },
 
     startHealthCheck() {

@@ -128,17 +128,42 @@ def test_ths_stocks_headers(headers):
     return False, result.get('response_time', 0), result.get('error', '未知错误')
 
 def test_news_headers(headers):
-    result = check_url_with_headers(NEWS_URL, headers)
-    if result['success']:
-        try:
-            data = json.loads(result.get('content', '[]'))
-            if isinstance(data, list):
-                return True, result['response_time'], None
-            else:
-                return False, result['response_time'], '新闻数据格式异常'
-        except json.JSONDecodeError:
-            return False, result['response_time'], '返回数据不是有效的JSON格式'
-    return False, result.get('response_time', 0), result.get('error', '未知错误')
+    params = {
+        'page': 1,
+        'tag': '',
+        'track': 'website',
+        'pagesize': 10
+    }
+    
+    start_time = time.time()
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(NEWS_URL, params=params, headers=headers, timeout=15, verify=False, allow_redirects=True)
+        response_time = round((time.time() - start_time) * 1000, 2)
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                if isinstance(data, dict) and 'data' in data:
+                    return True, response_time, None
+                elif isinstance(data, list):
+                    return True, response_time, None
+                else:
+                    return False, response_time, f'新闻数据格式异常: {type(data)}'
+            except json.JSONDecodeError as e:
+                return False, response_time, f'返回数据不是有效的JSON格式: {str(e)[:50]}'
+        else:
+            return False, response_time, f'HTTP状态码: {response.status_code}'
+    except requests.exceptions.Timeout:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, '请求超时'
+    except requests.exceptions.ConnectionError as e:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, f'连接错误: {str(e)[:50]}'
+    except Exception as e:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, f'未知错误: {str(e)[:50]}'
 
 def find_working_headers_for_sector(max_retries=10):
     from data_processor import generate_random_headers, set_working_headers
