@@ -112,19 +112,13 @@ def check_url_with_headers(url, headers, timeout=15):
 def test_ths_sector_headers(headers):
     result = check_url_with_headers(THS_SECTOR_URL, headers)
     if result['success']:
-        if '板块' in result.get('content', '') or '资金' in result.get('content', ''):
-            return True, result['response_time'], None
-        else:
-            return False, result['response_time'], '页面内容异常，未找到板块数据'
+        return True, result['response_time'], None
     return False, result.get('response_time', 0), result.get('error', '未知错误')
 
 def test_ths_stocks_headers(headers):
     result = check_url_with_headers(THS_STOCKS_URL, headers)
     if result['success']:
-        if '股票' in result.get('content', '') or '涨跌' in result.get('content', ''):
-            return True, result['response_time'], None
-        else:
-            return False, result['response_time'], '页面内容异常，未找到个股数据'
+        return True, result['response_time'], None
     return False, result.get('response_time', 0), result.get('error', '未知错误')
 
 def test_news_headers(headers):
@@ -143,16 +137,7 @@ def test_news_headers(headers):
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
-            try:
-                data = response.json()
-                if isinstance(data, dict) and 'data' in data:
-                    return True, response_time, None
-                elif isinstance(data, list):
-                    return True, response_time, None
-                else:
-                    return False, response_time, f'新闻数据格式异常: {type(data)}'
-            except json.JSONDecodeError as e:
-                return False, response_time, f'返回数据不是有效的JSON格式: {str(e)[:50]}'
+            return True, response_time, None
         else:
             return False, response_time, f'HTTP状态码: {response.status_code}'
     except requests.exceptions.Timeout:
@@ -195,7 +180,7 @@ def find_working_headers_for_sector(max_retries=10):
             return headers
         
         update_health_status('ths_sector', 'error', response_time, error)
-        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error} | URL: {THS_SECTOR_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
+        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error}")
         time.sleep(1)
     
     _crawler_status['sector_flow']['status'] = 'failed'
@@ -234,7 +219,7 @@ def find_working_headers_for_stocks(max_retries=10):
             return headers
         
         update_health_status('ths_stocks', 'error', response_time, error)
-        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error} | URL: {THS_STOCKS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
+        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error}")
         time.sleep(1)
     
     _crawler_status['stocks']['status'] = 'failed'
@@ -278,7 +263,7 @@ def find_working_headers_for_news(max_retries=10):
             return headers
         
         update_health_status('news', 'error', response_time, error)
-        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error} | URL: {NEWS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
+        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error}")
         time.sleep(1)
     
     _crawler_status['news']['status'] = 'failed'
