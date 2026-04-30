@@ -70,6 +70,25 @@ def check_url_with_headers(url, headers, timeout=15):
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
+            # 检查是否是重定向页面
+            if '<script' in response.text and 'window.location.href' in response.text:
+                # 提取重定向URL
+                import re
+                match = re.search(r'window.location.href="(.*?)";', response.text)
+                if match:
+                    redirect_url = match.group(1)
+                    if not redirect_url.startswith('http'):
+                        redirect_url = f'https:{redirect_url}' if redirect_url.startswith('//') else f'https://data.10jqka.com.cn{redirect_url}'
+                    # 跟随重定向
+                    response = session.get(redirect_url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+                    if response.status_code !=200:
+                        return {
+                            'success': False,
+                            'status_code': response.status_code,
+                            'response_time': response_time,
+                            'error': f'重定向后HTTP状态码: {response.status_code}'
+                        }
+            # 处理编码
             if response.encoding == 'ISO-8859-1':
                 response.encoding = 'GBK'
             else:
@@ -180,7 +199,7 @@ def find_working_headers_for_sector(max_retries=10):
             return headers
         
         update_health_status('ths_sector', 'error', response_time, error)
-        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"板块资金请求头检测失败 (第{i+1}次): {error} | URL: {THS_SECTOR_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['sector_flow']['status'] = 'failed'
@@ -219,7 +238,7 @@ def find_working_headers_for_stocks(max_retries=10):
             return headers
         
         update_health_status('ths_stocks', 'error', response_time, error)
-        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"个股详情请求头检测失败 (第{i+1}次): {error} | URL: {THS_STOCKS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['stocks']['status'] = 'failed'
@@ -263,7 +282,7 @@ def find_working_headers_for_news(max_retries=10):
             return headers
         
         update_health_status('news', 'error', response_time, error)
-        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error}")
+        health_logger.warning(f"新闻请求头检测失败 (第{i+1}次): {error} | URL: {NEWS_URL} | Headers: {json.dumps(headers, ensure_ascii=False)}")
         time.sleep(1)
     
     _crawler_status['news']['status'] = 'failed'

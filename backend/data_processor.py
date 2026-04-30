@@ -56,13 +56,17 @@ def _generate_random_string(length):
 def _generate_random_cookie():
     timestamp = int(datetime.now().timestamp())
     random_hash = ''.join(random.choices('ABCDEF0123456789', k=16))
+    jsluid = ''.join(random.choices('ABCDEF0123456789', k=32))
+    qgqp_b_id = _generate_random_string(20)
+    ct_identifier = _generate_random_string(36)
     hm_lvt_1 = f'{timestamp - random.randint(100, 500)}'
     hm_lvt_2 = f'{timestamp - random.randint(100, 500)}'
     hm_lpvt_1 = f'{timestamp}'
     hm_lpvt_2 = f'{timestamp}'
     v_random = _generate_random_string(40)
+    vvvv = random.randint(1, 1000)
     
-    return f'Hm_lvt_6dc19a3987135225beb977a0b9931a25={hm_lvt_1}; HMACCOUNT={random_hash}; Hm_lvt_9d25c03aef06fec6abea265b79509ba4={hm_lvt_2}; Hm_lpvt_6dc19a3987135225beb977a0b9931a25={hm_lpvt_1}; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4={hm_lpvt_2}; v={v_random}'
+    return f'__jsluid_s={jsluid}; qgqp_b_id={qgqp_b_id}; ct_identifier={ct_identifier}; vvvv={vvvv}; Hm_lvt_6dc19a3987135225beb977a0b9931a25={hm_lvt_1}; HMACCOUNT={random_hash}; Hm_lvt_9d25c03aef06fec6abea265b79509ba4={hm_lvt_2}; Hm_lpvt_6dc19a3987135225beb977a0b9931a25={hm_lpvt_1}; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4={hm_lpvt_2}; v={v_random}'
 
 def _generate_random_browser_version():
     major = random.randint(120, 130)
@@ -100,7 +104,7 @@ def generate_random_headers(host=None, referer=None):
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'document',
         'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-site',
+        'sec-fetch-site': 'none',  # 首次访问时使用 none
         'sec-fetch-user': '?1',
         'Upgrade-Insecure-Requests': '1',
         'User-Agent': user_agent
@@ -108,6 +112,7 @@ def generate_random_headers(host=None, referer=None):
     
     if referer:
         headers['Referer'] = referer
+        headers['sec-fetch-site'] = 'same-site'  # 有Referer时使用 same-site
     
     return headers
 
