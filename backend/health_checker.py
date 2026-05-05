@@ -157,6 +157,8 @@ def test_stock_detail_url(sector_url):
 def test_sector_and_stocks():
     max_retries = 3
     retry_delay = 2
+    last_error = None
+    last_response_time = 0
     
     for attempt in range(max_retries):
         start_time = time.time()
@@ -166,6 +168,7 @@ def test_sector_and_stocks():
             headers = get_sector_headers()
             response = session.get(THS_SECTOR_URL, headers=headers, timeout=10, verify=False)
             response_time = round((time.time() - start_time) * 1000, 2)
+            last_response_time = response_time
             
             if response.status_code == 200:
                 if response.encoding == 'ISO-8859-1':
@@ -191,66 +194,45 @@ def test_sector_and_stocks():
                         'stocks_time': stocks_time,
                         'stocks_error': stocks_error
                     }
-                return {
-                    'sector_success': False,
-                    'sector_time': response_time,
-                    'sector_error': '页面内容异常',
-                    'stocks_success': False,
-                    'stocks_time': 0,
-                    'stocks_error': '板块检测失败'
-                }
-            elif response.status_code == 403 and attempt < max_retries - 1:
-                error_logger.warning(f"板块检测403，第{attempt + 1}次重试...")
-                time.sleep(retry_delay)
-                continue
-            elif attempt < max_retries - 1:
-                error_logger.warning(f"板块检测失败(HTTP {response.status_code})，第{attempt + 1}次重试...")
-                time.sleep(retry_delay)
-                continue
+                last_error = '页面内容异常'
             else:
-                return {
-                    'sector_success': False,
-                    'sector_time': response_time,
-                    'sector_error': f'HTTP {response.status_code}',
-                    'stocks_success': False,
-                    'stocks_time': 0,
-                    'stocks_error': '板块检测失败'
-                }
+                last_error = f'HTTP {response.status_code}'
+            
+            if attempt < max_retries - 1:
+                error_logger.warning(f"板块检测失败({last_error})，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+            else:
+                error_logger.warning(f"板块检测失败({last_error})，已重试{max_retries}次")
+                
         except requests.exceptions.Timeout:
-            response_time = round((time.time() - start_time) * 1000, 2)
-            return {
-                'sector_success': False,
-                'sector_time': response_time,
-                'sector_error': '请求超时',
-                'stocks_success': False,
-                'stocks_time': 0,
-                'stocks_error': '板块检测失败'
-            }
+            last_response_time = round((time.time() - start_time) * 1000, 2)
+            last_error = '请求超时'
+            if attempt < max_retries - 1:
+                error_logger.warning(f"板块检测失败({last_error})，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+            else:
+                error_logger.warning(f"板块检测失败({last_error})，已重试{max_retries}次")
         except requests.exceptions.ConnectionError:
-            response_time = round((time.time() - start_time) * 1000, 2)
-            return {
-                'sector_success': False,
-                'sector_time': response_time,
-                'sector_error': '网络连接失败',
-                'stocks_success': False,
-                'stocks_time': 0,
-                'stocks_error': '板块检测失败'
-            }
+            last_response_time = round((time.time() - start_time) * 1000, 2)
+            last_error = '网络连接失败'
+            if attempt < max_retries - 1:
+                error_logger.warning(f"板块检测失败({last_error})，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+            else:
+                error_logger.warning(f"板块检测失败({last_error})，已重试{max_retries}次")
         except Exception as e:
-            response_time = round((time.time() - start_time) * 1000, 2)
-            return {
-                'sector_success': False,
-                'sector_time': response_time,
-                'sector_error': str(e)[:30],
-                'stocks_success': False,
-                'stocks_time': 0,
-                'stocks_error': '板块检测失败'
-            }
+            last_response_time = round((time.time() - start_time) * 1000, 2)
+            last_error = str(e)[:30]
+            if attempt < max_retries - 1:
+                error_logger.warning(f"板块检测失败({last_error})，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+            else:
+                error_logger.warning(f"板块检测失败({last_error})，已重试{max_retries}次")
     
     return {
         'sector_success': False,
-        'sector_time': 0,
-        'sector_error': '重试3次均失败',
+        'sector_time': last_response_time,
+        'sector_error': last_error or '重试3次均失败',
         'stocks_success': False,
         'stocks_time': 0,
         'stocks_error': '板块检测失败'
@@ -259,20 +241,21 @@ def test_sector_and_stocks():
 def test_sector_detail_url_with_retry(sector_url):
     max_retries = 3
     retry_delay = 2
+    last_result = (False, 0, '未知错误')
     
     for attempt in range(max_retries):
         result = test_stock_detail_url(sector_url)
         if result[0]:
             return result
+        last_result = result
         error = result[2]
         if attempt < max_retries - 1:
             error_logger.warning(f"个股检测失败({error})，第{attempt + 1}次重试...")
             time.sleep(retry_delay)
-            continue
         else:
-            return result
+            error_logger.warning(f"个股检测失败({error})，已重试{max_retries}次")
     
-    return False, 0, '重试3次均失败'
+    return last_result
 
 def run_health_check():
     global health_status
