@@ -60,12 +60,8 @@ def get_news_headers():
     }
 
 def get_sector_headers():
-    return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cookie': 'vvvv=1',
-    }
+    from data_processor import generate_random_headers
+    return generate_random_headers()
 
 def test_news_api():
     params = {
@@ -152,83 +148,120 @@ def test_stock_detail_url(stock_url):
         return False, response_time, str(e)[:30]
 
 def test_sector_and_stocks():
-    start_time = time.time()
-    try:
-        session = requests.Session()
-        session.trust_env = False
-        response = session.get(THS_SECTOR_URL, headers=get_sector_headers(), timeout=10, verify=False)
-        response_time = round((time.time() - start_time) * 1000, 2)
-        
-        if response.status_code == 200:
-            if response.encoding == 'ISO-8859-1':
-                response.encoding = 'GBK'
-            text = response.text
-            if 'm-table' in text or '板块' in text:
-                sector_success = True
-                sector_error = None
-                
-                stock_url = extract_stock_url_from_sector(text)
-                if stock_url:
-                    stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
-                else:
-                    stocks_success = False
-                    stocks_time = 0
-                    stocks_error = '未找到个股URL'
-                
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        start_time = time.time()
+        try:
+            session = requests.Session()
+            session.trust_env = False
+            headers = get_sector_headers()
+            response = session.get(THS_SECTOR_URL, headers=headers, timeout=10, verify=False)
+            response_time = round((time.time() - start_time) * 1000, 2)
+            
+            if response.status_code == 200:
+                if response.encoding == 'ISO-8859-1':
+                    response.encoding = 'GBK'
+                text = response.text
+                if 'm-table' in text or '板块' in text:
+                    sector_success = True
+                    sector_error = None
+                    
+                    stock_url = extract_stock_url_from_sector(text)
+                    if stock_url:
+                        stocks_success, stocks_time, stocks_error = test_stock_detail_url_with_retry(stock_url)
+                    else:
+                        stocks_success = False
+                        stocks_time = 0
+                        stocks_error = '未找到个股URL'
+                    
+                    return {
+                        'sector_success': sector_success,
+                        'sector_time': response_time,
+                        'sector_error': sector_error,
+                        'stocks_success': stocks_success,
+                        'stocks_time': stocks_time,
+                        'stocks_error': stocks_error
+                    }
                 return {
-                    'sector_success': sector_success,
+                    'sector_success': False,
                     'sector_time': response_time,
-                    'sector_error': sector_error,
-                    'stocks_success': stocks_success,
-                    'stocks_time': stocks_time,
-                    'stocks_error': stocks_error
+                    'sector_error': '页面内容异常',
+                    'stocks_success': False,
+                    'stocks_time': 0,
+                    'stocks_error': '板块检测失败'
                 }
+            elif response.status_code == 403 and attempt < max_retries - 1:
+                error_logger.warning(f"板块检测403，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+                continue
+            else:
+                return {
+                    'sector_success': False,
+                    'sector_time': response_time,
+                    'sector_error': f'HTTP {response.status_code}',
+                    'stocks_success': False,
+                    'stocks_time': 0,
+                    'stocks_error': '板块检测失败'
+                }
+        except requests.exceptions.Timeout:
+            response_time = round((time.time() - start_time) * 1000, 2)
             return {
                 'sector_success': False,
                 'sector_time': response_time,
-                'sector_error': '页面内容异常',
+                'sector_error': '请求超时',
                 'stocks_success': False,
                 'stocks_time': 0,
                 'stocks_error': '板块检测失败'
             }
-        return {
-            'sector_success': False,
-            'sector_time': response_time,
-            'sector_error': f'HTTP {response.status_code}',
-            'stocks_success': False,
-            'stocks_time': 0,
-            'stocks_error': '板块检测失败'
-        }
-    except requests.exceptions.Timeout:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return {
-            'sector_success': False,
-            'sector_time': response_time,
-            'sector_error': '请求超时',
-            'stocks_success': False,
-            'stocks_time': 0,
-            'stocks_error': '板块检测失败'
-        }
-    except requests.exceptions.ConnectionError:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return {
-            'sector_success': False,
-            'sector_time': response_time,
-            'sector_error': '网络连接失败',
-            'stocks_success': False,
-            'stocks_time': 0,
-            'stocks_error': '板块检测失败'
-        }
-    except Exception as e:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return {
-            'sector_success': False,
-            'sector_time': response_time,
-            'sector_error': str(e)[:30],
-            'stocks_success': False,
-            'stocks_time': 0,
-            'stocks_error': '板块检测失败'
-        }
+        except requests.exceptions.ConnectionError:
+            response_time = round((time.time() - start_time) * 1000, 2)
+            return {
+                'sector_success': False,
+                'sector_time': response_time,
+                'sector_error': '网络连接失败',
+                'stocks_success': False,
+                'stocks_time': 0,
+                'stocks_error': '板块检测失败'
+            }
+        except Exception as e:
+            response_time = round((time.time() - start_time) * 1000, 2)
+            return {
+                'sector_success': False,
+                'sector_time': response_time,
+                'sector_error': str(e)[:30],
+                'stocks_success': False,
+                'stocks_time': 0,
+                'stocks_error': '板块检测失败'
+            }
+    
+    return {
+        'sector_success': False,
+        'sector_time': 0,
+        'sector_error': '重试3次均失败',
+        'stocks_success': False,
+        'stocks_time': 0,
+        'stocks_error': '板块检测失败'
+    }
+
+def test_stock_detail_url_with_retry(stock_url):
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        result = test_stock_detail_url(stock_url)
+        if result[0]:
+            return result
+        error = result[2]
+        if 'HTTP 403' in str(error) and attempt < max_retries - 1:
+            error_logger.warning(f"个股检测403，第{attempt + 1}次重试...")
+            time.sleep(retry_delay)
+            continue
+        else:
+            return result
+    
+    return False, 0, '重试3次均失败'
 
 def run_health_check():
     global health_status
