@@ -124,9 +124,16 @@ def extract_stock_url_from_sector(html_content):
 def test_stock_detail_url(sector_url):
     start_time = time.time()
     try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(sector_url)
+        host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
+        
+        from data_processor import generate_random_headers
+        headers = generate_random_headers(host=host)
+        
         session = requests.Session()
         session.trust_env = False
-        response = session.get(sector_url, headers=get_sector_headers(), timeout=10, verify=False)
+        response = session.get(sector_url, headers=headers, timeout=10, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
