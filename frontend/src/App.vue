@@ -41,6 +41,9 @@
     <div class="monitor-card-container" @click="refreshHealth">
       <div class="monitor-card-header">
         <span class="monitor-card-label">📡 服务监控</span>
+        <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
+          {{ healthChecking ? '检测中...' : '检测' }}
+        </button>
       </div>
       <div class="monitor-card-body">
         <div 

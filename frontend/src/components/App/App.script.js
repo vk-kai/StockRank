@@ -36,6 +36,7 @@ export default {
       threadStatus: {},
       healthStatus: {},
       crawlerStatus: {},
+      healthChecking: false,
       healthCheckInterval: null,
       enableNotification: true,
       lastNewsId: null,
@@ -828,7 +829,13 @@ export default {
     },
 
     async refreshHealth() {
-      await this.doHealthCheck()
+      if (this.healthChecking) return
+      this.healthChecking = true
+      try {
+        await this.doHealthCheck()
+      } finally {
+        this.healthChecking = false
+      }
     },
 
     getThreadLabel(key) {

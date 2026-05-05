@@ -169,7 +169,8 @@ def parse_ths_sector_html(html_content):
                 'change': change,
                 'inflow': inflow,
                 'outflow': outflow,
-                'flow': net_flow,
+                'flow': inflow,
+                'net_flow': net_flow,
                 'company_count': company_count,
                 'lead_stock': {
                     'name': lead_stock_name,
@@ -379,7 +380,6 @@ def get_sector_stocks(sector_url):
             stocks = parse_ths_stock_html(response.text)
             
             if stocks:
-                data_logger.info(f"成功获取 {len(stocks)} 只个股数据")
                 set_crawler_idle('stocks')
                 return stocks
             else:

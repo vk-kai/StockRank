@@ -286,7 +286,6 @@ def run_health_check():
         'stocks': sector_result['stocks_success']
     }
     
-    health_logger.info(f"健康检测完成: 新闻={news_success}, 板块={sector_result['sector_success']}, 个股={sector_result['stocks_success']}")
     return result
 
 def get_health_status():
