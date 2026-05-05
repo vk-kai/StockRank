@@ -108,25 +108,25 @@ def extract_stock_url_from_sector(html_content):
         rows = tbody.find_all('tr')
         for row in rows:
             cols = row.find_all('td')
-            if len(cols) >= 9:
-                lead_stock_link = cols[8].find('a')
-                if lead_stock_link:
-                    stock_url = lead_stock_link.get('href', '')
-                    if stock_url:
-                        if stock_url.startswith('http://'):
-                            stock_url = stock_url.replace('http://', 'https://')
-                        return stock_url
+            if len(cols) >= 2:
+                sector_link = cols[1].find('a')
+                if sector_link:
+                    sector_url = sector_link.get('href', '')
+                    if sector_url:
+                        if sector_url.startswith('http://'):
+                            sector_url = sector_url.replace('http://', 'https://')
+                        return sector_url
         return None
     except Exception as e:
-        error_logger.error(f"提取个股URL失败: {e}")
+        error_logger.error(f"提取板块URL失败: {e}")
         return None
 
-def test_stock_detail_url(stock_url):
+def test_stock_detail_url(sector_url):
     start_time = time.time()
     try:
         session = requests.Session()
         session.trust_env = False
-        response = session.get(stock_url, headers=get_sector_headers(), timeout=10, verify=False)
+        response = session.get(sector_url, headers=get_sector_headers(), timeout=10, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
@@ -170,11 +170,11 @@ def test_sector_and_stocks():
                     
                     stock_url = extract_stock_url_from_sector(text)
                     if stock_url:
-                        stocks_success, stocks_time, stocks_error = test_stock_detail_url_with_retry(stock_url)
+                        stocks_success, stocks_time, stocks_error = test_sector_detail_url_with_retry(stock_url)
                     else:
                         stocks_success = False
                         stocks_time = 0
-                        stocks_error = '未找到个股URL'
+                        stocks_error = '未找到板块详情URL'
                     
                     return {
                         'sector_success': sector_success,
@@ -249,12 +249,12 @@ def test_sector_and_stocks():
         'stocks_error': '板块检测失败'
     }
 
-def test_stock_detail_url_with_retry(stock_url):
+def test_sector_detail_url_with_retry(sector_url):
     max_retries = 3
     retry_delay = 2
     
     for attempt in range(max_retries):
-        result = test_stock_detail_url(stock_url)
+        result = test_stock_detail_url(sector_url)
         if result[0]:
             return result
         error = result[2]
