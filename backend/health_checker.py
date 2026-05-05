@@ -196,6 +196,10 @@ def test_sector_and_stocks():
                 error_logger.warning(f"板块检测403，第{attempt + 1}次重试...")
                 time.sleep(retry_delay)
                 continue
+            elif attempt < max_retries - 1:
+                error_logger.warning(f"板块检测失败(HTTP {response.status_code})，第{attempt + 1}次重试...")
+                time.sleep(retry_delay)
+                continue
             else:
                 return {
                     'sector_success': False,
@@ -254,8 +258,8 @@ def test_stock_detail_url_with_retry(stock_url):
         if result[0]:
             return result
         error = result[2]
-        if 'HTTP 403' in str(error) and attempt < max_retries - 1:
-            error_logger.warning(f"个股检测403，第{attempt + 1}次重试...")
+        if attempt < max_retries - 1:
+            error_logger.warning(f"个股检测失败({error})，第{attempt + 1}次重试...")
             time.sleep(retry_delay)
             continue
         else:
