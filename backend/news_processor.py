@@ -9,27 +9,25 @@ error_logger = get_logger('error')
 info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
+    from health_checker import find_working_headers_for_news, get_crawler_status, set_crawler_working, set_crawler_idle
+    
     dev_mode = is_dev_mode()
     api_url = DEV_NEWS_URL if dev_mode else NEWS_URL
     if dev_mode:
         info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
-        'Cache-Control': 'max-age=0',
-        'Connection': 'keep-alive',
-        'Referer': 'https://news.10jqka.com.cn/',
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
-    }
+    
+    crawler_status = get_crawler_status()
+    if crawler_status.get('news', {}).get('status') == 'failed':
+        error_logger.warning("新闻获取已停止，跳过本次获取")
+        return []
+    
+    working_headers = find_working_headers_for_news()
+    if not working_headers:
+        error_logger.error("无法找到可用的请求头，新闻获取已停止")
+        return []
+    
+    set_crawler_working('news')
+    headers = working_headers
     
     params = {
         'page': page,
@@ -43,6 +41,7 @@ def get_news_data(page=1, pagesize=400):
         
         if response.status_code != 200:
             error_logger.error(f"新闻API请求失败: HTTP {response.status_code}")
+            set_crawler_idle('news')
             return []
         
         try:
@@ -51,19 +50,23 @@ def get_news_data(page=1, pagesize=400):
                 info_logger.debug(f"[DEV模式] 新闻API响应: {json.dumps(data, ensure_ascii=False)}")
         except Exception as e:
             error_logger.error(f"新闻API返回非JSON: {response.text[:200]}")
+            set_crawler_idle('news')
             return []
         
         if not data:
             info_logger.info(f"新闻API返回空数据: {response.text[:100]}")
+            set_crawler_idle('news')
             return []
         
         if 'data' not in data:
             info_logger.info(f"新闻API无data字段: {list(data.keys())}")
+            set_crawler_idle('news')
             return []
         
         inner_data = data['data']
         if not isinstance(inner_data, dict) or 'list' not in inner_data:
             info_logger.info(f"新闻API data格式异常")
+            set_crawler_idle('news')
             return []
         
         news_list = []
@@ -85,9 +88,11 @@ def get_news_data(page=1, pagesize=400):
                     }
                     news_list.append(news_item)
         
+        set_crawler_idle('news')
         return news_list
     except Exception as e:
         error_logger.error(f"获取新闻数据失败: {e}")
+        set_crawler_idle('news')
         return []
 
 def get_news_file_path():

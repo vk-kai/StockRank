@@ -2,7 +2,11 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, get_random_user_agent
+import random
+import string
+import hashlib
+from bs4 import BeautifulSoup
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -10,96 +14,415 @@ data_logger = get_logger('data')
 system_logger = get_logger('system')
 cleanup_logger = get_logger('cleanup_flow')
 
-# 全局变量存储最新数据
+PROXY_POOL = []
+PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
+
+_current_working_headers = None
+
+def load_proxy_pool():
+    if not USE_PROXY:
+        system_logger.info("代理功能已禁用，跳过代理池加载")
+        return
+    
+    global PROXY_POOL
+    try:
+        response = requests.get(PROXY_API_URL, params={
+            'protocol': 'https',
+            'count': 5,
+            'country_code': 'CN'
+        }, timeout=15)
+        data = response.json()
+        if data.get('code') == 200 and data.get('data', {}).get('proxies'):
+            proxies = data['data']['proxies']
+            PROXY_POOL.clear()
+            for proxy in proxies:
+                proxy_with_protocol = f'https://{proxy}'
+                PROXY_POOL.append(proxy_with_protocol)
+            system_logger.info(f"成功从API获取 {len(PROXY_POOL)} 个HTTPS代理")
+        else:
+            error_logger.warning(f"API返回异常: {data}")
+    except Exception as e:
+        error_logger.error(f"获取代理失败: {e}")
+
+if USE_PROXY:
+    load_proxy_pool()
+
 latest_data = []
 
-def get_sector_flow_data():
+def _generate_random_string(length):
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
+def _generate_random_cookie():
+    timestamp = int(datetime.now().timestamp())
+    random_hash = ''.join(random.choices('ABCDEF0123456789', k=16))
+    hm_lvt_1 = f'{timestamp - random.randint(100, 500)}'
+    hm_lvt_2 = f'{timestamp - random.randint(100, 500)}'
+    hm_lpvt_1 = f'{timestamp}'
+    hm_lpvt_2 = f'{timestamp}'
+    v_random = _generate_random_string(40)
+    
+    return f'Hm_lvt_6dc19a3987135225beb977a0b9931a25={hm_lvt_1}; HMACCOUNT={random_hash}; Hm_lvt_9d25c03aef06fec6abea265b79509ba4={hm_lvt_2}; Hm_lpvt_6dc19a3987135225beb977a0b9931a25={hm_lpvt_1}; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4={hm_lpvt_2}; v={v_random}'
+
+def _generate_random_browser_version():
+    major = random.randint(120, 130)
+    minor = 0
+    patch = random.randint(1000, 9999)
+    build = random.randint(10, 200)
+    return f'{major}.{minor}.{patch}.{build}'
+
+def generate_random_headers(host=None, referer=None):
+    browsers = ['Edge', 'Chrome']
+    browser = random.choice(browsers)
+    
+    browser_version = _generate_random_browser_version()
+    major_version = browser_version.split('.')[0]
+    
+    cookie = _generate_random_cookie()
+    
+    if browser == 'Edge':
+        sec_ch_ua = f'"Microsoft Edge";v="{major_version}", "Not.A/Brand";v="8", "Chromium";v="{major_version}"'
+        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36 Edg/{browser_version}'
+    else:
+        sec_ch_ua = f'"Chromium";v="{major_version}", "Google Chrome";v="{major_version}", "Not-A.Brand";v="99"'
+        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36'
+    
     headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
-        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
-        'Referer': 'https://data.eastmoney.com/',
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        'Cookie': cookie,
+        'Host': host or 'data.10jqka.com.cn',
+        'sec-ch-ua': sec_ch_ua,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'same-site',
+        'sec-fetch-user': '?1',
         'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
+        'User-Agent': user_agent
     }
     
-    params = {
-        'pn': 1,
-        'pz': 100,
-        'po': 1,
-        'np': 1,
-        'ut': 'bd1d9ddb04089700cf9c27f6f7426281',
-        'fltt': 2,
-        'invt': 2,
-        'fid': 'f62',
-        'fs': 'm:90+s:4',
-        'fields': 'f1,f2,f3,f12,f13,f14,f62,f66,f69,f72,f75,f78,f81,f84,f87,f124,f184,f204,f205,f206'
-    }
+    if referer:
+        headers['Referer'] = referer
     
-    try:
-        response = requests.get(DATA_URL, params=params, headers=headers, timeout=10)
-        data = response.json()
+    return headers
+
+def get_working_headers():
+    global _current_working_headers
+    return _current_working_headers
+
+def set_working_headers(headers):
+    global _current_working_headers
+    _current_working_headers = headers
+    system_logger.info(f"已设置可用的请求头")
+
+def parse_ths_sector_html(html_content):
+    """解析同花顺板块资金流向HTML"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    sectors = []
+    
+    table = soup.find('table', class_='m-table J-ajax-table')
+    if not table:
+        error_logger.error("未找到板块数据表格")
+        return []
+    
+    tbody = table.find('tbody')
+    if not tbody:
+        error_logger.error("未找到表格tbody")
+        return []
+    
+    rows = tbody.find_all('tr')
+    for row in rows:
+        try:
+            cols = row.find_all('td')
+            if len(cols) < 11:
+                continue
+            
+            rank = int(cols[0].get_text(strip=True))
+            
+            sector_link = cols[1].find('a')
+            sector_name = sector_link.get_text(strip=True) if sector_link else ''
+            sector_url = sector_link.get('href', '') if sector_link else ''
+            
+            # 修复URL协议问题，将http改为https
+            if sector_url.startswith('http://'):
+                sector_url = sector_url.replace('http://', 'https://')
+            
+            sector_index = cols[2].get_text(strip=True)
+            
+            change_text = cols[3].get_text(strip=True)
+            change = float(change_text.replace('%', '')) / 100 if change_text else 0
+            
+            inflow = float(cols[4].get_text(strip=True)) if cols[4].get_text(strip=True) else 0
+            outflow = float(cols[5].get_text(strip=True)) if cols[5].get_text(strip=True) else 0
+            net_flow = float(cols[6].get_text(strip=True)) if cols[6].get_text(strip=True) else 0
+            
+            company_count = int(cols[7].get_text(strip=True)) if cols[7].get_text(strip=True) else 0
+            
+            lead_stock_link = cols[8].find('a')
+            lead_stock_name = lead_stock_link.get_text(strip=True) if lead_stock_link else ''
+            lead_stock_url = lead_stock_link.get('href', '') if lead_stock_link else ''
+            
+            # 修复URL协议问题，将http改为https
+            if lead_stock_url.startswith('http://'):
+                lead_stock_url = lead_stock_url.replace('http://', 'https://')
+            
+            lead_stock_change_text = cols[9].get_text(strip=True)
+            lead_stock_change = float(lead_stock_change_text.replace('%', '')) / 100 if lead_stock_change_text else 0
+            
+            lead_stock_price = float(cols[10].get_text(strip=True)) if cols[10].get_text(strip=True) else 0
+            
+            sectors.append({
+                'rank': rank,
+                'name': sector_name,
+                'sector_url': sector_url,
+                'sector_index': sector_index,
+                'change': change,
+                'inflow': inflow,
+                'outflow': outflow,
+                'flow': net_flow,
+                'company_count': company_count,
+                'lead_stock': {
+                    'name': lead_stock_name,
+                    'url': lead_stock_url,
+                    'change': lead_stock_change,
+                    'price': lead_stock_price
+                }
+            })
+        except Exception as e:
+            error_logger.error(f"解析板块行数据失败: {e}")
+            continue
+    
+    return sectors[:10]
+
+def get_sector_flow_data():
+    from health_checker import find_working_headers_for_sector, get_crawler_status, set_crawler_working, set_crawler_idle
+    
+    crawler_status = get_crawler_status()
+    if crawler_status.get('sector_flow', {}).get('status') == 'failed':
+        error_logger.warning("板块资金获取已停止，跳过本次获取")
+        return []
+    
+    working_headers = find_working_headers_for_sector()
+    if not working_headers:
+        error_logger.error("无法找到可用的请求头，板块资金获取已停止")
+        return []
+    
+    set_crawler_working('sector_flow')
+    headers = working_headers
+    
+    max_retries = 3
+    for retry in range(max_retries):
+        try:
+            proxies = None
+            proxy = None
+            if USE_PROXY and PROXY_POOL:
+                proxy = random.choice(PROXY_POOL)
+                proxies = {
+                    'http': proxy,
+                    'https': proxy
+                }
+            
+            session = requests.Session()
+            session.trust_env = False
+            response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            response.raise_for_status()
+            
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                response.encoding = response.apparent_encoding
+            
+            sectors = parse_ths_sector_html(response.text)
+            
+            if sectors:
+                global latest_data
+                latest_data = sectors
+                data_logger.info(f"成功获取 {len(sectors)} 个板块数据")
+                set_crawler_idle('sector_flow')
+                return sectors
+            else:
+                error_logger.error("解析板块数据失败，返回空列表")
         
-        if 'data' in data and 'diff' in data['data']:
-            sectors = []
-            for item in data['data']['diff']:
-                sector_name = item.get('f14', '')
-                
-                try:
-                    f62_value = item.get('f62', 0)
-                    if f62_value == '-' or f62_value is None:
-                        net_inflow = 0
-                    else:
-                        net_inflow = float(f62_value) / 10000
-                    
-                    f3_value = item.get('f3', 0)
-                    if f3_value == '-' or f3_value is None:
-                        change = 0
-                    else:
-                        change = float(f3_value) / 100
-                except (ValueError, TypeError) as e:
-                    error_logger.warning(f"数据类型转换失败: {item}, 错误: {e}")
-                    continue
-                
-                sector_code = item.get('f12', '')
-                
-                if sector_name and net_inflow is not None:
-                    sectors.append({
-                        'name': sector_name,
-                        'flow': net_inflow,
-                        'change': change,
-                        'code': sector_code
-                    })
+        except Exception as e:
+            if USE_PROXY and PROXY_POOL:
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败: {e}")
+            else:
+                error_logger.error(f"第 {retry+1} 次尝试获取数据失败: {e}")
             
-            sectors.sort(key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
-            
-            result = [{
-                'rank': i + 1,
-                'name': s['name'],
-                'flow': s['flow'],
-                'change': s['change'],
-                'code': s['code']
-            } for i, s in enumerate(sectors[:50])]
-            
-            global latest_data
-            latest_data = result
-            return result
-        else:
-            error_logger.error(f"API返回数据格式异常: {data}")
+            if retry < max_retries - 1:
+                if USE_PROXY:
+                    load_proxy_pool()
+                import time
+                time.sleep(2)
     
-    except Exception as e:
-        error_logger.error(f"获取数据失败: {e}")
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据")
+    set_crawler_idle('sector_flow')
+    return []
+
+def parse_ths_stock_html(html_content):
+    """解析同花顺个股详情HTML"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    stocks = []
     
+    table = soup.find('table', class_='m-table m-pager-table')
+    if not table:
+        error_logger.error("未找到个股数据表格")
+        return []
+    
+    tbody = table.find('tbody')
+    if not tbody:
+        error_logger.error("未找到表格tbody")
+        return []
+    
+    rows = tbody.find_all('tr')
+    for row in rows:
+        try:
+            cols = row.find_all('td')
+            if len(cols) < 14:
+                continue
+            
+            rank = int(cols[0].get_text(strip=True))
+            
+            code_link = cols[1].find('a')
+            code = code_link.get_text(strip=True) if code_link else ''
+            stock_url = code_link.get('href', '') if code_link else ''
+            
+            name_link = cols[2].find('a')
+            name = name_link.get_text(strip=True) if name_link else ''
+            
+            price_text = cols[3].get_text(strip=True)
+            price = float(price_text) if price_text and price_text != '--' else 0
+            
+            change_text = cols[4].get_text(strip=True)
+            change = float(change_text) / 100 if change_text and change_text != '--' else 0
+            
+            change_value_text = cols[5].get_text(strip=True)
+            change_value = float(change_value_text) if change_value_text and change_value_text != '--' else 0
+            
+            speed_text = cols[6].get_text(strip=True)
+            speed = float(speed_text) / 100 if speed_text and speed_text != '--' else 0
+            
+            turnover_text = cols[7].get_text(strip=True)
+            turnover = float(turnover_text) if turnover_text and turnover_text != '--' else 0
+            
+            volume_ratio_text = cols[8].get_text(strip=True)
+            volume_ratio = float(volume_ratio_text) if volume_ratio_text and volume_ratio_text != '--' else 0
+            
+            amplitude_text = cols[9].get_text(strip=True)
+            amplitude = float(amplitude_text) / 100 if amplitude_text and amplitude_text != '--' else 0
+            
+            volume_text = cols[10].get_text(strip=True)
+            volume = volume_text if volume_text else ''
+            
+            circulation_text = cols[11].get_text(strip=True)
+            circulation = circulation_text if circulation_text else ''
+            
+            market_cap_text = cols[12].get_text(strip=True)
+            market_cap = market_cap_text if market_cap_text else ''
+            
+            pe_text = cols[13].get_text(strip=True)
+            pe = float(pe_text) if pe_text and pe_text != '--' else 0
+            
+            stocks.append({
+                'rank': rank,
+                'code': code,
+                'name': name,
+                'url': stock_url,
+                'price': price,
+                'change': change,
+                'change_value': change_value,
+                'speed': speed,
+                'turnover': turnover,
+                'volume_ratio': volume_ratio,
+                'amplitude': amplitude,
+                'volume': volume,
+                'circulation': circulation,
+                'market_cap': market_cap,
+                'pe': pe
+            })
+        except Exception as e:
+            error_logger.error(f"解析个股行数据失败: {e}")
+            continue
+    
+    return stocks
+
+def get_sector_stocks(sector_url):
+    from health_checker import find_working_headers_for_stocks, get_crawler_status, set_crawler_working, set_crawler_idle
+    
+    if not sector_url:
+        error_logger.error("板块URL为空")
+        return []
+    
+    if sector_url.startswith('http://'):
+        sector_url = sector_url.replace('http://', 'https://')
+    
+    from urllib.parse import urlparse
+    parsed_url = urlparse(sector_url)
+    host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
+    
+    crawler_status = get_crawler_status()
+    if crawler_status.get('stocks', {}).get('status') == 'failed':
+        error_logger.warning("个股详情获取已停止，跳过本次获取")
+        return []
+    
+    working_headers = find_working_headers_for_stocks()
+    if not working_headers:
+        error_logger.error("无法找到可用的请求头，个股详情获取已停止")
+        return []
+    
+    set_crawler_working('stocks')
+    headers = working_headers
+    
+    max_retries = 3
+    for retry in range(max_retries):
+        try:
+            proxies = None
+            proxy = None
+            if USE_PROXY and PROXY_POOL:
+                proxy = random.choice(PROXY_POOL)
+                proxies = {
+                    'http': proxy,
+                    'https': proxy
+                }
+            
+            session = requests.Session()
+            session.trust_env = False
+            response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            response.raise_for_status()
+            
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                response.encoding = response.apparent_encoding
+            
+            stocks = parse_ths_stock_html(response.text)
+            
+            if stocks:
+                data_logger.info(f"成功获取 {len(stocks)} 只个股数据")
+                set_crawler_idle('stocks')
+                return stocks
+            else:
+                error_logger.error("解析个股数据失败，返回空列表")
+        
+        except Exception as e:
+            if USE_PROXY and PROXY_POOL:
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取个股数据失败: {e}")
+            else:
+                error_logger.error(f"第 {retry+1} 次尝试获取个股数据失败: {e}")
+            
+            if retry < max_retries - 1:
+                if USE_PROXY:
+                    load_proxy_pool()
+                import time
+                time.sleep(2)
+    
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据")
+    set_crawler_idle('stocks')
     return []
 
 # 获取每日数据文件路径
@@ -126,8 +449,6 @@ def load_daily_data(date_str):
 def save_daily_data(date_str, data):
     file_path = get_daily_file_path(date_str)
     try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
         existing_data = load_daily_data(date_str) or {}
         push_status = existing_data.get('push_status', {
             'morning_pushed': False,
@@ -201,19 +522,27 @@ def load_realtime_data(date_str):
     if os.path.exists(file_path):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                content = f.read().strip()
+                if not content:
+                    error_logger.warning(f"实时数据文件为空 ({date_str})")
+                    return {'_invalid': True, '_reason': 'empty'}
+                return json.loads(content)
+        except json.JSONDecodeError as e:
+            error_logger.error(f"实时数据文件不是有效JSON ({date_str}): {e}")
+            return {'_invalid': True, '_reason': 'invalid_json'}
         except Exception as e:
             error_logger.error(f"加载实时数据失败 ({date_str}): {e}")
-            return {}
+            return {'_invalid': True, '_reason': 'error'}
     return {}
 
 # 保存实时数据（追加模式）
 def save_realtime_data(date_str, minute_key, data):
     file_path = get_realtime_file_path(date_str)
     try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
         realtime_data = load_realtime_data(date_str)
+        
+        if realtime_data.get('_invalid'):
+            realtime_data = {}
         
         realtime_data[minute_key] = {
             'timestamp': datetime.now().isoformat(),
@@ -309,8 +638,7 @@ def generate_daily_summary():
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
-                'change': item['change'],
-                'code': item.get('code', '')
+                'change': item['change']
             })
         
         if representative_data:
@@ -352,8 +680,7 @@ def generate_daily_summary_for_date(date_str):
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
-                'change': item['change'],
-                'code': item.get('code', '')
+                'change': item['change']
             })
         
         if representative_data:
@@ -530,10 +857,15 @@ def load_recent_realtime_data(hours):
         today = datetime.now().strftime('%Y-%m-%d')
         realtime_data = load_realtime_data(today)
         
+        if realtime_data.get('_invalid'):
+            return {}
+        
         result = {}
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
         for minute_key, record in realtime_data.items():
+            if minute_key.startswith('_'):
+                continue
             time_str = f"{today} {minute_key}"
             try:
                 record_time = datetime.strptime(time_str, '%Y-%m-%d %H:%M')
@@ -557,22 +889,7 @@ def get_market_index_data():
     global latest_market_data
     
     headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
-        'Cache-Control': 'max-age=0',
-        'Connection': 'keep-alive',
-        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
-        'Referer': 'https://data.eastmoney.com/',
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
+        'User-Agent': get_random_user_agent()
     }
     
     params = {
@@ -623,22 +940,7 @@ def get_stock_statistics():
     global latest_market_data
     
     headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6',
-        'Cache-Control': 'max-age=0',
-        'Connection': 'keep-alive',
-        'Cookie': 'qgqp_b_id=9849bf5ba6a612557a93f8f340e0b20a; st_nvi=X0SuRmE-CSfugODoeQ9Ha5c08; st_pvi=00084442657277; st_sp=2025-08-17%2023%3A35%3A44; st_inirUrl=https%3A%2F%2Fcn.bing.com%2F',
-        'Referer': 'https://data.eastmoney.com/',
-        'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
+        'User-Agent': get_random_user_agent()
     }
     
     params = {

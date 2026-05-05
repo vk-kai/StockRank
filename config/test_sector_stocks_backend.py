@@ -55,7 +55,7 @@ def test_without_session():
     print("=" * 100)
     
     try:
-        response = requests.get(TEST_URL, headers=headers, timeout=15, verify=False)
+        response = requests.get(TEST_URL, timeout=15, verify=False)
         print(f"响应状态码: {response.status_code}")
         print(f"响应时间: {response.elapsed.total_seconds():.2f} 秒")
         

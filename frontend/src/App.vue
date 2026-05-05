@@ -44,16 +44,20 @@
       </div>
       <div class="monitor-card-body">
         <div 
-          v-for="(thread, key) in threadStatus" 
+          v-for="(item, key) in healthStatus" 
           :key="key" 
           class="monitor-card-row"
-          :class="thread.status === 'running' ? 'monitor-ok' : 'monitor-error'"
+          :class="getMonitorRowClass(key, item)"
         >
           <span class="monitor-dot"></span>
-          <span class="monitor-name">{{ getThreadLabel(key) }}</span>
-          <span class="monitor-text">{{ thread.status === 'running' ? '运行正常' : '已停止' }}</span>
+          <span class="monitor-name">{{ getHealthLabel(key) }}</span>
+          <span class="monitor-text">{{ getMonitorStatusText(key, item) }}</span>
+          <span class="monitor-time" v-if="item.response_time && item.status === 'ok'">{{ item.response_time }}ms</span>
+          <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
+            重试
+          </button>
         </div>
-        <div v-if="Object.keys(threadStatus).length === 0" class="monitor-card-row monitor-loading">
+        <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
         </div>
@@ -99,11 +103,11 @@
         <div 
           v-for="sector in currentData.slice(0, 10)" 
           :key="sector.rank"
-          class="sector-card"
+          class="sector-card clickable"
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
-          @click="showSectorStocks(sector.name, sector.code)"
+          @click="openStockModal(sector)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -124,11 +128,11 @@
         <div 
           v-for="sector in accumulatedData" 
           :key="sector.rank"
-          class="sector-card"
+          class="sector-card clickable"
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
-          @click="showSectorStocks(sector.name)"
+          @click="openStockModal(sector)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
@@ -144,7 +148,7 @@
       </div>
     </div>
 
-    <div class="loading" v-if="loading && !chartInstance">
+    <div class="loading" v-if="loading">
       <div class="spinner"></div>
       <p>加载数据中...</p>
     </div>
@@ -154,68 +158,61 @@
       <button @click="retry">重试</button>
     </div>
     
-    <div class="sector-modal-overlay" v-if="showSectorModal" @click.self="closeSectorModal">
-      <div class="sector-modal">
+    <SecurityAlert />
+
+    <!-- 个股详情弹窗 -->
+    <div class="modal-overlay" v-if="showStockModal" @click="closeStockModal">
+      <div class="modal-container" @click.stop>
         <div class="modal-header">
-          <h3>{{ selectedSectorName }} - 个股资金流入</h3>
-          <button class="close-btn" @click="closeSectorModal">&times;</button>
+          <h3>📊 {{ selectedSector?.name }} - 个股详情</h3>
+          <button class="close-btn" @click="closeStockModal">×</button>
         </div>
-        <div class="modal-body">
-          <div class="loading-stocks" v-if="loadingSectorStocks">
-            <div class="spinner"></div>
-            <p>加载个股数据...</p>
+        
+        <div class="modal-controls">
+          <div class="sort-controls">
+            <span class="sort-hint">点击表头即可排序</span>
           </div>
-          <div class="stocks-list" v-else-if="sectorStocks.length > 0">
-            <div class="stocks-header">
-              <span class="col-rank">排名</span>
-              <span class="col-code">代码</span>
-              <span class="col-name">名称</span>
-              <span class="col-price sortable" @click="sortStocks('price')">
-                现价
-                <span class="sort-icon" v-if="sortField === 'price'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </span>
-              <span class="col-change sortable" @click="sortStocks('change_percent')">
+        </div>
+
+        <div class="modal-body">
+          <div class="stocks-table">
+            <div class="table-header">
+              <div class="col">序号</div>
+              <div class="col">代码</div>
+              <div class="col">名称</div>
+              <div class="col clickable" @click="toggleSort('change')">
                 涨跌幅
-                <span class="sort-icon" v-if="sortField === 'change_percent'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </span>
-              <span class="col-flow sortable" @click="sortStocks('main_flow')">
-                主力净流入
-                <span class="sort-icon" v-if="sortField === 'main_flow'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </span>
-              <span class="col-ratio sortable" @click="sortStocks('main_flow_ratio')">
-                净占比
-                <span class="sort-icon" v-if="sortField === 'main_flow_ratio'">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </span>
+                <span v-if="stockSortField === 'change'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col clickable" @click="toggleSort('price')">
+                股价
+                <span v-if="stockSortField === 'price'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col clickable" @click="toggleSort('turnover')">
+                换手率
+                <span v-if="stockSortField === 'turnover'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
+              </div>
+              <div class="col">成交量</div>
             </div>
             <div 
-              class="stock-item" 
               v-for="(stock, index) in sectorStocks" 
-              :key="stock.code"
-              :class="{ 'top-flow': index < 3 }"
+              :key="stock.code || index"
+              class="table-row"
             >
-              <span class="col-rank">{{ index + 1 }}</span>
-              <span class="col-code">{{ stock.code }}</span>
-              <span class="col-name">{{ stock.name }}</span>
-              <span class="col-price">{{ stock.price.toFixed(2) }}</span>
-              <span class="col-change" :class="{ 'positive': stock.change_percent > 0, 'negative': stock.change_percent < 0 }">
-                {{ stock.change_percent > 0 ? '+' : '' }}{{ (stock.change_percent * 100).toFixed(2) }}%
-              </span>
-              <span class="col-flow" :class="{ 'positive': stock.main_flow > 0, 'negative': stock.main_flow < 0 }">
-                {{ formatStockFlow(stock.main_flow) }}
-              </span>
-              <span class="col-ratio" :class="{ 'positive': stock.main_flow_ratio > 0, 'negative': stock.main_flow_ratio < 0 }">
-                {{ stock.main_flow_ratio > 0 ? '+' : '' }}{{ stock.main_flow_ratio.toFixed(2) }}%
-              </span>
+              <div class="col">{{ index + 1 }}</div>
+              <div class="col">{{ stock.code }}</div>
+              <div class="col">{{ stock.name }}</div>
+              <div class="col" :class="stock.change >= 0 ? 'positive' : 'negative'">
+                {{ stock.change >= 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
+              </div>
+              <div class="col">{{ stock.price }}</div>
+              <div class="col">{{ stock.turnover }}</div>
+              <div class="col">{{ stock.volume }}</div>
             </div>
-          </div>
-          <div class="no-data" v-else>
-            <p>暂无个股数据</p>
           </div>
         </div>
       </div>
     </div>
-    
-    <SecurityAlert />
   </div>
 </template>
 

@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks, getHealthStatus, getCrawlerStatus, resetCrawler } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -34,15 +34,18 @@ export default {
       newsRotationInterval: null,
       newsScrollInterval: null,
       threadStatus: {},
+      healthStatus: {},
+      crawlerStatus: {},
       healthCheckInterval: null,
       enableNotification: true,
       lastNewsId: null,
-      showSectorModal: false,
-      selectedSectorName: '',
+      showStockModal: false,
+      selectedSector: null,
       sectorStocks: [],
-      loadingSectorStocks: false,
-      sortField: 'main_flow',
-      sortOrder: 'desc'
+      loadingStocks: false,
+      stocksError: null,
+      stockSortField: 'change',
+      stockSortOrder: 'desc'
     }
   },
   computed: {
@@ -60,6 +63,59 @@ export default {
     currentNewsItem() {
       if (this.latestNews.length === 0) return null
       return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
+    },
+    healthErrors() {
+      const errors = []
+      const labels = {
+        'ths_sector': '同花顺板块资金',
+        'ths_stocks': '同花顺个股详情',
+        'news': '同花顺新闻'
+      }
+      for (const [key, value] of Object.entries(this.healthStatus)) {
+        if (value.status === 'error') {
+          errors.push({
+            key,
+            label: labels[key] || key,
+            error: value.error,
+            lastCheck: value.last_check
+          })
+        }
+      }
+      return errors
+    },
+    hasHealthErrors() {
+      return this.healthErrors.length > 0
+    },
+    crawlerAlerts() {
+      const alerts = []
+      const labels = {
+        'sector_flow': '板块资金',
+        'stocks': '个股详情',
+        'news': '新闻'
+      }
+      for (const [key, value] of Object.entries(this.crawlerStatus)) {
+        if (value.status === 'checking' || value.status === 'failed') {
+          alerts.push({
+            key,
+            label: labels[key] || key,
+            status: value.status,
+            message: value.message,
+            retrying: value.retrying,
+            retryCount: value.retry_count
+          })
+        }
+      }
+      return alerts
+    },
+    hasCrawlerAlerts() {
+      return this.crawlerAlerts.length > 0
+    },
+    healthToCrawlerMap() {
+      return {
+        'ths_sector': 'sector_flow',
+        'ths_stocks': 'stocks',
+        'news': 'news'
+      }
     }
   },
   mounted() {
@@ -96,11 +152,6 @@ export default {
     initChart() {
       this.$nextTick(() => {
         this.chartInstance = echarts.init(this.$refs.chart)
-        this.chartInstance.on('click', (params) => {
-          if (params.componentType === 'series' && params.seriesName) {
-            this.showSectorStocks(params.seriesName)
-          }
-        })
       })
     },
 
@@ -139,103 +190,27 @@ export default {
       })
     },
 
-    async showSectorStocks(sectorName, sectorCode) {
-      this.selectedSectorName = sectorName
-      this.showSectorModal = true
-      this.loadingSectorStocks = true
-      this.sectorStocks = []
-      this.sortField = 'main_flow'
-      this.sortOrder = 'desc'
-      
-      try {
-        const response = await getSectorStocks(sectorName, sectorCode)
-        if (response.success && response.data) {
-          this.sectorStocks = response.data.stocks || []
-          // 临时打印请求URL
-          if (response.data.request_url) {
-            console.log('请求的URL:', response.data.request_url)
-          }
-        } else {
-          // 临时打印错误时的请求URL
-          if (response.request_url) {
-            console.log('请求的URL:', response.request_url)
-          }
-        }
-      } catch (error) {
-        console.error('获取板块个股数据失败:', error)
-        // 临时打印错误时的请求URL
-        if (error.response && error.response.data && error.response.data.request_url) {
-          console.log('请求的URL:', error.response.data.request_url)
-        }
-      } finally {
-        this.loadingSectorStocks = false
-      }
-    },
-
-    sortStocks(field) {
-      if (this.sortField === field) {
-        this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc'
-      } else {
-        this.sortField = field
-        this.sortOrder = 'desc'
-      }
-      
-      this.sectorStocks.sort((a, b) => {
-        let aVal = a[field] || 0
-        let bVal = b[field] || 0
-        
-        if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase()
-          bVal = bVal.toLowerCase()
-        }
-        
-        if (this.sortOrder === 'desc') {
-          return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
-        } else {
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0
-        }
-      })
-    },
-
-    closeSectorModal() {
-      this.showSectorModal = false
-      this.selectedSectorName = ''
-      this.sectorStocks = []
-    },
-
-    formatStockFlow(value) {
-      if (value === 0) return '0'
-      const absValue = Math.abs(value)
-      if (absValue >= 100000000) {
-        return (value / 100000000).toFixed(2) + '亿'
-      } else if (absValue >= 10000) {
-        return (value / 10000).toFixed(2) + '万'
-      }
-      return value.toFixed(2)
-    },
-
     async fetchCurrentData() {
       try {
-        this.loading = true
-        this.error = null
         const response = await getCurrentFlow()
         if (response.success) {
           this.currentData = response.data
           const timestamp = new Date(response.timestamp)
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
-          await this.fetchMinuteData()
+          
+          if (this.selectedTimeRange === 'today') {
+            await this.fetchMinuteData()
+          } else {
+            this.updateChart()
+          }
         }
       } catch (err) {
         console.error('获取当前数据失败:', err)
         this.error = '获取当前数据失败: ' + err.message
-      } finally {
-        this.loading = false
       }
     },
 
     async fetchHistoryData(days) {
-      this.loading = true
-      this.error = null
       try {
         const response = await getHistoryData(days)
         if (response.success) {
@@ -251,14 +226,10 @@ export default {
         }
       } catch (err) {
         this.error = '获取历史数据失败: ' + err.message
-      } finally {
-        this.loading = false
       }
     },
 
     async fetchMinuteData() {
-      this.loading = true
-      this.error = null
       try {
         const response = await getMinuteData(24)
         if (response.success) {
@@ -267,28 +238,44 @@ export default {
         }
       } catch (err) {
         this.error = '获取分钟数据失败: ' + err.message
+      }
+    },
+
+    async fetchDataByTimeRange() {
+      this.loading = true
+      this.error = null
+      try {
+        if (this.selectedTimeRange === 'today') {
+          this.accumulatedData = []
+          await this.fetchCurrentData()
+        } else {
+          this.currentData = []
+          await this.fetchAccumulatedData(this.selectedTimeRange)
+          await this.fetchHistoryData(this.selectedTimeRange)
+        }
+      } catch (err) {
+        console.error('获取数据失败:', err)
+        this.error = '获取数据失败: ' + err.message
       } finally {
         this.loading = false
       }
     },
 
-    async fetchDataByTimeRange() {
-      if (this.selectedTimeRange === 'today') {
-        this.accumulatedData = []
-        await this.fetchCurrentData()
-      } else {
-        this.currentData = []
-        await this.fetchAccumulatedData(this.selectedTimeRange)
-        await this.fetchHistoryData(this.selectedTimeRange)
-      }
-    },
-
     async fetchData() {
-      if (this.selectedTimeRange === 'today') {
-        await this.fetchCurrentData()
-      } else {
-        await this.fetchHistoryData(this.selectedTimeRange)
-        await this.fetchAccumulatedData(this.selectedTimeRange)
+      this.loading = true
+      this.error = null
+      try {
+        if (this.selectedTimeRange === 'today') {
+          await this.fetchCurrentData()
+        } else {
+          await this.fetchAccumulatedData(this.selectedTimeRange)
+          await this.fetchHistoryData(this.selectedTimeRange)
+        }
+      } catch (err) {
+        console.error('获取数据失败:', err)
+        this.error = '获取数据失败: ' + err.message
+      } finally {
+        this.loading = false
       }
     },
 
@@ -300,11 +287,13 @@ export default {
         }
       } catch (err) {
         console.error('获取累计流入数据失败:', err)
+        this.error = '获取累计流入数据失败: ' + err.message
       }
     },
 
     retry() {
       this.error = null
+      this.loading = true
       this.fetchDataByTimeRange()
     },
 
@@ -613,6 +602,74 @@ export default {
       }
     },
 
+    async openStockModal(sector) {
+      if (!sector.sector_url) {
+        alert('该板块暂无个股详情链接')
+        return
+      }
+      
+      this.showStockModal = true
+      this.selectedSector = sector
+      this.loadingStocks = true
+      this.stocksError = null
+      this.sectorStocks = []
+      
+      try {
+        const response = await getSectorStocks(sector.sector_url)
+        
+        if (response.success) {
+          this.sectorStocks = response.data
+          this.sortStocks()
+        } else {
+          this.stocksError = response.message || '获取个股数据失败'
+        }
+      } catch (err) {
+        console.error('获取个股数据失败:', err)
+        this.stocksError = '获取个股数据失败: ' + err.message
+      } finally {
+        this.loadingStocks = false
+      }
+    },
+
+    closeStockModal() {
+      this.showStockModal = false
+      this.selectedSector = null
+      this.sectorStocks = []
+      this.stocksError = null
+    },
+
+    sortStocks() {
+      if (!this.sectorStocks || this.sectorStocks.length === 0) return
+      
+      const sorted = [...this.sectorStocks].sort((a, b) => {
+        let valueA = a[this.stockSortField]
+        let valueB = b[this.stockSortField]
+        
+        if (typeof valueA === 'string') {
+          valueA = parseFloat(valueA.replace(/[^\d.-]/g, '')) || 0
+          valueB = parseFloat(valueB.replace(/[^\d.-]/g, '')) || 0
+        }
+        
+        if (this.stockSortOrder === 'desc') {
+          return valueB - valueA
+        } else {
+          return valueA - valueB
+        }
+      })
+      
+      this.sectorStocks = sorted
+    },
+
+    toggleSort(field) {
+      if (this.stockSortField === field) {
+        this.stockSortOrder = this.stockSortOrder === 'desc' ? 'asc' : 'desc'
+      } else {
+        this.stockSortField = field
+        this.stockSortOrder = 'desc'
+      }
+      this.sortStocks()
+    },
+
     sendNotification(news) {
       if (!('Notification' in window) || Notification.permission !== 'granted') {
         return
@@ -690,25 +747,128 @@ export default {
         if (data.threads) {
           this.threadStatus = data.threads
         }
+        if (data.health) {
+          this.healthStatus = data.health
+        }
       } catch (err) {
         console.error('获取服务状态失败:', err)
       }
     },
 
+    async fetchHealthStatus() {
+      try {
+        const response = await getHealthStatus()
+        if (response.success && response.data) {
+          this.healthStatus = response.data
+        }
+      } catch (err) {
+        console.error('获取健康状态失败:', err)
+      }
+    },
+
+    async fetchCrawlerStatus() {
+      try {
+        const response = await getCrawlerStatus()
+        if (response.success && response.data) {
+          this.crawlerStatus = response.data
+        }
+      } catch (err) {
+        console.error('获取爬虫状态失败:', err)
+      }
+    },
+
+    async resetCrawlerStatus(crawlerName) {
+      try {
+        await resetCrawler(crawlerName)
+        await this.fetchCrawlerStatus()
+      } catch (err) {
+        console.error('重置爬虫状态失败:', err)
+      }
+    },
+
+    getCrawlerKey(healthKey) {
+      const map = {
+        'ths_sector': 'sector_flow',
+        'ths_stocks': 'stocks',
+        'news': 'news'
+      }
+      return map[healthKey] || healthKey
+    },
+
+    getCrawlerStatus(healthKey) {
+      const crawlerKey = this.getCrawlerKey(healthKey)
+      return this.crawlerStatus[crawlerKey]?.status || 'idle'
+    },
+
+    getCrawlerMessage(healthKey) {
+      const crawlerKey = this.getCrawlerKey(healthKey)
+      return this.crawlerStatus[crawlerKey]?.message || ''
+    },
+
+    getMonitorRowClass(healthKey, healthItem) {
+      const crawlerStatus = this.getCrawlerStatus(healthKey)
+      if (crawlerStatus === 'checking') {
+        return 'monitor-checking'
+      }
+      if (crawlerStatus === 'failed') {
+        return 'monitor-failed'
+      }
+      if (healthItem.status === 'ok') {
+        return 'monitor-ok'
+      }
+      if (healthItem.status === 'error') {
+        return 'monitor-error'
+      }
+      return 'monitor-unknown'
+    },
+
+    getMonitorStatusText(healthKey, healthItem) {
+      const crawlerStatus = this.getCrawlerStatus(healthKey)
+      const crawlerMessage = this.getCrawlerMessage(healthKey)
+      
+      if (crawlerStatus === 'checking') {
+        return '检测中...'
+      }
+      if (crawlerStatus === 'failed') {
+        return crawlerMessage || '已停止'
+      }
+      if (healthItem.status === 'ok') {
+        return '正常'
+      }
+      if (healthItem.status === 'error') {
+        return healthItem.error || '异常'
+      }
+      return '检测中'
+    },
+
     startHealthCheck() {
+      this.fetchHealthStatus()
+      this.fetchCrawlerStatus()
       this.healthCheckInterval = setInterval(() => {
-        this.fetchSystemHealth()
-      }, 30000)
+        this.fetchHealthStatus()
+        this.fetchCrawlerStatus()
+      }, 5000)
     },
 
     refreshHealth() {
       this.fetchSystemHealth()
+      this.fetchHealthStatus()
+      this.fetchCrawlerStatus()
     },
 
     getThreadLabel(key) {
       const labels = {
         'data_collector': '板块资金采集',
         'news_collector': '同花顺新闻采集'
+      }
+      return labels[key] || key
+    },
+
+    getHealthLabel(key) {
+      const labels = {
+        'ths_sector': '同花顺板块资金',
+        'ths_stocks': '同花顺个股详情',
+        'news': '同花顺新闻'
       }
       return labels[key] || key
     },

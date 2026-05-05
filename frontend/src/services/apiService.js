@@ -284,6 +284,36 @@ export async function getSystemHealth() {
   }
 }
 
+export async function getHealthStatus() {
+  try {
+    const response = await apiClient.get('/health/status')
+    return response.data
+  } catch (error) {
+    console.error('获取健康状态失败:', error)
+    throw error
+  }
+}
+
+export async function getCrawlerStatus() {
+  try {
+    const response = await apiClient.get('/crawler/status')
+    return response.data
+  } catch (error) {
+    console.error('获取爬虫状态失败:', error)
+    throw error
+  }
+}
+
+export async function resetCrawler(crawlerName) {
+  try {
+    const response = await apiClient.post('/crawler/reset', { crawler: crawlerName })
+    return response.data
+  } catch (error) {
+    console.error('重置爬虫状态失败:', error)
+    throw error
+  }
+}
+
 export async function getLogList() {
   try {
     const response = await apiClient.get('/log/list')
@@ -378,28 +408,24 @@ export async function getDailyReport(date) {
   }
 }
 
+export async function getSectorStocks(sectorUrl) {
+  try {
+    const response = await apiClient.get('/flow/sector-stocks', {
+      params: { url: sectorUrl }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取个股详情失败:', error)
+    throw error
+  }
+}
+
 export async function getHouseKline() {
   try {
     const response = await apiClient.get('/house/kline')
     return response.data
   } catch (error) {
     console.error('获取房价K线数据失败:', error)
-    throw error
-  }
-}
-
-export async function getSectorStocks(sectorName, sectorCode) {
-  try {
-    const params = {}
-    if (sectorCode) {
-      params.code = sectorCode
-    } else if (sectorName) {
-      params.sector = sectorName
-    }
-    const response = await apiClient.get('/flow/sector-stocks', { params })
-    return response.data
-  } catch (error) {
-    console.error('获取板块个股数据失败:', error)
     throw error
   }
 }

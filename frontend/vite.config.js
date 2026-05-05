@@ -17,13 +17,6 @@ export default defineConfig({
     }
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vue-vendor': ['vue', 'vue-router'],
-          'echarts': ['echarts', 'vue-echarts']
-        }
-      }
-    }
+    emptyOutDir: true
   }
 })
