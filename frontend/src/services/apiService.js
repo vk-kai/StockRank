@@ -294,6 +294,16 @@ export async function getHealthStatus() {
   }
 }
 
+export async function triggerHealthCheck() {
+  try {
+    const response = await apiClient.post('/health/check')
+    return response.data
+  } catch (error) {
+    console.error('触发健康检测失败:', error)
+    throw error
+  }
+}
+
 export async function getCrawlerStatus() {
   try {
     const response = await apiClient.get('/crawler/status')

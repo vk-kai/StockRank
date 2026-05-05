@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks, getHealthStatus, getCrawlerStatus, resetCrawler } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks, getHealthStatus, getCrawlerStatus, resetCrawler, triggerHealthCheck } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -786,9 +786,8 @@ export default {
 
     getCrawlerKey(healthKey) {
       const map = {
-        'ths_sector': 'sector_flow',
-        'ths_stocks': 'stocks',
-        'news': 'news'
+        'ths_news': 'news',
+        'ths_sector_stocks': 'sector_flow'
       }
       return map[healthKey] || healthKey
     },
@@ -843,18 +842,26 @@ export default {
     },
 
     startHealthCheck() {
-      this.fetchHealthStatus()
-      this.fetchCrawlerStatus()
+      this.doHealthCheck()
       this.healthCheckInterval = setInterval(() => {
         this.fetchHealthStatus()
         this.fetchCrawlerStatus()
       }, 5000)
     },
 
-    refreshHealth() {
+    async doHealthCheck() {
+      try {
+        await triggerHealthCheck()
+        await this.fetchHealthStatus()
+        await this.fetchCrawlerStatus()
+      } catch (err) {
+        console.error('健康检测失败:', err)
+      }
+    },
+
+    async refreshHealth() {
       this.fetchSystemHealth()
-      this.fetchHealthStatus()
-      this.fetchCrawlerStatus()
+      await this.doHealthCheck()
     },
 
     getThreadLabel(key) {
