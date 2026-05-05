@@ -81,7 +81,6 @@ def get_current_flow():
                 })
             
             if _is_realtime_data_invalid(realtime_data):
-                system_logger.info("非交易时间，文件无效或无数据，尝试获取最新板块数据")
                 new_data = get_sector_flow_data()
                 if new_data:
                     return jsonify({
