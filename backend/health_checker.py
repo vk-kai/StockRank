@@ -26,7 +26,7 @@ health_status = {
         'error': None,
         'response_time': None
     },
-    'ths_sector_stocks': {
+    'ths_sector': {
         'status': 'unknown',
         'last_check': None,
         'error': None,
@@ -43,12 +43,6 @@ _crawler_status = {
         'retrying': False,
         'retry_count': 0
     },
-    'stocks': {
-        'status': 'idle',
-        'message': '',
-        'retrying': False,
-        'retry_count': 0
-    },
     'news': {
         'status': 'idle',
         'message': '',
@@ -57,84 +51,52 @@ _crawler_status = {
     }
 }
 
-def get_simple_headers():
+def get_news_headers():
     return {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': 'https://news.10jqka.com.cn/',
     }
 
-def check_url_simple(url, timeout=15):
-    start_time = time.time()
-    try:
-        session = requests.Session()
-        session.trust_env = False
-        response = session.get(url, headers=get_simple_headers(), timeout=timeout, verify=False, allow_redirects=True)
-        response_time = round((time.time() - start_time) * 1000, 2)
-        
-        if response.status_code == 200:
-            if response.encoding == 'ISO-8859-1':
-                response.encoding = 'GBK'
-            else:
-                response.encoding = response.apparent_encoding
-            return {
-                'success': True,
-                'status_code': response.status_code,
-                'response_time': response_time,
-                'content': response.text
-            }
-        else:
-            return {
-                'success': False,
-                'status_code': response.status_code,
-                'response_time': response_time,
-                'error': f'HTTP状态码: {response.status_code}'
-            }
-    except requests.exceptions.Timeout:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return {
-            'success': False,
-            'response_time': response_time,
-            'error': '请求超时'
-        }
-    except Exception as e:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return {
-            'success': False,
-            'response_time': response_time,
-            'error': f'错误: {str(e)[:100]}'
-        }
+def get_sector_headers():
+    return {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Cookie': 'vvvv=1',
+    }
 
 def test_news_api():
     params = {
         'page': 1,
         'tag': '',
         'track': 'website',
-        'pagesize': 10
-    }
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Referer': 'https://news.10jqka.com.cn/',
+        'pagesize': 5
     }
     
     start_time = time.time()
     try:
         session = requests.Session()
         session.trust_env = False
-        response = session.get(NEWS_URL, params=params, headers=headers, timeout=30, verify=False)
+        response = session.get(NEWS_URL, params=params, headers=get_news_headers(), timeout=10, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
-            return True, response_time, None
-        return False, response_time, f'HTTP状态码: {response.status_code}'
+            data = response.json()
+            if data.get('code') == '200' or data.get('data'):
+                return True, response_time, None
+            return False, response_time, f"API返回错误: {data.get('msg', '未知')}"
+        return False, response_time, f'HTTP {response.status_code}'
+    except requests.exceptions.Timeout:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, '请求超时'
+    except requests.exceptions.ConnectionError:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, '网络连接失败'
     except Exception as e:
         response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, str(e)[:50]
+        return False, response_time, str(e)[:30]
 
 def extract_stock_url_from_sector(html_content):
     try:
@@ -168,199 +130,150 @@ def test_stock_detail_url(stock_url):
     try:
         session = requests.Session()
         session.trust_env = False
-        response = session.get(stock_url, headers=get_simple_headers(), timeout=15, verify=False)
+        response = session.get(stock_url, headers=get_sector_headers(), timeout=10, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
-            return True, response_time, None
-        return False, response_time, f'HTTP状态码: {response.status_code}'
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            text = response.text
+            if 'm-table' in text or '个股' in text or '资金' in text:
+                return True, response_time, None
+            return False, response_time, '页面内容异常'
+        return False, response_time, f'HTTP {response.status_code}'
+    except requests.exceptions.Timeout:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, '请求超时'
+    except requests.exceptions.ConnectionError:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return False, response_time, '网络连接失败'
     except Exception as e:
         response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, str(e)[:50]
+        return False, response_time, str(e)[:30]
+
+def test_sector_and_stocks():
+    start_time = time.time()
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(THS_SECTOR_URL, headers=get_sector_headers(), timeout=10, verify=False)
+        response_time = round((time.time() - start_time) * 1000, 2)
+        
+        if response.status_code == 200:
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            text = response.text
+            if 'm-table' in text or '板块' in text:
+                sector_success = True
+                sector_error = None
+                
+                stock_url = extract_stock_url_from_sector(text)
+                if stock_url:
+                    stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
+                else:
+                    stocks_success = False
+                    stocks_time = 0
+                    stocks_error = '未找到个股URL'
+                
+                return {
+                    'sector_success': sector_success,
+                    'sector_time': response_time,
+                    'sector_error': sector_error,
+                    'stocks_success': stocks_success,
+                    'stocks_time': stocks_time,
+                    'stocks_error': stocks_error
+                }
+            return {
+                'sector_success': False,
+                'sector_time': response_time,
+                'sector_error': '页面内容异常',
+                'stocks_success': False,
+                'stocks_time': 0,
+                'stocks_error': '板块检测失败'
+            }
+        return {
+            'sector_success': False,
+            'sector_time': response_time,
+            'sector_error': f'HTTP {response.status_code}',
+            'stocks_success': False,
+            'stocks_time': 0,
+            'stocks_error': '板块检测失败'
+        }
+    except requests.exceptions.Timeout:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return {
+            'sector_success': False,
+            'sector_time': response_time,
+            'sector_error': '请求超时',
+            'stocks_success': False,
+            'stocks_time': 0,
+            'stocks_error': '板块检测失败'
+        }
+    except requests.exceptions.ConnectionError:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return {
+            'sector_success': False,
+            'sector_time': response_time,
+            'sector_error': '网络连接失败',
+            'stocks_success': False,
+            'stocks_time': 0,
+            'stocks_error': '板块检测失败'
+        }
+    except Exception as e:
+        response_time = round((time.time() - start_time) * 1000, 2)
+        return {
+            'sector_success': False,
+            'sector_time': response_time,
+            'sector_error': str(e)[:30],
+            'stocks_success': False,
+            'stocks_time': 0,
+            'stocks_error': '板块检测失败'
+        }
 
 def run_health_check():
     global health_status
     
     health_logger.info("开始健康检测...")
     
-    news_success = False
-    sector_success = False
-    stocks_success = False
-    
-    health_status['ths_news']['status'] = 'checking'
-    health_status['ths_news']['last_check'] = datetime.now().isoformat()
-    save_health_status()
-    
-    success, response_time, error = test_news_api()
-    if success:
-        news_success = True
-        health_status['ths_news'] = {
-            'status': 'ok',
-            'last_check': datetime.now().isoformat(),
-            'error': None,
-            'response_time': response_time
-        }
-        health_logger.info(f"同花顺新闻检测成功，响应时间: {response_time}ms")
-    else:
-        health_status['ths_news'] = {
-            'status': 'error',
-            'last_check': datetime.now().isoformat(),
-            'error': error,
-            'response_time': response_time
-        }
-        health_logger.warning(f"同花顺新闻检测失败: {error}")
-    
-    save_health_status()
-    
-    health_status['ths_sector_stocks']['status'] = 'checking'
-    health_status['ths_sector_stocks']['sector_status'] = 'checking'
-    health_status['ths_sector_stocks']['last_check'] = datetime.now().isoformat()
-    save_health_status()
-    
-    result = check_url_simple(THS_SECTOR_URL)
-    
-    if result['success']:
-        has_table = 'm-table' in result.get('content', '') or '板块' in result.get('content', '')
-        if has_table:
-            sector_success = True
-            health_status['ths_sector_stocks']['sector_status'] = 'ok'
-            health_logger.info(f"同花顺板块资金检测成功，响应时间: {result['response_time']}ms")
-            
-            stock_url = extract_stock_url_from_sector(result['content'])
-            
-            if stock_url:
-                health_status['ths_sector_stocks']['stocks_status'] = 'checking'
-                save_health_status()
-                
-                stock_success, stock_time, stock_error = test_stock_detail_url(stock_url)
-                
-                if stock_success:
-                    stocks_success = True
-                    health_status['ths_sector_stocks']['stocks_status'] = 'ok'
-                    health_logger.info(f"同花顺个股详情检测成功，响应时间: {stock_time}ms")
-                else:
-                    health_status['ths_sector_stocks']['stocks_status'] = 'error'
-                    health_logger.warning(f"同花顺个股详情检测失败: {stock_error}")
-            else:
-                health_status['ths_sector_stocks']['stocks_status'] = 'skipped'
-                health_logger.warning("未能从板块数据中提取个股URL")
-            
-            if sector_success and stocks_success:
-                health_status['ths_sector_stocks']['status'] = 'ok'
-                health_status['ths_sector_stocks']['response_time'] = result['response_time']
-                health_status['ths_sector_stocks']['error'] = None
-            elif sector_success:
-                health_status['ths_sector_stocks']['status'] = 'partial'
-                health_status['ths_sector_stocks']['response_time'] = result['response_time']
-                health_status['ths_sector_stocks']['error'] = '个股详情检测失败'
-            else:
-                health_status['ths_sector_stocks']['status'] = 'error'
-                health_status['ths_sector_stocks']['error'] = '板块数据解析失败'
-        else:
-            health_status['ths_sector_stocks']['status'] = 'error'
-            health_status['ths_sector_stocks']['sector_status'] = 'error'
-            health_status['ths_sector_stocks']['error'] = '页面内容无板块数据'
-            health_logger.warning("同花顺板块资金检测失败: 页面内容无板块数据")
-    else:
-        health_status['ths_sector_stocks']['status'] = 'error'
-        health_status['ths_sector_stocks']['sector_status'] = 'error'
-        health_status['ths_sector_stocks']['error'] = result.get('error', '未知错误')
-        health_status['ths_sector_stocks']['stocks_status'] = 'skipped'
-        health_logger.warning(f"同花顺板块资金检测失败: {result.get('error')}")
-    
-    health_status['ths_sector_stocks']['last_check'] = datetime.now().isoformat()
-    save_health_status()
-    
-    health_logger.info(f"健康检测完成: 新闻={news_success}, 板块={sector_success}, 个股={stocks_success}")
-    
-    return {
-        'news': news_success,
-        'sector': sector_success,
-        'stocks': stocks_success
+    news_success, news_time, news_error = test_news_api()
+    health_status['ths_news'] = {
+        'status': 'ok' if news_success else 'error',
+        'last_check': datetime.now().isoformat(),
+        'error': news_error,
+        'response_time': news_time
     }
+    
+    sector_result = test_sector_and_stocks()
+    
+    if sector_result['sector_success'] and sector_result['stocks_success']:
+        overall_status = 'ok'
+    elif sector_result['sector_success']:
+        overall_status = 'partial'
+    else:
+        overall_status = 'error'
+    
+    health_status['ths_sector'] = {
+        'status': overall_status,
+        'last_check': datetime.now().isoformat(),
+        'error': sector_result['sector_error'],
+        'response_time': sector_result['sector_time'],
+        'sector_status': 'ok' if sector_result['sector_success'] else 'error',
+        'stocks_status': 'ok' if sector_result['stocks_success'] else 'error'
+    }
+    
+    save_health_status()
+    
+    result = {
+        'news': news_success,
+        'sector': sector_result['sector_success'],
+        'stocks': sector_result['stocks_success']
+    }
+    
+    health_logger.info(f"健康检测完成: 新闻={news_success}, 板块={sector_result['sector_success']}, 个股={sector_result['stocks_success']}")
+    return result
 
-def find_working_headers_for_sector(max_retries=3):
-    from data_processor import generate_random_headers, set_working_headers
-    
-    global _crawler_status
-    _crawler_status['sector_flow']['status'] = 'checking'
-    _crawler_status['sector_flow']['retrying'] = True
-    _crawler_status['sector_flow']['message'] = '正在检测...'
-    save_crawler_status()
-    
-    for i in range(max_retries):
-        _crawler_status['sector_flow']['retry_count'] = i + 1
-        save_crawler_status()
-        
-        headers = generate_random_headers()
-        result = check_url_simple(THS_SECTOR_URL)
-        
-        if result['success'] and ('m-table' in result.get('content', '') or '板块' in result.get('content', '')):
-            set_working_headers(headers)
-            _crawler_status['sector_flow']['status'] = 'working'
-            _crawler_status['sector_flow']['retrying'] = False
-            _crawler_status['sector_flow']['message'] = ''
-            _crawler_status['sector_flow']['retry_count'] = 0
-            save_crawler_status()
-            
-            update_health_status('ths_sector_stocks', 'ok', result['response_time'], None)
-            health_logger.info(f"板块资金检测成功，响应时间: {result['response_time']}ms")
-            return headers
-        
-        update_health_status('ths_sector_stocks', 'error', result.get('response_time', 0), result.get('error'))
-        health_logger.warning(f"板块资金检测失败 (第{i+1}次): {result.get('error')}")
-        time.sleep(1)
-    
-    _crawler_status['sector_flow']['status'] = 'failed'
-    _crawler_status['sector_flow']['retrying'] = False
-    _crawler_status['sector_flow']['message'] = f'尝试了 {max_retries} 次均失败'
-    save_crawler_status()
-    
-    return None
-
-def find_working_headers_for_news(max_retries=3):
-    global _crawler_status
-    _crawler_status['news']['status'] = 'checking'
-    _crawler_status['news']['retrying'] = True
-    _crawler_status['news']['message'] = '正在检测...'
-    save_crawler_status()
-    
-    for i in range(max_retries):
-        _crawler_status['news']['retry_count'] = i + 1
-        save_crawler_status()
-        
-        success, response_time, error = test_news_api()
-        
-        if success:
-            _crawler_status['news']['status'] = 'working'
-            _crawler_status['news']['retrying'] = False
-            _crawler_status['news']['message'] = ''
-            _crawler_status['news']['retry_count'] = 0
-            save_crawler_status()
-            
-            update_health_status('ths_news', 'ok', response_time, None)
-            health_logger.info(f"新闻检测成功，响应时间: {response_time}ms")
-            return get_simple_headers()
-        
-        update_health_status('ths_news', 'error', response_time, error)
-        health_logger.warning(f"新闻检测失败 (第{i+1}次): {error}")
-        time.sleep(1)
-    
-    _crawler_status['news']['status'] = 'failed'
-    _crawler_status['news']['retrying'] = False
-    _crawler_status['news']['message'] = f'尝试了 {max_retries} 次均失败'
-    save_crawler_status()
-    
-    return None
-
-def update_health_status(key, status, response_time=None, error=None):
-    global health_status
-    if key in health_status:
-        health_status[key]['status'] = status
-        health_status[key]['last_check'] = datetime.now().isoformat()
-        health_status[key]['error'] = error
-        health_status[key]['response_time'] = response_time
-        save_health_status()
+def get_health_status():
+    return health_status
 
 def save_health_status():
     try:
@@ -369,58 +282,44 @@ def save_health_status():
     except Exception as e:
         error_logger.error(f"保存健康状态失败: {e}")
 
-CRAWLER_STATUS_FILE = os.path.join(HEALTH_DATA_DIR, 'crawler_status.json')
-
-def save_crawler_status():
+def load_health_status():
+    global health_status
     try:
-        with open(CRAWLER_STATUS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(_crawler_status, f, ensure_ascii=False, indent=2)
+        if os.path.exists(HEALTH_FILE):
+            with open(HEALTH_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+                if saved:
+                    health_status = saved
     except Exception as e:
-        error_logger.error(f"保存爬虫状态失败: {e}")
-
-def load_crawler_status():
-    if os.path.exists(CRAWLER_STATUS_FILE):
-        try:
-            with open(CRAWLER_STATUS_FILE, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                if content:
-                    global _crawler_status
-                    _crawler_status = json.loads(content)
-        except Exception as e:
-            error_logger.error(f"加载爬虫状态失败: {e}")
-    return _crawler_status
+        error_logger.error(f"加载健康状态失败: {e}")
 
 def get_crawler_status():
     return _crawler_status
 
-def load_health_status():
-    global health_status
-    if os.path.exists(HEALTH_FILE):
-        try:
-            with open(HEALTH_FILE, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                if content:
-                    health_status = json.loads(content)
-        except Exception as e:
-            error_logger.error(f"加载健康状态失败: {e}")
-    return health_status
-
-def get_health_status():
-    return health_status
+def set_crawler_working(crawler_name):
+    if crawler_name in _crawler_status:
+        _crawler_status[crawler_name]['status'] = 'working'
+        _crawler_status[crawler_name]['message'] = '正在获取数据...'
 
 def set_crawler_idle(crawler_name):
-    global _crawler_status
     if crawler_name in _crawler_status:
         _crawler_status[crawler_name]['status'] = 'idle'
         _crawler_status[crawler_name]['message'] = ''
         _crawler_status[crawler_name]['retrying'] = False
         _crawler_status[crawler_name]['retry_count'] = 0
-        save_crawler_status()
 
-def set_crawler_working(crawler_name):
-    global _crawler_status
+def set_crawler_failed(crawler_name, message='', retrying=False):
     if crawler_name in _crawler_status:
-        _crawler_status[crawler_name]['status'] = 'working'
-        _crawler_status[crawler_name]['message'] = ''
-        _crawler_status[crawler_name]['retrying'] = False
-        save_crawler_status()
+        _crawler_status[crawler_name]['status'] = 'failed'
+        _crawler_status[crawler_name]['message'] = message
+        _crawler_status[crawler_name]['retrying'] = retrying
+        if retrying:
+            _crawler_status[crawler_name]['retry_count'] += 1
+
+def set_crawler_checking(crawler_name):
+    if crawler_name in _crawler_status:
+        _crawler_status[crawler_name]['status'] = 'checking'
+        _crawler_status[crawler_name]['message'] = '检测中...'
+
+def load_crawler_status():
+    pass

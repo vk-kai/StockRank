@@ -68,14 +68,14 @@ export default {
       const errors = []
       const labels = {
         'ths_news': '同花顺新闻',
-        'ths_sector_stocks': '同花顺板块资金+个股详情'
+        'ths_sector': '同花顺板块资金'
       }
       for (const [key, value] of Object.entries(this.healthStatus)) {
         if (value.status === 'error' || value.status === 'partial') {
           errors.push({
             key,
             label: labels[key] || key,
-            error: value.error,
+            error: value.status === 'partial' ? '个股详情异常' : value.error,
             lastCheck: value.last_check
           })
         }
@@ -89,7 +89,6 @@ export default {
       const alerts = []
       const labels = {
         'sector_flow': '板块资金',
-        'stocks': '个股详情',
         'news': '新闻'
       }
       for (const [key, value] of Object.entries(this.crawlerStatus)) {
@@ -112,7 +111,7 @@ export default {
     healthToCrawlerMap() {
       return {
         'ths_news': 'news',
-        'ths_sector_stocks': 'sector_flow'
+        'ths_sector': 'sector_flow'
       }
     }
   },
@@ -240,6 +239,8 @@ export default {
     },
 
     async fetchDataByTimeRange() {
+      await this.doHealthCheck()
+      
       this.loading = true
       this.error = null
       try {
@@ -260,6 +261,8 @@ export default {
     },
 
     async fetchData() {
+      await this.doHealthCheck()
+      
       this.loading = true
       this.error = null
       try {
@@ -461,6 +464,8 @@ export default {
     },
 
     async fetchLatestNews() {
+      await this.doHealthCheck()
+      
       try {
         const response = await getNews(1, 5)
         if (response.success) {
@@ -787,7 +792,7 @@ export default {
     getCrawlerKey(healthKey) {
       const map = {
         'ths_news': 'news',
-        'ths_sector_stocks': 'sector_flow'
+        'ths_sector': 'sector_flow'
       }
       return map[healthKey] || healthKey
     },
@@ -842,11 +847,8 @@ export default {
     },
 
     startHealthCheck() {
-      this.doHealthCheck()
-      this.healthCheckInterval = setInterval(() => {
-        this.fetchHealthStatus()
-        this.fetchCrawlerStatus()
-      }, 5000)
+      this.fetchHealthStatus()
+      this.fetchCrawlerStatus()
     },
 
     async doHealthCheck() {
@@ -875,7 +877,7 @@ export default {
     getHealthLabel(key) {
       const labels = {
         'ths_news': '同花顺新闻',
-        'ths_sector_stocks': '板块资金+个股详情'
+        'ths_sector': '板块资金'
       }
       return labels[key] || key
     },
@@ -883,31 +885,12 @@ export default {
     getMonitorStatusText(key, item) {
       if (!item) return '检测中...'
       
-      if (key === 'ths_sector_stocks') {
-        const sectorStatus = item.sector_status
-        const stocksStatus = item.stocks_status
-        
-        if (item.status === 'checking') {
-          return '检测中...'
-        }
-        
-        if (sectorStatus === 'ok' && stocksStatus === 'ok') {
-          return '正常'
-        }
-        
-        if (sectorStatus === 'ok' && stocksStatus !== 'ok') {
-          return '板块正常，个股异常'
-        }
-        
-        if (sectorStatus !== 'ok') {
-          return item.error || '异常'
-        }
-        
-        return item.error || '异常'
-      }
-      
       if (item.status === 'ok') {
         return '正常'
+      }
+      
+      if (item.status === 'partial') {
+        return '板块正常，个股异常'
       }
       
       if (item.status === 'checking') {
