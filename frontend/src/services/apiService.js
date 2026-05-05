@@ -274,42 +274,14 @@ export async function saveAIPrompt(prompt, password) {
   }
 }
 
-export async function getSystemHealth() {
+export async function getHealth(triggerCheck = false) {
   try {
-    const response = await axios.get('/health')
-    return response.data
-  } catch (error) {
-    console.error('获取系统健康状态失败:', error)
-    throw error
-  }
-}
-
-export async function getHealthStatus() {
-  try {
-    const response = await apiClient.get('/health/status')
+    const response = triggerCheck 
+      ? await apiClient.post('/health') 
+      : await apiClient.get('/health')
     return response.data
   } catch (error) {
     console.error('获取健康状态失败:', error)
-    throw error
-  }
-}
-
-export async function triggerHealthCheck() {
-  try {
-    const response = await apiClient.post('/health/check')
-    return response.data
-  } catch (error) {
-    console.error('触发健康检测失败:', error)
-    throw error
-  }
-}
-
-export async function getCrawlerStatus() {
-  try {
-    const response = await apiClient.get('/crawler/status')
-    return response.data
-  } catch (error) {
-    console.error('获取爬虫状态失败:', error)
     throw error
   }
 }

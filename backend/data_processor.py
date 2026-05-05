@@ -185,7 +185,7 @@ def parse_ths_sector_html(html_content):
     return sectors[:10]
 
 def get_sector_flow_data():
-    from health_checker import find_working_headers_for_sector, get_crawler_status, set_crawler_working, set_crawler_idle
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     crawler_status = get_crawler_status()
     if crawler_status.get('sector_flow', {}).get('status') == 'failed':

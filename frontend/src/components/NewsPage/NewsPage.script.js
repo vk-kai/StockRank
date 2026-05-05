@@ -1,4 +1,4 @@
-import { getNews, getSystemHealth, searchNews, isSecurityError } from '../../services/apiService'
+import { getNews, getHealth, searchNews, isSecurityError } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -514,7 +514,7 @@ export default {
 
     async fetchSystemHealth() {
       try {
-        const data = await getSystemHealth()
+        const data = await getHealth()
         if (data.threads) {
           this.threadStatus = data.threads
         }

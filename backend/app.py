@@ -53,39 +53,19 @@ def create_app():
     app.register_blueprint(log_bp)
     app.register_blueprint(house_bp)
     
-    @app.route('/health', methods=['GET'])
+    @app.route('/health', methods=['GET', 'POST', 'OPTIONS'])
     def health():
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True})
+        
+        if request.method == 'POST':
+            run_health_check()
+        
         return jsonify({
             'status': 'ok',
             'threads': get_all_status(),
             'health': get_health_status(),
             'crawler': get_crawler_status()
-        })
-    
-    @app.route('/api/health/check', methods=['POST', 'OPTIONS'])
-    def trigger_health_check():
-        if request.method == 'OPTIONS':
-            return jsonify({'success': True})
-        
-        result = run_health_check()
-        return jsonify({
-            'success': True,
-            'data': get_health_status(),
-            'result': result
-        })
-    
-    @app.route('/api/health/status', methods=['GET'])
-    def health_status():
-        return jsonify({
-            'success': True,
-            'data': get_health_status()
-        })
-    
-    @app.route('/api/crawler/status', methods=['GET'])
-    def crawler_status():
-        return jsonify({
-            'success': True,
-            'data': get_crawler_status()
         })
     
     @app.route('/api/crawler/reset', methods=['POST', 'OPTIONS'])

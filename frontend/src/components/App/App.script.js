@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getSystemHealth, getAccumulatedFlow, getSectorStocks, getHealthStatus, getCrawlerStatus, resetCrawler, triggerHealthCheck } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
 import { generateChartOption, generateSeries } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -122,8 +122,6 @@ export default {
     this.startCountdown()
     this.fetchLatestNews()
     this.startNewsRotation()
-    this.fetchSystemHealth()
-    this.startHealthCheck()
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -744,46 +742,27 @@ export default {
       }
     },
 
-    async fetchSystemHealth() {
+    async fetchHealthStatus(triggerCheck = false) {
       try {
-        const data = await getSystemHealth()
-        if (data.threads) {
-          this.threadStatus = data.threads
+        const response = await getHealth(triggerCheck)
+        if (response.threads) {
+          this.threadStatus = response.threads
         }
-        if (data.health) {
-          this.healthStatus = data.health
+        if (response.health) {
+          this.healthStatus = response.health
         }
-      } catch (err) {
-        console.error('获取服务状态失败:', err)
-      }
-    },
-
-    async fetchHealthStatus() {
-      try {
-        const response = await getHealthStatus()
-        if (response.success && response.data) {
-          this.healthStatus = response.data
+        if (response.crawler) {
+          this.crawlerStatus = response.crawler
         }
       } catch (err) {
         console.error('获取健康状态失败:', err)
       }
     },
 
-    async fetchCrawlerStatus() {
-      try {
-        const response = await getCrawlerStatus()
-        if (response.success && response.data) {
-          this.crawlerStatus = response.data
-        }
-      } catch (err) {
-        console.error('获取爬虫状态失败:', err)
-      }
-    },
-
     async resetCrawlerStatus(crawlerName) {
       try {
         await resetCrawler(crawlerName)
-        await this.fetchCrawlerStatus()
+        await this.fetchHealthStatus()
       } catch (err) {
         console.error('重置爬虫状态失败:', err)
       }
@@ -846,23 +825,11 @@ export default {
       return '检测中'
     },
 
-    startHealthCheck() {
-      this.fetchHealthStatus()
-      this.fetchCrawlerStatus()
-    },
-
     async doHealthCheck() {
-      try {
-        await triggerHealthCheck()
-        await this.fetchHealthStatus()
-        await this.fetchCrawlerStatus()
-      } catch (err) {
-        console.error('健康检测失败:', err)
-      }
+      await this.fetchHealthStatus(true)
     },
 
     async refreshHealth() {
-      this.fetchSystemHealth()
       await this.doHealthCheck()
     },
 
