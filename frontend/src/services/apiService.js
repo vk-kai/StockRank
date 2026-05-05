@@ -276,9 +276,10 @@ export async function saveAIPrompt(prompt, password) {
 
 export async function getHealth(triggerCheck = false) {
   try {
+    const config = { timeout: 10000 }
     const response = triggerCheck 
-      ? await axios.post('/health') 
-      : await axios.get('/health')
+      ? await axios.post('/health', null, config) 
+      : await axios.get('/health', config)
     return response.data
   } catch (error) {
     console.error('获取健康状态失败:', error)

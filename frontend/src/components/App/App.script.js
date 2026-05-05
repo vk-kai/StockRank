@@ -755,6 +755,17 @@ export default {
         }
       } catch (err) {
         console.error('获取健康状态失败:', err)
+        if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+          this.healthStatus = {
+            ths_news: { status: 'error', error: '网络超时' },
+            ths_sector: { status: 'error', error: '网络超时' }
+          }
+        } else {
+          this.healthStatus = {
+            ths_news: { status: 'error', error: '网络异常' },
+            ths_sector: { status: 'error', error: '网络异常' }
+          }
+        }
       }
     },
 
