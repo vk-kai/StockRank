@@ -67,12 +67,11 @@ export default {
     healthErrors() {
       const errors = []
       const labels = {
-        'ths_sector': '同花顺板块资金',
-        'ths_stocks': '同花顺个股详情',
-        'news': '同花顺新闻'
+        'ths_news': '同花顺新闻',
+        'ths_sector_stocks': '同花顺板块资金+个股详情'
       }
       for (const [key, value] of Object.entries(this.healthStatus)) {
-        if (value.status === 'error') {
+        if (value.status === 'error' || value.status === 'partial') {
           errors.push({
             key,
             label: labels[key] || key,
@@ -112,9 +111,8 @@ export default {
     },
     healthToCrawlerMap() {
       return {
-        'ths_sector': 'sector_flow',
-        'ths_stocks': 'stocks',
-        'news': 'news'
+        'ths_news': 'news',
+        'ths_sector_stocks': 'sector_flow'
       }
     }
   },
@@ -816,6 +814,9 @@ export default {
       if (healthItem.status === 'ok') {
         return 'monitor-ok'
       }
+      if (healthItem.status === 'partial') {
+        return 'monitor-partial'
+      }
       if (healthItem.status === 'error') {
         return 'monitor-error'
       }
@@ -866,11 +867,47 @@ export default {
 
     getHealthLabel(key) {
       const labels = {
-        'ths_sector': '同花顺板块资金',
-        'ths_stocks': '同花顺个股详情',
-        'news': '同花顺新闻'
+        'ths_news': '同花顺新闻',
+        'ths_sector_stocks': '板块资金+个股详情'
       }
       return labels[key] || key
+    },
+    
+    getMonitorStatusText(key, item) {
+      if (!item) return '检测中...'
+      
+      if (key === 'ths_sector_stocks') {
+        const sectorStatus = item.sector_status
+        const stocksStatus = item.stocks_status
+        
+        if (item.status === 'checking') {
+          return '检测中...'
+        }
+        
+        if (sectorStatus === 'ok' && stocksStatus === 'ok') {
+          return '正常'
+        }
+        
+        if (sectorStatus === 'ok' && stocksStatus !== 'ok') {
+          return '板块正常，个股异常'
+        }
+        
+        if (sectorStatus !== 'ok') {
+          return item.error || '异常'
+        }
+        
+        return item.error || '异常'
+      }
+      
+      if (item.status === 'ok') {
+        return '正常'
+      }
+      
+      if (item.status === 'checking') {
+        return '检测中...'
+      }
+      
+      return item.error || '异常'
     },
 
     getThreadTitle(key, thread) {

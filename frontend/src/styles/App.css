@@ -1061,6 +1061,12 @@
   animation: blink-dot 1s infinite;
 }
 
+.monitor-partial .monitor-dot {
+  background: #ff9800;
+  box-shadow: 0 0 8px #ff9800;
+  animation: pulse-dot 2s infinite;
+}
+
 .monitor-unknown .monitor-dot {
   background: #9e9e9e;
   box-shadow: 0 0 8px #9e9e9e;
@@ -1100,6 +1106,11 @@
 .monitor-error .monitor-text {
   color: #ef5350;
   font-weight: 600;
+  margin-left: auto;
+}
+
+.monitor-partial .monitor-text {
+  color: #ffb74d;
   margin-left: auto;
 }
 

@@ -54,38 +54,25 @@ def _generate_random_string(length):
     return ''.join(random.choice(chars) for _ in range(length))
 
 def _generate_random_cookie():
-    timestamp = int(datetime.now().timestamp())
-    random_hash = ''.join(random.choices('ABCDEF0123456789', k=16))
-    hm_lvt_1 = f'{timestamp - random.randint(100, 500)}'
-    hm_lvt_2 = f'{timestamp - random.randint(100, 500)}'
-    hm_lpvt_1 = f'{timestamp}'
-    hm_lpvt_2 = f'{timestamp}'
-    v_random = _generate_random_string(40)
-    
-    return f'Hm_lvt_6dc19a3987135225beb977a0b9931a25={hm_lvt_1}; HMACCOUNT={random_hash}; Hm_lvt_9d25c03aef06fec6abea265b79509ba4={hm_lvt_2}; Hm_lpvt_6dc19a3987135225beb977a0b9931a25={hm_lpvt_1}; Hm_lpvt_9d25c03aef06fec6abea265b79509ba4={hm_lpvt_2}; v={v_random}'
+    return 'vvvv=1'
 
 def _generate_random_browser_version():
-    major = random.randint(120, 130)
+    major = random.randint(120, 148)
     minor = 0
     patch = random.randint(1000, 9999)
     build = random.randint(10, 200)
     return f'{major}.{minor}.{patch}.{build}'
 
 def generate_random_headers(host=None, referer=None):
-    browsers = ['Edge', 'Chrome']
-    browser = random.choice(browsers)
-    
     browser_version = _generate_random_browser_version()
     major_version = browser_version.split('.')[0]
     
     cookie = _generate_random_cookie()
     
-    if browser == 'Edge':
-        sec_ch_ua = f'"Microsoft Edge";v="{major_version}", "Not.A/Brand";v="8", "Chromium";v="{major_version}"'
-        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36 Edg/{browser_version}'
-    else:
-        sec_ch_ua = f'"Chromium";v="{major_version}", "Google Chrome";v="{major_version}", "Not-A.Brand";v="99"'
-        user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36'
+    sec_ch_ua = f'"Microsoft Edge";v="{major_version}", "Not.A/Brand";v="8", "Chromium";v="{major_version}"'
+    user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36 Edg/{browser_version}'
+    
+    target_url = THS_SECTOR_URL
     
     headers = {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -95,19 +82,17 @@ def generate_random_headers(host=None, referer=None):
         'Connection': 'keep-alive',
         'Cookie': cookie,
         'Host': host or 'data.10jqka.com.cn',
+        'Referer': referer or target_url,
         'sec-ch-ua': sec_ch_ua,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'document',
         'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-site',
+        'sec-fetch-site': 'same-origin',
         'sec-fetch-user': '?1',
         'Upgrade-Insecure-Requests': '1',
         'User-Agent': user_agent
     }
-    
-    if referer:
-        headers['Referer'] = referer
     
     return headers
 
@@ -207,13 +192,8 @@ def get_sector_flow_data():
         error_logger.warning("板块资金获取已停止，跳过本次获取")
         return []
     
-    working_headers = find_working_headers_for_sector()
-    if not working_headers:
-        error_logger.error("无法找到可用的请求头，板块资金获取已停止")
-        return []
-    
     set_crawler_working('sector_flow')
-    headers = working_headers
+    headers = generate_random_headers()
     
     max_retries = 3
     for retry in range(max_retries):
@@ -230,6 +210,12 @@ def get_sector_flow_data():
             session = requests.Session()
             session.trust_env = False
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            
+            if response.status_code == 401 or response.status_code == 403:
+                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，尝试重新生成请求头")
+                headers = generate_random_headers()
+                continue
+            
             response.raise_for_status()
             
             if response.encoding == 'ISO-8859-1':
