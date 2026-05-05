@@ -277,8 +277,8 @@ export async function saveAIPrompt(prompt, password) {
 export async function getHealth(triggerCheck = false) {
   try {
     const response = triggerCheck 
-      ? await apiClient.post('/health') 
-      : await apiClient.get('/health')
+      ? await axios.post('/health') 
+      : await axios.get('/health')
     return response.data
   } catch (error) {
     console.error('获取健康状态失败:', error)
