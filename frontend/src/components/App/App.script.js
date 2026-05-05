@@ -462,8 +462,6 @@ export default {
     },
 
     async fetchLatestNews() {
-      await this.doHealthCheck()
-      
       try {
         const response = await getNews(1, 5)
         if (response.success) {

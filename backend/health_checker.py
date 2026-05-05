@@ -235,6 +235,23 @@ def run_health_check():
     
     health_logger.info("开始健康检测...")
     
+    health_status = {
+        'ths_news': {
+            'status': 'unknown',
+            'last_check': None,
+            'error': None,
+            'response_time': None
+        },
+        'ths_sector': {
+            'status': 'unknown',
+            'last_check': None,
+            'error': None,
+            'response_time': None,
+            'sector_status': 'unknown',
+            'stocks_status': 'unknown'
+        }
+    }
+    
     news_success, news_time, news_error = test_news_api()
     health_status['ths_news'] = {
         'status': 'ok' if news_success else 'error',

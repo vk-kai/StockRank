@@ -9,25 +9,20 @@ error_logger = get_logger('error')
 info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
-    from health_checker import find_working_headers_for_news, get_crawler_status, set_crawler_working, set_crawler_idle
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     dev_mode = is_dev_mode()
     api_url = DEV_NEWS_URL if dev_mode else NEWS_URL
     if dev_mode:
         info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
     
-    crawler_status = get_crawler_status()
-    if crawler_status.get('news', {}).get('status') == 'failed':
-        error_logger.warning("新闻获取已停止，跳过本次获取")
-        return []
-    
-    working_headers = find_working_headers_for_news()
-    if not working_headers:
-        error_logger.error("无法找到可用的请求头，新闻获取已停止")
-        return []
-    
     set_crawler_working('news')
-    headers = working_headers
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': 'https://news.10jqka.com.cn/',
+    }
     
     params = {
         'page': page,

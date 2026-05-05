@@ -338,7 +338,7 @@ def parse_ths_stock_html(html_content):
     return stocks
 
 def get_sector_stocks(sector_url):
-    from health_checker import find_working_headers_for_stocks, get_crawler_status, set_crawler_working, set_crawler_idle
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     if not sector_url:
         error_logger.error("板块URL为空")
@@ -351,18 +351,8 @@ def get_sector_stocks(sector_url):
     parsed_url = urlparse(sector_url)
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
-    crawler_status = get_crawler_status()
-    if crawler_status.get('stocks', {}).get('status') == 'failed':
-        error_logger.warning("个股详情获取已停止，跳过本次获取")
-        return []
-    
-    working_headers = find_working_headers_for_stocks()
-    if not working_headers:
-        error_logger.error("无法找到可用的请求头，个股详情获取已停止")
-        return []
-    
     set_crawler_working('stocks')
-    headers = working_headers
+    headers = generate_random_headers(host=host)
     
     max_retries = 3
     for retry in range(max_retries):
