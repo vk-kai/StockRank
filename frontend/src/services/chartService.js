@@ -230,12 +230,12 @@ export function collectAllSectors(timeData, allData, isToday) {
   // 转换为数组并排序
   return Array.from(sectorStats.values())
     .sort((a, b) => {
-      // 优先按出现次数排序
-      if (b.count !== a.count) {
-        return b.count - a.count
+      // 优先按最新资金流入排序
+      if (b.latestFlow !== a.latestFlow) {
+        return b.latestFlow - a.latestFlow
       }
-      // 再按最新资金流入排序
-      return b.latestFlow - a.latestFlow
+      // 再按出现次数排序
+      return b.count - a.count
     })
     .map(s => s.name)
 }
