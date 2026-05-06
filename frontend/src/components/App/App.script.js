@@ -146,6 +146,13 @@ export default {
   },
   methods: {
     initChart() {
+      console.log('initChart 被调用, chartInstance 状态:', this.chartInstance)
+      
+      if (this.chartInstance) {
+        console.log('chartInstance 已存在，不再重复初始化')
+        return
+      }
+      
       const _this = this
       this.$nextTick(() => {
         console.log('=== initChart 开始 ===')
@@ -238,15 +245,20 @@ export default {
     },
 
     async fetchCurrentData() {
+      console.log('=== fetchCurrentData 开始 ===')
       try {
         const response = await getCurrentFlow()
+        console.log('currentData 获取成功:', this.currentData)
+        
         if (response.success) {
           this.currentData = response.data
           const timestamp = new Date(response.timestamp)
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
           
           if (this.selectedTimeRange === 'today') {
+            console.log('准备调用 fetchMinuteData')
             await this.fetchMinuteData()
+            console.log('fetchMinuteData 完成')
           } else {
             this.updateChart()
           }
@@ -255,6 +267,7 @@ export default {
         console.error('获取当前数据失败:', err)
         this.error = '获取当前数据失败: ' + err.message
       }
+      console.log('=== fetchCurrentData 结束 ===')
     },
 
     async fetchHistoryData(days) {
@@ -277,15 +290,21 @@ export default {
     },
 
     async fetchMinuteData() {
+      console.log('=== fetchMinuteData 开始 ===')
       try {
         const response = await getMinuteData(24)
         if (response.success) {
           this.minuteData = response.data
+          console.log('minuteData 获取成功, keys:', Object.keys(this.minuteData))
+          console.log('准备调用 updateChart')
           this.updateChart()
+          console.log('updateChart 执行完成')
         }
       } catch (err) {
+        console.error('获取分钟数据失败:', err)
         this.error = '获取分钟数据失败: ' + err.message
       }
+      console.log('=== fetchMinuteData 结束 ===')
     },
 
     async fetchDataByTimeRange() {
@@ -360,6 +379,9 @@ export default {
     },
 
     updateChart() {
+      console.log('=== updateChart 开始 ===')
+      console.log('chartInstance:', this.chartInstance)
+      
       if (!this.chartInstance) {
         console.log('图表实例不存在，重新初始化')
         this.initChart()
@@ -368,6 +390,9 @@ export default {
 
       const oldOption = this.chartInstance.getOption()
       const oldSelected = oldOption?.legend?.[0]?.selected || {}
+      
+      console.log('oldOption:', oldOption)
+      console.log('oldSelected:', oldSelected)
 
       let timeData, allData
 
@@ -389,6 +414,7 @@ export default {
 
       let option
       if (timeData.length === 0) {
+        console.log('没有数据，显示空图表')
         option = {
           tooltip: {
             trigger: 'item',
@@ -456,14 +482,29 @@ export default {
         })
         
         const series = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
+        console.log('validTopSectors:', validTopSectors)
+        console.log('series:', series)
+        
         option = generateChartOption(timeData, series, validTopSectors, oldSelected, this.colors, isToday)
+        console.log('生成的 option:', option)
       }
 
+      console.log('准备调用 setOption')
+      console.log('option.series:', option?.series)
+      
       try {
+        console.log('开始调用 setOption...')
         this.chartInstance.setOption(option, { notMerge: true })
+        console.log('setOption 成功')
       } catch (e) {
         console.error('setOption 失败:', e)
+        console.error('失败的 option:', JSON.stringify(option, (key, val) => {
+          if (typeof val === 'function') return '[Function]'
+          return val
+        }, 2))
       }
+      
+      console.log('=== updateChart 结束 ===')
     },
 
     getTopSectors(timeData, allData, isToday) {
