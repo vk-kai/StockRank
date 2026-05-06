@@ -1,6 +1,14 @@
 import { formatFlow } from '../utils/formatters'
 
 export function generateChartOption(timeData, series, topSectors, oldSelected, colors, isToday) {
+  const validSelected = {}
+  const topSectorsSet = new Set(topSectors)
+  for (const [name, selected] of Object.entries(oldSelected)) {
+    if (topSectorsSet.has(name)) {
+      validSelected[name] = selected
+    }
+  }
+
   return {
     tooltip: {
   trigger: 'item',
@@ -10,11 +18,12 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   borderWidth: 1,
 
   formatter: (params) => {
-
-    const change = params.data?.change
-    const totalFlow = params.data?.totalFlow
-    const accumulatedChange = params.data?.accumulatedChangePercent
-    const appearances = params.data?.appearances
+    if (!params.data) return ''
+    
+    const change = params.data.change
+    const totalFlow = params.data.totalFlow
+    const accumulatedChange = params.data.accumulatedChangePercent
+    const appearances = params.data.appearances
 
     let changeHtml = '-'
     if (change !== null && change !== undefined) {
@@ -35,7 +44,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         <div style="color:#8ba4c7">
           资金流入：
           <b style="color:#ee6666">
-            ${formatFlow(params.data?.value)}
+            ${formatFlow(params.data.value)}
           </b>
         </div>
 
@@ -87,7 +96,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       type: 'scroll',
       selectedMode: true,
       selected: topSectors.reduce((acc, name, index) => {
-        acc[name] = oldSelected[name] !== undefined ? oldSelected[name] : (index < 5)
+        acc[name] = validSelected[name] !== undefined ? validSelected[name] : (index < 5)
         return acc
       }, {})
     },
@@ -146,22 +155,28 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
 
       if (!sectorItem) {
-        return { value: null, change: null, totalFlow: null, accumulatedChangePercent: null, appearances: null }
+        return { 
+          value: null, 
+          change: null, 
+          totalFlow: null, 
+          accumulatedChangePercent: null, 
+          appearances: null 
+        }
       }
 
       if (isToday) {
         return {
-          value: sectorItem.flow,
-          change: sectorItem.change
+          value: sectorItem.flow !== undefined ? sectorItem.flow : null,
+          change: sectorItem.change !== undefined ? sectorItem.change : null
         }
       }
 
       return {
-        value: sectorItem.flow,
-        change: sectorItem.change,
-        totalFlow: sectorItem.total_flow,
-        accumulatedChangePercent: sectorItem.accumulated_change_percent,
-        appearances: sectorItem.appearances
+        value: sectorItem.flow !== undefined ? sectorItem.flow : null,
+        change: sectorItem.change !== undefined ? sectorItem.change : null,
+        totalFlow: sectorItem.total_flow !== undefined ? sectorItem.total_flow : null,
+        accumulatedChangePercent: sectorItem.accumulated_change_percent !== undefined ? sectorItem.accumulated_change_percent : null,
+        appearances: sectorItem.appearances !== undefined ? sectorItem.appearances : null
       }
     })
 
