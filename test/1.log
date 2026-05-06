@@ -1,0 +1,183 @@
+initChart 被调用, chartInstance 状态: null
+index-CHmI7hAZ.js:123 === initChart 开始 ===
+index-CHmI7hAZ.js:123 refs.chart: <div class=​"chart" _echarts_instance_=​"ec_1778046681003" style=​"user-select:​ none;​ -webkit-tap-highlight-color:​ rgba(0, 0, 0, 0)​;​ position:​ relative;​">​…​</div>​
+index-CHmI7hAZ.js:38 [Violation]
+    Added non-passive event listener to a scroll-blocking 'mousewheel' event. Consider marking event handler as 'passive' to make the page more responsive. See https://www.chromestatus.com/feature/5745543795965952
+Nm @ index-CHmI7hAZ.js:38
+Xh @ index-CHmI7hAZ.js:38
+(匿名) @ index-CHmI7hAZ.js:38
+D @ index-CHmI7hAZ.js:38
+bz @ index-CHmI7hAZ.js:38
+t @ index-CHmI7hAZ.js:38
+e @ index-CHmI7hAZ.js:47
+$b @ index-CHmI7hAZ.js:47
+t @ index-CHmI7hAZ.js:59
+uE @ index-CHmI7hAZ.js:59
+(匿名) @ index-CHmI7hAZ.js:123
+Promise.then
+k_ @ index-CHmI7hAZ.js:13
+initChart @ index-CHmI7hAZ.js:123
+mounted @ index-CHmI7hAZ.js:123
+(匿名) @ index-CHmI7hAZ.js:13
+jf @ index-CHmI7hAZ.js:13
+Dn @ index-CHmI7hAZ.js:13
+t.__weh.t.__weh @ index-CHmI7hAZ.js:13
+fI @ index-CHmI7hAZ.js:13
+cI @ index-CHmI7hAZ.js:13
+Promise.then
+uI @ index-CHmI7hAZ.js:13
+oB @ index-CHmI7hAZ.js:13
+QB @ index-CHmI7hAZ.js:13
+s.scheduler @ index-CHmI7hAZ.js:13
+f.scheduler @ index-CHmI7hAZ.js:9
+trigger @ index-CHmI7hAZ.js:9
+M_ @ index-CHmI7hAZ.js:9
+notify @ index-CHmI7hAZ.js:9
+trigger @ index-CHmI7hAZ.js:9
+set value @ index-CHmI7hAZ.js:9
+L @ index-CHmI7hAZ.js:25
+(匿名) @ index-CHmI7hAZ.js:25
+Promise.then
+x @ index-CHmI7hAZ.js:25
+S @ index-CHmI7hAZ.js:25
+install @ index-CHmI7hAZ.js:25
+use @ index-CHmI7hAZ.js:13
+(匿名) @ index-CHmI7hAZ.js:198
+index-CHmI7hAZ.js:38 [Violation]
+    Added non-passive event listener to a scroll-blocking 'wheel' event. Consider marking event handler as 'passive' to make the page more responsive. See https://www.chromestatus.com/feature/5745543795965952
+Nm @ index-CHmI7hAZ.js:38
+Xh @ index-CHmI7hAZ.js:38
+(匿名) @ index-CHmI7hAZ.js:38
+D @ index-CHmI7hAZ.js:38
+bz @ index-CHmI7hAZ.js:38
+t @ index-CHmI7hAZ.js:38
+e @ index-CHmI7hAZ.js:47
+$b @ index-CHmI7hAZ.js:47
+t @ index-CHmI7hAZ.js:59
+uE @ index-CHmI7hAZ.js:59
+(匿名) @ index-CHmI7hAZ.js:123
+Promise.then
+k_ @ index-CHmI7hAZ.js:13
+initChart @ index-CHmI7hAZ.js:123
+mounted @ index-CHmI7hAZ.js:123
+(匿名) @ index-CHmI7hAZ.js:13
+jf @ index-CHmI7hAZ.js:13
+Dn @ index-CHmI7hAZ.js:13
+t.__weh.t.__weh @ index-CHmI7hAZ.js:13
+fI @ index-CHmI7hAZ.js:13
+cI @ index-CHmI7hAZ.js:13
+Promise.then
+uI @ index-CHmI7hAZ.js:13
+oB @ index-CHmI7hAZ.js:13
+QB @ index-CHmI7hAZ.js:13
+s.scheduler @ index-CHmI7hAZ.js:13
+f.scheduler @ index-CHmI7hAZ.js:9
+trigger @ index-CHmI7hAZ.js:9
+M_ @ index-CHmI7hAZ.js:9
+notify @ index-CHmI7hAZ.js:9
+trigger @ index-CHmI7hAZ.js:9
+set value @ index-CHmI7hAZ.js:9
+L @ index-CHmI7hAZ.js:25
+(匿名) @ index-CHmI7hAZ.js:25
+Promise.then
+x @ index-CHmI7hAZ.js:25
+S @ index-CHmI7hAZ.js:25
+install @ index-CHmI7hAZ.js:25
+use @ index-CHmI7hAZ.js:13
+(匿名) @ index-CHmI7hAZ.js:198
+index-CHmI7hAZ.js:123 === echarts.init 完成 ===
+index-CHmI7hAZ.js:123 chartInstance: Proxy(t) {_$eventProcessor: e, _chartsViews: Array(0), _chartsMap: {…}, _componentsViews: Array(0), _componentsMap: {…}, …}
+index-CHmI7hAZ.js:123 === fetchCurrentData 开始 ===
+index-CHmI7hAZ.js:123 currentData 获取成功: Proxy(Array) {}
+index-CHmI7hAZ.js:123 准备调用 fetchMinuteData
+index-CHmI7hAZ.js:123 === fetchMinuteData 开始 ===
+index-CHmI7hAZ.js:123 minuteData 获取成功, keys: (36) ['09:30', '09:35', '09:40', '09:45', '09:50', '09:55', '10:00', '10:05', '10:10', '10:15', '10:20', '10:25', '10:30', '10:35', '10:40', '10:45', '10:50', '10:55', '11:00', '11:05', '11:10', '11:15', '11:20', '11:25', '11:30', '13:00', '13:05', '13:10', '13:15', '13:20', '13:25', '13:30', '13:35', '13:40', '13:45', '13:50']
+index-CHmI7hAZ.js:123 准备调用 updateChart
+index-CHmI7hAZ.js:123 === updateChart 开始 ===
+index-CHmI7hAZ.js:123 chartInstance: Proxy(t) {_$eventProcessor: e, _chartsViews: Array(0), _chartsMap: {…}, _componentsViews: Array(0), _componentsMap: {…}, …}
+index-CHmI7hAZ.js:123 oldOption: undefined
+index-CHmI7hAZ.js:123 oldSelected: {}
+index-CHmI7hAZ.js:123 原始 topSectors: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 过滤后的 validTopSectors: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 原始 rawSeries count: 10
+index-CHmI7hAZ.js:123 原始 rawSeries: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 板块 半导体 hasData: true data sample: (3) [{…}, {…}, {…}]
+index-CHmI7hAZ.js:123 板块 通信设备 hasData: true data sample: (3) [{…}, {…}, {…}]
+index-CHmI7hAZ.js:123 板块 消费电子 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 通用设备 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 汽车零部件 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 计算机设备 hasData: true data sample: (3) [{…}, '-', {…}]
+index-CHmI7hAZ.js:123 板块 小金属 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 光学光电子 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 自动化设备 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 板块 军工装备 hasData: true data sample: (3) ['-', '-', '-']
+index-CHmI7hAZ.js:123 过滤后 series count: 10
+index-CHmI7hAZ.js:123 过滤后 series: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 validTopSectors: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 series count: 10
+index-CHmI7hAZ.js:123 series[0]: name=半导体, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: {value: 35.1, change: 0.0255}
+index-CHmI7hAZ.js:123   data[1]: {value: 68.81, change: 0.028300000000000002}
+index-CHmI7hAZ.js:123   data[2]: {value: 236.34, change: 0.0313}
+index-CHmI7hAZ.js:123 series[1]: name=通信设备, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: {value: 12.75, change: 0.011899999999999999}
+index-CHmI7hAZ.js:123   data[1]: {value: 28.59, change: 0.0172}
+index-CHmI7hAZ.js:123   data[2]: {value: 100.91, change: 0.0181}
+index-CHmI7hAZ.js:123 series[2]: name=消费电子, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[3]: name=通用设备, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[4]: name=汽车零部件, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[5]: name=计算机设备, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: {value: 3.11, change: 0.0124}
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: {value: 28.35, change: 0.0192}
+index-CHmI7hAZ.js:123 series[6]: name=小金属, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[7]: name=光学光电子, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[8]: name=自动化设备, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 series[9]: name=军工装备, type=line, data length=36
+index-CHmI7hAZ.js:123   data[0]: -
+index-CHmI7hAZ.js:123   data[1]: -
+index-CHmI7hAZ.js:123   data[2]: -
+index-CHmI7hAZ.js:123 finalTopSectors: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 series count in option: 10
+index-CHmI7hAZ.js:123 生成的 option.legend.data: (10) ['半导体', '通信设备', '消费电子', '通用设备', '汽车零部件', '计算机设备', '小金属', '光学光电子', '自动化设备', '军工装备']
+index-CHmI7hAZ.js:123 生成的 option.series.length: 10
+index-CHmI7hAZ.js:123 生成的 option.legend: {data: Array(10), textStyle: {…}, selectedMode: true, selected: {…}}
+index-CHmI7hAZ.js:123 生成的 option.series: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-CHmI7hAZ.js:123 准备调用 setOption
+index-CHmI7hAZ.js:123 option.series: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-CHmI7hAZ.js:123 开始调用 setOption...
+index-CHmI7hAZ.js:123 setOption 成功
+index-CHmI7hAZ.js:123 === updateChart 结束 ===
+index-CHmI7hAZ.js:123 updateChart 执行完成
+index-CHmI7hAZ.js:123 === fetchMinuteData 结束 ===
+index-CHmI7hAZ.js:123 fetchMinuteData 完成
+index-CHmI7hAZ.js:123 === fetchCurrentData 结束 ===
+index-CHmI7hAZ.js:61 Uncaught TypeError: Cannot read properties of undefined (reading 'type')
+    at Object.reset (index-CHmI7hAZ.js:61:57103)
+    at e.U$ [as _reset] (index-CHmI7hAZ.js:59:21771)
+    at e._doReset (index-CHmI7hAZ.js:53:120389)
+    at e.perform (index-CHmI7hAZ.js:53:119392)
+    at index-CHmI7hAZ.js:59:19605
+    at index-CHmI7hAZ.js:38:8519
+    at Map.forEach (<anonymous>)
+    at e.each (index-CHmI7hAZ.js:38:8495)
+    at index-CHmI7hAZ.js:59:19447
+    at Array.forEach (<anonymous>)
