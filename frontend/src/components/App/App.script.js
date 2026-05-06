@@ -635,19 +635,33 @@ export default {
     },
 
     async openStockModal(sector) {
-      if (!sector.sector_url) {
+      let sectorUrl = sector.sector_url
+      
+      if (!sectorUrl) {
+        const timeKeys = Object.keys(this.minuteData).sort()
+        if (timeKeys.length > 0) {
+          const latestTimeKey = timeKeys[timeKeys.length - 1]
+          const latestData = this.minuteData[latestTimeKey]?.data || []
+          const sectorData = latestData.find(s => s.name === sector.name)
+          if (sectorData && sectorData.sector_url) {
+            sectorUrl = sectorData.sector_url
+          }
+        }
+      }
+      
+      if (!sectorUrl) {
         alert('该板块暂无个股详情链接')
         return
       }
       
       this.showStockModal = true
-      this.selectedSector = sector
+      this.selectedSector = { ...sector, sector_url: sectorUrl }
       this.loadingStocks = true
       this.stocksError = null
       this.sectorStocks = []
       
       try {
-        const response = await getSectorStocks(sector.sector_url)
+        const response = await getSectorStocks(sectorUrl)
         
         if (response.success) {
           this.sectorStocks = response.data
