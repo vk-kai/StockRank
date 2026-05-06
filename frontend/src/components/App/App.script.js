@@ -324,6 +324,10 @@ export default {
 
       const oldOption = this.chartInstance.getOption()
       const oldSelected = oldOption?.legend?.[0]?.selected || {}
+      
+      console.log('=== updateChart 开始 ===')
+      console.log('oldOption:', oldOption)
+      console.log('oldSelected:', oldSelected)
 
       let timeData, allData
 
@@ -342,6 +346,9 @@ export default {
           }
         })
       }
+      
+      console.log('timeData:', timeData)
+      console.log('allData keys:', Object.keys(allData))
 
       let option
       if (timeData.length === 0) {
@@ -404,11 +411,31 @@ export default {
           topSectors = this.getTopSectors(timeData, allData, isToday)
         }
         
+        console.log('topSectors:', topSectors)
+        
         const series = generateSeries(topSectors, timeData, allData, this.colors, isToday)
+        console.log('生成的 series:', series)
+        console.log('series 数据检查:')
+        series.forEach((s, i) => {
+          console.log(`  series[${i}] name:`, s.name)
+          console.log(`  series[${i}] data length:`, s.data?.length)
+          console.log(`  series[${i}] data sample:`, s.data?.slice(0, 3))
+        })
+        
         option = generateChartOption(timeData, series, topSectors, oldSelected, this.colors, isToday)
+        console.log('生成的 option:', option)
       }
 
-      this.chartInstance.setOption(option)
+      console.log('准备调用 setOption')
+      console.log('chartInstance 状态:', this.chartInstance)
+      try {
+        this.chartInstance.setOption(option, { notMerge: true })
+        console.log('setOption 成功')
+      } catch (e) {
+        console.error('setOption 失败:', e)
+        console.error('失败的 option:', option)
+      }
+      console.log('=== updateChart 结束 ===')
     },
 
     getTopSectors(timeData, allData, isToday) {
