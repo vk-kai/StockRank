@@ -148,6 +148,39 @@ export default {
     initChart() {
       this.$nextTick(() => {
         this.chartInstance = echarts.init(this.$refs.chart)
+        
+        // 捕获 ECharts 内部错误
+        this.chartInstance.on('error', (error) => {
+          console.error('=== ECharts 错误 ===')
+          console.error('error:', error)
+          console.error('message:', error.message)
+          console.error('type:', error.type)
+        })
+        
+        // 添加图例点击事件监听
+        this.chartInstance.on('legendselectchanged', (params) => {
+          console.log('=== 图例点击事件 ===')
+          console.log('params:', params)
+          console.log('selected:', params.selected)
+          console.log('name:', params.name)
+          
+          const option = this.chartInstance.getOption()
+          console.log('当前 option:', option)
+          console.log('legend:', option.legend)
+          console.log('legend[0]:', option.legend?.[0])
+          console.log('series:', option.series)
+          
+          // 检查系列数据
+          if (option.series) {
+            option.series.forEach((s, i) => {
+              console.log(`series[${i}]:`, {
+                name: s.name,
+                type: s.type,
+                data: s.data?.slice(0, 5)
+              })
+            })
+          }
+        })
       })
     },
 
