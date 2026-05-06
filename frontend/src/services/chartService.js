@@ -120,17 +120,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         }
       }
     },
-    dataZoom: [
-      {
-        type: 'inside',
-        xAxisIndex: 0
-      },
-      {
-        type: 'slider',
-        xAxisIndex: 0,
-        height: 20
-      }
-    ],
+
     series: series
   }
 }
@@ -138,35 +128,26 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
     const data = timeData.map(timeKey => {
-      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-      const sectorItem = timeDataItem.find(s => s.name === sectorName)
+        const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+        const sectorItem = timeDataItem.find(item => item.name === sectorName)
+        const flow = sectorItem?.flow || null
+        const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : 0
 
-      if (!sectorItem || sectorItem.flow === undefined || sectorItem.flow === null) {
-        return null
-      }
+        if (isToday) {
+          return {
+            value: flow,
+            change: change
+          }
+        }
 
-      const flow = sectorItem.flow
-      const change = sectorItem.change !== undefined && sectorItem.change !== null ? sectorItem.change : 0
-
-      if (isToday) {
         return {
           value: flow,
-          change: change
+          change: change,
+          totalFlow: sectorItem?.total_flow ?? 0,
+          accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
+          appearances: sectorItem?.appearances ?? 0
         }
-      }
-
-      const totalFlow = sectorItem.total_flow !== undefined && sectorItem.total_flow !== null ? sectorItem.total_flow : 0
-      const accumulatedChangePercent = sectorItem.accumulated_change_percent !== undefined && sectorItem.accumulated_change_percent !== null ? sectorItem.accumulated_change_percent : 0
-      const appearances = sectorItem.appearances !== undefined && sectorItem.appearances !== null ? sectorItem.appearances : 0
-
-      return {
-        value: flow,
-        change: change,
-        totalFlow: totalFlow,
-        accumulatedChangePercent: accumulatedChangePercent,
-        appearances: appearances
-      }
-    })
+      })
 
     // 检查该板块是否在至少一个时间点有数据
     const hasValidData = data.some(d => d !== null)
@@ -178,7 +159,7 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       name: sectorName,
       type: 'line',
       smooth: true,
-      connectNulls: false,
+      connectNulls: true,
       showSymbol: true,
       symbol: 'circle',
       symbolSize: 6,

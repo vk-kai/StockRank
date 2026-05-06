@@ -1,100 +1,27 @@
-2inject.js:1 Port connected
-index-BKgu8mVI.js:123 initChart 被调用, chartInstance 状态: null
-index-BKgu8mVI.js:123 === initChart 开始 ===
-index-BKgu8mVI.js:123 refs.chart: <div class=​"chart" _echarts_instance_=​"ec_1778047267057" style=​"user-select:​ none;​ -webkit-tap-highlight-color:​ rgba(0, 0, 0, 0)​;​ position:​ relative;​">​…​</div>​
-index-BKgu8mVI.js:123 === echarts.init 完成 ===
-index-BKgu8mVI.js:123 chartInstance: Proxy(t) {_$eventProcessor: e, _chartsViews: Array(0), _chartsMap: {…}, _componentsViews: Array(0), _componentsMap: {…}, …}
-index-BKgu8mVI.js:123 === fetchCurrentData 开始 ===
-index-BKgu8mVI.js:123 currentData 获取成功: Proxy(Array) {}
-index-BKgu8mVI.js:123 准备调用 fetchMinuteData
-index-BKgu8mVI.js:123 === fetchMinuteData 开始 ===
-index-BKgu8mVI.js:123 minuteData 获取成功, keys: (38) ['09:30', '09:35', '09:40', '09:45', '09:50', '09:55', '10:00', '10:05', '10:10', '10:15', '10:20', '10:25', '10:30', '10:35', '10:40', '10:45', '10:50', '10:55', '11:00', '11:05', '11:10', '11:15', '11:20', '11:25', '11:30', '13:00', '13:05', '13:10', '13:15', '13:20', '13:25', '13:30', '13:35', '13:40', '13:45', '13:50', '13:55', '14:00']
-index-BKgu8mVI.js:123 准备调用 updateChart
-index-BKgu8mVI.js:123 === updateChart 开始 ===
-index-BKgu8mVI.js:123 chartInstance: Proxy(t) {_$eventProcessor: e, _chartsViews: Array(0), _chartsMap: {…}, _componentsViews: Array(0), _componentsMap: {…}, …}
-index-BKgu8mVI.js:123 oldOption: undefined
-index-BKgu8mVI.js:123 oldSelected: {}
-index-BKgu8mVI.js:123 原始 topSectors: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 过滤后的 validTopSectors: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 原始 rawSeries count: 10
-index-BKgu8mVI.js:123 原始 rawSeries: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 板块 半导体 hasData: true data sample: (3) [{…}, {…}, {…}]
-index-BKgu8mVI.js:123 板块 通信设备 hasData: true data sample: (3) [{…}, {…}, {…}]
-index-BKgu8mVI.js:123 板块 电池 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 板块 元件 hasData: true data sample: (3) [{…}, {…}, {…}]
-index-BKgu8mVI.js:123 板块 消费电子 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 板块 IT服务 hasData: true data sample: (3) [{…}, {…}, {…}]
-index-BKgu8mVI.js:123 板块 通用设备 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 板块 小金属 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 板块 软件开发 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 板块 汽车零部件 hasData: true data sample: (3) [null, null, null]
-index-BKgu8mVI.js:123 过滤后 series count: 10
-index-BKgu8mVI.js:123 过滤后 series: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 validTopSectors: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 series count: 10
-index-BKgu8mVI.js:123 series[0]: name=半导体, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: {value: 35.1, change: 0.0255}
-index-BKgu8mVI.js:123   data[1]: {value: 68.81, change: 0.028300000000000002}
-index-BKgu8mVI.js:123   data[2]: {value: 236.34, change: 0.0313}
-index-BKgu8mVI.js:123 series[1]: name=通信设备, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: {value: 12.75, change: 0.011899999999999999}
-index-BKgu8mVI.js:123   data[1]: {value: 28.59, change: 0.0172}
-index-BKgu8mVI.js:123   data[2]: {value: 100.91, change: 0.0181}
-index-BKgu8mVI.js:123 series[2]: name=电池, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 series[3]: name=元件, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: {value: 8.25, change: 0.016399999999999998}
-index-BKgu8mVI.js:123   data[1]: {value: 16.87, change: 0.0206}
-index-BKgu8mVI.js:123   data[2]: {value: 59.64, change: 0.023399999999999997}
-index-BKgu8mVI.js:123 series[4]: name=消费电子, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 series[5]: name=IT服务, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: {value: 4.61, change: 0.011200000000000002}
-index-BKgu8mVI.js:123   data[1]: {value: 9.62, change: 0.018000000000000002}
-index-BKgu8mVI.js:123   data[2]: {value: 38.1, change: 0.02}
-index-BKgu8mVI.js:123 series[6]: name=通用设备, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 series[7]: name=小金属, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 series[8]: name=软件开发, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 series[9]: name=汽车零部件, type=line, data length=38
-index-BKgu8mVI.js:123   data[0]: null
-index-BKgu8mVI.js:123   data[1]: null
-index-BKgu8mVI.js:123   data[2]: null
-index-BKgu8mVI.js:123 finalTopSectors: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 series count in option: 10
-index-BKgu8mVI.js:123 生成的 option.legend.data: (10) ['半导体', '通信设备', '电池', '元件', '消费电子', 'IT服务', '通用设备', '小金属', '软件开发', '汽车零部件']
-index-BKgu8mVI.js:123 生成的 option.series.length: 10
-index-BKgu8mVI.js:123 生成的 option.legend: {data: Array(10), textStyle: {…}, selectedMode: true, selected: {…}}
-index-BKgu8mVI.js:123 生成的 option.series: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-BKgu8mVI.js:123 准备调用 setOption
-index-BKgu8mVI.js:123 option.series: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-BKgu8mVI.js:123 开始调用 setOption...
-index-BKgu8mVI.js:123 setOption 成功
-index-BKgu8mVI.js:123 === updateChart 结束 ===
-index-BKgu8mVI.js:123 updateChart 执行完成
-index-BKgu8mVI.js:123 === fetchMinuteData 结束 ===
-index-BKgu8mVI.js:123 fetchMinuteData 完成
-index-BKgu8mVI.js:123 === fetchCurrentData 结束 ===
-2index-BKgu8mVI.js:61 Uncaught TypeError: Cannot read properties of undefined (reading 'type')
-    at Object.reset (index-BKgu8mVI.js:61:57103)
-    at e.U$ [as _reset] (index-BKgu8mVI.js:59:21771)
-    at e._doReset (index-BKgu8mVI.js:53:120389)
-    at e.perform (index-BKgu8mVI.js:53:119392)
-    at index-BKgu8mVI.js:59:19605
-    at index-BKgu8mVI.js:38:8519
-    at Map.forEach (<anonymous>)
-    at e.each (index-BKgu8mVI.js:38:8495)
-    at index-BKgu8mVI.js:59:19447
-    at Array.forEach (<anonymous>)
+Port connected
+index-CkH21YMP.js:108 initChart 被调用, chartInstance 状态: null
+index-CkH21YMP.js:108 === initChart 开始 ===
+index-CkH21YMP.js:108 refs.chart: <div class=​"chart" _echarts_instance_=​"ec_1778048274226" style=​"user-select:​ none;​ -webkit-tap-highlight-color:​ rgba(0, 0, 0, 0)​;​ position:​ relative;​">​<div style=​"position:​ relative;​ width:​ 843px;​ height:​ 500px;​ padding:​ 0px;​ margin:​ 0px;​ border-width:​ 0px;​ cursor:​ default;​">​…​</div>​<div class>​</div>​</div>​
+index-CkH21YMP.js:108 === echarts.init 完成 ===
+index-CkH21YMP.js:108 chartInstance: Proxy(t)
+index-CkH21YMP.js:108 === fetchCurrentData 开始 ===
+index-CkH21YMP.js:108 currentData 获取成功: Proxy(Array)
+index-CkH21YMP.js:108 准备调用 fetchMinuteData
+index-CkH21YMP.js:108 === fetchMinuteData 开始 ===
+index-CkH21YMP.js:108 minuteData 获取成功, keys: Array(41)
+index-CkH21YMP.js:108 准备调用 updateChart
+index-CkH21YMP.js:108 === updateChart 开始 ===
+index-CkH21YMP.js:108 chartInstance: Proxy(t)
+index-CkH21YMP.js:108 oldOption: undefined
+index-CkH21YMP.js:108 oldSelected: Object
+index-CkH21YMP.js:108 从所有时间点收集到的板块: Array(33)
+index-CkH21YMP.js:108 生成的 series: Array(33)
+index-CkH21YMP.js:108 准备调用 setOption
+index-CkH21YMP.js:108 开始调用 setOption...
+index-CkH21YMP.js:108 setOption 成功
+index-CkH21YMP.js:108 === updateChart 结束 ===
+index-CkH21YMP.js:108 updateChart 执行完成
+index-CkH21YMP.js:108 === fetchMinuteData 结束 ===
+index-CkH21YMP.js:108 fetchMinuteData 完成
+index-CkH21YMP.js:108 === fetchCurrentData 结束 ===
+3index-CkH21YMP.js:59 Uncaught TypeError: Cannot read 

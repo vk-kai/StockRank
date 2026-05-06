@@ -467,8 +467,11 @@ export default {
         const isToday = this.selectedTimeRange === 'today'
         
         // 从所有时间点数据中收集出现过的板块
-        const allSectors = collectAllSectors(timeData, allData, isToday)
-        console.log('从所有时间点收集到的板块:', allSectors)
+        let allSectors = collectAllSectors(timeData, allData, isToday)
+        // 限制最多5个板块
+        allSectors = allSectors.slice(0, 5)
+        
+        console.log('从所有时间点收集到的板块(限制10个):', allSectors)
         
         // 生成 series
         const series = generateSeries(allSectors, timeData, allData, this.colors, isToday)
