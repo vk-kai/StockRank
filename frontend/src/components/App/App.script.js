@@ -146,8 +146,19 @@ export default {
   },
   methods: {
     initChart() {
+      const _this = this
       this.$nextTick(() => {
-        this.chartInstance = echarts.init(this.$refs.chart)
+        console.log('=== initChart 开始 ===')
+        console.log('refs.chart:', this.$refs.chart)
+        
+        try {
+          this.chartInstance = echarts.init(this.$refs.chart)
+          console.log('=== echarts.init 完成 ===')
+          console.log('chartInstance:', this.chartInstance)
+        } catch (e) {
+          console.error('echarts.init 错误:', e)
+          return
+        }
         
         // 捕获 ECharts 内部错误
         this.chartInstance.on('error', (error) => {
@@ -158,13 +169,13 @@ export default {
         })
         
         // 添加图例点击事件监听
-        this.chartInstance.on('legendselectchanged', (params) => {
+        this.chartInstance.on('legendselectchanged', function(params) {
           console.log('=== 图例点击事件 ===')
           console.log('params:', params)
           console.log('selected:', params.selected)
           console.log('name:', params.name)
           
-          const option = this.chartInstance.getOption()
+          const option = _this.chartInstance.getOption()
           console.log('当前 option:', option)
           console.log('legend:', option.legend)
           console.log('legend[0]:', option.legend?.[0])
