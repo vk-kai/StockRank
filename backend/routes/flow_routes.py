@@ -176,31 +176,10 @@ def get_history():
         today = datetime.now().strftime('%Y-%m-%d')
         today_daily_record = load_daily_data(today)
         
-        now = datetime.now().astimezone()
-        # 无论是否交易时间，都尝试获取最新数据
-        today_last_data = get_sector_flow_data()
-        if not today_last_data:
-            # 如果获取失败，再尝试从缓存中获取
-            if latest_data:
-                today_last_data = latest_data
-        
         if today_daily_record and 'data' in today_daily_record:
             if today not in history:
                 history[today] = []
             for i, item in enumerate(today_daily_record['data']):
-                history[today].append({
-                    'rank': i + 1,
-                    'name': item.get('name', ''),
-                    'flow': item.get('flow', 0),
-                    'change': item.get('change', 0),
-                    'total_flow': item.get('flow', 0),
-                    'accumulated_change_percent': item.get('change', 0),
-                    'appearances': 1
-                })
-        elif today_last_data:
-            if today not in history:
-                history[today] = []
-            for i, item in enumerate(today_last_data[:10]):
                 history[today].append({
                     'rank': i + 1,
                     'name': item.get('name', ''),

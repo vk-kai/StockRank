@@ -131,11 +131,10 @@
         <div 
           v-for="sector in accumulatedData" 
           :key="sector.rank"
-          class="sector-card clickable"
+          class="sector-card"
           :class="{ 'top-3': sector.rank <= 3 }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
-          @click="openStockModal(sector)"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>

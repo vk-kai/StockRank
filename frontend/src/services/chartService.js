@@ -106,17 +106,14 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     },
     yAxis: {
       type: 'value',
-      name: '资金流入',
+      name: '资金流入(亿)',
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
-          if (value >= 100000000) {
-            return (value / 100000000).toFixed(1) + '亿'
+          if (Math.abs(value) >= 1) {
+            return value.toFixed(1) + '亿'
           }
-          if (value >= 10000) {
-            return (value / 10000).toFixed(0) + '万'
-          }
-          return value
+          return (value * 10000).toFixed(0) + '万'
         }
       }
     },

@@ -1,15 +1,15 @@
 /**
  * 格式化资金流入金额
- * @param {number} value - 资金流入金额（万元）
+ * @param {number} value - 资金流入金额（亿元）
  * @returns {string} 格式化后的金额
  */
 export function formatFlow(value) {
   if (value === null || value === undefined) return '-'
-  // 东方财富API返回的资金流入单位是万元
-  if (Math.abs(value) >= 10000) {
-    return (value / 10000).toFixed(2) + ' 亿'
+  // 同花顺API返回的资金流入单位是亿元
+  if (Math.abs(value) >= 1) {
+    return value.toFixed(2) + ' 亿'
   } else {
-    return value.toFixed(2) + ' 万'
+    return (value * 10000).toFixed(2) + ' 万'
   }
 }
 
