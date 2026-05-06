@@ -473,23 +473,37 @@ export default {
           topSectors = this.getTopSectors(timeData, allData, isToday)
         }
         
-        // 过滤掉没有数据的板块 - 更严格的过滤
-        const validTopSectors = topSectors.filter(sectorName => {
+        // 过滤掉没有数据的板块 - 完全过滤
+        const validTopSectors = []
+        for (const sectorName of topSectors) {
           let hasValidData = false
           for (const timeKey of timeData) {
             const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
             const sectorItem = timeDataItem.find(s => s.name === sectorName)
-            if (sectorItem && sectorItem.flow !== undefined && sectorItem.flow !== null && sectorItem.flow > 0) {
+            if (sectorItem && sectorItem.flow !== undefined && sectorItem.flow !== null) {
               hasValidData = true
               break
             }
           }
-          return hasValidData
-        })
+          if (hasValidData) {
+            validTopSectors.push(sectorName)
+          }
+        }
         
+        console.log('原始 topSectors:', topSectors)
         console.log('过滤后的 validTopSectors:', validTopSectors)
         
-        const series = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
+        // 二次过滤：确保 series 只包含有有效数据的板块
+        let rawSeries = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
+        console.log('原始 series:', rawSeries.map(s => s?.name))
+        
+        const series = rawSeries.filter(s => {
+          if (!s) return false
+          const hasData = s.data.some(d => d !== '-' && d !== null && d !== undefined)
+          return hasData
+        })
+        
+        console.log('过滤后 series:', series.map(s => s.name))
         console.log('validTopSectors:', validTopSectors)
         console.log('series count:', series?.length)
         
@@ -505,7 +519,9 @@ export default {
           })
         }
         
-        option = generateChartOption(timeData, series, validTopSectors, oldSelected, this.colors, isToday)
+        // 使用过滤后的 series 名称列表
+        const finalTopSectors = series.map(s => s.name)
+        option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
         console.log('生成的 option.legend:', option?.legend)
         console.log('生成的 option.series:', option?.series?.map(s => ({name: s.name, type: s.type})))
       }
