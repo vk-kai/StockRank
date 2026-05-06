@@ -473,13 +473,21 @@ export default {
           topSectors = this.getTopSectors(timeData, allData, isToday)
         }
         
-        // 过滤掉没有数据的板块
+        // 过滤掉没有数据的板块 - 更严格的过滤
         const validTopSectors = topSectors.filter(sectorName => {
-          return timeData.some(timeKey => {
+          let hasValidData = false
+          for (const timeKey of timeData) {
             const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-            return timeDataItem.some(s => s.name === sectorName && s.flow !== undefined && s.flow !== null)
-          })
+            const sectorItem = timeDataItem.find(s => s.name === sectorName)
+            if (sectorItem && sectorItem.flow !== undefined && sectorItem.flow !== null && sectorItem.flow > 0) {
+              hasValidData = true
+              break
+            }
+          }
+          return hasValidData
         })
+        
+        console.log('过滤后的 validTopSectors:', validTopSectors)
         
         const series = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
         console.log('validTopSectors:', validTopSectors)

@@ -18,7 +18,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   borderWidth: 1,
 
   formatter: (params) => {
-    if (!params.data) return ''
+    if (!params.data || params.data === '-' || params.data.value === '-') return ''
     
     const change = params.data.change
     const totalFlow = params.data.totalFlow
@@ -149,16 +149,18 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
+    let hasValidData = false
     const data = timeData.map(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
 
       if (!sectorItem || sectorItem.flow === undefined || sectorItem.flow === null) {
-        return null
+        return '-'
       }
 
+      hasValidData = true
       const flow = sectorItem.flow
-      const change = sectorItem.change !== undefined && sectorItem.change !== null ? sectorItem.change : null
+      const change = sectorItem.change !== undefined && sectorItem.change !== null ? sectorItem.change : 0
 
       if (isToday) {
         return {
@@ -167,9 +169,9 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         }
       }
 
-      const totalFlow = sectorItem.total_flow !== undefined && sectorItem.total_flow !== null ? sectorItem.total_flow : null
-      const accumulatedChangePercent = sectorItem.accumulated_change_percent !== undefined && sectorItem.accumulated_change_percent !== null ? sectorItem.accumulated_change_percent : null
-      const appearances = sectorItem.appearances !== undefined && sectorItem.appearances !== null ? sectorItem.appearances : null
+      const totalFlow = sectorItem.total_flow !== undefined && sectorItem.total_flow !== null ? sectorItem.total_flow : 0
+      const accumulatedChangePercent = sectorItem.accumulated_change_percent !== undefined && sectorItem.accumulated_change_percent !== null ? sectorItem.accumulated_change_percent : 0
+      const appearances = sectorItem.appearances !== undefined && sectorItem.appearances !== null ? sectorItem.appearances : 0
 
       return {
         value: flow,
@@ -180,10 +182,8 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       }
     })
 
-    // Check if there are any valid data points
-    const hasValidData = data.some(item => item !== null);
     if (!hasValidData) {
-      return null;
+      return null
     }
 
     return {
@@ -218,5 +218,5 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         }
       }
     }
-  }).filter(series => series !== null);
+  }).filter(series => series !== null)
 }
