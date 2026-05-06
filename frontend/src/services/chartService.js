@@ -10,6 +10,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   }
 
   return {
+    animation: false,
     tooltip: {
   trigger: 'item',
 

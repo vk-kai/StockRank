@@ -159,7 +159,9 @@ export default {
         console.log('refs.chart:', this.$refs.chart)
         
         try {
-          this.chartInstance = echarts.init(this.$refs.chart)
+          this.chartInstance = echarts.init(this.$refs.chart, null, {
+            renderer: 'canvas'
+          })
           console.log('=== echarts.init 完成 ===')
           console.log('chartInstance:', this.chartInstance)
         } catch (e) {
