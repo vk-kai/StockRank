@@ -7214,6 +7214,1856 @@
                 }
             ],
             "timestamp": "2026-05-06T14:05:16.751805"
+        },
+        "14:10": {
+            "data": [
+                {
+                    "change": 0.0348,
+                    "company_count": 179,
+                    "flow": 1189.21,
+                    "inflow": 1189.21,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5927\u666e\u5fae",
+                        "price": 381.6,
+                        "url": "https://stockpage.10jqka.com.cn/301666/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -4.45,
+                    "outflow": 1193.65,
+                    "rank": 1,
+                    "sector_index": "15685.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0294,
+                    "company_count": 90,
+                    "flow": 684.9,
+                    "inflow": 684.9,
+                    "lead_stock": {
+                        "change": 0.1369,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 149.87,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 49.18,
+                    "outflow": 635.72,
+                    "rank": 2,
+                    "sector_index": "9981.92",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0326,
+                    "company_count": 105,
+                    "flow": 523.56,
+                    "inflow": 523.56,
+                    "lead_stock": {
+                        "change": 0.2386,
+                        "name": "\u7406\u5947\u667a\u80fd",
+                        "price": 77.29,
+                        "url": "https://stockpage.10jqka.com.cn/301599/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 66.55,
+                    "outflow": 457.01,
+                    "rank": 3,
+                    "sector_index": "24331",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0374,
+                    "company_count": 62,
+                    "flow": 339.66,
+                    "inflow": 339.66,
+                    "lead_stock": {
+                        "change": 0.1258,
+                        "name": "\u5357\u4e9a\u65b0\u6750",
+                        "price": 196.1,
+                        "url": "https://stockpage.10jqka.com.cn/688519/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": 6.9,
+                    "outflow": 332.75,
+                    "rank": 4,
+                    "sector_index": "20790",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0139,
+                    "company_count": 95,
+                    "flow": 250.51,
+                    "inflow": 250.51,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": 2.87,
+                    "outflow": 247.64,
+                    "rank": 5,
+                    "sector_index": "13166",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.029300000000000003,
+                    "company_count": 130,
+                    "flow": 250.0,
+                    "inflow": 250.0,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 46.16,
+                    "outflow": 203.84,
+                    "rank": 6,
+                    "sector_index": "14237.1",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0154,
+                    "company_count": 250,
+                    "flow": 218.33,
+                    "inflow": 218.33,
+                    "lead_stock": {
+                        "change": 0.15,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 40.94,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 12.24,
+                    "outflow": 206.09,
+                    "rank": 7,
+                    "sector_index": "9954.03",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.0371,
+                    "company_count": 28,
+                    "flow": 200.91,
+                    "inflow": 200.91,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u4e91\u5357\u9517\u4e1a",
+                        "price": 77.01,
+                        "url": "https://stockpage.10jqka.com.cn/002428/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 27.05,
+                    "outflow": 173.86,
+                    "rank": 8,
+                    "sector_index": "10001.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0171,
+                    "company_count": 139,
+                    "flow": 191.54,
+                    "inflow": 191.54,
+                    "lead_stock": {
+                        "change": 0.1143,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 147.02,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 36.89,
+                    "outflow": 154.65,
+                    "rank": 9,
+                    "sector_index": "2178.98",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                },
+                {
+                    "change": 0.011399999999999999,
+                    "company_count": 268,
+                    "flow": 191.05,
+                    "inflow": 191.05,
+                    "lead_stock": {
+                        "change": 0.1773,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 46.42,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 8.15,
+                    "outflow": 182.9,
+                    "rank": 10,
+                    "sector_index": "6929.81",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:10:16.974853"
+        },
+        "14:15": {
+            "data": [
+                {
+                    "change": 0.0308,
+                    "company_count": 179,
+                    "flow": 1234.91,
+                    "inflow": 1234.91,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5927\u666e\u5fae",
+                        "price": 381.6,
+                        "url": "https://stockpage.10jqka.com.cn/301666/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -20.78,
+                    "outflow": 1255.69,
+                    "rank": 1,
+                    "sector_index": "15626.2",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0259,
+                    "company_count": 90,
+                    "flow": 695.65,
+                    "inflow": 695.65,
+                    "lead_stock": {
+                        "change": 0.1341,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 149.5,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 42.95,
+                    "outflow": 652.7,
+                    "rank": 2,
+                    "sector_index": "9948.15",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0285,
+                    "company_count": 105,
+                    "flow": 534.4,
+                    "inflow": 534.4,
+                    "lead_stock": {
+                        "change": 0.1999,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.23,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 63.05,
+                    "outflow": 471.35,
+                    "rank": 3,
+                    "sector_index": "24234.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0319,
+                    "company_count": 62,
+                    "flow": 346.21,
+                    "inflow": 346.21,
+                    "lead_stock": {
+                        "change": 0.1001,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.09,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -0.57,
+                    "outflow": 346.78,
+                    "rank": 4,
+                    "sector_index": "20679.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0105,
+                    "company_count": 95,
+                    "flow": 254.95,
+                    "inflow": 254.95,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -2.57,
+                    "outflow": 257.52,
+                    "rank": 5,
+                    "sector_index": "13121.4",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.026600000000000002,
+                    "company_count": 130,
+                    "flow": 254.66,
+                    "inflow": 254.66,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5353\u6613\u4fe1\u606f",
+                        "price": 144.49,
+                        "url": "https://stockpage.10jqka.com.cn/688258/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 40.97,
+                    "outflow": 213.69,
+                    "rank": 6,
+                    "sector_index": "14200.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0128,
+                    "company_count": 250,
+                    "flow": 221.99,
+                    "inflow": 221.99,
+                    "lead_stock": {
+                        "change": 0.1472,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 40.84,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 8.16,
+                    "outflow": 213.83,
+                    "rank": 7,
+                    "sector_index": "9929.36",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.0334,
+                    "company_count": 28,
+                    "flow": 207.86,
+                    "inflow": 207.86,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 22.76,
+                    "outflow": 185.1,
+                    "rank": 8,
+                    "sector_index": "9965.73",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0146,
+                    "company_count": 139,
+                    "flow": 195.14,
+                    "inflow": 195.14,
+                    "lead_stock": {
+                        "change": 0.1106,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.6,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.3,
+                    "outflow": 161.84,
+                    "rank": 9,
+                    "sector_index": "2173.66",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                },
+                {
+                    "change": 0.0091,
+                    "company_count": 268,
+                    "flow": 194.2,
+                    "inflow": 194.2,
+                    "lead_stock": {
+                        "change": 0.1699,
+                        "name": "\u6b23\u9510\u79d1\u6280",
+                        "price": 39.38,
+                        "url": "https://stockpage.10jqka.com.cn/300745/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.4,
+                    "outflow": 189.8,
+                    "rank": 10,
+                    "sector_index": "6914.35",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:15:17.189928"
+        },
+        "14:20": {
+            "data": [
+                {
+                    "change": 0.0339,
+                    "company_count": 179,
+                    "flow": 1254.09,
+                    "inflow": 1254.09,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -18.47,
+                    "outflow": 1272.57,
+                    "rank": 1,
+                    "sector_index": "15672.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.028399999999999998,
+                    "company_count": 90,
+                    "flow": 701.2,
+                    "inflow": 701.2,
+                    "lead_stock": {
+                        "change": 0.1375,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 149.94,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 43.09,
+                    "outflow": 658.11,
+                    "rank": 2,
+                    "sector_index": "9972.75",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.031400000000000004,
+                    "company_count": 105,
+                    "flow": 540.83,
+                    "inflow": 540.83,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 64.69,
+                    "outflow": 476.14,
+                    "rank": 3,
+                    "sector_index": "24301.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.034300000000000004,
+                    "company_count": 62,
+                    "flow": 349.9,
+                    "inflow": 349.9,
+                    "lead_stock": {
+                        "change": 0.1124,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.55,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -0.33,
+                    "outflow": 350.23,
+                    "rank": 4,
+                    "sector_index": "20727.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0285,
+                    "company_count": 130,
+                    "flow": 257.84,
+                    "inflow": 257.84,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 41.67,
+                    "outflow": 216.17,
+                    "rank": 5,
+                    "sector_index": "14227.2",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0127,
+                    "company_count": 95,
+                    "flow": 257.13,
+                    "inflow": 257.13,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -2.96,
+                    "outflow": 260.08,
+                    "rank": 6,
+                    "sector_index": "13149.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.0147,
+                    "company_count": 250,
+                    "flow": 224.26,
+                    "inflow": 224.26,
+                    "lead_stock": {
+                        "change": 0.1469,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 40.83,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 8.68,
+                    "outflow": 215.59,
+                    "rank": 7,
+                    "sector_index": "9947.75",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.0384,
+                    "company_count": 28,
+                    "flow": 211.96,
+                    "inflow": 211.96,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 24.38,
+                    "outflow": 187.58,
+                    "rank": 8,
+                    "sector_index": "10013.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0167,
+                    "company_count": 139,
+                    "flow": 196.99,
+                    "inflow": 196.99,
+                    "lead_stock": {
+                        "change": 0.1105,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.58,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.55,
+                    "outflow": 163.44,
+                    "rank": 9,
+                    "sector_index": "2178.12",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                },
+                {
+                    "change": 0.0104,
+                    "company_count": 268,
+                    "flow": 196.07,
+                    "inflow": 196.07,
+                    "lead_stock": {
+                        "change": 0.1791,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 46.49,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.81,
+                    "outflow": 191.26,
+                    "rank": 10,
+                    "sector_index": "6923.12",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:20:18.498994"
+        },
+        "14:25": {
+            "data": [
+                {
+                    "change": 0.0342,
+                    "company_count": 179,
+                    "flow": 1275.92,
+                    "inflow": 1275.92,
+                    "lead_stock": {
+                        "change": 0.1999,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.32,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -24.83,
+                    "outflow": 1300.75,
+                    "rank": 1,
+                    "sector_index": "15677.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0292,
+                    "company_count": 90,
+                    "flow": 709.08,
+                    "inflow": 709.08,
+                    "lead_stock": {
+                        "change": 0.1402,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.3,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 41.24,
+                    "outflow": 667.83,
+                    "rank": 2,
+                    "sector_index": "9980.1",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.033,
+                    "company_count": 105,
+                    "flow": 550.12,
+                    "inflow": 550.12,
+                    "lead_stock": {
+                        "change": 0.2155,
+                        "name": "\u7406\u5947\u667a\u80fd",
+                        "price": 75.85,
+                        "url": "https://stockpage.10jqka.com.cn/301599/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 66.01,
+                    "outflow": 484.11,
+                    "rank": 3,
+                    "sector_index": "24339.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0352,
+                    "company_count": 62,
+                    "flow": 355.45,
+                    "inflow": 355.45,
+                    "lead_stock": {
+                        "change": 0.12179999999999999,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.9,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -2.91,
+                    "outflow": 358.36,
+                    "rank": 4,
+                    "sector_index": "20746.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0138,
+                    "company_count": 95,
+                    "flow": 261.63,
+                    "inflow": 261.63,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -2.61,
+                    "outflow": 264.24,
+                    "rank": 5,
+                    "sector_index": "13164.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.029500000000000002,
+                    "company_count": 130,
+                    "flow": 261.15,
+                    "inflow": 261.15,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 41.83,
+                    "outflow": 219.32,
+                    "rank": 6,
+                    "sector_index": "14240",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.015600000000000001,
+                    "company_count": 250,
+                    "flow": 227.98,
+                    "inflow": 227.98,
+                    "lead_stock": {
+                        "change": 0.15560000000000002,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 41.14,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 9.62,
+                    "outflow": 218.36,
+                    "rank": 7,
+                    "sector_index": "9956.13",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.040999999999999995,
+                    "company_count": 28,
+                    "flow": 218.65,
+                    "inflow": 218.65,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u4e91\u5357\u9517\u4e1a",
+                        "price": 77.01,
+                        "url": "https://stockpage.10jqka.com.cn/002428/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 26.78,
+                    "outflow": 191.86,
+                    "rank": 8,
+                    "sector_index": "10038.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0177,
+                    "company_count": 139,
+                    "flow": 199.35,
+                    "inflow": 199.35,
+                    "lead_stock": {
+                        "change": 0.11449999999999999,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 147.11,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.09,
+                    "outflow": 166.26,
+                    "rank": 9,
+                    "sector_index": "2180.37",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                },
+                {
+                    "change": 0.011000000000000001,
+                    "company_count": 268,
+                    "flow": 199.1,
+                    "inflow": 199.1,
+                    "lead_stock": {
+                        "change": 0.1877,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 46.83,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.51,
+                    "outflow": 194.59,
+                    "rank": 10,
+                    "sector_index": "6927.52",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:25:19.053461"
+        },
+        "14:30": {
+            "data": [
+                {
+                    "change": 0.0339,
+                    "company_count": 179,
+                    "flow": 1295.49,
+                    "inflow": 1295.49,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -28.33,
+                    "outflow": 1323.82,
+                    "rank": 1,
+                    "sector_index": "15672.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0291,
+                    "company_count": 90,
+                    "flow": 715.9,
+                    "inflow": 715.9,
+                    "lead_stock": {
+                        "change": 0.14,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.28,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 40.46,
+                    "outflow": 675.44,
+                    "rank": 2,
+                    "sector_index": "9979.73",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0333,
+                    "company_count": 105,
+                    "flow": 558.49,
+                    "inflow": 558.49,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 67.46,
+                    "outflow": 491.03,
+                    "rank": 3,
+                    "sector_index": "24346.2",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0354,
+                    "company_count": 62,
+                    "flow": 360.38,
+                    "inflow": 360.38,
+                    "lead_stock": {
+                        "change": 0.12369999999999999,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.97,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -5.87,
+                    "outflow": 366.25,
+                    "rank": 4,
+                    "sector_index": "20750",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.014499999999999999,
+                    "company_count": 95,
+                    "flow": 264.69,
+                    "inflow": 264.69,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -2.92,
+                    "outflow": 267.61,
+                    "rank": 5,
+                    "sector_index": "13173.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.029500000000000002,
+                    "company_count": 130,
+                    "flow": 263.17,
+                    "inflow": 263.17,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 41.03,
+                    "outflow": 222.14,
+                    "rank": 6,
+                    "sector_index": "14240.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0163,
+                    "company_count": 250,
+                    "flow": 231.2,
+                    "inflow": 231.2,
+                    "lead_stock": {
+                        "change": 0.1534,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 41.06,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 10.05,
+                    "outflow": 221.15,
+                    "rank": 7,
+                    "sector_index": "9963.58",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.042300000000000004,
+                    "company_count": 28,
+                    "flow": 225.26,
+                    "inflow": 225.26,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 29.33,
+                    "outflow": 195.93,
+                    "rank": 8,
+                    "sector_index": "10051.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0113,
+                    "company_count": 268,
+                    "flow": 202.56,
+                    "inflow": 202.56,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.42,
+                    "outflow": 198.13,
+                    "rank": 9,
+                    "sector_index": "6929.36",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.018000000000000002,
+                    "company_count": 139,
+                    "flow": 201.38,
+                    "inflow": 201.38,
+                    "lead_stock": {
+                        "change": 0.1109,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.64,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 32.87,
+                    "outflow": 168.51,
+                    "rank": 10,
+                    "sector_index": "2180.99",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:30:19.272162"
+        },
+        "14:35": {
+            "data": [
+                {
+                    "change": 0.0331,
+                    "company_count": 179,
+                    "flow": 1312.43,
+                    "inflow": 1312.43,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -33.61,
+                    "outflow": 1346.04,
+                    "rank": 1,
+                    "sector_index": "15660.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0294,
+                    "company_count": 90,
+                    "flow": 723.16,
+                    "inflow": 723.16,
+                    "lead_stock": {
+                        "change": 0.138,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.01,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 39.21,
+                    "outflow": 683.94,
+                    "rank": 2,
+                    "sector_index": "9982.21",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0332,
+                    "company_count": 105,
+                    "flow": 568.45,
+                    "inflow": 568.45,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 70.02,
+                    "outflow": 498.43,
+                    "rank": 3,
+                    "sector_index": "24344.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0348,
+                    "company_count": 62,
+                    "flow": 365.01,
+                    "inflow": 365.01,
+                    "lead_stock": {
+                        "change": 0.11810000000000001,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.76,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -8.31,
+                    "outflow": 373.32,
+                    "rank": 4,
+                    "sector_index": "20737.4",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0139,
+                    "company_count": 95,
+                    "flow": 268.28,
+                    "inflow": 268.28,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -3.36,
+                    "outflow": 271.64,
+                    "rank": 5,
+                    "sector_index": "13165.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.0297,
+                    "company_count": 130,
+                    "flow": 265.77,
+                    "inflow": 265.77,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 40.62,
+                    "outflow": 225.15,
+                    "rank": 6,
+                    "sector_index": "14243.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.016399999999999998,
+                    "company_count": 250,
+                    "flow": 234.24,
+                    "inflow": 234.24,
+                    "lead_stock": {
+                        "change": 0.1522,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 41.02,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 10.46,
+                    "outflow": 223.78,
+                    "rank": 7,
+                    "sector_index": "9963.96",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.0397,
+                    "company_count": 28,
+                    "flow": 229.31,
+                    "inflow": 229.31,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 29.35,
+                    "outflow": 199.96,
+                    "rank": 8,
+                    "sector_index": "10026.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0111,
+                    "company_count": 268,
+                    "flow": 205.92,
+                    "inflow": 205.92,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.43,
+                    "outflow": 201.49,
+                    "rank": 9,
+                    "sector_index": "6928.23",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.0183,
+                    "company_count": 139,
+                    "flow": 203.5,
+                    "inflow": 203.5,
+                    "lead_stock": {
+                        "change": 0.11019999999999999,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.55,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 32.96,
+                    "outflow": 170.54,
+                    "rank": 10,
+                    "sector_index": "2181.58",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:35:19.500387"
+        },
+        "14:40": {
+            "data": [
+                {
+                    "change": 0.0346,
+                    "company_count": 179,
+                    "flow": 1322.52,
+                    "inflow": 1322.52,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -32.27,
+                    "outflow": 1354.79,
+                    "rank": 1,
+                    "sector_index": "15683.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0304,
+                    "company_count": 90,
+                    "flow": 727.24,
+                    "inflow": 727.24,
+                    "lead_stock": {
+                        "change": 0.1411,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.42,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 39.84,
+                    "outflow": 687.4,
+                    "rank": 2,
+                    "sector_index": "9992.56",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0354,
+                    "company_count": 105,
+                    "flow": 575.14,
+                    "inflow": 575.14,
+                    "lead_stock": {
+                        "change": 0.2045,
+                        "name": "\u7406\u5947\u667a\u80fd",
+                        "price": 75.16,
+                        "url": "https://stockpage.10jqka.com.cn/301599/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 73.24,
+                    "outflow": 501.9,
+                    "rank": 3,
+                    "sector_index": "24396.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0355,
+                    "company_count": 62,
+                    "flow": 368.24,
+                    "inflow": 368.24,
+                    "lead_stock": {
+                        "change": 0.11699999999999999,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.72,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -8.02,
+                    "outflow": 376.27,
+                    "rank": 4,
+                    "sector_index": "20752",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0146,
+                    "company_count": 95,
+                    "flow": 270.2,
+                    "inflow": 270.2,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -3.49,
+                    "outflow": 273.69,
+                    "rank": 5,
+                    "sector_index": "13174.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.030600000000000002,
+                    "company_count": 130,
+                    "flow": 267.49,
+                    "inflow": 267.49,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 40.89,
+                    "outflow": 226.6,
+                    "rank": 6,
+                    "sector_index": "14255.3",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0171,
+                    "company_count": 250,
+                    "flow": 236.04,
+                    "inflow": 236.04,
+                    "lead_stock": {
+                        "change": 0.1517,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 41.0,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 10.98,
+                    "outflow": 225.06,
+                    "rank": 7,
+                    "sector_index": "9970.92",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.04019999999999999,
+                    "company_count": 28,
+                    "flow": 230.76,
+                    "inflow": 230.76,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 29.4,
+                    "outflow": 201.35,
+                    "rank": 8,
+                    "sector_index": "10031.4",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0118,
+                    "company_count": 268,
+                    "flow": 207.55,
+                    "inflow": 207.55,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.93,
+                    "outflow": 202.62,
+                    "rank": 9,
+                    "sector_index": "6932.93",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.0195,
+                    "company_count": 139,
+                    "flow": 205.06,
+                    "inflow": 205.06,
+                    "lead_stock": {
+                        "change": 0.1128,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.89,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.61,
+                    "outflow": 171.45,
+                    "rank": 10,
+                    "sector_index": "2184.02",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:40:47.879700"
+        },
+        "14:45": {
+            "data": [
+                {
+                    "change": 0.0344,
+                    "company_count": 179,
+                    "flow": 1334.31,
+                    "inflow": 1334.31,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -35.33,
+                    "outflow": 1369.64,
+                    "rank": 1,
+                    "sector_index": "15680.1",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0297,
+                    "company_count": 90,
+                    "flow": 732.65,
+                    "inflow": 732.65,
+                    "lead_stock": {
+                        "change": 0.1421,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.55,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 39.23,
+                    "outflow": 693.43,
+                    "rank": 2,
+                    "sector_index": "9985.31",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0347,
+                    "company_count": 105,
+                    "flow": 582.19,
+                    "inflow": 582.19,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 74.11,
+                    "outflow": 508.08,
+                    "rank": 3,
+                    "sector_index": "24379.1",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0349,
+                    "company_count": 62,
+                    "flow": 371.46,
+                    "inflow": 371.46,
+                    "lead_stock": {
+                        "change": 0.1162,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 41.69,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -8.56,
+                    "outflow": 380.01,
+                    "rank": 4,
+                    "sector_index": "20739.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0141,
+                    "company_count": 95,
+                    "flow": 272.12,
+                    "inflow": 272.12,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -5.29,
+                    "outflow": 277.41,
+                    "rank": 5,
+                    "sector_index": "13167.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.03,
+                    "company_count": 130,
+                    "flow": 269.47,
+                    "inflow": 269.47,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 40.9,
+                    "outflow": 228.57,
+                    "rank": 6,
+                    "sector_index": "14247.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.017,
+                    "company_count": 250,
+                    "flow": 238.25,
+                    "inflow": 238.25,
+                    "lead_stock": {
+                        "change": 0.1508,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 40.97,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 11.28,
+                    "outflow": 226.98,
+                    "rank": 7,
+                    "sector_index": "9970.27",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.04019999999999999,
+                    "company_count": 28,
+                    "flow": 233.16,
+                    "inflow": 233.16,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u897f\u90e8\u6750\u6599",
+                        "price": 69.86,
+                        "url": "https://stockpage.10jqka.com.cn/002149/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 29.49,
+                    "outflow": 203.66,
+                    "rank": 8,
+                    "sector_index": "10031.2",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.011699999999999999,
+                    "company_count": 268,
+                    "flow": 209.61,
+                    "inflow": 209.61,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 5.17,
+                    "outflow": 204.44,
+                    "rank": 9,
+                    "sector_index": "6932.48",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.0191,
+                    "company_count": 139,
+                    "flow": 206.53,
+                    "inflow": 206.53,
+                    "lead_stock": {
+                        "change": 0.11289999999999999,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.9,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.58,
+                    "outflow": 172.95,
+                    "rank": 10,
+                    "sector_index": "2183.17",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:45:17.892809"
+        },
+        "14:50": {
+            "data": [
+                {
+                    "change": 0.0341,
+                    "company_count": 179,
+                    "flow": 1354.93,
+                    "inflow": 1354.93,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -39.48,
+                    "outflow": 1394.41,
+                    "rank": 1,
+                    "sector_index": "15675.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.0298,
+                    "company_count": 90,
+                    "flow": 743.31,
+                    "inflow": 743.31,
+                    "lead_stock": {
+                        "change": 0.1463,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 151.1,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 38.2,
+                    "outflow": 705.11,
+                    "rank": 2,
+                    "sector_index": "9986.58",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.035,
+                    "company_count": 105,
+                    "flow": 594.18,
+                    "inflow": 594.18,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 76.61,
+                    "outflow": 517.57,
+                    "rank": 3,
+                    "sector_index": "24387.5",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0354,
+                    "company_count": 62,
+                    "flow": 376.36,
+                    "inflow": 376.36,
+                    "lead_stock": {
+                        "change": 0.1245,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 42.0,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -10.68,
+                    "outflow": 387.04,
+                    "rank": 4,
+                    "sector_index": "20749.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0141,
+                    "company_count": 95,
+                    "flow": 276.73,
+                    "inflow": 276.73,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -6.8,
+                    "outflow": 283.53,
+                    "rank": 5,
+                    "sector_index": "13167.8",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.030600000000000002,
+                    "company_count": 130,
+                    "flow": 272.83,
+                    "inflow": 272.83,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 40.31,
+                    "outflow": 232.52,
+                    "rank": 6,
+                    "sector_index": "14255.4",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0173,
+                    "company_count": 250,
+                    "flow": 242.42,
+                    "inflow": 242.42,
+                    "lead_stock": {
+                        "change": 0.1506,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 40.96,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 11.55,
+                    "outflow": 230.87,
+                    "rank": 7,
+                    "sector_index": "9972.52",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.0406,
+                    "company_count": 28,
+                    "flow": 237.4,
+                    "inflow": 237.4,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u4e91\u5357\u9517\u4e1a",
+                        "price": 77.01,
+                        "url": "https://stockpage.10jqka.com.cn/002428/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 30.88,
+                    "outflow": 206.52,
+                    "rank": 8,
+                    "sector_index": "10035.2",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.012,
+                    "company_count": 268,
+                    "flow": 213.08,
+                    "inflow": 213.08,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.99,
+                    "outflow": 208.08,
+                    "rank": 9,
+                    "sector_index": "6934.42",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.019,
+                    "company_count": 139,
+                    "flow": 209.23,
+                    "inflow": 209.23,
+                    "lead_stock": {
+                        "change": 0.1108,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.62,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.23,
+                    "outflow": 175.99,
+                    "rank": 10,
+                    "sector_index": "2183.02",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:50:29.936013"
+        },
+        "14:55": {
+            "data": [
+                {
+                    "change": 0.0336,
+                    "company_count": 179,
+                    "flow": 1374.74,
+                    "inflow": 1374.74,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u6c5f\u6ce2\u9f99",
+                        "price": 481.34,
+                        "url": "https://stockpage.10jqka.com.cn/301308/"
+                    },
+                    "name": "\u534a\u5bfc\u4f53",
+                    "net_flow": -45.06,
+                    "outflow": 1419.8,
+                    "rank": 1,
+                    "sector_index": "15668.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881121/"
+                },
+                {
+                    "change": 0.03,
+                    "company_count": 90,
+                    "flow": 754.58,
+                    "inflow": 754.58,
+                    "lead_stock": {
+                        "change": 0.1449,
+                        "name": "\u4ed5\u4f73\u5149\u5b50",
+                        "price": 150.92,
+                        "url": "https://stockpage.10jqka.com.cn/688313/"
+                    },
+                    "name": "\u901a\u4fe1\u8bbe\u5907",
+                    "net_flow": 35.87,
+                    "outflow": 718.7,
+                    "rank": 2,
+                    "sector_index": "9988.45",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881129/"
+                },
+                {
+                    "change": 0.0352,
+                    "company_count": 105,
+                    "flow": 608.52,
+                    "inflow": 608.52,
+                    "lead_stock": {
+                        "change": 0.2,
+                        "name": "\u5fb7\u798f\u79d1\u6280",
+                        "price": 90.24,
+                        "url": "https://stockpage.10jqka.com.cn/301511/"
+                    },
+                    "name": "\u7535\u6c60",
+                    "net_flow": 78.34,
+                    "outflow": 530.17,
+                    "rank": 3,
+                    "sector_index": "24393",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881281/"
+                },
+                {
+                    "change": 0.0358,
+                    "company_count": 62,
+                    "flow": 383.21,
+                    "inflow": 383.21,
+                    "lead_stock": {
+                        "change": 0.1373,
+                        "name": "\u9038\u8c6a\u65b0\u6750",
+                        "price": 42.48,
+                        "url": "https://stockpage.10jqka.com.cn/301176/"
+                    },
+                    "name": "\u5143\u4ef6",
+                    "net_flow": -12.62,
+                    "outflow": 395.83,
+                    "rank": 4,
+                    "sector_index": "20757.6",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881270/"
+                },
+                {
+                    "change": 0.0144,
+                    "company_count": 95,
+                    "flow": 282.49,
+                    "inflow": 282.49,
+                    "lead_stock": {
+                        "change": 0.09960000000000001,
+                        "name": "\u6ce2\u5bfc\u80a1\u4efd",
+                        "price": 5.08,
+                        "url": "https://stockpage.10jqka.com.cn/600130/"
+                    },
+                    "name": "\u6d88\u8d39\u7535\u5b50",
+                    "net_flow": -6.68,
+                    "outflow": 289.17,
+                    "rank": 5,
+                    "sector_index": "13172.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881124/"
+                },
+                {
+                    "change": 0.031,
+                    "company_count": 130,
+                    "flow": 277.36,
+                    "inflow": 277.36,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u4e1c\u65b9\u56fd\u4fe1",
+                        "price": 18.53,
+                        "url": "https://stockpage.10jqka.com.cn/300166/"
+                    },
+                    "name": "IT\u670d\u52a1",
+                    "net_flow": 39.66,
+                    "outflow": 237.7,
+                    "rank": 6,
+                    "sector_index": "14260.9",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881271/"
+                },
+                {
+                    "change": 0.0175,
+                    "company_count": 250,
+                    "flow": 247.96,
+                    "inflow": 247.96,
+                    "lead_stock": {
+                        "change": 0.1534,
+                        "name": "\u56fd\u76db\u667a\u79d1",
+                        "price": 41.06,
+                        "url": "https://stockpage.10jqka.com.cn/688558/"
+                    },
+                    "name": "\u901a\u7528\u8bbe\u5907",
+                    "net_flow": 11.58,
+                    "outflow": 236.38,
+                    "rank": 7,
+                    "sector_index": "9975.12",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881117/"
+                },
+                {
+                    "change": 0.040999999999999995,
+                    "company_count": 28,
+                    "flow": 241.54,
+                    "inflow": 241.54,
+                    "lead_stock": {
+                        "change": 0.1,
+                        "name": "\u4e91\u5357\u9517\u4e1a",
+                        "price": 77.01,
+                        "url": "https://stockpage.10jqka.com.cn/002428/"
+                    },
+                    "name": "\u5c0f\u91d1\u5c5e",
+                    "net_flow": 31.08,
+                    "outflow": 210.46,
+                    "rank": 8,
+                    "sector_index": "10038.7",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881170/"
+                },
+                {
+                    "change": 0.0124,
+                    "company_count": 268,
+                    "flow": 217.32,
+                    "inflow": 217.32,
+                    "lead_stock": {
+                        "change": 0.20010000000000003,
+                        "name": "\u96f7\u8fea\u514b",
+                        "price": 47.32,
+                        "url": "https://stockpage.10jqka.com.cn/300652/"
+                    },
+                    "name": "\u6c7d\u8f66\u96f6\u90e8\u4ef6",
+                    "net_flow": 4.94,
+                    "outflow": 212.38,
+                    "rank": 9,
+                    "sector_index": "6937.05",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881126/"
+                },
+                {
+                    "change": 0.019299999999999998,
+                    "company_count": 139,
+                    "flow": 212.96,
+                    "inflow": 212.96,
+                    "lead_stock": {
+                        "change": 0.1117,
+                        "name": "\u661f\u73af\u79d1\u6280",
+                        "price": 146.74,
+                        "url": "https://stockpage.10jqka.com.cn/688031/"
+                    },
+                    "name": "\u8f6f\u4ef6\u5f00\u53d1",
+                    "net_flow": 33.08,
+                    "outflow": 179.89,
+                    "rank": 10,
+                    "sector_index": "2183.72",
+                    "sector_url": "https://q.10jqka.com.cn/thshy/detail/code/881272/"
+                }
+            ],
+            "timestamp": "2026-05-06T14:55:30.148931"
         }
     },
     "success": true

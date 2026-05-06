@@ -246,21 +246,16 @@ export default {
     },
 
     async fetchMinuteData() {
-      console.log('=== fetchMinuteData 开始 ===')
       try {
         const response = await getMinuteData(24)
         if (response.success) {
           this.minuteData = response.data
-          console.log('minuteData 获取成功, keys:', Object.keys(this.minuteData))
-          console.log('准备调用 updateChart')
           this.updateChart()
-          console.log('updateChart 执行完成')
         }
       } catch (err) {
         console.error('获取分钟数据失败:', err)
         this.error = '获取分钟数据失败: ' + err.message
       }
-      console.log('=== fetchMinuteData 结束 ===')
     },
 
     async fetchDataByTimeRange() {
@@ -412,10 +407,16 @@ export default {
       } else {
         const isToday = this.selectedTimeRange === 'today'
         
-        // 从所有时间点数据中收集出现过的板块
-        let allSectors = collectAllSectors(timeData, allData, isToday)
-        // 限制最多5个板块
-        allSectors = allSectors.slice(0, 5)
+        let allSectors
+        if (isToday && this.currentData.length > 0) {
+          // 使用currentData的前5个板块，与下方TOP10列表保持一致
+          allSectors = this.currentData.slice(0, 5).map(s => s.name)
+        } else {
+          // 从所有时间点数据中收集出现过的板块
+          allSectors = collectAllSectors(timeData, allData, isToday)
+          // 限制最多5个板块
+          allSectors = allSectors.slice(0, 5)
+        }
         
         // 生成 series
         const series = generateSeries(allSectors, timeData, allData, this.colors, isToday)
@@ -426,24 +427,13 @@ export default {
         option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
       }
 
-      console.log('准备调用 setOption')
-      
       try {
-        console.log('开始调用 setOption...')
-        
         this.chartInstance.setOption(option, {
           replaceMerge: ['series', 'legend', 'xAxis', 'yAxis']
         })
-        console.log('setOption 成功')
       } catch (e) {
         console.error('setOption 失败:', e)
-        console.error('失败的 option:', JSON.stringify(option, (key, val) => {
-          if (typeof val === 'function') return '[Function]'
-          return val
-        }, 2))
       }
-      
-      console.log('=== updateChart 结束 ===')
     },
 
     getTopSectors(timeData, allData, isToday) {

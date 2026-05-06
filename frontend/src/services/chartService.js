@@ -149,12 +149,6 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         }
       })
 
-    // 检查该板块是否在至少一个时间点有数据
-    const hasValidData = data.some(d => d !== null)
-    if (!hasValidData) {
-      return null
-    }
-
     return {
       name: sectorName,
       type: 'line',
@@ -187,7 +181,7 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         }
       }
     }
-  }).filter(series => series !== null)
+  })
 }
 
 /**
