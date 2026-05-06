@@ -183,6 +183,10 @@ def parse_ths_sector_html(html_content):
             error_logger.error(f"解析板块行数据失败: {e}")
             continue
     
+    sectors.sort(key=lambda x: x['flow'], reverse=True)
+    for i, sector in enumerate(sectors[:10]):
+        sector['rank'] = i + 1
+    
     return sectors[:10]
 
 def get_sector_flow_data():

@@ -159,31 +159,38 @@ export default {
 
     highlightSector(sectorName) {
       if (!this.chartInstance) return
-            
+      
+      const option = this.chartInstance.getOption()
+      if (!option || !option.series) return
+      
+      const seriesNames = option.series.map(s => s.name)
+      if (!seriesNames.includes(sectorName)) return
+      
       this.chartInstance.dispatchAction({
         type: 'highlight',
         seriesName: sectorName
       })
       
-      const option = this.chartInstance.getOption()
-      if (option.series) {
-        option.series.forEach((series) => {
-          if (series.name !== sectorName) {
-            this.chartInstance.dispatchAction({
-              type: 'downplay',
-              seriesName: series.name
-            })
-          }
-        })
-      }
+      option.series.forEach((series) => {
+        if (series.name && series.name !== sectorName) {
+          this.chartInstance.dispatchAction({
+            type: 'downplay',
+            seriesName: series.name
+          })
+        }
+      })
     },
 
     unhighlightSector() {
       if (!this.chartInstance) return
       
-      this.chartInstance.dispatchAction({
-        type: 'downplay'
-      })
+      try {
+        this.chartInstance.dispatchAction({
+          type: 'downplay'
+        })
+      } catch (e) {
+        console.warn('unhighlightSector error:', e)
+      }
     },
 
     async fetchCurrentData() {

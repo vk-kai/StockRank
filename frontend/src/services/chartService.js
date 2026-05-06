@@ -154,29 +154,30 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
 
-      if (!sectorItem) {
-        return { 
-          value: null, 
-          change: null, 
-          totalFlow: null, 
-          accumulatedChangePercent: null, 
-          appearances: null 
-        }
+      if (!sectorItem || sectorItem.flow === undefined || sectorItem.flow === null) {
+        return null
       }
+
+      const flow = sectorItem.flow
+      const change = sectorItem.change !== undefined && sectorItem.change !== null ? sectorItem.change : null
 
       if (isToday) {
         return {
-          value: sectorItem.flow !== undefined ? sectorItem.flow : null,
-          change: sectorItem.change !== undefined ? sectorItem.change : null
+          value: flow,
+          change: change
         }
       }
 
+      const totalFlow = sectorItem.total_flow !== undefined && sectorItem.total_flow !== null ? sectorItem.total_flow : null
+      const accumulatedChangePercent = sectorItem.accumulated_change_percent !== undefined && sectorItem.accumulated_change_percent !== null ? sectorItem.accumulated_change_percent : null
+      const appearances = sectorItem.appearances !== undefined && sectorItem.appearances !== null ? sectorItem.appearances : null
+
       return {
-        value: sectorItem.flow !== undefined ? sectorItem.flow : null,
-        change: sectorItem.change !== undefined ? sectorItem.change : null,
-        totalFlow: sectorItem.total_flow !== undefined ? sectorItem.total_flow : null,
-        accumulatedChangePercent: sectorItem.accumulated_change_percent !== undefined ? sectorItem.accumulated_change_percent : null,
-        appearances: sectorItem.appearances !== undefined ? sectorItem.appearances : null
+        value: flow,
+        change: change,
+        totalFlow: totalFlow,
+        accumulatedChangePercent: accumulatedChangePercent,
+        appearances: appearances
       }
     })
 
