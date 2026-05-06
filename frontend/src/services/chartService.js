@@ -149,14 +149,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 }
 
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
-  console.log('=== generateSeries 开始 ===')
-  console.log('topSectors:', topSectors)
-  console.log('timeData:', timeData)
-  console.log('allData:', allData)
-  
-  const result = topSectors.map((sectorName, index) => {
-    console.log(`处理 sector[${index}]: ${sectorName}`)
-    
+  return topSectors.map((sectorName, index) => {
     const data = timeData.map(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
@@ -187,8 +180,12 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         appearances: appearances
       }
     })
-    
-    console.log(`sector[${index}] ${sectorName} data:`, data.slice(0, 3))
+
+    // Check if there are any valid data points
+    const hasValidData = data.some(item => item !== null);
+    if (!hasValidData) {
+      return null;
+    }
 
     return {
       name: sectorName,
@@ -222,8 +219,5 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         }
       }
     }
-  })
-  
-  console.log('=== generateSeries 结束，返回', result.length, '个 series ===')
-  return result
+  }).filter(series => series !== null);
 }
