@@ -146,61 +146,20 @@ export default {
   },
   methods: {
     initChart() {
-      console.log('initChart 被调用, chartInstance 状态:', this.chartInstance)
-      
       if (this.chartInstance) {
-        console.log('chartInstance 已存在，不再重复初始化')
         return
       }
       
       const _this = this
       this.$nextTick(() => {
-        console.log('=== initChart 开始 ===')
-        console.log('refs.chart:', this.$refs.chart)
-        
         try {
           this.chartInstance = echarts.init(this.$refs.chart, null, {
             renderer: 'canvas'
           })
-          console.log('=== echarts.init 完成 ===')
-          console.log('chartInstance:', this.chartInstance)
         } catch (e) {
           console.error('echarts.init 错误:', e)
           return
         }
-        
-        // 捕获 ECharts 内部错误
-        this.chartInstance.on('error', (error) => {
-          console.error('=== ECharts 错误 ===')
-          console.error('error:', error)
-          console.error('message:', error.message)
-          console.error('type:', error.type)
-        })
-        
-        // 添加图例点击事件监听
-        this.chartInstance.on('legendselectchanged', function(params) {
-          console.log('=== 图例点击事件 ===')
-          console.log('params:', params)
-          console.log('selected:', params.selected)
-          console.log('name:', params.name)
-          
-          const option = _this.chartInstance.getOption()
-          console.log('当前 option:', option)
-          console.log('legend:', option.legend)
-          console.log('legend[0]:', option.legend?.[0])
-          console.log('series:', option.series)
-          
-          // 检查系列数据
-          if (option.series) {
-            option.series.forEach((s, i) => {
-              console.log(`series[${i}]:`, {
-                name: s.name,
-                type: s.type,
-                data: s.data?.slice(0, 5)
-              })
-            })
-          }
-        })
       })
     },
 
@@ -247,10 +206,8 @@ export default {
     },
 
     async fetchCurrentData() {
-      console.log('=== fetchCurrentData 开始 ===')
       try {
         const response = await getCurrentFlow()
-        console.log('currentData 获取成功:', this.currentData)
         
         if (response.success) {
           this.currentData = response.data
@@ -258,9 +215,7 @@ export default {
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
           
           if (this.selectedTimeRange === 'today') {
-            console.log('准备调用 fetchMinuteData')
             await this.fetchMinuteData()
-            console.log('fetchMinuteData 完成')
           } else {
             this.updateChart()
           }
@@ -269,7 +224,6 @@ export default {
         console.error('获取当前数据失败:', err)
         this.error = '获取当前数据失败: ' + err.message
       }
-      console.log('=== fetchCurrentData 结束 ===')
     },
 
     async fetchHistoryData(days) {
@@ -381,20 +335,13 @@ export default {
     },
 
     updateChart() {
-      console.log('=== updateChart 开始 ===')
-      console.log('chartInstance:', this.chartInstance)
-      
       if (!this.chartInstance) {
-        console.log('图表实例不存在，重新初始化')
         this.initChart()
         return
       }
 
       const oldOption = this.chartInstance.getOption()
       const oldSelected = oldOption?.legend?.[0]?.selected || {}
-      
-      console.log('oldOption:', oldOption)
-      console.log('oldSelected:', oldSelected)
 
       let timeData, allData
 
@@ -416,7 +363,6 @@ export default {
 
       let option
       if (timeData.length === 0) {
-        console.log('没有数据，显示空图表')
         option = {
           tooltip: {
             trigger: 'item',
@@ -471,11 +417,8 @@ export default {
         // 限制最多5个板块
         allSectors = allSectors.slice(0, 5)
         
-        console.log('从所有时间点收集到的板块(限制10个):', allSectors)
-        
         // 生成 series
         const series = generateSeries(allSectors, timeData, allData, this.colors, isToday)
-        console.log('生成的 series:', series?.map(s => s.name))
         
         // 使用实际有数据的板块作为最终列表
         const finalTopSectors = series.map(s => s.name)
