@@ -12,83 +12,72 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   return {
     animation: false,
     tooltip: {
-  trigger: 'item',
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross'
+      },
+      backgroundColor: 'rgba(20,25,45,0.95)',
+      borderColor: '#3a4a6b',
+      borderWidth: 1,
+      formatter: (params) => {
+        let result = `<div style="font-weight:bold;margin-bottom:6px;color:#fff;">${params[0]?.name || ''}</div>`
+        
+        params.forEach(param => {
+          if (!param.data || param.data === null) return
+          
+          const change = param.data.change
+          const totalFlow = param.data.totalFlow
+          const accumulatedChangePercent = param.data.accumulatedChangePercent
+          const appearances = param.data.appearances
 
-  backgroundColor: 'rgba(20,25,45,0.95)',
-  borderColor: '#3a4a6b',
-  borderWidth: 1,
+          let changeHtml = '-'
+          if (change !== null && change !== undefined) {
+            const color = change >= 0 ? '#ee6666' : '#91cc75'
+            changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
+          }
 
-  formatter: (params) => {
-    if (!params.data || params.data === null) return ''
-    
-    const change = params.data.change
-    const totalFlow = params.data.totalFlow
-    const accumulatedChange = params.data.accumulatedChangePercent
-    const appearances = params.data.appearances
+          result += `
+            <div style="display:flex;justify-content:space-between;gap:20px;margin:4px 0;">
+              <span style="color:#8ba4a7;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
+                ${param.seriesName}
+              </span>
+              <span style="color:#ee6666;font-weight:bold;">
+                ${formatFlow(param.data.value)}
+              </span>
+              <span style="color:#8ba4a7;">
+                ${changeHtml}
+              </span>
+            </div>
+          `
 
-    let changeHtml = '-'
-    if (change !== null && change !== undefined) {
-      const color = change >= 0 ? '#ee6666' : '#91cc75'
-      changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
-    }
+          if (!isToday && totalFlow !== null && totalFlow !== undefined) {
+            let accumulatedChangeHtml = '-'
+            if (accumulatedChangePercent !== null && accumulatedChangePercent !== undefined) {
+              const color = accumulatedChangePercent >= 0 ? '#ee6666' : '#91cc75'
+              accumulatedChangeHtml = `<b style="color:${color}">${(accumulatedChangePercent * 100).toFixed(2)}%</b>`
+            }
 
-    let tooltipContent = `
-      <div style="padding:6px 10px;">
-        <div style="font-weight:bold;margin-bottom:6px;color:#fff;">
-          ${params.seriesName}
-        </div>
+            let totalFlowHtml = '-'
+            if (totalFlow !== null && totalFlow !== undefined) {
+              totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalFlow)}</b>`
+            }
 
-        <div style="color:#8ba4c7">
-          时间： <b>${params.name}</b>
-        </div>
+            let appearancesHtml = appearances ? `<b>${appearances}</b>天` : '-'
 
-        <div style="color:#8ba4c7">
-          资金流入：
-          <b style="color:#ee6666">
-            ${formatFlow(params.data.value)}
-          </b>
-        </div>
-
-        <div style="color:#8ba4c7">
-          涨跌幅： ${changeHtml}
-        </div>
-    `
-
-    if (!isToday && totalFlow !== null && totalFlow !== undefined) {
-      let accumulatedChangeHtml = '-'
-      if (accumulatedChange !== null && accumulatedChange !== undefined) {
-        const color = accumulatedChange >= 0 ? '#ee6666' : '#91cc75'
-        accumulatedChangeHtml = `<b style="color:${color}">${(accumulatedChange * 100).toFixed(2)}%</b>`
+            result += `
+              <div style="border-top:1px dashed #3a4a6b;margin:6px 0;padding-top:6px;">
+                <div style="color:#8ba4a7;">累计流入: ${totalFlowHtml}</div>
+                <div style="color:#8ba4a7;">累计涨跌: ${accumulatedChangeHtml}</div>
+                <div style="color:#8ba4a7;">出现天数: ${appearancesHtml}</div>
+              </div>
+            `
+          }
+        })
+        
+        return result
       }
-
-      let totalFlowHtml = '-'
-      if (totalFlow !== null && totalFlow !== undefined) {
-        totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalFlow)}</b>`
-      }
-
-      let appearancesHtml = appearances ? `<b>${appearances}</b>天` : '-'
-
-      tooltipContent += `
-        <div style="border-top:1px dashed #3a4a6b;margin:6px 0;"></div>
-
-        <div style="color:#8ba4c7">
-          累计流入： ${totalFlowHtml}
-        </div>
-
-        <div style="color:#8ba4c7">
-          累计涨跌： ${accumulatedChangeHtml}
-        </div>
-
-        <div style="color:#8ba4c7">
-          出现天数： ${appearancesHtml}
-        </div>
-      `
-    }
-
-    tooltipContent += `</div>`
-    return tooltipContent
-  }
-},   
+    },
     legend: {
       data: topSectors,
       textStyle: {
@@ -148,7 +137,6 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
-    let hasValidData = false
     const data = timeData.map(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
@@ -157,7 +145,6 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
         return null
       }
 
-      hasValidData = true
       const flow = sectorItem.flow
       const change = sectorItem.change !== undefined && sectorItem.change !== null ? sectorItem.change : 0
 
@@ -181,6 +168,8 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       }
     })
 
+    // 检查该板块是否在至少一个时间点有数据
+    const hasValidData = data.some(d => d !== null)
     if (!hasValidData) {
       return null
     }
@@ -218,4 +207,54 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       }
     }
   }).filter(series => series !== null)
+}
+
+/**
+ * 从所有时间点数据中收集出现过的板块，并按出现频率和资金流入排序
+ */
+export function collectAllSectors(timeData, allData, isToday) {
+  const sectorStats = new Map()
+  
+  // 收集所有时间点的板块数据
+  timeData.forEach(timeKey => {
+    const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+    timeDataItem.forEach((item, index) => {
+      const name = item.name
+      if (!name) return
+      
+      if (!sectorStats.has(name)) {
+        sectorStats.set(name, {
+          name,
+          count: 0,
+          totalFlow: 0,
+          latestFlow: 0,
+          latestChange: 0
+        })
+      }
+      
+      const stats = sectorStats.get(name)
+      stats.count++
+      
+      if (item.flow !== undefined && item.flow !== null) {
+        stats.totalFlow += item.flow
+        stats.latestFlow = item.flow
+      }
+      
+      if (item.change !== undefined && item.change !== null) {
+        stats.latestChange = item.change
+      }
+    })
+  })
+  
+  // 转换为数组并排序
+  return Array.from(sectorStats.values())
+    .sort((a, b) => {
+      // 优先按出现次数排序
+      if (b.count !== a.count) {
+        return b.count - a.count
+      }
+      // 再按最新资金流入排序
+      return b.latestFlow - a.latestFlow
+    })
+    .map(s => s.name)
 }

@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
-import { generateChartOption, generateSeries } from '../../services/chartService'
+import { generateChartOption, generateSeries, collectAllSectors } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -465,86 +465,29 @@ export default {
         }
       } else {
         const isToday = this.selectedTimeRange === 'today'
-        let topSectors
         
-        if (isToday && this.currentData.length > 0) {
-          topSectors = this.currentData.slice(0, 10).map(s => s.name)
-        } else if (!isToday && this.accumulatedData.length > 0) {
-          topSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
-        } else {
-          topSectors = this.getTopSectors(timeData, allData, isToday)
-        }
+        // 从所有时间点数据中收集出现过的板块
+        const allSectors = collectAllSectors(timeData, allData, isToday)
+        console.log('从所有时间点收集到的板块:', allSectors)
         
-        // 过滤掉没有数据的板块 - 完全过滤
-        const validTopSectors = []
-        for (const sectorName of topSectors) {
-          let hasValidData = false
-          for (const timeKey of timeData) {
-            const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-            const sectorItem = timeDataItem.find(s => s.name === sectorName)
-            if (sectorItem && sectorItem.flow !== undefined && sectorItem.flow !== null) {
-              hasValidData = true
-              break
-            }
-          }
-          if (hasValidData) {
-            validTopSectors.push(sectorName)
-          }
-        }
+        // 生成 series
+        const series = generateSeries(allSectors, timeData, allData, this.colors, isToday)
+        console.log('生成的 series:', series?.map(s => s.name))
         
-        console.log('原始 topSectors:', topSectors)
-        console.log('过滤后的 validTopSectors:', validTopSectors)
-        
-        // 二次过滤：确保 series 只包含有有效数据的板块
-        let rawSeries = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
-        console.log('原始 rawSeries count:', rawSeries.length)
-        console.log('原始 rawSeries:', rawSeries.map(s => s?.name))
-        
-        const series = rawSeries.filter(s => {
-          if (!s) return false
-          const hasData = s.data.some(d => d !== null && typeof d === 'object')
-          console.log(`板块 ${s.name} hasData:`, hasData, 'data sample:', s.data.slice(0, 3))
-          return hasData
-        })
-        
-        console.log('过滤后 series count:', series.length)
-        console.log('过滤后 series:', series.map(s => s.name))
-        console.log('validTopSectors:', validTopSectors)
-        console.log('series count:', series?.length)
-        
-        // 检查每个 series
-        if (series && series.length > 0) {
-          series.forEach((s, i) => {
-            console.log(`series[${i}]: name=${s.name}, type=${s.type}, data length=${s.data?.length}`)
-            if (s.data && s.data.length > 0) {
-              console.log(`  data[0]:`, s.data[0])
-              console.log(`  data[1]:`, s.data[1])
-              console.log(`  data[2]:`, s.data[2])
-            }
-          })
-        }
-        
-        // 使用过滤后的 series 名称列表
+        // 使用实际有数据的板块作为最终列表
         const finalTopSectors = series.map(s => s.name)
-        console.log('finalTopSectors:', finalTopSectors)
-        console.log('series count in option:', series.length)
         
         option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
-        
-        console.log('生成的 option.legend.data:', option.legend.data)
-        console.log('生成的 option.series.length:', option.series.length)
-        console.log('生成的 option.legend:', option?.legend)
-        console.log('生成的 option.series:', option?.series?.map(s => ({name: s.name, type: s.type})))
       }
 
       console.log('准备调用 setOption')
-      console.log('option.series:', option?.series)
       
       try {
         console.log('开始调用 setOption...')
         
-        // 使用 notMerge: true 完全替换
-        this.chartInstance.setOption(option, { notMerge: true })
+        this.chartInstance.setOption(option, {
+          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis']
+        })
         console.log('setOption 成功')
       } catch (e) {
         console.error('setOption 失败:', e)
