@@ -19,7 +19,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   borderWidth: 1,
 
   formatter: (params) => {
-    if (!params.data || params.data === '-' || params.data.value === '-') return ''
+    if (!params.data || params.data === null) return ''
     
     const change = params.data.change
     const totalFlow = params.data.totalFlow
@@ -134,13 +134,11 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: 0,
-        filterMode: 'none'
+        xAxisIndex: 0
       },
       {
         type: 'slider',
         xAxisIndex: 0,
-        filterMode: 'none',
         height: 20
       }
     ],
@@ -156,7 +154,7 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       const sectorItem = timeDataItem.find(s => s.name === sectorName)
 
       if (!sectorItem || sectorItem.flow === undefined || sectorItem.flow === null) {
-        return '-'
+        return null
       }
 
       hasValidData = true
@@ -191,7 +189,7 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       name: sectorName,
       type: 'line',
       smooth: true,
-      connectNulls: true,
+      connectNulls: false,
       showSymbol: true,
       symbol: 'circle',
       symbolSize: 6,

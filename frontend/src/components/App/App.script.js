@@ -502,9 +502,7 @@ export default {
         
         const series = rawSeries.filter(s => {
           if (!s) return false
-          const hasData = s.data.some(d => {
-            return typeof d === 'object' && d !== null && d.value !== undefined && d.value !== '-' && d.value !== null
-          })
+          const hasData = s.data.some(d => d !== null && typeof d === 'object')
           console.log(`板块 ${s.name} hasData:`, hasData, 'data sample:', s.data.slice(0, 3))
           return hasData
         })
