@@ -495,14 +495,17 @@ export default {
         
         // 二次过滤：确保 series 只包含有有效数据的板块
         let rawSeries = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
-        console.log('原始 series:', rawSeries.map(s => s?.name))
+        console.log('原始 rawSeries count:', rawSeries.length)
+        console.log('原始 rawSeries:', rawSeries.map(s => s?.name))
         
         const series = rawSeries.filter(s => {
           if (!s) return false
-          const hasData = s.data.some(d => d !== '-' && d !== null && d !== undefined)
+          const hasData = s.data.some(d => d !== '-' && d !== null && d !== undefined && typeof d === 'object')
+          console.log(`板块 ${s.name} hasData:`, hasData, 'data sample:', s.data.slice(0, 3))
           return hasData
         })
         
+        console.log('过滤后 series count:', series.length)
         console.log('过滤后 series:', series.map(s => s.name))
         console.log('validTopSectors:', validTopSectors)
         console.log('series count:', series?.length)
@@ -521,7 +524,13 @@ export default {
         
         // 使用过滤后的 series 名称列表
         const finalTopSectors = series.map(s => s.name)
+        console.log('finalTopSectors:', finalTopSectors)
+        console.log('series count in option:', series.length)
+        
         option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
+        
+        console.log('生成的 option.legend.data:', option.legend.data)
+        console.log('生成的 option.series.length:', option.series.length)
         console.log('生成的 option.legend:', option?.legend)
         console.log('生成的 option.series:', option?.series?.map(s => ({name: s.name, type: s.type})))
       }
