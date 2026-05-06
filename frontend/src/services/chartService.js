@@ -93,7 +93,6 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       textStyle: {
         color: '#8ba4c7'
       },
-      type: 'scroll',
       selectedMode: true,
       selected: topSectors.reduce((acc, name, index) => {
         acc[name] = validSelected[name] !== undefined ? validSelected[name] : (index < 5)

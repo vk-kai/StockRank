@@ -483,10 +483,23 @@ export default {
         
         const series = generateSeries(validTopSectors, timeData, allData, this.colors, isToday)
         console.log('validTopSectors:', validTopSectors)
-        console.log('series:', series)
+        console.log('series count:', series?.length)
+        
+        // 检查每个 series
+        if (series && series.length > 0) {
+          series.forEach((s, i) => {
+            console.log(`series[${i}]: name=${s.name}, type=${s.type}, data length=${s.data?.length}`)
+            if (s.data && s.data.length > 0) {
+              console.log(`  data[0]:`, s.data[0])
+              console.log(`  data[1]:`, s.data[1])
+              console.log(`  data[2]:`, s.data[2])
+            }
+          })
+        }
         
         option = generateChartOption(timeData, series, validTopSectors, oldSelected, this.colors, isToday)
-        console.log('生成的 option:', option)
+        console.log('生成的 option.legend:', option?.legend)
+        console.log('生成的 option.series:', option?.series?.map(s => ({name: s.name, type: s.type})))
       }
 
       console.log('准备调用 setOption')
@@ -494,6 +507,8 @@ export default {
       
       try {
         console.log('开始调用 setOption...')
+        
+        // 使用 notMerge: true 完全替换
         this.chartInstance.setOption(option, { notMerge: true })
         console.log('setOption 成功')
       } catch (e) {
