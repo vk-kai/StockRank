@@ -702,6 +702,12 @@ export default {
       this.stocksError = null
     },
 
+    openXueqiuStock(code) {
+      let prefix = code.startsWith('6') ? 'SH' : 'SZ'
+      let url = `https://xueqiu.com/S/${prefix}${code}`
+      window.open(url, '_blank')
+    },
+
     sortStocks() {
       if (!this.sectorStocks || this.sectorStocks.length === 0) return
       

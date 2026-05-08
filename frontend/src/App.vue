@@ -207,7 +207,7 @@
             >
               <div class="col">{{ index + 1 }}</div>
               <div class="col">{{ stock.code }}</div>
-              <div class="col">{{ stock.name }}</div>
+              <div class="col clickable" @click="openXueqiuStock(stock.code)">{{ stock.name }}</div>
               <div class="col" :class="stock.change >= 0 ? 'positive' : 'negative'">
                 {{ stock.change >= 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
               </div>
