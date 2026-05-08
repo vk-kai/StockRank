@@ -69,7 +69,7 @@
 
     <div class="news-ticker-container" v-if="latestNews.length > 0">
       <div class="news-ticker-header">
-        <span class="ticker-label">📰 最新新闻</span>
+        <span class="ticker-label clickable" @click="goToNews">📰 最新新闻</span>
         <div class="header-controls">
           <label class="notification-toggle">
             <input type="checkbox" :checked="enableNotification" @change="toggleNotification">
@@ -81,7 +81,6 @@
             <option value="important">🔔 仅重要</option>
             <option value="all">🔊 全部提醒</option>
           </select>
-          <button class="view-more-news" @click="goToNews">更多 →</button>
         </div>
       </div>
       <div class="news-ticker-content">

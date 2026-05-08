@@ -794,6 +794,17 @@
   white-space: nowrap;
 }
 
+.ticker-label.clickable {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.ticker-label.clickable:hover {
+  background: rgba(255, 82, 82, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3);
+}
+
 .ticker-content {
   flex: 1;
   overflow: hidden;
