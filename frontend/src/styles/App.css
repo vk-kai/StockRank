@@ -1281,6 +1281,27 @@
   white-space: nowrap;
 }
 
+.sound-mode-selector {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.sound-mode-selector:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sound-mode-selector option {
+  background: #1a2332;
+  color: #fff;
+}
+
 .news-ticker-content {
   min-height: 60px;
 }

@@ -76,6 +76,11 @@
             <span class="toggle-slider"></span>
             <span class="toggle-label">{{ enableNotification ? '🔔 已开启' : '🔕 已关闭' }}</span>
           </label>
+          <select v-model="soundMode" @change="saveSoundMode(soundMode)" class="sound-mode-selector">
+            <option value="none">🔇 静音</option>
+            <option value="important">🔔 仅重要</option>
+            <option value="all">🔊 全部提醒</option>
+          </select>
           <button class="view-more-news" @click="goToNews">更多 →</button>
         </div>
       </div>

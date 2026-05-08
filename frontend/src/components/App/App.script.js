@@ -39,6 +39,7 @@ export default {
       healthChecking: false,
       healthCheckInterval: null,
       enableNotification: true,
+      soundMode: 'all',
       lastNewsId: null,
       showStockModal: false,
       selectedSector: null,
@@ -118,6 +119,7 @@ export default {
   },
   mounted() {
     this.loadNotificationState()
+    this.loadSoundMode()
     this.initChart()
     this.fetchDataByTimeRange()
     this.startCountdown()
@@ -581,6 +583,33 @@ export default {
       }
     },
 
+    loadSoundMode() {
+      const saved = localStorage.getItem('newsSoundMode')
+      if (saved !== null && ['none', 'important', 'all'].includes(saved)) {
+        this.soundMode = saved
+      } else {
+        this.soundMode = 'all'
+        localStorage.setItem('newsSoundMode', 'all')
+      }
+    },
+
+    saveSoundMode(mode) {
+      this.soundMode = mode
+      localStorage.setItem('newsSoundMode', mode)
+    },
+
+    playSound(type) {
+      try {
+        const audio = new Audio(`/sounds/${type}.mp3`)
+        audio.volume = 0.5
+        audio.play().catch(e => {
+          console.log('播放音效失败:', e)
+        })
+      } catch (e) {
+        console.log('播放音效失败:', e)
+      }
+    },
+
     async requestNotificationPermission() {
       if (!('Notification' in window)) {
         alert('您的浏览器不支持系统通知功能')
@@ -730,6 +759,14 @@ export default {
             window.open(news.url, '_blank')
           }
           notification.close()
+        }
+        
+        const isImportant = news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
+        
+        if (this.soundMode === 'all') {
+          this.playSound(isImportant ? 'important' : 'normal')
+        } else if (this.soundMode === 'important' && isImportant) {
+          this.playSound('important')
         }
       } catch (e) {
         console.log('发送通知失败:', e)
