@@ -600,7 +600,7 @@ export default {
 
     playSound(type) {
       try {
-        const audio = new Audio(`/sounds/${type}.mp3`)
+        const audio = new Audio(`/assets/sounds/${type}.mp3`)
         audio.volume = 0.5
         audio.play().catch(e => {
           console.log('播放音效失败:', e)
