@@ -1,4 +1,4 @@
-import { getLogList, getLogContent, getLogLevels, getLogModules } from '../../services/apiService'
+import { getLogList, getLogContent, getLogLevels, getLogModules, getBannedIPs, unbanIP } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -352,6 +352,25 @@ export default {
       if (module && module.startsWith('system')) return '#409eff'
       if (module && module.startsWith('monitor')) return '#b37feb'
       return '#606266'
+    },
+
+    async handleUnbanIP(ip) {
+      if (!ip) return
+      
+      const password = prompt('请输入解封密码：')
+      if (!password) return
+      
+      try {
+        const response = await unbanIP(ip, password)
+        if (response.success) {
+          this.showToast(`已解封IP: ${ip}`, 'success')
+          await this.loadLogContent()
+        } else {
+          this.showToast(response.message || '解封失败', 'error')
+        }
+      } catch (error) {
+        this.showToast('解封失败', 'error')
+      }
     },
 
     showToast(message, type = 'success') {

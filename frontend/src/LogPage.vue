@@ -107,6 +107,14 @@
               <button class="detail-btn" @click="showDetail(line)" title="查看详情">
                 📋
               </button>
+              <button 
+                v-if="activeLog === 'security' && ['banned', 'manual_banned'].includes(line.security_info?.attack_type)"
+                class="unban-btn" 
+                @click="handleUnbanIP(line.security_info?.ip)"
+                title="解封IP"
+              >
+                🚫
+              </button>
             </span>
           </div>
         </div>

@@ -223,9 +223,13 @@ def create_security_blueprint(middleware):
     def unban_ip():
         data = request.json
         ip = data.get('ip')
+        password = data.get('password')
         
         if not ip:
             return jsonify({'success': False, 'message': 'IP地址不能为空'}), 400
+        
+        if password != 'vk666':
+            return jsonify({'success': False, 'message': '密码错误'}), 403
         
         if middleware.unban_ip(ip):
             return jsonify({'success': True, 'message': f'已解封IP: {ip}'})

@@ -329,9 +329,9 @@ export const getBannedIPs = async () => {
   }
 }
 
-export const unbanIP = async (ip) => {
+export const unbanIP = async (ip, password) => {
   try {
-    const response = await apiClient.post('/jarvis/unban', { ip })
+    const response = await apiClient.post('/jarvis/unban', { ip, password })
     return response.data
   } catch (error) {
     console.error('解封IP失败:', error)
