@@ -105,19 +105,21 @@ def set_working_headers(headers):
     _current_working_headers = headers
     system_logger.info(f"已设置可用的请求头")
 
-def parse_ths_sector_html(html_content):
+def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
     soup = BeautifulSoup(html_content, 'html.parser')
     sectors = []
     
     table = soup.find('table', class_='m-table J-ajax-table')
     if not table:
-        error_logger.error("未找到板块数据表格")
+        html_preview = html_content[:500] if html_content else '(空响应)'
+        error_logger.error(f"未找到板块数据表格，URL: {request_url}，HTML内容预览: {html_preview}")
         return []
     
     tbody = table.find('tbody')
     if not tbody:
-        error_logger.error("未找到表格tbody")
+        html_preview = html_content[:500] if html_content else '(空响应)'
+        error_logger.error(f"未找到表格tbody，URL: {request_url}，HTML内容预览: {html_preview}")
         return []
     
     rows = tbody.find_all('tr')
@@ -217,7 +219,8 @@ def get_sector_flow_data():
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
-                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，尝试重新生成请求头")
+                response_preview = response.text[:500] if response.text else '(空响应)'
+                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，URL: {THS_SECTOR_URL}，返回内容: {response_preview}，立即重新生成请求头")
                 headers = generate_random_headers()
                 continue
             
@@ -228,7 +231,7 @@ def get_sector_flow_data():
             else:
                 response.encoding = response.apparent_encoding
             
-            sectors = parse_ths_sector_html(response.text)
+            sectors = parse_ths_sector_html(response.text, THS_SECTOR_URL)
             
             if sectors:
                 global latest_data
@@ -241,37 +244,41 @@ def get_sector_flow_data():
                 set_crawler_idle('sector_flow')
                 return sectors
             else:
-                error_logger.error("解析板块数据失败，返回空列表")
+                html_preview = response.text[:1000] if response.text else '(空响应)'
+                error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_URL}，HTML内容预览: {html_preview}")
         
         except Exception as e:
             if USE_PROXY and PROXY_POOL:
-                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败: {e}")
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败，URL: {THS_SECTOR_URL}，错误: {e}")
             else:
-                error_logger.error(f"第 {retry+1} 次尝试获取数据失败: {e}")
+                error_logger.error(f"第 {retry+1} 次尝试获取数据失败，URL: {THS_SECTOR_URL}，错误: {e}")
             
             if retry < max_retries - 1:
+                headers = generate_random_headers()
                 if USE_PROXY:
                     load_proxy_pool()
                 import time
                 time.sleep(2)
     
-    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据")
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据，URL: {THS_SECTOR_URL}")
     set_crawler_idle('sector_flow')
     return []
 
-def parse_ths_stock_html(html_content):
+def parse_ths_stock_html(html_content, request_url=''):
     """解析同花顺个股详情HTML"""
     soup = BeautifulSoup(html_content, 'html.parser')
     stocks = []
     
     table = soup.find('table', class_='m-table m-pager-table')
     if not table:
-        error_logger.error("未找到个股数据表格")
+        html_preview = html_content[:500] if html_content else '(空响应)'
+        error_logger.error(f"未找到个股数据表格，URL: {request_url}，HTML内容预览: {html_preview}")
         return []
     
     tbody = table.find('tbody')
     if not tbody:
-        error_logger.error("未找到表格tbody")
+        html_preview = html_content[:500] if html_content else '(空响应)'
+        error_logger.error(f"未找到表格tbody，URL: {request_url}，HTML内容预览: {html_preview}")
         return []
     
     rows = tbody.find_all('tr')
@@ -378,6 +385,13 @@ def get_sector_stocks(sector_url):
             session = requests.Session()
             session.trust_env = False
             response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            
+            if response.status_code == 401 or response.status_code == 403:
+                response_preview = response.text[:500] if response.text else '(空响应)'
+                error_logger.warning(f"个股数据请求被拒绝 (HTTP {response.status_code})，URL: {sector_url}，返回内容: {response_preview}，立即重新生成请求头")
+                headers = generate_random_headers(host=host)
+                continue
+            
             response.raise_for_status()
             
             if response.encoding == 'ISO-8859-1':
@@ -385,27 +399,29 @@ def get_sector_stocks(sector_url):
             else:
                 response.encoding = response.apparent_encoding
             
-            stocks = parse_ths_stock_html(response.text)
+            stocks = parse_ths_stock_html(response.text, sector_url)
             
             if stocks:
                 set_crawler_idle('stocks')
                 return stocks
             else:
-                error_logger.error("解析个股数据失败，返回空列表")
+                html_preview = response.text[:1000] if response.text else '(空响应)'
+                error_logger.error(f"解析个股数据失败，返回空列表，URL: {sector_url}，HTML内容预览: {html_preview}")
         
         except Exception as e:
             if USE_PROXY and PROXY_POOL:
-                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取个股数据失败: {e}")
+                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取个股数据失败，URL: {sector_url}，错误: {e}")
             else:
-                error_logger.error(f"第 {retry+1} 次尝试获取个股数据失败: {e}")
+                error_logger.error(f"第 {retry+1} 次尝试获取个股数据失败，URL: {sector_url}，错误: {e}")
             
             if retry < max_retries - 1:
+                headers = generate_random_headers(host=host)
                 if USE_PROXY:
                     load_proxy_pool()
                 import time
                 time.sleep(2)
     
-    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据")
+    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据，URL: {sector_url}")
     set_crawler_idle('stocks')
     return []
 
