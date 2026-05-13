@@ -158,6 +158,9 @@ export default {
           this.chartInstance = echarts.init(this.$refs.chart, null, {
             renderer: 'canvas'
           })
+          if (this.currentData.length > 0 || Object.keys(this.minuteData).length > 0 || Object.keys(this.historyData).length > 0) {
+            this.updateChart()
+          }
         } catch (e) {
           console.error('echarts.init 错误:', e)
           return
