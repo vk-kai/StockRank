@@ -137,8 +137,16 @@ def test_stock_detail_url(sector_url):
         response_time = round((time.time() - start_time) * 1000, 2)
         
         if response.status_code == 200:
-            if response.encoding == 'ISO-8859-1':
+            content_type = response.headers.get('Content-Type', '')
+            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
                 response.encoding = 'GBK'
+            elif response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                try:
+                    response.encoding = response.apparent_encoding
+                except:
+                    response.encoding = 'GBK'
             text = response.text
             if 'm-table' in text or '个股' in text or '资金' in text:
                 return True, response_time, None
@@ -173,8 +181,16 @@ def test_sector_and_stocks():
             last_response_time = response_time
             
             if response.status_code == 200:
-                if response.encoding == 'ISO-8859-1':
+                content_type = response.headers.get('Content-Type', '')
+                if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
                     response.encoding = 'GBK'
+                elif response.encoding == 'ISO-8859-1':
+                    response.encoding = 'GBK'
+                else:
+                    try:
+                        response.encoding = response.apparent_encoding
+                    except:
+                        response.encoding = 'GBK'
                 text = response.text
                 if 'm-table' in text or '板块' in text:
                     sector_success = True

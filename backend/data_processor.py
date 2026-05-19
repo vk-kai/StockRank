@@ -226,14 +226,31 @@ def get_sector_flow_data():
             
             response.raise_for_status()
             
-            if response.encoding == 'ISO-8859-1':
+            content_type = response.headers.get('Content-Type', '')
+            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
+                response.encoding = 'GBK'
+            elif response.encoding == 'ISO-8859-1':
                 response.encoding = 'GBK'
             else:
-                response.encoding = response.apparent_encoding
+                try:
+                    response.encoding = response.apparent_encoding
+                except:
+                    response.encoding = 'GBK'
             
             sectors = parse_ths_sector_html(response.text, THS_SECTOR_URL)
             
             if sectors:
+                has_valid_name = False
+                for sector in sectors:
+                    name = sector.get('name', '')
+                    if name and any('\u4e00' <= char <= '\u9fff' for char in name):
+                        has_valid_name = True
+                        break
+                
+                if not has_valid_name:
+                    error_logger.error(f"获取的板块数据名称无效（非中文），跳过本次数据保存")
+                    continue
+                
                 global latest_data
                 latest_data = sectors
                 from data_collector import is_trading_day, is_trading_time
@@ -394,10 +411,16 @@ def get_sector_stocks(sector_url):
             
             response.raise_for_status()
             
-            if response.encoding == 'ISO-8859-1':
+            content_type = response.headers.get('Content-Type', '')
+            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
+                response.encoding = 'GBK'
+            elif response.encoding == 'ISO-8859-1':
                 response.encoding = 'GBK'
             else:
-                response.encoding = response.apparent_encoding
+                try:
+                    response.encoding = response.apparent_encoding
+                except:
+                    response.encoding = 'GBK'
             
             stocks = parse_ths_stock_html(response.text, sector_url)
             
