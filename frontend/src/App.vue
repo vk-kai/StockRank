@@ -119,6 +119,7 @@
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
           <div class="flow">流入: {{ formatFlow(sector.flow) }}</div>
+          <div class="net-flow">净流入: {{ formatFlow(sector.net_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.change > 0, 'negative': sector.change < 0 }">
             {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             <span class="trend-arrow">

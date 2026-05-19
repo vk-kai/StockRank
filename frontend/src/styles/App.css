@@ -488,6 +488,14 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
+.sector-card .net-flow {
+  color: #ffa726;
+  font-size: 12px;
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .sector-card .change {
   font-size: 12px;
   font-weight: bold;

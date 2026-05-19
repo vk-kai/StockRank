@@ -661,6 +661,7 @@ def generate_daily_summary():
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
+                'net_flow': item.get('net_flow', 0),
                 'change': item['change']
             })
         
@@ -703,6 +704,7 @@ def generate_daily_summary_for_date(date_str):
                 'rank': i + 1,
                 'name': item['name'],
                 'flow': item['flow'],
+                'net_flow': item.get('net_flow', 0),
                 'change': item['change']
             })
         
