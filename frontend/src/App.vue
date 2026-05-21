@@ -57,13 +57,13 @@
           <span class="monitor-name">{{ getHealthLabel(key) }}</span>
           <span class="monitor-text">{{ getMonitorStatusText(key, item) }}</span>
           <span class="monitor-time" v-if="item.response_time && item.status === 'ok'">{{ item.response_time }}ms</span>
-          <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
-            閲嶈瘯
+            <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
+            重试
           </button>
         </div>
         <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
-          <span class="monitor-text">妫€娴嬩腑...</span>
+          <span class="monitor-text">检测中...</span>
         </div>
       </div>
     </div>
@@ -134,8 +134,8 @@
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">娴佸叆: {{ formatFlow(sector.flow) }}</div>
-          <div class="net-flow">鍑€娴佸叆: {{ formatFlow(sector.net_flow) }}</div>
+          <div class="flow">流入: {{ formatFlow(sector.flow) }}</div>
+          <div class="net-flow">净流入: {{ formatFlow(sector.net_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.change > 0, 'negative': sector.change < 0 }">
             {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             <span class="trend-arrow">
@@ -159,7 +159,7 @@
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">绱娴佸叆: {{ formatFlow(sector.total_flow) }}</div>
+          <div class="flow">累计流入: {{ formatFlow(sector.total_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
             {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             <span class="trend-arrow">
@@ -178,7 +178,7 @@
 
     <div class="error" v-if="error">
       <p>{{ error }}</p>
-      <button @click="retry">閲嶈瘯</button>
+      <button @click="retry">重试</button>
     </div>
     
     <SecurityAlert />
@@ -188,7 +188,7 @@
       <div class="modal-container" @click.stop>
         <div class="modal-header">
           <h3>{{ selectedSector?.name }} - 个股详情</h3>
-          <button class="close-btn" @click="closeStockModal">脳</button>
+          <button class="close-btn" @click="closeStockModal">×</button>
         </div>
         
         <div class="modal-controls">
