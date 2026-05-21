@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
-import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption } from '../../services/chartService'
+import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, getTopSectorsByLatestSnapshot } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -51,7 +51,8 @@ export default {
       isReplayingToday: false,
       replayCursor: null,
       replayTimer: null,
-      replaySpeed: 450
+      replaySpeed: 650,
+      replayTopSectors: []
     }
   },
   computed: {
@@ -381,7 +382,8 @@ export default {
           this.minuteData,
           this.colors,
           this.isReplayingToday ? this.replayCursor : null,
-          12
+          12,
+          this.replayTopSectors
         )
 
         try {
@@ -487,6 +489,9 @@ export default {
     startTodayReplay() {
       if (!this.hasReplayData || !this.isAfterMarketClose) return
 
+      const timeKeys = Object.keys(this.minuteData).sort()
+      this.replayTopSectors = getTopSectorsByLatestSnapshot(timeKeys, this.minuteData, 12)
+
       if (this.replayTimer) {
         clearInterval(this.replayTimer)
         this.replayTimer = null
@@ -520,6 +525,7 @@ export default {
 
       this.isReplayingToday = false
       this.replayCursor = null
+      this.replayTopSectors = []
 
       if (resetToLive) {
         this.updateChart()

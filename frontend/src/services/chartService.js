@@ -27,19 +27,21 @@ export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 12, rep
     .map(item => item.name)
 }
 
-export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 12) {
+export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 12, fixedTopSectors = null) {
   const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
-  const topSectors = getTopSectorsByLatestSnapshot(visibleTimeData, allData, limit)
+  const topSectors = Array.isArray(fixedTopSectors) && fixedTopSectors.length > 0
+    ? fixedTopSectors
+    : getTopSectorsByLatestSnapshot(visibleTimeData, allData, limit)
 
   if (visibleTimeData.length === 0) {
     return {
-      backgroundColor: '#fff',
+      backgroundColor: '#111827',
       title: {
         text: '今日资金流向',
         left: 12,
         top: 10,
         textStyle: {
-          color: '#1f2a44',
+          color: '#e5eefb',
           fontSize: 16,
           fontWeight: 600
         }
@@ -108,16 +110,18 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   })
 
   return {
-    backgroundColor: '#fff',
+    backgroundColor: '#111827',
     animation: true,
     animationDuration: 700,
-    animationDurationUpdate: 550,
+    animationDurationUpdate: 900,
+    animationEasing: 'linear',
+    animationEasingUpdate: 'linear',
     title: {
       text: replayCursor === null ? '今日资金流向' : `今日走势回放 · ${visibleTimeData[visibleTimeData.length - 1]}`,
       left: 12,
       top: 10,
       textStyle: {
-        color: '#1f2a44',
+        color: '#e5eefb',
         fontSize: 16,
         fontWeight: 600
       }
@@ -125,8 +129,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     tooltip: {
       trigger: 'axis',
       order: 'valueDesc',
-      backgroundColor: 'rgba(18, 24, 38, 0.96)',
-      borderColor: '#d7deea',
+      backgroundColor: 'rgba(17, 24, 39, 0.96)',
+      borderColor: 'rgba(148, 163, 184, 0.25)',
       borderWidth: 1,
       textStyle: {
         color: '#fff'
