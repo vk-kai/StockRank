@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
-import { generateChartOption, generateSeries, collectAllSectors } from '../../services/chartService'
+import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -47,7 +47,11 @@ export default {
       loadingStocks: false,
       stocksError: null,
       stockSortField: 'change',
-      stockSortOrder: 'desc'
+      stockSortOrder: 'desc',
+      isReplayingToday: false,
+      replayCursor: null,
+      replayTimer: null,
+      replaySpeed: 450
     }
   },
   computed: {
@@ -115,6 +119,27 @@ export default {
         'ths_news': 'news',
         'ths_sector': 'sector_flow'
       }
+    },
+    isAfterMarketClose() {
+      const now = new Date()
+      const hours = now.getHours()
+      const minutes = now.getMinutes()
+      return hours > 15 || (hours === 15 && minutes >= 0)
+    },
+    hasReplayData() {
+      return this.selectedTimeRange === 'today' && Object.keys(this.minuteData).length > 1
+    },
+    chartHasData() {
+      return Object.keys(this.minuteData).length > 0 || Object.keys(this.historyData).length > 0
+    },
+    showChartLoading() {
+      return (this.loading || this.healthChecking) && !this.chartHasData
+    },
+    replayButtonText() {
+      if (this.isReplayingToday) {
+        return '停止回放'
+      }
+      return this.isAfterMarketClose ? '回放今日走势' : '今日走势预览'
     }
   },
   mounted() {
@@ -144,6 +169,9 @@ export default {
     }
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval)
+    }
+    if (this.replayTimer) {
+      clearInterval(this.replayTimer)
     }
   },
   methods: {
@@ -255,6 +283,9 @@ export default {
         const response = await getMinuteData(24)
         if (response.success) {
           this.minuteData = response.data
+          if (this.isReplayingToday) {
+            this.stopTodayReplay(false)
+          }
           this.updateChart()
         }
       } catch (err) {
@@ -268,6 +299,9 @@ export default {
       
       this.loading = true
       this.error = null
+      if (this.selectedTimeRange !== 'today') {
+        this.stopTodayReplay(true)
+      }
       try {
         if (this.selectedTimeRange === 'today') {
           this.accumulatedData = []
@@ -337,6 +371,26 @@ export default {
     updateChart() {
       if (!this.chartInstance) {
         this.initChart()
+        return
+      }
+
+      if (this.selectedTimeRange === 'today') {
+        const timeData = Object.keys(this.minuteData).sort()
+        const option = generateLiveReplayChartOption(
+          timeData,
+          this.minuteData,
+          this.colors,
+          this.isReplayingToday ? this.replayCursor : null,
+          12
+        )
+
+        try {
+          this.chartInstance.setOption(option, {
+            replaceMerge: ['series', 'xAxis', 'yAxis', 'title']
+          })
+        } catch (e) {
+          console.error('setOption 澶辫触:', e)
+        }
         return
       }
 
@@ -428,6 +482,57 @@ export default {
       } catch (e) {
         console.error('setOption 失败:', e)
       }
+    },
+
+    startTodayReplay() {
+      if (!this.hasReplayData || !this.isAfterMarketClose) return
+
+      if (this.replayTimer) {
+        clearInterval(this.replayTimer)
+        this.replayTimer = null
+      }
+
+      this.isReplayingToday = true
+      this.replayCursor = 0
+      this.updateChart()
+
+      this.replayTimer = setInterval(() => {
+        const timeKeys = Object.keys(this.minuteData).sort()
+        if (this.replayCursor === null) {
+          this.replayCursor = 0
+        }
+
+        if (this.replayCursor >= timeKeys.length - 1) {
+          this.stopTodayReplay(false)
+          return
+        }
+
+        this.replayCursor += 1
+        this.updateChart()
+      }, this.replaySpeed)
+    },
+
+    stopTodayReplay(resetToLive = false) {
+      if (this.replayTimer) {
+        clearInterval(this.replayTimer)
+        this.replayTimer = null
+      }
+
+      this.isReplayingToday = false
+      this.replayCursor = null
+
+      if (resetToLive) {
+        this.updateChart()
+      }
+    },
+
+    toggleTodayReplay() {
+      if (this.isReplayingToday) {
+        this.stopTodayReplay(true)
+        return
+      }
+
+      this.startTodayReplay()
     },
 
     getTopSectors(timeData, allData, isToday) {

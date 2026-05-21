@@ -26,6 +26,15 @@
         <div class="countdown">
           下次刷新: {{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
+        <button
+          v-if="selectedTimeRange === 'today' && hasReplayData"
+          class="replay-button"
+          :class="{ active: isReplayingToday }"
+          :disabled="!isAfterMarketClose && !isReplayingToday"
+          @click="toggleTodayReplay"
+        >
+          {{ replayButtonText }}
+        </button>
         <button class="config-button" @click="goToConfig">
           🤖 AI配置
         </button>
@@ -102,6 +111,12 @@
 
     <div class="chart-container" ref="chartContainer">
       <div ref="chart" class="chart"></div>
+      <div v-if="showChartLoading" class="chart-loading-mask">
+        <div class="chart-loading-content">
+          <div class="chart-loading-spinner"></div>
+          <div class="chart-loading-text">正在检测服务并加载图表...</div>
+        </div>
+      </div>
     </div>
 
     <div class="sector-list" v-if="selectedTimeRange === 'today' && currentData.length > 0">

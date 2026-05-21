@@ -1,5 +1,225 @@
 import { formatFlow } from '../utils/formatters'
 
+function getFlowValue(item) {
+  if (!item) return null
+  if (item.flow !== undefined && item.flow !== null) return item.flow
+  if (item.value !== undefined && item.value !== null) return item.value
+  return null
+}
+
+function getVisibleTimeData(timeData, replayCursor) {
+  if (!Array.isArray(timeData) || timeData.length === 0) return []
+  if (replayCursor === null || replayCursor === undefined) return timeData
+  return timeData.slice(0, Math.max(1, replayCursor + 1))
+}
+
+export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 12, replayCursor = null) {
+  const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
+  if (visibleTimeData.length === 0) return []
+
+  const latestKey = visibleTimeData[visibleTimeData.length - 1]
+  const latestItems = allData[latestKey]?.data || allData[latestKey] || []
+
+  return [...latestItems]
+    .filter(item => item && item.name)
+    .sort((a, b) => (getFlowValue(b) ?? Number.NEGATIVE_INFINITY) - (getFlowValue(a) ?? Number.NEGATIVE_INFINITY))
+    .slice(0, limit)
+    .map(item => item.name)
+}
+
+export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 12) {
+  const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
+  const topSectors = getTopSectorsByLatestSnapshot(visibleTimeData, allData, limit)
+
+  if (visibleTimeData.length === 0) {
+    return {
+      backgroundColor: '#fff',
+      title: {
+        text: '今日资金流向',
+        left: 12,
+        top: 10,
+        textStyle: {
+          color: '#1f2a44',
+          fontSize: 16,
+          fontWeight: 600
+        }
+      }
+    }
+  }
+
+  const series = topSectors.map((sectorName, index) => {
+    const color = colors[index % colors.length]
+    const data = visibleTimeData.map(timeKey => {
+      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+      const sectorItem = timeDataItem.find(item => item.name === sectorName)
+
+      return {
+        value: sectorItem?.flow ?? null,
+        change: sectorItem?.change ?? null,
+        totalFlow: sectorItem?.total_flow ?? null,
+        accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
+        appearances: sectorItem?.appearances ?? null,
+        time: timeKey,
+        name: sectorName
+      }
+    })
+
+    return {
+      name: sectorName,
+      type: 'line',
+      smooth: true,
+      connectNulls: true,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 5,
+      data,
+      lineStyle: {
+        width: 2.4,
+        color
+      },
+      itemStyle: {
+        color
+      },
+      endLabel: {
+        show: true,
+        distance: 10,
+        formatter: (params) => {
+          const value = params?.data?.value ?? params?.value?.value ?? params?.value ?? null
+          return `${params.seriesName}  ${formatFlow(value)}`
+        }
+      },
+      labelLayout: {
+        moveOverlap: 'shiftY'
+      },
+      emphasis: {
+        focus: 'series',
+        scale: 1.1,
+        lineStyle: {
+          width: 4,
+          shadowBlur: 8,
+          shadowColor: 'rgba(15, 23, 42, 0.18)'
+        },
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#fff'
+        }
+      }
+    }
+  })
+
+  return {
+    backgroundColor: '#fff',
+    animation: true,
+    animationDuration: 700,
+    animationDurationUpdate: 550,
+    title: {
+      text: replayCursor === null ? '今日资金流向' : `今日走势回放 · ${visibleTimeData[visibleTimeData.length - 1]}`,
+      left: 12,
+      top: 10,
+      textStyle: {
+        color: '#1f2a44',
+        fontSize: 16,
+        fontWeight: 600
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      order: 'valueDesc',
+      backgroundColor: 'rgba(18, 24, 38, 0.96)',
+      borderColor: '#d7deea',
+      borderWidth: 1,
+      textStyle: {
+        color: '#fff'
+      },
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: 'rgba(84, 112, 198, 0.55)',
+          width: 1
+        }
+      },
+      formatter: (params) => {
+        const list = Array.isArray(params) ? params.filter(param => param.data && param.data.value !== null) : []
+        if (list.length === 0) return ''
+
+        let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
+        list.forEach(param => {
+          const change = param.data?.change
+          const value = param.data?.value
+          const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
+          const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
+          result += `
+            <div style="display:flex;justify-content:space-between;gap:16px;margin:4px 0;min-width:220px;">
+              <span style="color:#cbd5e1;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
+                ${param.seriesName}
+              </span>
+              <span style="color:${changeColor};font-weight:600;">${formatFlow(value)}</span>
+              <span style="color:${changeColor};font-weight:600;">${changeText}</span>
+            </div>
+          `
+        })
+        return result
+      }
+    },
+    grid: {
+      left: 12,
+      right: 180,
+      top: 56,
+      bottom: 26,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: visibleTimeData,
+      axisLine: {
+        lineStyle: {
+          color: '#d5dbe6'
+        }
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: '#667085'
+      },
+      splitLine: {
+        show: false
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: '资金流入(亿)',
+      nameTextStyle: {
+        color: '#667085',
+        padding: [0, 0, 0, 8]
+      },
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: '#667085',
+        formatter: (value) => {
+          if (Math.abs(value) >= 1) {
+            return `${value.toFixed(1)}亿`
+          }
+          return `${(value * 10000).toFixed(0)}万`
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#edf1f7'
+        }
+      }
+    },
+    series
+  }
+}
+
 export function generateChartOption(timeData, series, topSectors, oldSelected, colors, isToday) {
   const validSelected = {}
   const topSectorsSet = new Set(topSectors)

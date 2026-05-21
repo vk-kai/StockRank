@@ -131,22 +131,26 @@
 }
 
 .chart-container {
-  background: rgba(20, 25, 45, 0.6);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(215, 222, 234, 0.9);
   border-radius: 8px;
-  padding: 20px;
+  padding: 14px;
   margin-bottom: 20px;
-  margin-top: 80px;
+  margin-top: 64px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  position: relative;
+  overflow: hidden;
 }
 
 @media (max-width: 1200px) {
   .chart-container {
-    margin-top: 80px;
+    margin-top: 64px;
   }
 }
 
 @media (max-width: 768px) {
   .chart-container {
-    margin-top: 80px;
+    margin-top: 64px;
   }
 }
 
@@ -379,7 +383,48 @@
 
 .chart {
   width: 100%;
-  height: 500px;
+  height: 620px;
+}
+
+.chart-loading-mask {
+  position: absolute;
+  inset: 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.chart-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #667085;
+}
+
+.chart-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(84, 112, 198, 0.15);
+  border-top-color: #5470c6;
+  animation: chartSpin 0.8s linear infinite;
+}
+
+.chart-loading-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #475467;
+}
+
+@keyframes chartSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .sector-list {
@@ -898,6 +943,34 @@
 .config-button:hover {
   background: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
+}
+
+.replay-button {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.replay-button:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.28);
+  transform: translateY(-2px);
+}
+
+.replay-button.active {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.replay-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .log-button {
