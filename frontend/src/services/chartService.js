@@ -1,4 +1,4 @@
-import { formatFlow } from '../utils/formatters'
+﻿import { formatFlow } from '../utils/formatters'
 
 function getFlowValue(item) {
   if (!item) return null
@@ -27,36 +27,86 @@ export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 12, rep
     .map(item => item.name)
 }
 
+export function buildReplaySectorOrder(timeData, allData, limit = 12) {
+  const sectorStats = new Map()
+
+  timeData.forEach((timeKey, timeIndex) => {
+    const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+    timeDataItem.forEach((item) => {
+      if (!item || !item.name) return
+
+      const flow = getFlowValue(item)
+      if (!sectorStats.has(item.name)) {
+        sectorStats.set(item.name, {
+          name: item.name,
+          firstSeen: timeIndex,
+          lastSeen: timeIndex,
+          peakFlow: flow ?? 0,
+          appearances: 0
+        })
+      }
+
+      const stats = sectorStats.get(item.name)
+      stats.lastSeen = timeIndex
+      stats.appearances += 1
+      if (flow !== null && flow !== undefined) {
+        stats.peakFlow = Math.max(stats.peakFlow, flow)
+      }
+    })
+  })
+
+  return Array.from(sectorStats.values())
+    .sort((a, b) => {
+      if (b.peakFlow !== a.peakFlow) return b.peakFlow - a.peakFlow
+      if (a.firstSeen !== b.firstSeen) return a.firstSeen - b.firstSeen
+      if (b.appearances !== a.appearances) return b.appearances - a.appearances
+      return b.lastSeen - a.lastSeen
+    })
+    .slice(0, limit)
+    .map(item => item.name)
+}
+
 export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 12, fixedTopSectors = null) {
-  const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
+  const fullTimeData = Array.isArray(timeData) ? timeData : []
+  const visibleIndex = replayCursor === null
+    ? fullTimeData.length - 1
+    : Math.max(0, Math.min(replayCursor, fullTimeData.length - 1))
+
   const topSectors = Array.isArray(fixedTopSectors) && fixedTopSectors.length > 0
     ? fixedTopSectors
-    : getTopSectorsByLatestSnapshot(visibleTimeData, allData, limit)
+    : buildReplaySectorOrder(fullTimeData, allData, limit)
 
-  if (visibleTimeData.length === 0) {
+  if (fullTimeData.length === 0) {
     return {
       backgroundColor: '#111827',
-      title: {
-        text: '今日资金流向',
-        left: 12,
-        top: 10,
-        textStyle: {
-          color: '#e5eefb',
-          fontSize: 16,
-          fontWeight: 600
-        }
-      }
+      title: { show: false },
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value', name: '资金流入(亿)' },
+      series: []
     }
   }
 
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
-    const data = visibleTimeData.map(timeKey => {
+    let cumulative = 0
+    let seen = false
+
+    const data = fullTimeData.map((timeKey, idx) => {
+      if (idx > visibleIndex) return null
+
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
+      const flow = sectorItem ? getFlowValue(sectorItem) : null
+
+      if (flow !== null && flow !== undefined) {
+        cumulative += flow
+        seen = true
+      }
+
+      if (!seen) return null
 
       return {
-        value: sectorItem?.flow ?? null,
+        value: cumulative,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -70,7 +120,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       name: sectorName,
       type: 'line',
       smooth: true,
-      connectNulls: true,
+      connectNulls: false,
       showSymbol: false,
       symbol: 'circle',
       symbolSize: 5,
@@ -83,7 +133,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color
       },
       endLabel: {
-        show: true,
+        show: visibleIndex === fullTimeData.length - 1 || replayCursor !== null,
         distance: 10,
         formatter: (params) => {
           const value = params?.data?.value ?? params?.value?.value ?? params?.value ?? null
@@ -116,16 +166,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     animationDurationUpdate: 900,
     animationEasing: 'linear',
     animationEasingUpdate: 'linear',
-    title: {
-      text: replayCursor === null ? '今日资金流向' : `今日走势回放 · ${visibleTimeData[visibleTimeData.length - 1]}`,
-      left: 12,
-      top: 10,
-      textStyle: {
-        color: '#e5eefb',
-        fontSize: 16,
-        fontWeight: 600
-      }
-    },
+    title: { show: false },
     tooltip: {
       trigger: 'axis',
       order: 'valueDesc',
@@ -167,26 +208,26 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       }
     },
     grid: {
-      left: 12,
-      right: 180,
-      top: 56,
+      left: 18,
+      right: 176,
+      top: 18,
       bottom: 26,
       containLabel: true
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: visibleTimeData,
+      data: fullTimeData,
       axisLine: {
         lineStyle: {
-          color: '#d5dbe6'
+          color: 'rgba(148, 163, 184, 0.35)'
         }
       },
       axisTick: {
         show: false
       },
       axisLabel: {
-        color: '#667085'
+        color: '#cbd5e1'
       },
       splitLine: {
         show: false
@@ -196,7 +237,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       type: 'value',
       name: '资金流入(亿)',
       nameTextStyle: {
-        color: '#667085',
+        color: '#cbd5e1',
         padding: [0, 0, 0, 8]
       },
       axisLine: {
@@ -206,7 +247,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: false
       },
       axisLabel: {
-        color: '#667085',
+        color: '#cbd5e1',
         formatter: (value) => {
           if (Math.abs(value) >= 1) {
             return `${value.toFixed(1)}亿`
@@ -216,7 +257,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       },
       splitLine: {
         lineStyle: {
-          color: '#edf1f7'
+          color: 'rgba(148, 163, 184, 0.14)'
         }
       }
     },
@@ -234,6 +275,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   }
 
   return {
+    backgroundColor: '#111827',
     animation: false,
     tooltip: {
       trigger: 'axis',
@@ -245,10 +287,10 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       borderWidth: 1,
       formatter: (params) => {
         let result = `<div style="font-weight:bold;margin-bottom:6px;color:#fff;">${params[0]?.name || ''}</div>`
-        
+
         params.forEach(param => {
           if (!param.data || param.data === null) return
-          
+
           const change = param.data.change
           const totalFlow = param.data.totalFlow
           const accumulatedChangePercent = param.data.accumulatedChangePercent
@@ -287,7 +329,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
               totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalFlow)}</b>`
             }
 
-            let appearancesHtml = appearances ? `<b>${appearances}</b>天` : '-'
+            const appearancesHtml = appearances ? `<b>${appearances}</b>次` : '-'
 
             result += `
               <div style="border-top:1px dashed #3a4a6b;margin:6px 0;padding-top:6px;">
@@ -298,7 +340,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
             `
           }
         })
-        
+
         return result
       }
     },
@@ -335,40 +377,39 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         color: '#8ba4c7',
         formatter: (value) => {
           if (Math.abs(value) >= 1) {
-            return value.toFixed(1) + '亿'
+            return `${value.toFixed(1)}亿`
           }
-          return (value * 10000).toFixed(0) + '万'
+          return `${(value * 10000).toFixed(0)}万`
         }
       }
     },
-
-    series: series
+    series
   }
 }
 
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
     const data = timeData.map(timeKey => {
-        const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-        const sectorItem = timeDataItem.find(item => item.name === sectorName)
-        const flow = sectorItem?.flow || null
-        const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : 0
+      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+      const sectorItem = timeDataItem.find(item => item.name === sectorName)
+      const flow = sectorItem?.flow || null
+      const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : 0
 
-        if (isToday) {
-          return {
-            value: flow,
-            change: change
-          }
-        }
-
+      if (isToday) {
         return {
           value: flow,
-          change: change,
-          totalFlow: sectorItem?.total_flow ?? 0,
-          accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
-          appearances: sectorItem?.appearances ?? 0
+          change
         }
-      })
+      }
+
+      return {
+        value: flow,
+        change,
+        totalFlow: sectorItem?.total_flow ?? 0,
+        accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
+        appearances: sectorItem?.appearances ?? 0
+      }
+    })
 
     return {
       name: sectorName,
@@ -378,7 +419,7 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       showSymbol: true,
       symbol: 'circle',
       symbolSize: 6,
-      data: data,
+      data,
       lineStyle: {
         width: 2,
         color: colors[index % colors.length]
@@ -405,19 +446,15 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   })
 }
 
-/**
- * 从所有时间点数据中收集出现过的板块，并按出现频率和资金流入排序
- */
 export function collectAllSectors(timeData, allData, isToday) {
   const sectorStats = new Map()
-  
-  // 收集所有时间点的板块数据
+
   timeData.forEach(timeKey => {
     const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-    timeDataItem.forEach((item, index) => {
+    timeDataItem.forEach((item) => {
       const name = item.name
       if (!name) return
-      
+
       if (!sectorStats.has(name)) {
         sectorStats.set(name, {
           name,
@@ -427,30 +464,28 @@ export function collectAllSectors(timeData, allData, isToday) {
           latestChange: 0
         })
       }
-      
+
       const stats = sectorStats.get(name)
       stats.count++
-      
+
       if (item.flow !== undefined && item.flow !== null) {
         stats.totalFlow += item.flow
         stats.latestFlow = item.flow
       }
-      
+
       if (item.change !== undefined && item.change !== null) {
         stats.latestChange = item.change
       }
     })
   })
-  
-  // 转换为数组并排序
+
   return Array.from(sectorStats.values())
     .sort((a, b) => {
-      // 优先按最新资金流入排序
       if (b.latestFlow !== a.latestFlow) {
         return b.latestFlow - a.latestFlow
       }
-      // 再按出现次数排序
       return b.count - a.count
     })
     .map(s => s.name)
 }
+

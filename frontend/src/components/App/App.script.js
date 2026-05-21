@@ -1,7 +1,7 @@
-import * as echarts from 'echarts'
+﻿import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
-import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, getTopSectorsByLatestSnapshot } from '../../services/chartService'
+import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -74,15 +74,15 @@ export default {
     healthErrors() {
       const errors = []
       const labels = {
-        'ths_news': '同花顺新闻',
-        'ths_sector': '同花顺板块资金'
+        ths_news: '同花顺新闻',
+        ths_sector: '同花顺板块资金'
       }
       for (const [key, value] of Object.entries(this.healthStatus)) {
         if (value.status === 'error' || value.status === 'partial') {
           errors.push({
             key,
             label: labels[key] || key,
-            error: value.status === 'partial' ? '个股详情异常' : value.error,
+            error: value.status === 'partial' ? '板块明细异常' : value.error,
             lastCheck: value.last_check
           })
         }
@@ -240,6 +240,8 @@ export default {
     },
 
     async fetchCurrentData() {
+      if (this.isReplayingToday) return
+
       try {
         const response = await getCurrentFlow()
         
@@ -280,6 +282,8 @@ export default {
     },
 
     async fetchMinuteData() {
+      if (this.isReplayingToday) return
+
       try {
         const response = await getMinuteData(24)
         if (response.success) {
@@ -321,6 +325,11 @@ export default {
     },
 
     async fetchData() {
+      if (this.isReplayingToday) {
+        this.countdown = 300
+        return
+      }
+
       await this.doHealthCheck()
       
       this.loading = true
@@ -360,6 +369,11 @@ export default {
 
     startCountdown() {
       this.countdownInterval = setInterval(() => {
+        if (this.isReplayingToday) {
+          this.countdown = 300
+          return
+        }
+
         if (this.countdown > 0) {
           this.countdown--
         } else {
@@ -388,7 +402,8 @@ export default {
 
         try {
           this.chartInstance.setOption(option, {
-            replaceMerge: ['series', 'xAxis', 'yAxis', 'title']
+            replaceMerge: ['series', 'xAxis', 'yAxis', 'title'],
+            lazyUpdate: true
           })
         } catch (e) {
           console.error('setOption 澶辫触:', e)
@@ -460,12 +475,12 @@ export default {
         let allSectors
         if (isToday && this.currentData.length > 0) {
           // 使用currentData的前5个板块，与下方TOP10列表保持一致
-          allSectors = this.currentData.slice(0, 5).map(s => s.name)
+          allSectors = this.currentData.slice(0, 10).map(s => s.name)
         } else {
           // 从所有时间点数据中收集出现过的板块
           allSectors = collectAllSectors(timeData, allData, isToday)
           // 限制最多5个板块
-          allSectors = allSectors.slice(0, 5)
+          allSectors = allSectors.slice(0, 10)
         }
         
         // 生成 series
@@ -479,7 +494,8 @@ export default {
 
       try {
         this.chartInstance.setOption(option, {
-          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis']
+          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis'],
+          lazyUpdate: true
         })
       } catch (e) {
         console.error('setOption 失败:', e)
@@ -490,7 +506,7 @@ export default {
       if (!this.hasReplayData || !this.isAfterMarketClose) return
 
       const timeKeys = Object.keys(this.minuteData).sort()
-      this.replayTopSectors = getTopSectorsByLatestSnapshot(timeKeys, this.minuteData, 12)
+      this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 12)
 
       if (this.replayTimer) {
         clearInterval(this.replayTimer)
@@ -1084,3 +1100,4 @@ export default {
     }
   }
 }
+

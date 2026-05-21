@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="dashboard">
     <header class="header">
       <div class="header-title-row">
@@ -15,41 +15,33 @@
           <label>时间跨度：</label>
           <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
             <option :value="'today'">当天</option>
-            <option :value="7">最近7天</option>
-            <option :value="15">最近15天</option>
-            <option :value="30">最近30天</option>
+            <option :value="7">近7天</option>
+            <option :value="15">近15天</option>
+            <option :value="30">近30天</option>
           </select>
         </div>
         <div class="last-update" v-if="lastUpdate">
-          最后更新: {{ lastUpdate }}
+          最后更新：{{ lastUpdate }}
         </div>
         <div class="countdown">
-          下次刷新: {{ countdownMinutes }}:{{ countdownSeconds }}
+          下次刷新：{{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
-        <button
-          v-if="selectedTimeRange === 'today' && hasReplayData"
-          class="replay-button"
-          :class="{ active: isReplayingToday }"
-          :disabled="!isAfterMarketClose && !isReplayingToday"
-          @click="toggleTodayReplay"
-        >
-          {{ replayButtonText }}
-        </button>
+
         <button class="config-button" @click="goToConfig">
-          🤖 AI配置
+          AI配置
         </button>
         <button class="log-button" @click="goToLogs">
-          📋 日志
+          日志
         </button>
         <button class="house-button" @click="goToHouseKline">
-          🏠 房价K线
+          房价K线
         </button>
       </div>
     </header>
 
     <div class="monitor-card-container" @click="refreshHealth">
       <div class="monitor-card-header">
-        <span class="monitor-card-label">📡 服务监控</span>
+        <span class="monitor-card-label">服务监控</span>
         <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
           {{ healthChecking ? '检测中...' : '检测' }}
         </button>
@@ -66,29 +58,29 @@
           <span class="monitor-text">{{ getMonitorStatusText(key, item) }}</span>
           <span class="monitor-time" v-if="item.response_time && item.status === 'ok'">{{ item.response_time }}ms</span>
           <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
-            重试
+            閲嶈瘯
           </button>
         </div>
         <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
-          <span class="monitor-text">检测中...</span>
+          <span class="monitor-text">妫€娴嬩腑...</span>
         </div>
       </div>
     </div>
 
     <div class="news-ticker-container" v-if="latestNews.length > 0">
       <div class="news-ticker-header">
-        <span class="ticker-label clickable" @click="goToNews">📰 最新新闻</span>
+        <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
         <div class="header-controls">
           <label class="notification-toggle">
             <input type="checkbox" :checked="enableNotification" @change="toggleNotification">
             <span class="toggle-slider"></span>
-            <span class="toggle-label">{{ enableNotification ? '🔔 已开启' : '🔕 已关闭' }}</span>
+            <span class="toggle-label">{{ enableNotification ? '已开启' : '已关闭' }}</span>
           </label>
           <select v-model="soundMode" @change="saveSoundMode(soundMode)" class="sound-mode-selector">
-            <option value="none">🔇 静音</option>
-            <option value="important">🔔 仅重要</option>
-            <option value="all">🔊 全部提醒</option>
+            <option value="none">静音</option>
+            <option value="important">仅重要</option>
+            <option value="all">全部提醒</option>
           </select>
         </div>
       </div>
@@ -101,7 +93,7 @@
         >
           <div class="news-title">
             <span class="news-index">{{ currentNewsIndex + 1 }}:</span>
-            <span v-if="currentNewsItem.importance === '3'" class="important-badge">重要</span>
+            <span v-if="currentNewsItem.importance === '3'" class="important-badge">閲嶈</span>
             {{ currentNewsItem.title }}
           </div>
           <div class="news-time">{{ formatNewsTime(currentNewsItem.timestamp) }}</div>
@@ -110,6 +102,15 @@
     </div>
 
     <div class="chart-container" ref="chartContainer">
+      <button
+        v-if="selectedTimeRange === 'today' && hasReplayData"
+        class="chart-replay-button"
+        :class="{ active: isReplayingToday }"
+        :disabled="!isAfterMarketClose && !isReplayingToday"
+        @click="toggleTodayReplay"
+      >
+        {{ isReplayingToday ? '暂停回放' : (isAfterMarketClose ? '今日回放' : '今日走势预览') }}
+      </button>
       <div ref="chart" class="chart"></div>
       <div v-if="showChartLoading" class="chart-loading-mask">
         <div class="chart-loading-content">
@@ -133,8 +134,8 @@
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">流入: {{ formatFlow(sector.flow) }}</div>
-          <div class="net-flow">净流入: {{ formatFlow(sector.net_flow) }}</div>
+          <div class="flow">娴佸叆: {{ formatFlow(sector.flow) }}</div>
+          <div class="net-flow">鍑€娴佸叆: {{ formatFlow(sector.net_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.change > 0, 'negative': sector.change < 0 }">
             {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             <span class="trend-arrow">
@@ -158,14 +159,14 @@
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">累计流入: {{ formatFlow(sector.total_flow) }}</div>
+          <div class="flow">绱娴佸叆: {{ formatFlow(sector.total_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
             {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             <span class="trend-arrow">
               {{ sector.accumulated_change_percent > 0 ? '↑' : (sector.accumulated_change_percent < 0 ? '↓' : '→') }}
             </span>
           </div>
-          <div class="appearances">上榜: {{ sector.appearances }}天</div>
+            <div class="appearances">上榜: {{ sector.appearances }}次</div>
         </div>
       </div>
     </div>
@@ -177,17 +178,17 @@
 
     <div class="error" v-if="error">
       <p>{{ error }}</p>
-      <button @click="retry">重试</button>
+      <button @click="retry">閲嶈瘯</button>
     </div>
     
     <SecurityAlert />
 
-    <!-- 个股详情弹窗 -->
+    <!-- 涓偂璇︽儏寮圭獥 -->
     <div class="modal-overlay" v-if="showStockModal" @click="closeStockModal">
       <div class="modal-container" @click.stop>
         <div class="modal-header">
-          <h3>📊 {{ selectedSector?.name }} - 个股详情</h3>
-          <button class="close-btn" @click="closeStockModal">×</button>
+          <h3>{{ selectedSector?.name }} - 个股详情</h3>
+          <button class="close-btn" @click="closeStockModal">脳</button>
         </div>
         
         <div class="modal-controls">
@@ -239,3 +240,6 @@
 </template>
 
 <script src="./components/App/App.script.js"></script>
+
+
+
