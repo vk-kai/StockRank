@@ -630,6 +630,10 @@ export default {
     },
 
     async loadReplayDateData() {
+      if (this.isReplayingToday) {
+        this.stopTodayReplay(false)
+      }
+
       if (this.autoGrowTimer) {
         clearInterval(this.autoGrowTimer)
         this.autoGrowTimer = null
@@ -646,7 +650,14 @@ export default {
       this.historicalMinuteData = null
       this.minuteData = {}
       this.lastTimeKeys = []
-      this.updateChart()
+      
+      try {
+        await this.loadHistoricalDataForReplay()
+        this.updateChart()
+      } catch (error) {
+        console.error('加载历史数据失败:', error)
+        this.updateChart()
+      }
     },
 
     async loadHistoricalDataForReplay() {
