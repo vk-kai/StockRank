@@ -83,39 +83,61 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
-  const sectorAvgFlows = topSectors.map(sectorName => {
-    let totalFlow = 0
-    let count = 0
-    fullTimeData.forEach(timeKey => {
-      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-      const sectorItem = timeDataItem.find(item => item.name === sectorName)
-      const flow = sectorItem ? getFlowValue(sectorItem) : null
-      if (flow !== null && flow !== undefined) {
-        totalFlow += Math.abs(flow)
-        count++
-      }
-    })
-    return {
-      name: sectorName,
-      avgFlow: count > 0 ? totalFlow / count : 0
-    }
-  })
-
-  sectorAvgFlows.sort((a, b) => b.avgFlow - a.avgFlow)
-  const largeScaleSectors = new Set(
-    sectorAvgFlows.slice(0, Math.ceil(sectorAvgFlows.length * 0.2)).map(s => s.name)
-  )
-
   const visibleDataCount = isReplayMode && replayCursor !== null
     ? Math.min(replayCursor + 1, fullTimeData.length)
     : fullTimeData.length
     
   const displayTimeData = fullTimeData.slice(0, visibleDataCount)
 
+  const allFlowValues = []
+  topSectors.forEach(sectorName => {
+    displayTimeData.forEach(timeKey => {
+      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+      const sectorItem = timeDataItem.find(item => item.name === sectorName)
+      const flow = sectorItem ? getFlowValue(sectorItem) : null
+      if (flow !== null && flow !== undefined) {
+        allFlowValues.push(flow)
+      }
+    })
+  })
+
+  let minFlow = 0
+  let maxFlow = 5
+  if (allFlowValues.length > 0) {
+    minFlow = Math.min(0, ...allFlowValues)
+    maxFlow = Math.max(5, ...allFlowValues)
+  }
+
+  const BREAK_LOWER = 5
+  const BREAK_UPPER = 30
+  const useBrokenAxis = maxFlow > BREAK_LOWER * 3
+
+  let brokenAxisGraphics = []
+  if (useBrokenAxis) {
+    brokenAxisGraphics = [
+      {
+        type: 'group',
+        left: 55,
+        top: '45%',
+        children: [
+          {
+            type: 'rect',
+            shape: { x: 0, y: -8, width: 30, height: 16 },
+            style: { fill: '#111827' }
+          },
+          {
+            type: 'polyline',
+            shape: { points: [[0, 0], [8, -6], [16, 6], [24, -6], [30, 0]] },
+            style: { stroke: '#64748b', lineWidth: 2 }
+          }
+        ]
+      }
+    ]
+  }
+
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
     let seen = false
-    const useRightAxis = largeScaleSectors.has(sectorName)
 
     const data = displayTimeData.map((timeKey, idx) => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
@@ -128,8 +150,16 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
       if (!seen) return null
 
+      let displayValue = flow
+      if (useBrokenAxis && flow !== null && flow !== undefined) {
+        if (flow > BREAK_LOWER) {
+          displayValue = BREAK_LOWER + (flow - BREAK_UPPER) * 0.2
+        }
+      }
+
       return {
-        value: flow,
+        value: displayValue,
+        originalValue: flow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -147,7 +177,6 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       showSymbol: false,
       symbol: 'circle',
       symbolSize: 5,
-      yAxisIndex: useRightAxis ? 1 : 0,
       data,
       lineStyle: {
         width: 1.5,
@@ -160,8 +189,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: true,
         distance: 10,
         formatter: (params) => {
-          const value = params?.data?.value ?? params?.value?.value ?? params?.value ?? null
-          return `${params.seriesName}  ${formatFlow(value)}`
+          const originalValue = params?.data?.originalValue ?? params?.data?.value ?? null
+          return `${params.seriesName}  ${formatFlow(originalValue)}`
         }
       },
       labelLayout: {
@@ -183,14 +212,74 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   })
 
+  let yAxisConfig
+  if (useBrokenAxis) {
+    const upperMax = Math.ceil((maxFlow - BREAK_UPPER) * 0.2 + BREAK_LOWER)
+    yAxisConfig = {
+      type: 'value',
+      name: '资金流入(亿)',
+      min: 0,
+      max: upperMax,
+      interval: 1,
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: '#cbd5e1',
+        formatter: (value) => {
+          if (value <= BREAK_LOWER) {
+            return `${value.toFixed(0)}亿`
+          } else {
+            const realValue = BREAK_UPPER + (value - BREAK_LOWER) / 0.2
+            return `${realValue.toFixed(0)}亿`
+          }
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.14)'
+        }
+      }
+    }
+  } else {
+    yAxisConfig = {
+      type: 'value',
+      name: '资金流入(亿)',
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: '#cbd5e1',
+        formatter: (value) => {
+          if (Math.abs(value) >= 1) {
+            return `${value.toFixed(1)}亿`
+          }
+          return `${(value * 10000).toFixed(0)}万`
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.14)'
+        }
+      }
+    }
+  }
+
   return {
     backgroundColor: '#111827',
     animation: true,
-    animationDuration: isReplayMode ? 150 : 700,
-    animationDurationUpdate: isReplayMode ? 150 : 900,
-    animationEasing: 'linear',
-    animationEasingUpdate: 'linear',
+    animationDuration: isReplayMode ? 300 : 700,
+    animationDurationUpdate: isReplayMode ? 300 : 900,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     title: { show: false },
+    graphic: brokenAxisGraphics,
     tooltip: {
       trigger: 'axis',
       order: 'valueDesc',
@@ -214,7 +303,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
         list.forEach(param => {
           const change = param.data?.change
-          const value = param.data?.value
+          const originalValue = param.data?.originalValue ?? param.data?.value
           const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
           const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
           result += `
@@ -223,7 +312,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:${changeColor};font-weight:600;">${formatFlow(value)}</span>
+              <span style="color:${changeColor};font-weight:600;">${formatFlow(originalValue)}</span>
               <span style="color:${changeColor};font-weight:600;">${changeText}</span>
             </div>
           `
@@ -257,62 +346,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: false
       }
     },
-    yAxis: [
-      {
-        type: 'value',
-        name: '资金流入(亿)',
-        nameTextStyle: {
-          color: '#cbd5e1',
-          padding: [0, 0, 0, 8]
-        },
-        axisLine: {
-          show: false
-        },
-        axisTick: {
-          show: false
-        },
-        axisLabel: {
-          color: '#cbd5e1',
-          formatter: (value) => {
-            if (Math.abs(value) >= 1) {
-              return `${value.toFixed(1)}亿`
-            }
-            return `${(value * 10000).toFixed(0)}万`
-          }
-        },
-        splitLine: {
-          lineStyle: {
-            color: 'rgba(148, 163, 184, 0.14)'
-          }
-        }
-      },
-      {
-        type: 'value',
-        name: '大额流入(亿)',
-        nameTextStyle: {
-          color: '#fbbf24',
-          padding: [0, 0, 0, 8]
-        },
-        axisLine: {
-          show: false
-        },
-        axisTick: {
-          show: false
-        },
-        axisLabel: {
-          color: '#fbbf24',
-          formatter: (value) => {
-            if (Math.abs(value) >= 1) {
-              return `${value.toFixed(1)}亿`
-            }
-            return `${(value * 10000).toFixed(0)}万`
-          }
-        },
-        splitLine: {
-          show: false
-        }
-      }
-    ],
+    yAxis: yAxisConfig,
     series
   }
 }

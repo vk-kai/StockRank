@@ -51,7 +51,7 @@ export default {
       isReplayingToday: false,
       replayCursor: null,
       replayTimer: null,
-      replaySpeed: 400,
+      replaySpeed: 200,
       replayTopSectors: [],
       replayDate: new Date().toISOString().split('T')[0],
       todayDate: new Date().toISOString().split('T')[0],
@@ -59,7 +59,7 @@ export default {
       lastTimeKeys: [],
       autoGrowCursor: null,
       autoGrowTimer: null,
-      autoGrowSpeed: 300
+      autoGrowSpeed: 200
     }
   },
   computed: {
