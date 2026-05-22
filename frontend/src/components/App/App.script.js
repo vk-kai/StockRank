@@ -59,10 +59,21 @@ export default {
       lastTimeKeys: [],
       autoGrowCursor: null,
       autoGrowTimer: null,
-      autoGrowSpeed: 300
+      autoGrowSpeed: 300,
+      replaySpeedMode: '1x',
+      speedModes: {
+        '0.5x': 1300,
+        '1x': 650,
+        '2x': 325
+      }
     }
   },
   computed: {
+    minReplayDate() {
+      const date = new Date()
+      date.setDate(date.getDate() - 30)
+      return date.toISOString().split('T')[0]
+    },
     countdownMinutes() {
       return Math.floor(this.countdown / 60).toString().padStart(2, '0')
     },
@@ -135,7 +146,13 @@ export default {
       return hours > 15 || (hours === 15 && minutes >= 0)
     },
     hasReplayData() {
-      return this.selectedTimeRange === 'today' && Object.keys(this.minuteData).length > 1
+      if (this.selectedTimeRange !== 'today') return false
+      
+      if (this.replayDate === this.todayDate) {
+        return Object.keys(this.minuteData).length > 1
+      }
+      
+      return true
     },
     chartHasData() {
       return Object.keys(this.minuteData).length > 0 || Object.keys(this.historyData).length > 0
@@ -563,8 +580,17 @@ export default {
       }
     },
 
-    startTodayReplay() {
-      if (!this.hasReplayData || !this.isAfterMarketClose) return
+    async startTodayReplay() {
+      if (!this.hasReplayData) return
+
+      if (this.replayDate !== this.todayDate && !this.historicalMinuteData) {
+        try {
+          await this.loadHistoricalDataForReplay()
+        } catch (error) {
+          console.error('无法加载历史数据，回放取消')
+          return
+        }
+      }
 
       const timeKeys = Object.keys(this.minuteData).sort()
       this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 12)
@@ -638,20 +664,54 @@ export default {
         return
       }
 
+      this.historicalMinuteData = null
+      this.minuteData = {}
+      this.lastTimeKeys = []
+      this.updateChart()
+    },
+
+    async loadHistoricalDataForReplay() {
+      if (this.replayDate === this.todayDate) {
+        return
+      }
+
       try {
         const response = await getMinuteDataByDate(this.replayDate)
         if (response.success) {
           this.historicalMinuteData = response.data
           this.minuteData = response.data
           this.lastTimeKeys = Object.keys(response.data).sort()
-          this.updateChart()
         } else {
           console.error('加载历史数据失败:', response.message)
           this.historicalMinuteData = null
+          throw new Error(response.message)
         }
       } catch (error) {
         console.error('加载历史数据失败:', error)
         this.historicalMinuteData = null
+        throw error
+      }
+    },
+
+    updateReplaySpeed() {
+      this.replaySpeed = this.speedModes[this.replaySpeedMode]
+      
+      if (this.isReplayingToday && this.replayTimer) {
+        clearInterval(this.replayTimer)
+        this.replayTimer = setInterval(() => {
+          const timeKeys = Object.keys(this.minuteData).sort()
+          if (this.replayCursor === null) {
+            this.replayCursor = 0
+          }
+
+          if (this.replayCursor >= timeKeys.length - 1) {
+            this.stopTodayReplay(false)
+            return
+          }
+
+          this.replayCursor += 1
+          this.updateChart()
+        }, this.replaySpeed)
       }
     },
 
