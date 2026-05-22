@@ -86,9 +86,33 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
+  const sectorAvgFlows = topSectors.map(sectorName => {
+    let totalFlow = 0
+    let count = 0
+    fullTimeData.forEach(timeKey => {
+      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
+      const sectorItem = timeDataItem.find(item => item.name === sectorName)
+      const flow = sectorItem ? getFlowValue(sectorItem) : null
+      if (flow !== null && flow !== undefined) {
+        totalFlow += Math.abs(flow)
+        count++
+      }
+    })
+    return {
+      name: sectorName,
+      avgFlow: count > 0 ? totalFlow / count : 0
+    }
+  })
+
+  sectorAvgFlows.sort((a, b) => b.avgFlow - a.avgFlow)
+  const largeScaleSectors = new Set(
+    sectorAvgFlows.slice(0, Math.ceil(sectorAvgFlows.length * 0.2)).map(s => s.name)
+  )
+
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
     let seen = false
+    const useRightAxis = largeScaleSectors.has(sectorName)
 
     const data = fullTimeData.map((timeKey, idx) => {
       if (idx > visibleIndex) return null
@@ -122,6 +146,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       showSymbol: false,
       symbol: 'circle',
       symbolSize: 5,
+      yAxisIndex: useRightAxis ? 1 : 0,
       data,
       lineStyle: {
         width: 1.5,
@@ -231,34 +256,62 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: false
       }
     },
-    yAxis: {
-      type: 'value',
-      name: '资金流入(亿)',
-      nameTextStyle: {
-        color: '#cbd5e1',
-        padding: [0, 0, 0, 8]
-      },
-      axisLine: {
-        show: false
-      },
-      axisTick: {
-        show: false
-      },
-      axisLabel: {
-        color: '#cbd5e1',
-        formatter: (value) => {
-          if (Math.abs(value) >= 1) {
-            return `${value.toFixed(1)}亿`
+    yAxis: [
+      {
+        type: 'value',
+        name: '资金流入(亿)',
+        nameTextStyle: {
+          color: '#cbd5e1',
+          padding: [0, 0, 0, 8]
+        },
+        axisLine: {
+          show: false
+        },
+        axisTick: {
+          show: false
+        },
+        axisLabel: {
+          color: '#cbd5e1',
+          formatter: (value) => {
+            if (Math.abs(value) >= 1) {
+              return `${value.toFixed(1)}亿`
+            }
+            return `${(value * 10000).toFixed(0)}万`
           }
-          return `${(value * 10000).toFixed(0)}万`
+        },
+        splitLine: {
+          lineStyle: {
+            color: 'rgba(148, 163, 184, 0.14)'
+          }
         }
       },
-      splitLine: {
-        lineStyle: {
-          color: 'rgba(148, 163, 184, 0.14)'
+      {
+        type: 'value',
+        name: '大额流入(亿)',
+        nameTextStyle: {
+          color: '#fbbf24',
+          padding: [0, 0, 0, 8]
+        },
+        axisLine: {
+          show: false
+        },
+        axisTick: {
+          show: false
+        },
+        axisLabel: {
+          color: '#fbbf24',
+          formatter: (value) => {
+            if (Math.abs(value) >= 1) {
+              return `${value.toFixed(1)}亿`
+            }
+            return `${(value * 10000).toFixed(0)}万`
+          }
+        },
+        splitLine: {
+          show: false
         }
       }
-    },
+    ],
     series
   }
 }
