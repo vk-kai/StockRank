@@ -1,4 +1,4 @@
-﻿import { formatFlow } from '../utils/formatters'
+import { formatFlow } from '../utils/formatters'
 
 function getFlowValue(item) {
   if (!item) return null
@@ -180,12 +180,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   let yAxisConfig
   if (useBrokenAxis) {
     yAxisConfig = {
-      type: 'value',
+      type: 'log',
       name: '资金流入(亿)',
-      min: 0,
-      max: function(value) {
-        return value.max > 50 ? value.max * 1.05 : 55
-      },
+      min: 1,
+      logBase: 10,
       axisLine: {
         show: false
       },
@@ -195,7 +193,9 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
-          if (value >= 10) {
+          if (value >= 1000) {
+            return `${(value / 1000).toFixed(1)}k亿`
+          } else if (value >= 10) {
             return `${value.toFixed(0)}亿`
           } else if (value >= 1) {
             return `${value.toFixed(1)}亿`
@@ -212,8 +212,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   } else {
     yAxisConfig = {
-      type: 'value',
+      type: 'log',
       name: '资金流入(亿)',
+      min: 1,
+      logBase: 10,
       axisLine: {
         show: false
       },
@@ -223,10 +225,15 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
-          if (Math.abs(value) >= 1) {
+          if (value >= 1000) {
+            return `${(value / 1000).toFixed(1)}k亿`
+          } else if (value >= 10) {
+            return `${value.toFixed(0)}亿`
+          } else if (value >= 1) {
             return `${value.toFixed(1)}亿`
+          } else {
+            return `${(value * 10000).toFixed(0)}万`
           }
-          return `${(value * 10000).toFixed(0)}万`
         }
       },
       splitLine: {
@@ -424,15 +431,22 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       }
     },
     yAxis: {
-      type: 'value',
+      type: 'log',
       name: '资金流入(亿)',
+      min: 1,
+      logBase: 10,
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
-          if (Math.abs(value) >= 1) {
+          if (value >= 1000) {
+            return `${(value / 1000).toFixed(1)}k亿`
+          } else if (value >= 10) {
+            return `${value.toFixed(0)}亿`
+          } else if (value >= 1) {
             return `${value.toFixed(1)}亿`
+          } else {
+            return `${(value * 10000).toFixed(0)}万`
           }
-          return `${(value * 10000).toFixed(0)}万`
         }
       }
     },
