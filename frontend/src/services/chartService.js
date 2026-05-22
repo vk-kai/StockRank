@@ -88,7 +88,6 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
-    let cumulative = 0
     let seen = false
 
     const data = fullTimeData.map((timeKey, idx) => {
@@ -99,14 +98,13 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       const flow = sectorItem ? getFlowValue(sectorItem) : null
 
       if (flow !== null && flow !== undefined) {
-        cumulative += flow
         seen = true
       }
 
       if (!seen) return null
 
       return {
-        value: cumulative,
+        value: flow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
