@@ -189,16 +189,23 @@ export default {
       this.showToast('正在测试AI连接...', 'info')
 
       try {
-        const response = await testAIConnection()
+        const response = await testAIConnection({
+          api_url: this.aiConfig.api_url,
+          api_key: this.aiConfig.api_key,
+          model: this.aiConfig.model,
+          full_url: this.aiConfig.full_url
+        })
         
         if (response.success) {
           this.showToast('✅ AI连接测试成功', 'success')
         } else {
-          const errorInfo = response.data?.error?.message || JSON.stringify(response.data)
-          this.showToast(`❌ HTTP ${response.status_code}: ${errorInfo}`, 'error')
+          const steps = response.steps || []
+          const failedStep = steps.find(s => !s.success) || steps[steps.length - 1]
+          const errorMsg = failedStep?.message || response.message || '测试失败'
+          this.showToast(`❌ ${errorMsg}`, 'error')
         }
       } catch (error) {
-        const message = error.response?.data?.error || error.response?.data?.message || '测试失败，请检查网络连接'
+        const message = error.response?.data?.message || error.response?.data?.error || '测试失败，请检查网络连接'
         this.showToast('❌ ' + message, 'error')
       }
     },

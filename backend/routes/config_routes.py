@@ -74,6 +74,13 @@ def update_ai_config():
 
 @config_bp.route('/ai/test', methods=['POST'])
 def test_ai_connection():
+    test_result = {
+        'success': False,
+        'steps': [],
+        'api_url': '',
+        'final_url': ''
+    }
+    
     try:
         data = request.json or {}
         
@@ -93,44 +100,121 @@ def test_ai_connection():
         if not api_url or not api_key:
             return jsonify({'success': False, 'message': 'API地址和密钥不能为空'}), 400
         
-        if not full_url and not api_url.endswith('/chat/completions'):
-            api_url = api_url.rstrip('/') + '/chat/completions'
+        test_result['api_url'] = api_url
         
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}"
         }
         
+        base_url = api_url.rstrip('/')
+        if '/chat/completions' in base_url:
+            base_url = base_url.rsplit('/chat/completions', 1)[0]
+        if '/completions' in base_url:
+            base_url = base_url.rsplit('/completions', 1)[0]
+        
+        models_url = base_url + '/models'
+        
+        step1 = {'name': '连通性测试', 'url': models_url, 'success': False}
+        try:
+            models_response = requests.get(models_url, headers=headers, timeout=10)
+            step1['status_code'] = models_response.status_code
+            if models_response.status_code == 200:
+                step1['success'] = True
+                step1['message'] = 'API连通正常'
+                try:
+                    models_data = models_response.json()
+                    if 'data' in models_data:
+                        available_models = [m.get('id', '') for m in models_data.get('data', [])[:5]]
+                        if available_models:
+                            step1['message'] = f'可用模型: {", ".join(available_models)}...'
+                except:
+                    pass
+            elif models_response.status_code == 401:
+                step1['message'] = 'API密钥无效或未授权'
+            elif models_response.status_code == 404:
+                step1['success'] = True
+                step1['message'] = 'API端点可达（/models不可用，但可能支持对话接口）'
+            else:
+                step1['message'] = f'HTTP {models_response.status_code}'
+        except requests.exceptions.Timeout:
+            step1['message'] = '连接超时（10秒）'
+        except requests.exceptions.ConnectionError as e:
+            step1['message'] = f'网络连接失败: {str(e)[:100]}'
+        except Exception as e:
+            step1['message'] = f'请求异常: {str(e)[:100]}'
+        
+        test_result['steps'].append(step1)
+        
+        chat_url = api_url
+        if not full_url and not api_url.endswith('/chat/completions'):
+            chat_url = api_url.rstrip('/') + '/chat/completions'
+        
+        test_result['final_url'] = chat_url
+        
+        step2 = {'name': '对话测试', 'url': chat_url, 'success': False}
+        
+        if not step1['success'] and '网络连接失败' in step1.get('message', ''):
+            step2['message'] = '跳过（网络不可达）'
+            test_result['steps'].append(step2)
+            test_result['message'] = f"网络连接失败，请检查API地址是否正确"
+            return jsonify(test_result), 400
+        
         test_payload = {
             "model": model,
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 10
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 5
         }
         
-        response = requests.post(api_url, headers=headers, json=test_payload, timeout=30)
-        
         try:
-            response_data = response.json()
-        except:
-            response_data = response.text
-        
-        return jsonify({
-            'success': response.status_code == 200,
-            'status_code': response.status_code,
-            'api_url': api_url,
-            'data': response_data
-        })
+            chat_response = requests.post(chat_url, headers=headers, json=test_payload, timeout=30)
+            step2['status_code'] = chat_response.status_code
             
-    except requests.exceptions.Timeout:
-        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': '连接超时'}), 400
-    except requests.exceptions.ConnectionError as e:
-        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': f'连接失败: {str(e)}'}), 400
+            if chat_response.status_code == 200:
+                step2['success'] = True
+                step2['message'] = f'对话测试成功，模型: {model}'
+                test_result['success'] = True
+                test_result['message'] = 'AI连接测试成功'
+            else:
+                try:
+                    error_data = chat_response.json()
+                    error_msg = error_data.get('error', {})
+                    if isinstance(error_msg, dict):
+                        step2['message'] = error_msg.get('message', f'HTTP {chat_response.status_code}')
+                    else:
+                        step2['message'] = str(error_msg)[:200]
+                except:
+                    step2['message'] = chat_response.text[:200] if chat_response.text else f'HTTP {chat_response.status_code}'
+                
+                if chat_response.status_code == 401:
+                    step2['message'] = 'API密钥无效'
+                elif chat_response.status_code == 404:
+                    step2['message'] = '接口地址不存在，请检查URL或开启"完整URL模式"'
+                elif chat_response.status_code == 400:
+                    step2['message'] = f'请求参数错误: {step2["message"][:100]}'
+                
+                test_result['message'] = step2['message']
+                
+        except requests.exceptions.Timeout:
+            step2['message'] = '对话请求超时（30秒）'
+            test_result['message'] = '对话请求超时，API响应过慢'
+        except requests.exceptions.ConnectionError as e:
+            step2['message'] = f'连接失败: {str(e)[:100]}'
+            test_result['message'] = '对话接口连接失败'
+        except Exception as e:
+            step2['message'] = f'请求异常: {str(e)[:100]}'
+            test_result['message'] = step2['message']
+        
+        test_result['steps'].append(step2)
+        
+        return jsonify(test_result)
+            
     except Exception as e:
         error_logger.error(f"测试AI连接失败: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/config/ai/test]: {str(e)}")
-        return jsonify({'success': False, 'status_code': None, 'api_url': api_url, 'error': str(e)}), 500
-    return jsonify({'success': True, 'status_code': response.status_code, 'api_url': api_url, 'data': response_data}), 200
+        test_result['message'] = f'测试异常: {str(e)}'
+        return jsonify(test_result), 500
 # ==================== 飞书配置 ====================
 @config_bp.route('/feishu', methods=['GET'])
 def get_feishu_config():

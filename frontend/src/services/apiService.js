@@ -209,10 +209,10 @@ export async function saveAIConfig(config) {
   }
 }
 
-export async function testAIConnection() {
+export async function testAIConnection(config = {}) {
   try {
-    const response = await apiClient.post('/config/ai/test', {}, {
-      timeout: 30000
+    const response = await apiClient.post('/config/ai/test', config, {
+      timeout: 60000
     })
     return response.data
   } catch (error) {
