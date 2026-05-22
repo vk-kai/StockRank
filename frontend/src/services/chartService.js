@@ -101,12 +101,22 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     })
   })
 
-  let maxFlow = 5
-  if (allFlowValues.length > 0) {
-    maxFlow = Math.max(5, ...allFlowValues)
-  }
+  const maxFlow = allFlowValues.length > 0 ? Math.max(5, ...allFlowValues) : 5
 
   const useBrokenAxis = maxFlow > 15
+
+  function mapValueToAxis(value) {
+    if (value === null || value === undefined) return null
+    if (value <= 200) {
+      return value * 0.2 / 200
+    } else if (value <= 800) {
+      return 0.2 + (value - 200) * 0.6 / 600
+    } else {
+      const extra = value - 800
+      const maxExtra = maxFlow - 800
+      return 0.8 + (extra / maxExtra) * 0.2
+    }
+  }
 
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
@@ -124,7 +134,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       if (!seen) return null
 
       return {
-        value: flow,
+        value: useBrokenAxis ? mapValueToAxis(flow) : flow,
+        realValue: flow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -154,8 +165,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: true,
         distance: 10,
         formatter: (params) => {
-          const value = params?.data?.value ?? params?.value ?? null
-          return `${params.seriesName}  ${formatFlow(value)}`
+          const realValue = params?.data?.realValue ?? params?.value ?? null
+          return `${params.seriesName}  ${formatFlow(realValue)}`
         }
       },
       labelLayout: {
@@ -179,11 +190,20 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   let yAxisConfig
   if (useBrokenAxis) {
+    const tickValues = [0, 50, 100, 150, 200, 300, 400, 500, 600, 700, 800]
+    if (maxFlow > 800) {
+      const step = Math.ceil((maxFlow - 800) / 3 / 100) * 100
+      for (let v = 800 + step; v <= maxFlow; v += step) {
+        tickValues.push(v)
+      }
+    }
+    
     yAxisConfig = {
-      type: 'log',
+      type: 'value',
       name: '资金流入(亿)',
-      min: 1,
-      logBase: 10,
+      min: 0,
+      max: 1,
+      interval: 0.1,
       axisLine: {
         show: false
       },
@@ -193,14 +213,24 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
-          if (value >= 1000) {
-            return `${(value / 1000).toFixed(1)}k亿`
-          } else if (value >= 10) {
-            return `${value.toFixed(0)}亿`
-          } else if (value >= 1) {
-            return `${value.toFixed(1)}亿`
+          let realValue
+          if (value <= 0.2) {
+            realValue = value * 200 / 0.2
+          } else if (value <= 0.8) {
+            realValue = 200 + (value - 0.2) * 600 / 0.6
           } else {
-            return `${(value * 10000).toFixed(0)}万`
+            const extra = (value - 0.8) * (maxFlow - 800) / 0.2
+            realValue = 800 + extra
+          }
+          
+          if (realValue >= 1000) {
+            return `${(realValue / 1000).toFixed(1)}k亿`
+          } else if (realValue >= 10) {
+            return `${realValue.toFixed(0)}亿`
+          } else if (realValue >= 1) {
+            return `${realValue.toFixed(1)}亿`
+          } else {
+            return `${(realValue * 10000).toFixed(0)}万`
           }
         }
       },
@@ -212,10 +242,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   } else {
     yAxisConfig = {
-      type: 'log',
+      type: 'value',
       name: '资金流入(亿)',
-      min: 1,
-      logBase: 10,
       axisLine: {
         show: false
       },
@@ -225,15 +253,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
-          if (value >= 1000) {
-            return `${(value / 1000).toFixed(1)}k亿`
-          } else if (value >= 10) {
-            return `${value.toFixed(0)}亿`
-          } else if (value >= 1) {
+          if (Math.abs(value) >= 1) {
             return `${value.toFixed(1)}亿`
-          } else {
-            return `${(value * 10000).toFixed(0)}万`
           }
+          return `${(value * 10000).toFixed(0)}万`
         }
       },
       splitLine: {
@@ -334,6 +357,48 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     }
   }
 
+  let maxFlow = 5
+  series.forEach(s => {
+    if (s.data && Array.isArray(s.data)) {
+      s.data.forEach(item => {
+        if (item && item.value !== null && item.value !== undefined) {
+          maxFlow = Math.max(maxFlow, item.value)
+        }
+      })
+    }
+  })
+
+  const useBrokenAxis = maxFlow > 15
+
+  function mapValueToAxis(value) {
+    if (value === null || value === undefined) return null
+    if (value <= 200) {
+      return value * 0.2 / 200
+    } else if (value <= 800) {
+      return 0.2 + (value - 200) * 0.6 / 600
+    } else {
+      const extra = value - 800
+      const maxExtra = maxFlow - 800
+      return 0.8 + (extra / maxExtra) * 0.2
+    }
+  }
+
+  const mappedSeries = series.map(s => {
+    if (!useBrokenAxis) return s
+    
+    return {
+      ...s,
+      data: s.data.map(item => {
+        if (!item) return item
+        return {
+          ...item,
+          value: mapValueToAxis(item.value),
+          realValue: item.value
+        }
+      })
+    }
+  })
+
   return {
     backgroundColor: '#111827',
     animation: false,
@@ -355,6 +420,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
           const totalFlow = param.data.totalFlow
           const accumulatedChangePercent = param.data.accumulatedChangePercent
           const appearances = param.data.appearances
+          const displayValue = useBrokenAxis ? (param.data.realValue ?? param.data.value) : param.data.value
 
           let changeHtml = '-'
           if (change !== null && change !== undefined) {
@@ -369,7 +435,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
                 ${param.seriesName}
               </span>
               <span style="color:#ee6666;font-weight:bold;">
-                ${formatFlow(param.data.value)}
+                ${formatFlow(displayValue)}
               </span>
               <span style="color:#8ba4a7;">
                 ${changeHtml}
@@ -430,27 +496,50 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         color: '#8ba4c7'
       }
     },
-    yAxis: {
-      type: 'log',
+    yAxis: useBrokenAxis ? {
+      type: 'value',
       name: '资金流入(亿)',
-      min: 1,
-      logBase: 10,
+      min: 0,
+      max: 1,
+      interval: 0.1,
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
-          if (value >= 1000) {
-            return `${(value / 1000).toFixed(1)}k亿`
-          } else if (value >= 10) {
-            return `${value.toFixed(0)}亿`
-          } else if (value >= 1) {
-            return `${value.toFixed(1)}亿`
+          let realValue
+          if (value <= 0.2) {
+            realValue = value * 200 / 0.2
+          } else if (value <= 0.8) {
+            realValue = 200 + (value - 0.2) * 600 / 0.6
           } else {
-            return `${(value * 10000).toFixed(0)}万`
+            const extra = (value - 0.8) * (maxFlow - 800) / 0.2
+            realValue = 800 + extra
+          }
+          
+          if (realValue >= 1000) {
+            return `${(realValue / 1000).toFixed(1)}k亿`
+          } else if (realValue >= 10) {
+            return `${realValue.toFixed(0)}亿`
+          } else if (realValue >= 1) {
+            return `${realValue.toFixed(1)}亿`
+          } else {
+            return `${(realValue * 10000).toFixed(0)}万`
           }
         }
       }
+    } : {
+      type: 'value',
+      name: '资金流入(亿)',
+      axisLabel: {
+        color: '#8ba4c7',
+        formatter: (value) => {
+          if (Math.abs(value) >= 1) {
+            return `${value.toFixed(1)}亿`
+          }
+          return `${(value * 10000).toFixed(0)}万`
+        }
+      }
     },
-    series
+    series: mappedSeries
   }
 }
 
