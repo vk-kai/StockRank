@@ -601,9 +601,26 @@ export default {
       }
 
       this.isReplayingToday = true
-      this.replayCursor = null
-
+      this.replayCursor = 0
+      
       this.updateChart()
+
+      const totalSteps = timeKeys.length
+      let currentStep = 0
+
+      this.replayTimer = setInterval(() => {
+        currentStep++
+        
+        if (currentStep >= totalSteps) {
+          clearInterval(this.replayTimer)
+          this.replayTimer = null
+          this.isReplayingToday = false
+          return
+        }
+
+        this.replayCursor = currentStep
+        this.updateChart()
+      }, this.replaySpeed)
     },
 
     stopTodayReplay(resetToLive = false) {

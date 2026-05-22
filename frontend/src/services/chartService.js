@@ -68,10 +68,7 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
 
 export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
-  const visibleIndex = replayCursor === null
-    ? fullTimeData.length - 1
-    : Math.max(0, Math.min(replayCursor, fullTimeData.length - 1))
-
+  
   const topSectors = Array.isArray(fixedTopSectors) && fixedTopSectors.length > 0
     ? fixedTopSectors
     : buildReplaySectorOrder(fullTimeData, allData, limit)
@@ -109,14 +106,18 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     sectorAvgFlows.slice(0, Math.ceil(sectorAvgFlows.length * 0.2)).map(s => s.name)
   )
 
+  const visibleDataCount = isReplayMode && replayCursor !== null
+    ? Math.min(replayCursor + 1, fullTimeData.length)
+    : fullTimeData.length
+    
+  const displayTimeData = fullTimeData.slice(0, visibleDataCount)
+
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
     let seen = false
     const useRightAxis = largeScaleSectors.has(sectorName)
 
-    const data = fullTimeData.map((timeKey, idx) => {
-      if (idx > visibleIndex) return null
-
+    const data = displayTimeData.map((timeKey, idx) => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
       const flow = sectorItem ? getFlowValue(sectorItem) : null
@@ -156,7 +157,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color
       },
       endLabel: {
-        show: visibleIndex === fullTimeData.length - 1 || replayCursor !== null,
+        show: !isReplayMode && (visibleDataCount >= fullTimeData.length),
         distance: 10,
         formatter: (params) => {
           const value = params?.data?.value ?? params?.value?.value ?? params?.value ?? null
@@ -185,8 +186,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   return {
     backgroundColor: '#111827',
     animation: true,
-    animationDuration: isReplayMode ? 10000 : 700,
-    animationDurationUpdate: isReplayMode ? 10000 : 900,
+    animationDuration: isReplayMode ? 300 : 700,
+    animationDurationUpdate: isReplayMode ? 300 : 900,
     animationEasing: 'linear',
     animationEasingUpdate: 'linear',
     title: { show: false },
@@ -240,7 +241,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: fullTimeData,
+      data: displayTimeData,
       axisLine: {
         lineStyle: {
           color: 'rgba(148, 163, 184, 0.35)'
