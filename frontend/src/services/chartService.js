@@ -124,7 +124,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       symbolSize: 5,
       data,
       lineStyle: {
-        width: 2.4,
+        width: 1.5,
         color
       },
       itemStyle: {
@@ -145,7 +145,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         focus: 'series',
         scale: 1.1,
         lineStyle: {
-          width: 4,
+          width: 2.5,
           shadowBlur: 8,
           shadowColor: 'rgba(15, 23, 42, 0.18)'
         },

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="dashboard">
     <header class="header">
       <div class="header-title-row">
@@ -102,15 +102,26 @@
     </div>
 
     <div class="chart-container" ref="chartContainer">
-      <button
-        v-if="selectedTimeRange === 'today' && hasReplayData"
-        class="chart-replay-button"
-        :class="{ active: isReplayingToday }"
-        :disabled="!isAfterMarketClose && !isReplayingToday"
-        @click="toggleTodayReplay"
-      >
-        {{ isReplayingToday ? '暂停回放' : (isAfterMarketClose ? '今日回放' : '今日走势预览') }}
-      </button>
+      <div class="chart-controls">
+        <button
+          v-if="selectedTimeRange === 'today' && hasReplayData"
+          class="chart-replay-button"
+          :class="{ active: isReplayingToday }"
+          :disabled="!isAfterMarketClose && !isReplayingToday"
+          @click="toggleTodayReplay"
+        >
+          {{ isReplayingToday ? '暂停' : '回放' }}
+        </button>
+        <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
+          <label>回放日期：</label>
+          <input 
+            type="date" 
+            v-model="replayDate" 
+            @change="loadReplayDateData"
+            :max="todayDate"
+          />
+        </div>
+      </div>
       <div ref="chart" class="chart"></div>
       <div v-if="showChartLoading" class="chart-loading-mask">
         <div class="chart-loading-content">

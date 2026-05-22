@@ -1,6 +1,6 @@
-﻿import * as echarts from 'echarts'
+import * as echarts from 'echarts'
 import { formatFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -52,7 +52,14 @@ export default {
       replayCursor: null,
       replayTimer: null,
       replaySpeed: 650,
-      replayTopSectors: []
+      replayTopSectors: [],
+      replayDate: new Date().toISOString().split('T')[0],
+      todayDate: new Date().toISOString().split('T')[0],
+      historicalMinuteData: null,
+      lastTimeKeys: [],
+      autoGrowCursor: null,
+      autoGrowTimer: null,
+      autoGrowSpeed: 300
     }
   },
   computed: {
@@ -174,6 +181,9 @@ export default {
     if (this.replayTimer) {
       clearInterval(this.replayTimer)
     }
+    if (this.autoGrowTimer) {
+      clearInterval(this.autoGrowTimer)
+    }
   },
   methods: {
     initChart() {
@@ -287,11 +297,53 @@ export default {
       try {
         const response = await getMinuteData(24)
         if (response.success) {
+          const newTimeKeys = Object.keys(response.data).sort()
+          const oldTimeKeys = this.lastTimeKeys
+          
           this.minuteData = response.data
+          
           if (this.isReplayingToday) {
             this.stopTodayReplay(false)
           }
-          this.updateChart()
+          
+          if (oldTimeKeys.length === 0) {
+            this.lastTimeKeys = newTimeKeys
+            this.updateChart()
+            return
+          }
+          
+          const newKeys = newTimeKeys.filter(key => !oldTimeKeys.includes(key))
+          
+          if (newKeys.length === 0) {
+            this.updateChart()
+            return
+          }
+          
+          this.lastTimeKeys = newTimeKeys
+          
+          if (this.autoGrowTimer) {
+            clearInterval(this.autoGrowTimer)
+            this.autoGrowTimer = null
+          }
+          
+          const startIndex = newTimeKeys.indexOf(oldTimeKeys[oldTimeKeys.length - 1])
+          this.autoGrowCursor = startIndex >= 0 ? startIndex : newTimeKeys.length - 1
+          
+          this.autoGrowTimer = setInterval(() => {
+            if (this.autoGrowCursor === null) {
+              this.autoGrowCursor = 0
+            }
+            
+            if (this.autoGrowCursor >= newTimeKeys.length - 1) {
+              clearInterval(this.autoGrowTimer)
+              this.autoGrowTimer = null
+              this.autoGrowCursor = null
+              return
+            }
+            
+            this.autoGrowCursor += 1
+            this.updateChart()
+          }, this.autoGrowSpeed)
         }
       } catch (err) {
         console.error('获取分钟数据失败:', err)
@@ -304,6 +356,13 @@ export default {
       
       this.loading = true
       this.error = null
+      
+      if (this.autoGrowTimer) {
+        clearInterval(this.autoGrowTimer)
+        this.autoGrowTimer = null
+        this.autoGrowCursor = null
+      }
+      
       if (this.selectedTimeRange !== 'today') {
         this.stopTodayReplay(true)
       }
@@ -391,11 +450,19 @@ export default {
 
       if (this.selectedTimeRange === 'today') {
         const timeData = Object.keys(this.minuteData).sort()
+        
+        let cursor = null
+        if (this.isReplayingToday) {
+          cursor = this.replayCursor
+        } else if (this.autoGrowCursor !== null) {
+          cursor = this.autoGrowCursor
+        }
+        
         const option = generateLiveReplayChartOption(
           timeData,
           this.minuteData,
           this.colors,
-          this.isReplayingToday ? this.replayCursor : null,
+          cursor,
           12,
           this.replayTopSectors
         )
@@ -513,6 +580,12 @@ export default {
         this.replayTimer = null
       }
 
+      if (this.autoGrowTimer) {
+        clearInterval(this.autoGrowTimer)
+        this.autoGrowTimer = null
+        this.autoGrowCursor = null
+      }
+
       this.isReplayingToday = true
       this.replayCursor = 0
       this.updateChart()
@@ -555,6 +628,37 @@ export default {
       }
 
       this.startTodayReplay()
+    },
+
+    async loadReplayDateData() {
+      if (this.autoGrowTimer) {
+        clearInterval(this.autoGrowTimer)
+        this.autoGrowTimer = null
+        this.autoGrowCursor = null
+      }
+
+      if (this.replayDate === this.todayDate) {
+        this.historicalMinuteData = null
+        this.lastTimeKeys = []
+        await this.fetchMinuteData()
+        return
+      }
+
+      try {
+        const response = await getMinuteDataByDate(this.replayDate)
+        if (response.success) {
+          this.historicalMinuteData = response.data
+          this.minuteData = response.data
+          this.lastTimeKeys = Object.keys(response.data).sort()
+          this.updateChart()
+        } else {
+          console.error('加载历史数据失败:', response.message)
+          this.historicalMinuteData = null
+        }
+      } catch (error) {
+        console.error('加载历史数据失败:', error)
+        this.historicalMinuteData = null
+      }
     },
 
     getTopSectors(timeData, allData, isToday) {

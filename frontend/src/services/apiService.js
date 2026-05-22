@@ -81,6 +81,23 @@ export async function getMinuteData(hours) {
 }
 
 /**
+ * 获取指定日期的分钟级资金流入数据
+ * @param {string} dateStr - 日期字符串，格式：YYYY-MM-DD
+ * @returns {Promise<Object>} 分钟数据
+ */
+export async function getMinuteDataByDate(dateStr) {
+  try {
+    const response = await apiClient.get('/flow/minute-by-date', {
+      params: { date: dateStr }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取指定日期分钟数据失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取大盘概览数据
  * @returns {Promise<Object>} 大盘数据
  */

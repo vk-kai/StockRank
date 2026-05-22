@@ -225,6 +225,39 @@ def get_minute_data():
             'message': '服务器内部错误'
         }), 500
 
+@flow_bp.route('/minute-by-date', methods=['GET'])
+def get_minute_data_by_date():
+    try:
+        date_str = request.args.get('date', None)
+        
+        if not date_str:
+            return jsonify({
+                'success': False,
+                'message': '缺少日期参数'
+            }), 400
+        
+        minute_data = load_realtime_data(date_str)
+        
+        if minute_data.get('_invalid'):
+            return jsonify({
+                'success': False,
+                'message': f'无法加载 {date_str} 的实时数据'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': minute_data,
+            'date': date_str
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/flow/minute-by-date 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/minute-by-date]: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
 @flow_bp.route('/market', methods=['GET'])
 def get_market():
     try:
