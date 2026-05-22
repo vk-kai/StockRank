@@ -383,7 +383,7 @@
 
 .chart {
   width: 100%;
-  height: 280px;
+  height: 300px;
   background: #111827;
   border-radius: 6px;
   overflow: hidden;
@@ -621,6 +621,10 @@
   margin-bottom: 6px;
   font-weight: 500;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.sector-card .net-flow.net-negative {
+  color: #91cc75;
 }
 
 .sector-card .change {

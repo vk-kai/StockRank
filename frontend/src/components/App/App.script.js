@@ -1,5 +1,5 @@
 import * as echarts from 'echarts'
-import { formatFlow } from '../../utils/formatters'
+import { formatFlow, formatNetFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
@@ -142,12 +142,6 @@ export default {
     },
     showChartLoading() {
       return (this.loading || this.healthChecking) && !this.chartHasData
-    },
-    replayButtonText() {
-      if (this.isReplayingToday) {
-        return '停止回放'
-      }
-      return this.isAfterMarketClose ? '回放今日走势' : '今日走势预览'
     }
   },
   mounted() {
@@ -717,6 +711,10 @@ export default {
 
     formatFlow(value) {
       return formatFlow(value)
+    },
+
+    formatNetFlow(value) {
+      return formatNetFlow(value)
     },
 
     async fetchLatestNews() {

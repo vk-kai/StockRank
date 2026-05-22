@@ -14,6 +14,17 @@ export function formatFlow(value) {
 }
 
 /**
+ * 格式化净流入金额（统一使用亿为单位）
+ * @param {number} value - 净流入金额（亿元）
+ * @returns {string} 格式化后的金额
+ */
+export function formatNetFlow(value) {
+  if (value === null || value === undefined) return '-'
+  // 统一使用亿为单位
+  return value.toFixed(2) + ' 亿'
+}
+
+/**
  * 格式化涨跌幅
  * @param {number} value - 涨跌幅（小数）
  * @returns {string} 格式化后的涨跌幅
