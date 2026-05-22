@@ -629,15 +629,6 @@ export default {
       }
     },
 
-    toggleTodayReplay() {
-      if (this.isReplayingToday) {
-        this.stopTodayReplay(true)
-        return
-      }
-
-      this.startTodayReplay()
-    },
-
     async loadReplayDateData() {
       if (this.autoGrowTimer) {
         clearInterval(this.autoGrowTimer)

@@ -107,9 +107,10 @@
           v-if="selectedTimeRange === 'today' && hasReplayData && replayDate !== todayDate"
           class="chart-replay-button"
           :class="{ active: isReplayingToday }"
-          @click="toggleTodayReplay"
+          :disabled="isReplayingToday"
+          @click="startTodayReplay"
         >
-          {{ isReplayingToday ? '暂停' : '回放' }}
+          回放
         </button>
         <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
           <label>回放日期：</label>
