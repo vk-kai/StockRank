@@ -101,39 +101,12 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     })
   })
 
-  let minFlow = 0
   let maxFlow = 5
   if (allFlowValues.length > 0) {
-    minFlow = Math.min(0, ...allFlowValues)
     maxFlow = Math.max(5, ...allFlowValues)
   }
 
-  const BREAK_LOWER = 5
-  const BREAK_UPPER = 30
-  const useBrokenAxis = maxFlow > BREAK_LOWER * 3
-
-  let brokenAxisGraphics = []
-  if (useBrokenAxis) {
-    brokenAxisGraphics = [
-      {
-        type: 'group',
-        left: 55,
-        top: '45%',
-        children: [
-          {
-            type: 'rect',
-            shape: { x: 0, y: -8, width: 30, height: 16 },
-            style: { fill: '#111827' }
-          },
-          {
-            type: 'polyline',
-            shape: { points: [[0, 0], [8, -6], [16, 6], [24, -6], [30, 0]] },
-            style: { stroke: '#64748b', lineWidth: 2 }
-          }
-        ]
-      }
-    ]
-  }
+  const useBrokenAxis = maxFlow > 15
 
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
@@ -150,16 +123,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
       if (!seen) return null
 
-      let displayValue = flow
-      if (useBrokenAxis && flow !== null && flow !== undefined) {
-        if (flow > BREAK_LOWER) {
-          displayValue = BREAK_LOWER + (flow - BREAK_UPPER) * 0.2
-        }
-      }
-
       return {
-        value: displayValue,
-        originalValue: flow,
+        value: flow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -172,14 +137,14 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     return {
       name: sectorName,
       type: 'line',
-      smooth: true,
+      smooth: 0.3,
       connectNulls: false,
       showSymbol: false,
       symbol: 'circle',
       symbolSize: 5,
       data,
       lineStyle: {
-        width: 1.5,
+        width: 1.8,
         color
       },
       itemStyle: {
@@ -189,8 +154,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: true,
         distance: 10,
         formatter: (params) => {
-          const originalValue = params?.data?.originalValue ?? params?.data?.value ?? null
-          return `${params.seriesName}  ${formatFlow(originalValue)}`
+          const value = params?.data?.value ?? params?.value ?? null
+          return `${params.seriesName}  ${formatFlow(value)}`
         }
       },
       labelLayout: {
@@ -214,13 +179,13 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   let yAxisConfig
   if (useBrokenAxis) {
-    const upperMax = Math.ceil((maxFlow - BREAK_UPPER) * 0.2 + BREAK_LOWER)
     yAxisConfig = {
       type: 'value',
       name: '资金流入(亿)',
       min: 0,
-      max: upperMax,
-      interval: 1,
+      max: function(value) {
+        return value.max > 50 ? value.max * 1.05 : 55
+      },
       axisLine: {
         show: false
       },
@@ -230,11 +195,12 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
-          if (value <= BREAK_LOWER) {
+          if (value >= 10) {
             return `${value.toFixed(0)}亿`
+          } else if (value >= 1) {
+            return `${value.toFixed(1)}亿`
           } else {
-            const realValue = BREAK_UPPER + (value - BREAK_LOWER) / 0.2
-            return `${realValue.toFixed(0)}亿`
+            return `${(value * 10000).toFixed(0)}万`
           }
         }
       },
@@ -271,15 +237,16 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
+  const animationDuration = isReplayMode ? 8000 : 700
+  
   return {
     backgroundColor: '#111827',
     animation: true,
-    animationDuration: isReplayMode ? 300 : 700,
-    animationDurationUpdate: isReplayMode ? 300 : 900,
-    animationEasing: 'cubicOut',
-    animationEasingUpdate: 'cubicOut',
+    animationDuration: animationDuration,
+    animationDurationUpdate: animationDuration,
+    animationEasing: 'linear',
+    animationEasingUpdate: 'linear',
     title: { show: false },
-    graphic: brokenAxisGraphics,
     tooltip: {
       trigger: 'axis',
       order: 'valueDesc',
@@ -303,7 +270,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
         list.forEach(param => {
           const change = param.data?.change
-          const originalValue = param.data?.originalValue ?? param.data?.value
+          const value = param.data?.value
           const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
           const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
           result += `
@@ -312,7 +279,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:${changeColor};font-weight:600;">${formatFlow(originalValue)}</span>
+              <span style="color:${changeColor};font-weight:600;">${formatFlow(value)}</span>
               <span style="color:${changeColor};font-weight:600;">${changeText}</span>
             </div>
           `
@@ -321,8 +288,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       }
     },
     grid: {
-      left: 18,
-      right: 176,
+      left: 80,
+      right: 140,
       top: 18,
       bottom: 26,
       containLabel: true

@@ -602,31 +602,21 @@ export default {
       }
 
       this.isReplayingToday = true
-      this.replayCursor = 0
+      this.replayCursor = timeKeys.length - 1
       
       this.updateChart()
 
-      const totalSteps = timeKeys.length
-      let currentStep = 0
-
-      this.replayTimer = setInterval(() => {
-        currentStep++
-        
-        if (currentStep >= totalSteps) {
-          clearInterval(this.replayTimer)
-          this.replayTimer = null
-          this.isReplayingToday = false
-          return
-        }
-
-        this.replayCursor = currentStep
-        this.updateChart()
-      }, this.replaySpeed)
+      const replayDuration = Math.max(8000, timeKeys.length * 200)
+      
+      this.replayTimer = setTimeout(() => {
+        this.replayTimer = null
+        this.isReplayingToday = false
+      }, replayDuration)
     },
 
     stopTodayReplay(resetToLive = false) {
       if (this.replayTimer) {
-        clearInterval(this.replayTimer)
+        clearTimeout(this.replayTimer)
         this.replayTimer = null
       }
 
