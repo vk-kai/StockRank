@@ -157,7 +157,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color
       },
       endLabel: {
-        show: !isReplayMode && (visibleDataCount >= fullTimeData.length),
+        show: true,
         distance: 10,
         formatter: (params) => {
           const value = params?.data?.value ?? params?.value?.value ?? params?.value ?? null
@@ -186,8 +186,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   return {
     backgroundColor: '#111827',
     animation: true,
-    animationDuration: isReplayMode ? 300 : 700,
-    animationDurationUpdate: isReplayMode ? 300 : 900,
+    animationDuration: isReplayMode ? 150 : 700,
+    animationDurationUpdate: isReplayMode ? 150 : 900,
     animationEasing: 'linear',
     animationEasingUpdate: 'linear',
     title: { show: false },

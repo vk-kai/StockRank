@@ -51,7 +51,7 @@ export default {
       isReplayingToday: false,
       replayCursor: null,
       replayTimer: null,
-      replaySpeed: 650,
+      replaySpeed: 400,
       replayTopSectors: [],
       replayDate: new Date().toISOString().split('T')[0],
       todayDate: new Date().toISOString().split('T')[0],
@@ -475,7 +475,8 @@ export default {
 
         try {
           this.chartInstance.setOption(option, {
-            notMerge: true
+            replaceMerge: ['series', 'xAxis'],
+            lazyUpdate: true
           })
         } catch (e) {
           console.error('setOption 澶辫触:', e)
