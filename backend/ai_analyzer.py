@@ -141,7 +141,8 @@ def batch_analyze_news(news_items):
         error_logger.error("AI配置不完整：缺少api_url或api_key")
         return {}
     
-    if not api_url.endswith('/chat/completions'):
+    full_url = config.get('full_url', False)
+    if not full_url and not api_url.endswith('/chat/completions'):
         api_url = api_url.rstrip('/') + '/chat/completions'
     
     news_texts = []

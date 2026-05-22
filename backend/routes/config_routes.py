@@ -55,7 +55,7 @@ def update_ai_config():
         else:
             config = {}
         
-        for key in ['enabled', 'api_url', 'model', 'temperature', 'max_tokens', 'timeout']:
+        for key in ['enabled', 'api_url', 'full_url', 'model', 'temperature', 'max_tokens', 'timeout']:
             if key in data:
                 config[key] = data[key]
         
@@ -88,11 +88,12 @@ def test_ai_connection():
         if not api_key or api_key == '******':
             api_key = saved_config.get('api_key')
         model = data.get('model') or saved_config.get('model', 'gpt-3.5-turbo')
+        full_url = data.get('full_url') if data.get('full_url') is not None else saved_config.get('full_url', False)
         
         if not api_url or not api_key:
             return jsonify({'success': False, 'message': 'API地址和密钥不能为空'}), 400
         
-        if not api_url.endswith('/chat/completions'):
+        if not full_url and not api_url.endswith('/chat/completions'):
             api_url = api_url.rstrip('/') + '/chat/completions'
         
         headers = {

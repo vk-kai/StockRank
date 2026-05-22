@@ -31,12 +31,20 @@
 
           <div class="form-group">
             <label>API地址</label>
+            <div class="url-mode-toggle">
+              <div class="toggle-switch">
+                <input type="checkbox" v-model="aiConfig.full_url" id="ai-full-url">
+                <label for="ai-full-url"></label>
+              </div>
+              <span class="url-mode-label">{{ aiConfig.full_url ? '完整URL模式' : '自动补全模式' }}</span>
+            </div>
             <input 
               type="text" 
               v-model="aiConfig.api_url" 
-              placeholder="https://api.openai.com/v1/chat/completions"
+              :placeholder="aiConfig.full_url ? 'https://api.example.com/v1/chat/completions' : 'https://api.openai.com/v1'"
             >
-            <span class="hint">OpenAI官方地址或国内镜像地址</span>
+            <span class="hint" v-if="aiConfig.full_url">完整URL模式：直接使用输入的URL地址，不进行任何补全</span>
+            <span class="hint" v-else>自动补全模式：将自动在URL后追加 /chat/completions</span>
           </div>
 
           <div class="form-group">

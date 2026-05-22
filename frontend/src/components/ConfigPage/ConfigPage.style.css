@@ -102,6 +102,19 @@
   font-weight: 500;
 }
 
+.url-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.url-mode-label {
+  color: #4fc3f7;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .form-group input,
 .form-group select,
 .form-group textarea {

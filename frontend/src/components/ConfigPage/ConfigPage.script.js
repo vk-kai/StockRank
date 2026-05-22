@@ -32,6 +32,7 @@ export default {
       aiConfig: {
         enabled: false,
         api_url: '',
+        full_url: false,
         api_key: '',
         model: 'gpt-3.5-turbo',
         temperature: 0.7,
