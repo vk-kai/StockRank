@@ -468,41 +468,6 @@
   cursor: pointer;
 }
 
-.replay-speed-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(30, 41, 59, 0.5);
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.replay-speed-selector label {
-  color: #cbd5e1;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.replay-speed-selector select {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  color: #e0e6f0;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.replay-speed-selector select:hover {
-  border-color: rgba(148, 163, 184, 0.5);
-}
-
-.replay-speed-selector select:focus {
-  outline: none;
-  border-color: rgba(84, 112, 198, 0.5);
-}
-
 .chart-loading-mask {
   position: absolute;
   inset: 14px;

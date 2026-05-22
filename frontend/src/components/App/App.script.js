@@ -59,13 +59,7 @@ export default {
       lastTimeKeys: [],
       autoGrowCursor: null,
       autoGrowTimer: null,
-      autoGrowSpeed: 300,
-      replaySpeedMode: '1x',
-      speedModes: {
-        '0.5x': 1300,
-        '1x': 650,
-        '2x': 325
-      }
+      autoGrowSpeed: 300
     }
   },
   computed: {
@@ -474,8 +468,9 @@ export default {
           this.minuteData,
           this.colors,
           cursor,
-          12,
-          this.replayTopSectors
+          5,
+          this.replayTopSectors,
+          this.replayDate !== this.todayDate
         )
 
         try {
@@ -593,7 +588,7 @@ export default {
       }
 
       const timeKeys = Object.keys(this.minuteData).sort()
-      this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 12)
+      this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 5)
 
       if (this.replayTimer) {
         clearInterval(this.replayTimer)
@@ -690,28 +685,6 @@ export default {
         console.error('加载历史数据失败:', error)
         this.historicalMinuteData = null
         throw error
-      }
-    },
-
-    updateReplaySpeed() {
-      this.replaySpeed = this.speedModes[this.replaySpeedMode]
-      
-      if (this.isReplayingToday && this.replayTimer) {
-        clearInterval(this.replayTimer)
-        this.replayTimer = setInterval(() => {
-          const timeKeys = Object.keys(this.minuteData).sort()
-          if (this.replayCursor === null) {
-            this.replayCursor = 0
-          }
-
-          if (this.replayCursor >= timeKeys.length - 1) {
-            this.stopTodayReplay(false)
-            return
-          }
-
-          this.replayCursor += 1
-          this.updateChart()
-        }, this.replaySpeed)
       }
     },
 

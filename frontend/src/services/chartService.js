@@ -13,7 +13,7 @@ function getVisibleTimeData(timeData, replayCursor) {
   return timeData.slice(0, Math.max(1, replayCursor + 1))
 }
 
-export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 12, replayCursor = null) {
+export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 5, replayCursor = null) {
   const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
   if (visibleTimeData.length === 0) return []
 
@@ -27,7 +27,7 @@ export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 12, rep
     .map(item => item.name)
 }
 
-export function buildReplaySectorOrder(timeData, allData, limit = 12) {
+export function buildReplaySectorOrder(timeData, allData, limit = 5) {
   const sectorStats = new Map()
 
   timeData.forEach((timeKey, timeIndex) => {
@@ -66,7 +66,7 @@ export function buildReplaySectorOrder(timeData, allData, limit = 12) {
     .map(item => item.name)
 }
 
-export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 12, fixedTopSectors = null) {
+export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 5, fixedTopSectors = null, isReplayMode = false) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
   const visibleIndex = replayCursor === null
     ? fullTimeData.length - 1
@@ -160,8 +160,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   return {
     backgroundColor: '#111827',
     animation: true,
-    animationDuration: 700,
-    animationDurationUpdate: 900,
+    animationDuration: isReplayMode ? 10000 : 700,
+    animationDurationUpdate: isReplayMode ? 10000 : 900,
     animationEasing: 'linear',
     animationEasingUpdate: 'linear',
     title: { show: false },
