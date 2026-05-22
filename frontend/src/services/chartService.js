@@ -107,14 +107,14 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   function mapValueToAxis(value) {
     if (value === null || value === undefined) return null
-    if (value <= 200) {
-      return value * 0.2 / 200
-    } else if (value <= 800) {
-      return 0.2 + (value - 200) * 0.6 / 600
+    if (value <= 100) {
+      return value * 0.15 / 100
+    } else if (value <= 400) {
+      return 0.15 + (value - 100) * 0.6 / 300
     } else {
-      const extra = value - 800
-      const maxExtra = maxFlow - 800
-      return 0.8 + (extra / maxExtra) * 0.2
+      const extra = value - 400
+      const maxExtra = maxFlow - 400
+      return 0.75 + (extra / maxExtra) * 0.25
     }
   }
 
@@ -190,10 +190,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   let yAxisConfig
   if (useBrokenAxis) {
-    const tickValues = [0, 50, 100, 150, 200, 300, 400, 500, 600, 700, 800]
-    if (maxFlow > 800) {
-      const step = Math.ceil((maxFlow - 800) / 3 / 100) * 100
-      for (let v = 800 + step; v <= maxFlow; v += step) {
+    const tickValues = [0, 50, 100, 150, 200, 250, 300, 350, 400]
+    if (maxFlow > 400) {
+      const step = Math.ceil((maxFlow - 400) / 3 / 100) * 100
+      for (let v = 400 + step; v <= maxFlow; v += step) {
         tickValues.push(v)
       }
     }
@@ -214,13 +214,13 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color: '#cbd5e1',
         formatter: (value) => {
           let realValue
-          if (value <= 0.2) {
-            realValue = value * 200 / 0.2
-          } else if (value <= 0.8) {
-            realValue = 200 + (value - 0.2) * 600 / 0.6
+          if (value <= 0.15) {
+            realValue = value * 100 / 0.15
+          } else if (value <= 0.75) {
+            realValue = 100 + (value - 0.15) * 300 / 0.6
           } else {
-            const extra = (value - 0.8) * (maxFlow - 800) / 0.2
-            realValue = 800 + extra
+            const extra = (value - 0.75) * (maxFlow - 400) / 0.25
+            realValue = 400 + extra
           }
           
           if (realValue >= 1000) {
@@ -372,14 +372,14 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
   function mapValueToAxis(value) {
     if (value === null || value === undefined) return null
-    if (value <= 200) {
-      return value * 0.2 / 200
-    } else if (value <= 800) {
-      return 0.2 + (value - 200) * 0.6 / 600
+    if (value <= 100) {
+      return value * 0.15 / 100
+    } else if (value <= 400) {
+      return 0.15 + (value - 100) * 0.6 / 300
     } else {
-      const extra = value - 800
-      const maxExtra = maxFlow - 800
-      return 0.8 + (extra / maxExtra) * 0.2
+      const extra = value - 400
+      const maxExtra = maxFlow - 400
+      return 0.75 + (extra / maxExtra) * 0.25
     }
   }
 
@@ -506,13 +506,13 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         color: '#8ba4c7',
         formatter: (value) => {
           let realValue
-          if (value <= 0.2) {
-            realValue = value * 200 / 0.2
-          } else if (value <= 0.8) {
-            realValue = 200 + (value - 0.2) * 600 / 0.6
+          if (value <= 0.15) {
+            realValue = value * 100 / 0.15
+          } else if (value <= 0.75) {
+            realValue = 100 + (value - 0.15) * 300 / 0.6
           } else {
-            const extra = (value - 0.8) * (maxFlow - 800) / 0.2
-            realValue = 800 + extra
+            const extra = (value - 0.75) * (maxFlow - 400) / 0.25
+            realValue = 400 + extra
           }
           
           if (realValue >= 1000) {
