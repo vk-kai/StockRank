@@ -13,7 +13,7 @@ function getVisibleTimeData(timeData, replayCursor) {
   return timeData.slice(0, Math.max(1, replayCursor + 1))
 }
 
-export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 5, replayCursor = null) {
+export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 10, replayCursor = null) {
   const visibleTimeData = getVisibleTimeData(timeData, replayCursor)
   if (visibleTimeData.length === 0) return []
 
@@ -27,7 +27,7 @@ export function getTopSectorsByLatestSnapshot(timeData, allData, limit = 5, repl
     .map(item => item.name)
 }
 
-export function buildReplaySectorOrder(timeData, allData, limit = 5) {
+export function buildReplaySectorOrder(timeData, allData, limit = 10) {
   const sectorStats = new Map()
 
   timeData.forEach((timeKey, timeIndex) => {
@@ -66,7 +66,7 @@ export function buildReplaySectorOrder(timeData, allData, limit = 5) {
     .map(item => item.name)
 }
 
-export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 5, fixedTopSectors = null, isReplayMode = false) {
+export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
   const visibleIndex = replayCursor === null
     ? fullTimeData.length - 1

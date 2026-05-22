@@ -468,15 +468,14 @@ export default {
           this.minuteData,
           this.colors,
           cursor,
-          5,
+          10,
           this.replayTopSectors,
           this.replayDate !== this.todayDate
         )
 
         try {
           this.chartInstance.setOption(option, {
-            replaceMerge: ['series', 'xAxis', 'yAxis', 'title'],
-            lazyUpdate: true
+            notMerge: true
           })
         } catch (e) {
           console.error('setOption 澶辫触:', e)
@@ -588,7 +587,7 @@ export default {
       }
 
       const timeKeys = Object.keys(this.minuteData).sort()
-      this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 5)
+      this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 10)
 
       if (this.replayTimer) {
         clearInterval(this.replayTimer)
@@ -602,23 +601,9 @@ export default {
       }
 
       this.isReplayingToday = true
-      this.replayCursor = 0
+      this.replayCursor = null
+
       this.updateChart()
-
-      this.replayTimer = setInterval(() => {
-        const timeKeys = Object.keys(this.minuteData).sort()
-        if (this.replayCursor === null) {
-          this.replayCursor = 0
-        }
-
-        if (this.replayCursor >= timeKeys.length - 1) {
-          this.stopTodayReplay(false)
-          return
-        }
-
-        this.replayCursor += 1
-        this.updateChart()
-      }, this.replaySpeed)
     },
 
     stopTodayReplay(resetToLive = false) {
@@ -628,10 +613,10 @@ export default {
       }
 
       this.isReplayingToday = false
-      this.replayCursor = null
-      this.replayTopSectors = []
 
       if (resetToLive) {
+        this.replayCursor = null
+        this.replayTopSectors = []
         this.updateChart()
       }
     },
