@@ -78,7 +78,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       backgroundColor: '#111827',
       title: { show: false },
       xAxis: { type: 'category', data: [] },
-      yAxis: { type: 'value', name: '资金流入(亿)' },
+      yAxis: { type: 'value' },
       series: []
     }
   }
@@ -118,19 +118,17 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
-  // 根据流入资金排名计算红色渐变色：从大红(高流入)到浅红(低流入)
-  function getRedGradientColor(index, total) {
-    if (total <= 1) return '#ff1a1a'
+  // 根据流入资金排名计算白色渐变色：从亮白(高流入)到暗白(低流入)
+  function getLabelColor(index, total) {
+    if (total <= 1) return '#ffffff'
     const ratio = index / (total - 1) // 0=最高流入, 1=最低流入
-    const r = 255
-    const g = Math.round(26 + ratio * 130) // 26 -> 156
-    const b = Math.round(26 + ratio * 130) // 26 -> 156
-    return `rgb(${r}, ${g}, ${b})`
+    const brightness = Math.round(255 - ratio * 100) // 255 -> 155
+    return `rgb(${brightness}, ${brightness}, ${brightness + Math.round((255 - brightness) * 0.3)})`
   }
 
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
-    const labelColor = getRedGradientColor(index, topSectors.length)
+    const labelColor = getLabelColor(index, topSectors.length)
     let seen = false
 
     const data = displayTimeData.map((timeKey, idx) => {
@@ -212,7 +210,6 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     
     yAxisConfig = {
       type: 'value',
-      name: '资金流入(亿)',
       min: 0,
       max: 1,
       interval: 0.1,
@@ -255,7 +252,6 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   } else {
     yAxisConfig = {
       type: 'value',
-      name: '资金流入(亿)',
       axisLine: {
         show: false
       },
@@ -510,7 +506,6 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     },
     yAxis: useBrokenAxis ? {
       type: 'value',
-      name: '资金流入(亿)',
       min: 0,
       max: 1,
       interval: 0.1,
@@ -540,7 +535,6 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       }
     } : {
       type: 'value',
-      name: '资金流入(亿)',
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {

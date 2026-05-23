@@ -228,12 +228,13 @@ export default {
       const sectorList = this.$refs.sectorList
       if (!monitorCard || !chartContainer) return
 
-      const monitorTop = monitorCard.getBoundingClientRect().top
-      const remainingHeight = window.innerHeight - monitorTop
+      // 从视口底部算到服务监控卡片底部的距离
+      const monitorBottom = monitorCard.getBoundingClientRect().bottom
+      const remainingHeight = window.innerHeight - monitorBottom
 
-      // 图表容器占70%，sector-list占30%
-      const chartTotalSpace = remainingHeight * 0.7
+      // 先给TOP10分配30%，再给折线图分配70%
       const sectorTotalSpace = remainingHeight * 0.3
+      const chartTotalSpace = remainingHeight * 0.7
 
       // chart-container的height需要减去padding和border（content-box模型）
       const chartStyle = getComputedStyle(chartContainer)
