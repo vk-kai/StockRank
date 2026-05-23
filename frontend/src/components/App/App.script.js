@@ -499,7 +499,14 @@ export default {
       }
 
       if (this.selectedTimeRange === 'today') {
-        const timeData = Object.keys(this.minuteData).sort()
+        const allTimeKeys = Object.keys(this.minuteData).sort()
+        // 过滤掉非5分钟间隔的异常时间点
+        const timeData = allTimeKeys.filter(key => {
+          const parts = key.split(':')
+          if (parts.length !== 2) return false
+          const minute = parseInt(parts[1], 10)
+          return minute % 5 === 0
+        })
         
         let cursor = null
         if (this.isReplayingToday) {
@@ -520,7 +527,7 @@ export default {
 
         try {
           this.chartInstance.setOption(option, {
-            replaceMerge: ['series', 'xAxis'],
+            replaceMerge: ['series', 'xAxis', 'tooltip'],
             lazyUpdate: true
           })
         } catch (e) {
@@ -535,7 +542,12 @@ export default {
       let timeData, allData
 
       if (this.selectedTimeRange === 'today') {
-        timeData = Object.keys(this.minuteData).sort()
+        timeData = Object.keys(this.minuteData).sort().filter(key => {
+          const parts = key.split(':')
+          if (parts.length !== 2) return false
+          const minute = parseInt(parts[1], 10)
+          return minute % 5 === 0
+        })
         allData = this.minuteData
       } else {
         timeData = Object.keys(this.historyData).sort()
@@ -612,7 +624,7 @@ export default {
 
       try {
         this.chartInstance.setOption(option, {
-          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis'],
+          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
           lazyUpdate: true
         })
       } catch (e) {

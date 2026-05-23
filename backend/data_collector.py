@@ -27,6 +27,8 @@ def is_trading_time(time):
         return True
     if 13 <= hour < 15:
         return True
+    if hour == 15 and minute == 0:
+        return True
     
     return False
 

@@ -413,7 +413,11 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'cross'
+        type: 'line',
+        lineStyle: {
+          color: 'rgba(84, 112, 198, 0.55)',
+          width: 1
+        }
       },
       backgroundColor: 'rgba(20,25,45,0.95)',
       borderColor: '#3a4a6b',
@@ -500,8 +504,19 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       type: 'category',
       boundaryGap: false,
       data: timeData,
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.35)'
+        }
+      },
+      axisTick: {
+        show: false
+      },
       axisLabel: {
         color: '#8ba4c7'
+      },
+      splitLine: {
+        show: false
       }
     },
     yAxis: useBrokenAxis ? {
