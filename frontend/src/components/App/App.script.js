@@ -164,6 +164,9 @@ export default {
     this.fetchLatestNews()
     this.startNewsRotation()
     window.addEventListener('resize', this.handleResize)
+    this.$nextTick(() => {
+      this.updateLayoutHeight()
+    })
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
@@ -216,6 +219,44 @@ export default {
       if (this.chartInstance) {
         this.chartInstance.resize()
       }
+      this.updateLayoutHeight()
+    },
+
+    updateLayoutHeight() {
+      const monitorCard = this.$refs.monitorCard
+      const chartContainer = this.$refs.chartContainer
+      const sectorList = this.$refs.sectorList
+      if (!monitorCard || !chartContainer) return
+
+      const monitorTop = monitorCard.getBoundingClientRect().top
+      const remainingHeight = window.innerHeight - monitorTop
+
+      // 图表容器占70%，sector-list占30%
+      const chartTotalSpace = remainingHeight * 0.7
+      const sectorTotalSpace = remainingHeight * 0.3
+
+      // chart-container的height需要减去padding和border（content-box模型）
+      const chartStyle = getComputedStyle(chartContainer)
+      const chartPaddingY = (parseFloat(chartStyle.paddingTop) || 0) + (parseFloat(chartStyle.paddingBottom) || 0)
+      const chartBorderY = (parseFloat(chartStyle.borderTopWidth) || 0) + (parseFloat(chartStyle.borderBottomWidth) || 0)
+
+      chartContainer.style.height = (chartTotalSpace - chartPaddingY - chartBorderY) + 'px'
+
+      if (sectorList) {
+        const sectorStyle = getComputedStyle(sectorList)
+        const sectorPaddingY = (parseFloat(sectorStyle.paddingTop) || 0) + (parseFloat(sectorStyle.paddingBottom) || 0)
+        const sectorBorderY = (parseFloat(sectorStyle.borderTopWidth) || 0) + (parseFloat(sectorStyle.borderBottomWidth) || 0)
+
+        sectorList.style.height = (sectorTotalSpace - sectorPaddingY - sectorBorderY) + 'px'
+        sectorList.style.overflowY = 'auto'
+      }
+
+      // 高度变化后重新调整echarts尺寸
+      this.$nextTick(() => {
+        if (this.chartInstance) {
+          this.chartInstance.resize()
+        }
+      })
     },
 
     highlightSector(sectorName) {
@@ -385,6 +426,9 @@ export default {
         this.error = '获取数据失败: ' + err.message
       } finally {
         this.loading = false
+        this.$nextTick(() => {
+          this.updateLayoutHeight()
+        })
       }
     },
 

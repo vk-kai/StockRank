@@ -39,7 +39,7 @@
       </div>
     </header>
 
-    <div class="monitor-card-container" @click="refreshHealth">
+    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth">
       <div class="monitor-card-header">
         <span class="monitor-card-label">服务监控</span>
         <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
@@ -132,7 +132,7 @@
       </div>
     </div>
 
-    <div class="sector-list" v-if="selectedTimeRange === 'today' && currentData.length > 0">
+    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange === 'today' && currentData.length > 0">
       <h3 class="sector-title">今日资金流入TOP10</h3>
       <div class="sector-grid">
         <div 
@@ -160,7 +160,7 @@
       </div>
     </div>
 
-    <div class="sector-list" v-if="selectedTimeRange !== 'today' && accumulatedData.length > 0">
+    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange !== 'today' && accumulatedData.length > 0">
       <h3 class="sector-title">{{ selectedTimeRange }}日累计资金流入TOP10</h3>
       <div class="sector-grid">
         <div 

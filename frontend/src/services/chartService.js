@@ -118,8 +118,19 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
+  // 根据流入资金排名计算红色渐变色：从大红(高流入)到浅红(低流入)
+  function getRedGradientColor(index, total) {
+    if (total <= 1) return '#ff1a1a'
+    const ratio = index / (total - 1) // 0=最高流入, 1=最低流入
+    const r = 255
+    const g = Math.round(26 + ratio * 130) // 26 -> 156
+    const b = Math.round(26 + ratio * 130) // 26 -> 156
+    return `rgb(${r}, ${g}, ${b})`
+  }
+
   const series = topSectors.map((sectorName, index) => {
     const color = colors[index % colors.length]
+    const labelColor = getRedGradientColor(index, topSectors.length)
     let seen = false
 
     const data = displayTimeData.map((timeKey, idx) => {
@@ -164,6 +175,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       endLabel: {
         show: true,
         distance: 10,
+        color: labelColor,
         formatter: (params) => {
           const realValue = params?.data?.realValue ?? params?.value ?? null
           return `${params.seriesName}  ${formatFlow(realValue)}`
