@@ -249,6 +249,7 @@ export default {
         const sectorBorderY = (parseFloat(sectorStyle.borderTopWidth) || 0) + (parseFloat(sectorStyle.borderBottomWidth) || 0)
 
         sectorList.style.height = (sectorTotalSpace - sectorPaddingY - sectorBorderY) + 'px'
+        sectorList.style.overflowY = 'hidden'
       }
 
       // 高度变化后重新调整echarts尺寸
