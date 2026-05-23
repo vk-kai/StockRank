@@ -101,28 +101,7 @@
       </div>
     </div>
 
-    <div class="chart-container" ref="chartContainer">
-      <div class="chart-controls">
-        <button
-          v-if="selectedTimeRange === 'today' && hasReplayData && replayDate !== todayDate"
-          class="chart-replay-button"
-          :class="{ active: isReplayingToday }"
-          :disabled="isReplayingToday"
-          @click="startTodayReplay"
-        >
-          回放
-        </button>
-        <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
-          <label>回放日期：</label>
-          <input 
-            type="date" 
-            v-model="replayDate" 
-            :min="minReplayDate"
-            :max="todayDate"
-            @change="loadReplayDateData"
-          />
-        </div>
-      </div>
+      <div class="chart-container" ref="chartContainer">
       <div ref="chart" class="chart"></div>
       <div v-if="showChartLoading" class="chart-loading-mask">
         <div class="chart-loading-content">

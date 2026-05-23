@@ -517,7 +517,7 @@
   border-radius: 8px;
   padding: 20px;
   margin-top: -40px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .sector-list h3 {
