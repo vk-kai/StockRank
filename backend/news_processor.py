@@ -9,7 +9,7 @@ error_logger = get_logger('error')
 info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_news_headers
     
     dev_mode = is_dev_mode()
     api_url = DEV_NEWS_URL if dev_mode else NEWS_URL
@@ -17,12 +17,7 @@ def get_news_data(page=1, pagesize=400):
         info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
     
     set_crawler_working('news')
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Referer': 'https://news.10jqka.com.cn/',
-    }
+    headers = get_news_headers()
     
     params = {
         'page': page,

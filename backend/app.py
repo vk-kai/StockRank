@@ -9,7 +9,7 @@ from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
-from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status
+from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
@@ -60,8 +60,8 @@ def create_app():
             return jsonify({'success': True})
         
         if request.method == 'POST':
-            from health_checker import run_health_check_async
-            run_health_check_async()
+            from health_checker import run_full_health_check
+            run_full_health_check()
         
         return jsonify({
             'status': 'ok',
@@ -110,10 +110,9 @@ if __name__ == '__main__':
         if not news_collection_thread.is_alive():
             news_collection_thread.start()
         
-        # 启动时自动执行一次健康检查
-        from health_checker import run_health_check_async
-        run_health_check_async()
-        system_logger.info("启动时自动执行健康检查")
+        # 启动时自动执行健康检测（获取可用请求头 + 启动定时检测）
+        start_health_checker()
+        system_logger.info("健康检测已启动")
         
         monitor_process = multiprocessing.Process(target=monitor_loop, daemon=True)
         monitor_process.start()

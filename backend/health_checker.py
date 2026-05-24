@@ -21,23 +21,27 @@ NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"
 if not os.path.exists(HEALTH_DATA_DIR):
     os.makedirs(HEALTH_DATA_DIR)
 
-health_status = {
-    'ths_news': {
-        'status': 'unknown',
+# ============ 共享请求头（新闻和板块资金共用） ============
+_shared_headers = None
+
+# ============ 健康状态 ============
+_health_status = {
+    'overall': 'checking',
+    'news': {
+        'status': 'checking',
         'last_check': None,
         'error': None,
         'response_time': None
     },
-    'ths_sector': {
-        'status': 'unknown',
+    'sector': {
+        'status': 'checking',
         'last_check': None,
         'error': None,
-        'response_time': None,
-        'sector_status': 'unknown',
-        'stocks_status': 'unknown'
+        'response_time': None
     }
 }
 
+# ============ 采集器状态 ============
 _crawler_status = {
     'sector_flow': {
         'status': 'idle',
@@ -53,7 +57,29 @@ _crawler_status = {
     }
 }
 
+# ============ 定时检测线程 ============
+_check_thread = None
+_check_interval = 60  # 每60秒检测一次
+_check_running = False
+
+# ============ 共享请求头接口 ============
+
+def get_shared_headers():
+    """获取健康检测确认可用的共享请求头，业务功能通过此接口获取请求头"""
+    global _shared_headers
+    if _shared_headers:
+        return dict(_shared_headers)
+    return None
+
 def get_news_headers():
+    """获取新闻API请求头：优先使用共享请求头"""
+    shared = get_shared_headers()
+    if shared:
+        headers = dict(shared)
+        headers['Host'] = 'news.10jqka.com.cn'
+        headers['Referer'] = 'https://news.10jqka.com.cn/'
+        return headers
+    # 无共享请求头时使用默认
     return {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
         'Accept': 'application/json, text/plain, */*',
@@ -62,9 +88,15 @@ def get_news_headers():
     }
 
 def get_sector_headers():
-    """服务监控始终生成新请求头进行探测，以发现新的可用请求头"""
+    """获取板块API请求头：优先使用共享请求头"""
+    shared = get_shared_headers()
+    if shared:
+        return dict(shared)
+    # 无共享请求头时随机生成
     from data_processor import generate_random_headers
     return generate_random_headers()
+
+# ============ URL验证工具函数 ============
 
 def _verify_headers_with_url(url, headers, timeout=10):
     """用指定请求头请求URL，验证是否可用。返回 (成功, 响应时间, 错误信息, 响应文本)"""
@@ -74,7 +106,7 @@ def _verify_headers_with_url(url, headers, timeout=10):
         session.trust_env = False
         response = session.get(url, headers=headers, timeout=timeout, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
-        
+
         if response.status_code == 200:
             content_type = response.headers.get('Content-Type', '')
             if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
@@ -98,21 +130,26 @@ def _verify_headers_with_url(url, headers, timeout=10):
     except Exception as e:
         return False, round((time.time() - start_time) * 1000, 2), str(e)[:30], None
 
-def test_news_api():
+def _test_news_with_headers(headers):
+    """用指定请求头测试新闻API。返回 (成功, 响应时间, 错误信息)"""
+    news_headers = dict(headers)
+    news_headers['Host'] = 'news.10jqka.com.cn'
+    news_headers['Referer'] = 'https://news.10jqka.com.cn/'
+
     params = {
         'page': 1,
         'tag': '',
         'track': 'website',
         'pagesize': 5
     }
-    
+
     start_time = time.time()
     try:
         session = requests.Session()
         session.trust_env = False
-        response = session.get(NEWS_URL, params=params, headers=get_news_headers(), timeout=10, verify=False)
+        response = session.get(NEWS_URL, params=params, headers=news_headers, timeout=10, verify=False)
         response_time = round((time.time() - start_time) * 1000, 2)
-        
+
         if response.status_code == 200:
             data = response.json()
             if data.get('code') == '200' or data.get('data'):
@@ -120,309 +157,211 @@ def test_news_api():
             return False, response_time, f"API返回错误: {data.get('msg', '未知')}"
         return False, response_time, f'HTTP {response.status_code}'
     except requests.exceptions.Timeout:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, '请求超时'
+        return False, round((time.time() - start_time) * 1000, 2), '新闻请求超时'
     except requests.exceptions.ConnectionError:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, '网络连接失败'
+        return False, round((time.time() - start_time) * 1000, 2), '新闻网络连接失败'
     except Exception as e:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, str(e)[:30]
+        return False, round((time.time() - start_time) * 1000, 2), str(e)[:30]
 
-def extract_stock_url_from_sector(html_content):
-    try:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        table = soup.find('table', class_='m-table J-ajax-table')
-        if not table:
-            return None
-        
-        tbody = table.find('tbody')
-        if not tbody:
-            return None
-        
-        rows = tbody.find_all('tr')
-        for row in rows:
-            cols = row.find_all('td')
-            if len(cols) >= 2:
-                sector_link = cols[1].find('a')
-                if sector_link:
-                    sector_url = sector_link.get('href', '')
-                    if sector_url:
-                        if sector_url.startswith('http://'):
-                            sector_url = sector_url.replace('http://', 'https://')
-                        return sector_url
-        return None
-    except Exception as e:
-        error_logger.error(f"提取板块URL失败: {e}")
-        return None
+# ============ 请求头获取 ============
 
-def test_stock_detail_url(sector_url):
-    """测试个股详情URL，优先用主请求头，失败用备用"""
-    from data_processor import get_primary_headers, get_backup_headers, generate_random_headers
-    from urllib.parse import urlparse
-    parsed_url = urlparse(sector_url)
-    host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
-    
-    # 尝试主请求头
-    primary, _ = get_primary_headers()
-    if primary:
-        headers = dict(primary)
-        headers['Host'] = host
-        success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
-        if success:
-            return True, response_time, None
-    
-    # 尝试备用请求头
-    backup = get_backup_headers()
-    if backup:
-        headers = dict(backup)
-        headers['Host'] = host
-        success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
-        if success:
-            return True, response_time, None
-    
-    # 用新请求头
-    headers = generate_random_headers(host=host)
-    success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
-    if success:
-        return True, response_time, None
-    
-    return False, response_time, error
+def _acquire_headers(max_attempts=9):
+    """尝试获取可用请求头，最多max_attempts次。返回 (headers, 成功)"""
+    from data_processor import generate_random_headers
 
-def test_sector_and_stocks():
-    """服务监控：同步验证主请求头，能用立即返回；不能用则尝试备用或探测新请求头"""
-    from data_processor import get_primary_headers, get_backup_headers, set_primary_headers, set_backup_headers, promote_backup_to_primary, generate_random_headers
-    
-    # 第一步：验证主请求头是否还能用
-    primary, primary_id = get_primary_headers()
-    if primary:
-        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, primary)
-        if success:
-            # 主请求头可用，立即返回正常，异步探测备用
-            health_logger.info("主请求头验证可用，服务正常")
-            _probe_backup_async()
-            
-            sector_success = True
-            sector_error = None
-            stock_url = extract_stock_url_from_sector(text) if text else None
-            if stock_url:
-                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
-            else:
-                stocks_success = False
-                stocks_time = 0
-                stocks_error = '未找到板块详情URL'
-            
-            return {
-                'sector_success': sector_success,
-                'sector_time': response_time,
-                'sector_error': sector_error,
-                'stocks_success': stocks_success,
-                'stocks_time': stocks_time,
-                'stocks_error': stocks_error
-            }
-    
-    # 第二步：主请求头不可用，尝试备用请求头
-    backup = get_backup_headers()
-    if backup:
-        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, backup)
-        if success:
-            # 备用可用，提升为主请求头
-            promote_backup_to_primary()
-            health_logger.info("主请求头失效，备用请求头提升为主请求头")
-            _probe_backup_async()
-            
-            sector_success = True
-            sector_error = None
-            stock_url = extract_stock_url_from_sector(text) if text else None
-            if stock_url:
-                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
-            else:
-                stocks_success = False
-                stocks_time = 0
-                stocks_error = '未找到板块详情URL'
-            
-            return {
-                'sector_success': sector_success,
-                'sector_time': response_time,
-                'sector_error': sector_error,
-                'stocks_success': stocks_success,
-                'stocks_time': stocks_time,
-                'stocks_error': stocks_error
-            }
-    
-    # 第三步：主备都不可用，探测新请求头（最多9次）
-    max_attempts = 9
-    last_error = None
-    last_response_time = 0
-    
     for attempt in range(max_attempts):
         headers = generate_random_headers()
-        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, headers)
-        last_response_time = response_time
-        
+        success, _, error, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
         if success:
-            # 找到可用请求头，设为主请求头
-            set_primary_headers(headers)
-            health_logger.info(f"服务监控探测到新可用请求头 (第{attempt+1}次尝试)")
-            _probe_backup_async()
-            
-            sector_success = True
-            sector_error = None
-            stock_url = extract_stock_url_from_sector(text) if text else None
-            if stock_url:
-                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
-            else:
-                stocks_success = False
-                stocks_time = 0
-                stocks_error = '未找到板块详情URL'
-            
-            return {
-                'sector_success': sector_success,
-                'sector_time': response_time,
-                'sector_error': sector_error,
-                'stocks_success': stocks_success,
-                'stocks_time': stocks_time,
-                'stocks_error': stocks_error
-            }
-        
-        last_error = error
+            health_logger.info(f"获取到可用请求头 (第{attempt+1}次尝试)")
+            return headers, True
         if attempt < max_attempts - 1:
             time.sleep(1)
-    
-    # 全部失败
-    error_logger.warning(f"服务监控板块检测最终失败({last_error})，已尝试{max_attempts}次，板块URL: {THS_SECTOR_URL}")
-    return {
-        'sector_success': False,
-        'sector_time': last_response_time,
-        'sector_error': last_error or f'重试{max_attempts}次均失败',
-        'stocks_success': False,
-        'stocks_time': 0,
-        'stocks_error': '板块检测失败'
-    }
 
-_backup_probe_thread = None
+    health_logger.warning(f"获取请求头失败，已尝试{max_attempts}次")
+    return None, False
 
-def _probe_backup_async():
-    """异步探测备用请求头"""
-    global _backup_probe_thread
-    if _backup_probe_thread and _backup_probe_thread.is_alive():
-        return
-    _backup_probe_thread = threading.Thread(target=_probe_backup, daemon=True)
-    _backup_probe_thread.start()
+# ============ 健康检测主逻辑 ============
 
-def _probe_backup():
-    """探测新的备用请求头，直到找到一个可用的"""
-    from data_processor import get_backup_headers, set_backup_headers, generate_random_headers
-    # 已有备用则跳过
-    if get_backup_headers():
-        return
-    
-    for attempt in range(9):
-        headers = generate_random_headers()
-        success, _, _, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
-        if success:
-            set_backup_headers(headers)
-            health_logger.info(f"备用请求头探测成功 (第{attempt+1}次尝试)")
-            return
-        time.sleep(1)
-    
-    health_logger.info("备用请求头探测失败，将在下次健康检查时重试")
+def run_full_health_check():
+    """执行完整健康检测：验证板块和新闻API，必要时重新获取请求头"""
+    global _shared_headers, _health_status
 
-_health_check_thread = None
+    now = datetime.now().isoformat()
+    sector_ok = False
+    sector_error = None
+    sector_time = 0
+    news_ok = False
+    news_error = None
+    news_time = 0
 
-def _run_health_check_safe():
-    """带异常捕获的健康检查，确保任何报错都记录到日志"""
-    try:
-        run_health_check()
-    except Exception as e:
-        error_logger.error(f"健康检查执行异常: {e}\n{traceback.format_exc()}")
+    # 第一步：检测板块API
+    if _shared_headers:
+        sector_ok, sector_time, sector_error, _ = _verify_headers_with_url(THS_SECTOR_URL, _shared_headers)
+        if not sector_ok:
+            health_logger.info("共享请求头板块验证失效，开始重新获取")
+            new_headers, found = _acquire_headers(9)
+            if found:
+                _shared_headers = new_headers
+                sector_ok = True
+                sector_error = None
+                health_logger.info("重新获取请求头成功")
+            else:
+                _shared_headers = None
+                sector_error = sector_error or '板块请求头全部失效'
+    else:
+        new_headers, found = _acquire_headers(9)
+        if found:
+            _shared_headers = new_headers
+            sector_ok = True
+            sector_error = None
+        else:
+            sector_error = '无法获取板块可用请求头'
 
-def run_health_check_async():
-    """异步执行健康检查，避免阻塞HTTP请求"""
-    global _health_check_thread
-    if _health_check_thread and _health_check_thread.is_alive():
-        health_logger.info("健康检查正在执行中，跳过本次请求")
-        return
-    _health_check_thread = threading.Thread(target=_run_health_check_safe, daemon=True)
-    _health_check_thread.start()
-    health_logger.info("健康检查已异步启动")
+    # 第二步：检测新闻API
+    if _shared_headers:
+        news_ok, news_time, news_error = _test_news_with_headers(_shared_headers)
+        if not news_ok:
+            health_logger.info(f"新闻API检测失败: {news_error}")
+    else:
+        news_error = '无可用请求头'
 
-def run_health_check():
-    global health_status
-    
-    health_status = {
-        'ths_news': {
-            'status': 'unknown',
-            'last_check': None,
-            'error': None,
-            'response_time': None
-        },
-        'ths_sector': {
-            'status': 'unknown',
-            'last_check': None,
-            'error': None,
-            'response_time': None,
-            'sector_status': 'unknown',
-            'stocks_status': 'unknown'
-        }
-    }
-    
-    news_success, news_time, news_error = test_news_api()
-    health_status['ths_news'] = {
-        'status': 'ok' if news_success else 'error',
-        'last_check': datetime.now().isoformat(),
+    # 第三步：更新状态
+    _health_status['news'] = {
+        'status': 'ok' if news_ok else 'error',
+        'last_check': now,
         'error': news_error,
         'response_time': news_time
     }
-    
-    sector_result = test_sector_and_stocks()
-    
-    if sector_result['sector_success'] and sector_result['stocks_success']:
-        overall_status = 'ok'
-    elif sector_result['sector_success']:
-        overall_status = 'partial'
+    _health_status['sector'] = {
+        'status': 'ok' if sector_ok else 'error',
+        'last_check': now,
+        'error': sector_error,
+        'response_time': sector_time
+    }
+
+    if news_ok and sector_ok:
+        _health_status['overall'] = 'ok'
+    elif not news_ok and not sector_ok:
+        _health_status['overall'] = 'error'
     else:
-        overall_status = 'error'
-    
-    health_status['ths_sector'] = {
-        'status': overall_status,
-        'last_check': datetime.now().isoformat(),
-        'error': sector_result['sector_error'],
-        'response_time': sector_result['sector_time'],
-        'sector_status': 'ok' if sector_result['sector_success'] else 'error',
-        'stocks_status': 'ok' if sector_result['stocks_success'] else 'error'
-    }
-    
+        _health_status['overall'] = 'partial'
+
     save_health_status()
-    
-    result = {
-        'news': news_success,
-        'sector': sector_result['sector_success'],
-        'stocks': sector_result['stocks_success']
-    }
-    
-    return result
+
+    if _health_status['overall'] == 'ok':
+        health_logger.info("健康检测通过：板块正常、新闻正常")
+    elif _health_status['overall'] == 'partial':
+        health_logger.info(f"健康检测部分异常：新闻={'正常' if news_ok else '异常'}、板块={'正常' if sector_ok else '异常'}")
+    else:
+        health_logger.warning(f"健康检测失败：新闻={news_error}、板块={sector_error}")
+
+    return _health_status
+
+# ============ 定时检测 ============
+
+def _periodic_check_loop():
+    """定时检测循环：每60秒检查一次请求头是否仍然有效"""
+    global _check_running
+
+    health_logger.info("定时健康检测线程已启动（每60秒检测一次）")
+
+    while _check_running:
+        try:
+            run_full_health_check()
+        except Exception as e:
+            error_logger.error(f"定时健康检测异常: {e}\n{traceback.format_exc()}")
+
+        # 等待下一个检测周期
+        for _ in range(_check_interval):
+            if not _check_running:
+                break
+            time.sleep(1)
+
+    health_logger.info("定时健康检测线程已停止")
+
+# ============ 启动/停止 ============
+
+def start_health_checker():
+    """启动健康检测：先获取可用请求头，再启动定时检测线程"""
+    global _check_thread, _check_running, _shared_headers
+
+    if _check_running:
+        health_logger.info("健康检测已在运行中")
+        return
+
+    # 启动时先获取可用请求头（最多9次尝试）
+    health_logger.info("健康检测启动：开始获取可用请求头...")
+    new_headers, found = _acquire_headers(9)
+    if found:
+        _shared_headers = new_headers
+        health_logger.info("启动时请求头获取成功")
+
+        # 验证新闻API
+        news_ok, _, _ = _test_news_with_headers(_shared_headers)
+        now = datetime.now().isoformat()
+        _health_status['news'] = {
+            'status': 'ok' if news_ok else 'error',
+            'last_check': now,
+            'error': None if news_ok else '新闻API检测失败',
+            'response_time': None
+        }
+        _health_status['sector'] = {
+            'status': 'ok',
+            'last_check': now,
+            'error': None,
+            'response_time': None
+        }
+        _health_status['overall'] = 'ok'
+        save_health_status()
+        health_logger.info("启动健康检测：服务正常")
+    else:
+        _shared_headers = None
+        now = datetime.now().isoformat()
+        _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '无法获取可用请求头', 'response_time': None}
+        _health_status['sector'] = {'status': 'error', 'last_check': now, 'error': '无法获取可用请求头', 'response_time': None}
+        _health_status['overall'] = 'error'
+        save_health_status()
+        health_logger.warning("启动健康检测：无法获取可用请求头，将在定时检测中重试")
+
+    # 启动定时检测线程
+    _check_running = True
+    _check_thread = threading.Thread(target=_periodic_check_loop, daemon=True)
+    _check_thread.start()
+
+def stop_health_checker():
+    """停止定时健康检测"""
+    global _check_running
+    _check_running = False
+    health_logger.info("健康检测已停止")
+
+# ============ 状态查询接口 ============
 
 def get_health_status():
-    return health_status
+    """获取当前健康状态"""
+    return _health_status
 
 def save_health_status():
+    """保存健康状态到文件"""
     try:
         with open(HEALTH_FILE, 'w', encoding='utf-8') as f:
-            json.dump(health_status, f, ensure_ascii=False, indent=2)
+            json.dump(_health_status, f, ensure_ascii=False, indent=2)
     except Exception as e:
         error_logger.error(f"保存健康状态失败: {e}")
 
 def load_health_status():
-    global health_status
+    """从文件加载健康状态"""
+    global _health_status
     try:
         if os.path.exists(HEALTH_FILE):
             with open(HEALTH_FILE, 'r', encoding='utf-8') as f:
                 saved = json.load(f)
                 if saved:
-                    health_status = saved
+                    _health_status = saved
     except Exception as e:
         error_logger.error(f"加载健康状态失败: {e}")
+
+# ============ 采集器状态管理 ============
 
 def get_crawler_status():
     return _crawler_status
