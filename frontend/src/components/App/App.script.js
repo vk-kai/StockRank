@@ -5,6 +5,18 @@ import { generateChartOption, generateSeries, collectAllSectors, generateLiveRep
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
+// 获取最近的交易日（跳过周末，回退到周五）
+function getLatestWeekday(date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  if (day === 0) { // 周日 -> 回退2天到周五
+    d.setDate(d.getDate() - 2)
+  } else if (day === 6) { // 周六 -> 回退1天到周五
+    d.setDate(d.getDate() - 1)
+  }
+  return d.toISOString().split('T')[0]
+}
+
 export default {
   name: 'App',
   components: {
@@ -53,8 +65,8 @@ export default {
       replayTimer: null,
       replaySpeed: 200,
       replayTopSectors: [],
-      replayDate: new Date().toISOString().split('T')[0],
-      todayDate: new Date().toISOString().split('T')[0],
+      replayDate: getLatestWeekday(new Date()),
+      todayDate: getLatestWeekday(new Date()),
       historicalMinuteData: null,
       lastTimeKeys: [],
       autoGrowCursor: null,
@@ -66,7 +78,7 @@ export default {
     minReplayDate() {
       const date = new Date()
       date.setDate(date.getDate() - 30)
-      return date.toISOString().split('T')[0]
+      return getLatestWeekday(date)
     },
     countdownMinutes() {
       return Math.floor(this.countdown / 60).toString().padStart(2, '0')
@@ -695,6 +707,14 @@ export default {
         this.replayTopSectors = []
         this.updateChart()
       }
+    },
+
+    onReplayDateChange() {
+      const weekday = getLatestWeekday(this.replayDate)
+      if (weekday !== this.replayDate) {
+        this.replayDate = weekday
+      }
+      this.loadReplayDateData()
     },
 
     async loadReplayDateData() {

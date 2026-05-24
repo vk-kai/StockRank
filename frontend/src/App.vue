@@ -110,7 +110,7 @@
             v-model="replayDate" 
             :min="minReplayDate"
             :max="todayDate"
-            @change="loadReplayDateData"
+            @change="onReplayDateChange"
           />
         </div>
       </div>
