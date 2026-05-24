@@ -18,6 +18,7 @@ PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
 
 _current_working_headers = None
+_working_headers_id = 0  # 请求头版本号，服务监控每次探测成功递增
 
 def load_proxy_pool():
     if not USE_PROXY:
@@ -97,13 +98,17 @@ def generate_random_headers(host=None, referer=None):
     return headers
 
 def get_working_headers():
-    global _current_working_headers
-    return _current_working_headers
+    global _current_working_headers, _working_headers_id
+    return _current_working_headers, _working_headers_id
 
 def set_working_headers(headers):
-    global _current_working_headers
+    global _current_working_headers, _working_headers_id
     _current_working_headers = headers
-    system_logger.info(f"已设置可用的请求头")
+    if headers:
+        _working_headers_id += 1
+        system_logger.info(f"已保存可用的请求头 (版本: {_working_headers_id})")
+    else:
+        system_logger.info(f"已清除保存的请求头")
 
 def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
@@ -200,7 +205,16 @@ def get_sector_flow_data():
         return []
     
     set_crawler_working('sector_flow')
-    headers = generate_random_headers()
+    # 优先使用已保存的可用请求头，没有则随机生成
+    saved_headers, saved_id = get_working_headers()
+    if saved_headers:
+        headers = dict(saved_headers)
+        current_headers_id = saved_id
+        data_logger.info(f"使用已保存的可用请求头 (版本: {current_headers_id})")
+    else:
+        headers = generate_random_headers()
+        current_headers_id = -1
+        data_logger.info("无已保存请求头，使用随机生成的请求头")
     
     max_retries = 3
     for retry in range(max_retries):
@@ -220,8 +234,17 @@ def get_sector_flow_data():
             
             if response.status_code == 401 or response.status_code == 403:
                 response_preview = response.text[:500] if response.text else '(空响应)'
-                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，URL: {THS_SECTOR_URL}，返回内容: {response_preview}，立即重新生成请求头")
-                headers = generate_random_headers()
+                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，URL: {THS_SECTOR_URL}，返回内容: {response_preview}，立即更换请求头")
+                # 旧请求头失效，检查服务监控是否已探测到新请求头
+                new_headers, new_id = get_working_headers()
+                if new_headers and new_id != current_headers_id:
+                    headers = dict(new_headers)
+                    current_headers_id = new_id
+                    data_logger.info(f"旧请求头失效，切换到服务监控探测到的新请求头 (版本: {new_id})")
+                else:
+                    headers = generate_random_headers()
+                    current_headers_id = -1
+                    data_logger.info("旧请求头失效，无服务监控新请求头，使用随机生成的请求头")
                 continue
             
             response.raise_for_status()
@@ -249,7 +272,11 @@ def get_sector_flow_data():
                 
                 if not has_valid_name:
                     error_logger.error(f"获取的板块数据名称无效（非中文），跳过本次数据保存")
+                    headers = generate_random_headers()
                     continue
+                
+                # 请求成功，保存当前可用的请求头
+                set_working_headers(headers)
                 
                 global latest_data
                 latest_data = sectors
@@ -263,6 +290,7 @@ def get_sector_flow_data():
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
                 error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_URL}，HTML内容预览: {html_preview}")
+                headers = generate_random_headers()
         
         except Exception as e:
             if USE_PROXY and PROXY_POOL:
@@ -385,7 +413,17 @@ def get_sector_stocks(sector_url):
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
     set_crawler_working('stocks')
-    headers = generate_random_headers(host=host)
+    # 优先使用已保存的可用请求头，没有则随机生成
+    saved_headers, saved_id = get_working_headers()
+    if saved_headers:
+        headers = dict(saved_headers)
+        headers['Host'] = host
+        current_headers_id = saved_id
+        data_logger.info(f"个股数据使用已保存的可用请求头 (版本: {current_headers_id})，Host: {host}")
+    else:
+        headers = generate_random_headers(host=host)
+        current_headers_id = -1
+        data_logger.info("个股数据无已保存请求头，使用随机生成的请求头")
     
     max_retries = 3
     for retry in range(max_retries):
@@ -405,8 +443,18 @@ def get_sector_stocks(sector_url):
             
             if response.status_code == 401 or response.status_code == 403:
                 response_preview = response.text[:500] if response.text else '(空响应)'
-                error_logger.warning(f"个股数据请求被拒绝 (HTTP {response.status_code})，URL: {sector_url}，返回内容: {response_preview}，立即重新生成请求头")
-                headers = generate_random_headers(host=host)
+                error_logger.warning(f"个股数据请求被拒绝 (HTTP {response.status_code})，URL: {sector_url}，返回内容: {response_preview}，立即更换请求头")
+                # 旧请求头失效，检查服务监控是否已探测到新请求头
+                new_headers, new_id = get_working_headers()
+                if new_headers and new_id != current_headers_id:
+                    headers = dict(new_headers)
+                    headers['Host'] = host
+                    current_headers_id = new_id
+                    data_logger.info(f"旧请求头失效，切换到服务监控探测到的新请求头 (版本: {new_id})")
+                else:
+                    headers = generate_random_headers(host=host)
+                    current_headers_id = -1
+                    data_logger.info("旧请求头失效，无服务监控新请求头，使用随机生成的请求头")
                 continue
             
             response.raise_for_status()
@@ -425,11 +473,16 @@ def get_sector_stocks(sector_url):
             stocks = parse_ths_stock_html(response.text, sector_url)
             
             if stocks:
+                # 请求成功，保存当前可用的请求头（恢复原始Host）
+                saved_headers = dict(headers)
+                saved_headers['Host'] = 'data.10jqka.com.cn'
+                set_working_headers(saved_headers)
                 set_crawler_idle('stocks')
                 return stocks
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
                 error_logger.error(f"解析个股数据失败，返回空列表，URL: {sector_url}，HTML内容预览: {html_preview}")
+                headers = generate_random_headers(host=host)
         
         except Exception as e:
             if USE_PROXY and PROXY_POOL:

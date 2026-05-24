@@ -60,6 +60,7 @@ def get_news_headers():
     }
 
 def get_sector_headers():
+    """服务监控始终生成新请求头进行探测，以发现新的可用请求头"""
     from data_processor import generate_random_headers
     return generate_random_headers()
 
@@ -128,8 +129,15 @@ def test_stock_detail_url(sector_url):
         parsed_url = urlparse(sector_url)
         host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
         
-        from data_processor import generate_random_headers
-        headers = generate_random_headers(host=host)
+        # 优先使用已保存的可用请求头
+        from data_processor import get_working_headers, generate_random_headers
+        saved_headers, _ = get_working_headers()
+        if not saved_headers:
+            headers = generate_random_headers(host=host)
+        else:
+            # 替换Host为当前请求的host
+            headers = dict(saved_headers)
+            headers['Host'] = host
         
         session = requests.Session()
         session.trust_env = False
@@ -193,6 +201,11 @@ def test_sector_and_stocks():
                         response.encoding = 'GBK'
                 text = response.text
                 if 'm-table' in text or '板块' in text:
+                    # 探测成功，保存可用的请求头
+                    from data_processor import set_working_headers
+                    set_working_headers(headers)
+                    health_logger.info(f"服务监控探测到可用请求头并已保存")
+                    
                     sector_success = True
                     sector_error = None
                     
