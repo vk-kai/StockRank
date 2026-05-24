@@ -17,8 +17,10 @@ cleanup_logger = get_logger('cleanup_flow')
 PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
 
-_current_working_headers = None
-_working_headers_id = 0  # 请求头版本号，服务监控每次探测成功递增
+# 主备双请求头机制
+_primary_headers = None       # 主请求头（数据采集优先使用）
+_backup_headers = None        # 备用请求头（主请求头失效时立即切换）
+_headers_version = 0          # 版本号，每次更新递增
 
 def load_proxy_pool():
     if not USE_PROXY:
@@ -97,18 +99,41 @@ def generate_random_headers(host=None, referer=None):
     
     return headers
 
-def get_working_headers():
-    global _current_working_headers, _working_headers_id
-    return _current_working_headers, _working_headers_id
+def get_primary_headers():
+    """获取主请求头和版本号"""
+    global _primary_headers, _headers_version
+    return _primary_headers, _headers_version
 
-def set_working_headers(headers):
-    global _current_working_headers, _working_headers_id
-    _current_working_headers = headers
+def get_backup_headers():
+    """获取备用请求头"""
+    global _backup_headers
+    return _backup_headers
+
+def set_primary_headers(headers):
+    """设置主请求头"""
+    global _primary_headers, _headers_version
+    _primary_headers = headers
     if headers:
-        _working_headers_id += 1
-        system_logger.info(f"已保存可用的请求头 (版本: {_working_headers_id})")
-    else:
-        system_logger.info(f"已清除保存的请求头")
+        _headers_version += 1
+        system_logger.info(f"主请求头已更新 (版本: {_headers_version})")
+
+def set_backup_headers(headers):
+    """设置备用请求头"""
+    global _backup_headers
+    _backup_headers = headers
+    if headers:
+        system_logger.info(f"备用请求头已保存")
+
+def promote_backup_to_primary():
+    """将备用请求头提升为主请求头，返回是否成功"""
+    global _primary_headers, _backup_headers, _headers_version
+    if _backup_headers:
+        _primary_headers = _backup_headers
+        _backup_headers = None
+        _headers_version += 1
+        system_logger.info(f"备用请求头已提升为主请求头 (版本: {_headers_version})")
+        return True
+    return False
 
 def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
@@ -205,16 +230,18 @@ def get_sector_flow_data():
         return []
     
     set_crawler_working('sector_flow')
-    # 优先使用已保存的可用请求头，没有则随机生成
-    saved_headers, saved_id = get_working_headers()
-    if saved_headers:
-        headers = dict(saved_headers)
-        current_headers_id = saved_id
-        data_logger.info(f"使用已保存的可用请求头 (版本: {current_headers_id})")
+    # 优先使用主请求头，没有则用备用，都没有则随机生成
+    primary, primary_id = get_primary_headers()
+    backup = get_backup_headers()
+    if primary:
+        headers = dict(primary)
+        current_headers_id = primary_id
+    elif backup:
+        headers = dict(backup)
+        current_headers_id = -2  # 备用标识
     else:
         headers = generate_random_headers()
         current_headers_id = -1
-        data_logger.info("无已保存请求头，使用随机生成的请求头")
     
     max_retries = 3
     for retry in range(max_retries):
@@ -233,10 +260,20 @@ def get_sector_flow_data():
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
-                # 旧请求头失效，检查服务监控是否已探测到新请求头
-                new_headers, new_id = get_working_headers()
-                if new_headers and new_id != current_headers_id:
-                    headers = dict(new_headers)
+                # 主请求头失效，尝试备用
+                backup = get_backup_headers()
+                if backup:
+                    headers = dict(backup)
+                    current_headers_id = -2
+                    # 提升备用为主请求头
+                    promote_backup_to_primary()
+                    primary, primary_id = get_primary_headers()
+                    current_headers_id = primary_id
+                    continue
+                # 没有备用，检查服务监控是否探测到新请求头
+                new_primary, new_id = get_primary_headers()
+                if new_primary and new_id != current_headers_id:
+                    headers = dict(new_primary)
                     current_headers_id = new_id
                 else:
                     headers = generate_random_headers()
@@ -271,8 +308,8 @@ def get_sector_flow_data():
                     headers = generate_random_headers()
                     continue
                 
-                # 请求成功，保存当前可用的请求头
-                set_working_headers(headers)
+                # 请求成功，更新主请求头
+                set_primary_headers(headers)
                 
                 global latest_data
                 latest_data = sectors
@@ -404,17 +441,20 @@ def get_sector_stocks(sector_url):
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
     set_crawler_working('stocks')
-    # 优先使用已保存的可用请求头，没有则随机生成
-    saved_headers, saved_id = get_working_headers()
-    if saved_headers:
-        headers = dict(saved_headers)
+    # 优先使用主请求头，没有则用备用，都没有则随机生成
+    primary, primary_id = get_primary_headers()
+    backup = get_backup_headers()
+    if primary:
+        headers = dict(primary)
         headers['Host'] = host
-        current_headers_id = saved_id
-        data_logger.info(f"个股数据使用已保存的可用请求头 (版本: {current_headers_id})，Host: {host}")
+        current_headers_id = primary_id
+    elif backup:
+        headers = dict(backup)
+        headers['Host'] = host
+        current_headers_id = -2
     else:
         headers = generate_random_headers(host=host)
         current_headers_id = -1
-        data_logger.info("个股数据无已保存请求头，使用随机生成的请求头")
     
     max_retries = 3
     for retry in range(max_retries):
@@ -433,10 +473,19 @@ def get_sector_stocks(sector_url):
             response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
-                # 旧请求头失效，检查服务监控是否已探测到新请求头
-                new_headers, new_id = get_working_headers()
-                if new_headers and new_id != current_headers_id:
-                    headers = dict(new_headers)
+                # 主请求头失效，尝试备用
+                backup = get_backup_headers()
+                if backup:
+                    headers = dict(backup)
+                    headers['Host'] = host
+                    current_headers_id = -2
+                    promote_backup_to_primary()
+                    primary, primary_id = get_primary_headers()
+                    current_headers_id = primary_id
+                    continue
+                new_primary, new_id = get_primary_headers()
+                if new_primary and new_id != current_headers_id:
+                    headers = dict(new_primary)
                     headers['Host'] = host
                     current_headers_id = new_id
                 else:
@@ -460,10 +509,6 @@ def get_sector_stocks(sector_url):
             stocks = parse_ths_stock_html(response.text, sector_url)
             
             if stocks:
-                # 请求成功，保存当前可用的请求头（恢复原始Host）
-                saved_headers = dict(headers)
-                saved_headers['Host'] = 'data.10jqka.com.cn'
-                set_working_headers(saved_headers)
                 set_crawler_idle('stocks')
                 return stocks
             else:

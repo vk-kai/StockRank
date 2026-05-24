@@ -66,6 +66,38 @@ def get_sector_headers():
     from data_processor import generate_random_headers
     return generate_random_headers()
 
+def _verify_headers_with_url(url, headers, timeout=10):
+    """用指定请求头请求URL，验证是否可用。返回 (成功, 响应时间, 错误信息, 响应文本)"""
+    start_time = time.time()
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(url, headers=headers, timeout=timeout, verify=False)
+        response_time = round((time.time() - start_time) * 1000, 2)
+        
+        if response.status_code == 200:
+            content_type = response.headers.get('Content-Type', '')
+            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
+                response.encoding = 'GBK'
+            elif response.encoding == 'ISO-8859-1':
+                response.encoding = 'GBK'
+            else:
+                try:
+                    response.encoding = response.apparent_encoding
+                except:
+                    response.encoding = 'GBK'
+            text = response.text
+            if 'm-table' in text or '板块' in text or '个股' in text:
+                return True, response_time, None, text
+            return False, response_time, '页面内容异常', text
+        return False, response_time, f'HTTP {response.status_code}', None
+    except requests.exceptions.Timeout:
+        return False, round((time.time() - start_time) * 1000, 2), '请求超时', None
+    except requests.exceptions.ConnectionError:
+        return False, round((time.time() - start_time) * 1000, 2), '网络连接失败', None
+    except Exception as e:
+        return False, round((time.time() - start_time) * 1000, 2), str(e)[:30], None
+
 def test_news_api():
     params = {
         'page': 1,
@@ -125,161 +157,176 @@ def extract_stock_url_from_sector(html_content):
         return None
 
 def test_stock_detail_url(sector_url):
-    start_time = time.time()
-    try:
-        from urllib.parse import urlparse
-        parsed_url = urlparse(sector_url)
-        host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
-        
-        # 优先使用已保存的可用请求头
-        from data_processor import get_working_headers, generate_random_headers
-        saved_headers, _ = get_working_headers()
-        if not saved_headers:
-            headers = generate_random_headers(host=host)
-        else:
-            # 替换Host为当前请求的host
-            headers = dict(saved_headers)
-            headers['Host'] = host
-        
-        session = requests.Session()
-        session.trust_env = False
-        response = session.get(sector_url, headers=headers, timeout=10, verify=False)
-        response_time = round((time.time() - start_time) * 1000, 2)
-        
-        if response.status_code == 200:
-            content_type = response.headers.get('Content-Type', '')
-            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
-                response.encoding = 'GBK'
-            elif response.encoding == 'ISO-8859-1':
-                response.encoding = 'GBK'
-            else:
-                try:
-                    response.encoding = response.apparent_encoding
-                except:
-                    response.encoding = 'GBK'
-            text = response.text
-            if 'm-table' in text or '个股' in text or '资金' in text:
-                return True, response_time, None
-            html_preview = text[:500] if text else '(空响应)'
-            return False, response_time, f'页面内容异常，HTML预览: {html_preview}'
-        response_preview = response.text[:500] if response.text else '(空响应)'
-        return False, response_time, f'HTTP {response.status_code}，返回内容: {response_preview}'
-    except requests.exceptions.Timeout:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, '请求超时'
-    except requests.exceptions.ConnectionError:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, '网络连接失败'
-    except Exception as e:
-        response_time = round((time.time() - start_time) * 1000, 2)
-        return False, response_time, str(e)[:30]
+    """测试个股详情URL，优先用主请求头，失败用备用"""
+    from data_processor import get_primary_headers, get_backup_headers, generate_random_headers
+    from urllib.parse import urlparse
+    parsed_url = urlparse(sector_url)
+    host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
+    
+    # 尝试主请求头
+    primary, _ = get_primary_headers()
+    if primary:
+        headers = dict(primary)
+        headers['Host'] = host
+        success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
+        if success:
+            return True, response_time, None
+    
+    # 尝试备用请求头
+    backup = get_backup_headers()
+    if backup:
+        headers = dict(backup)
+        headers['Host'] = host
+        success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
+        if success:
+            return True, response_time, None
+    
+    # 用新请求头
+    headers = generate_random_headers(host=host)
+    success, response_time, error, _ = _verify_headers_with_url(sector_url, headers)
+    if success:
+        return True, response_time, None
+    
+    return False, response_time, error
 
 def test_sector_and_stocks():
-    max_rounds = 3
-    retries_per_round = 3
-    retry_delay = 1
+    """服务监控：同步验证主请求头，能用立即返回；不能用则尝试备用或探测新请求头"""
+    from data_processor import get_primary_headers, get_backup_headers, set_primary_headers, set_backup_headers, promote_backup_to_primary, generate_random_headers
+    
+    # 第一步：验证主请求头是否还能用
+    primary, primary_id = get_primary_headers()
+    if primary:
+        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, primary)
+        if success:
+            # 主请求头可用，立即返回正常，异步探测备用
+            health_logger.info("主请求头验证可用，服务正常")
+            _probe_backup_async()
+            
+            sector_success = True
+            sector_error = None
+            stock_url = extract_stock_url_from_sector(text) if text else None
+            if stock_url:
+                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
+            else:
+                stocks_success = False
+                stocks_time = 0
+                stocks_error = '未找到板块详情URL'
+            
+            return {
+                'sector_success': sector_success,
+                'sector_time': response_time,
+                'sector_error': sector_error,
+                'stocks_success': stocks_success,
+                'stocks_time': stocks_time,
+                'stocks_error': stocks_error
+            }
+    
+    # 第二步：主请求头不可用，尝试备用请求头
+    backup = get_backup_headers()
+    if backup:
+        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, backup)
+        if success:
+            # 备用可用，提升为主请求头
+            promote_backup_to_primary()
+            health_logger.info("主请求头失效，备用请求头提升为主请求头")
+            _probe_backup_async()
+            
+            sector_success = True
+            sector_error = None
+            stock_url = extract_stock_url_from_sector(text) if text else None
+            if stock_url:
+                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
+            else:
+                stocks_success = False
+                stocks_time = 0
+                stocks_error = '未找到板块详情URL'
+            
+            return {
+                'sector_success': sector_success,
+                'sector_time': response_time,
+                'sector_error': sector_error,
+                'stocks_success': stocks_success,
+                'stocks_time': stocks_time,
+                'stocks_error': stocks_error
+            }
+    
+    # 第三步：主备都不可用，探测新请求头（最多9次）
+    max_attempts = 9
     last_error = None
     last_response_time = 0
-    total_attempts = max_rounds * retries_per_round
     
-    for round_num in range(max_rounds):
-        for attempt in range(retries_per_round):
-            start_time = time.time()
-            try:
-                session = requests.Session()
-                session.trust_env = False
-                headers = get_sector_headers()
-                response = session.get(THS_SECTOR_URL, headers=headers, timeout=10, verify=False)
-                response_time = round((time.time() - start_time) * 1000, 2)
-                last_response_time = response_time
-                
-                if response.status_code == 200:
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
-                        response.encoding = 'GBK'
-                    elif response.encoding == 'ISO-8859-1':
-                        response.encoding = 'GBK'
-                    else:
-                        try:
-                            response.encoding = response.apparent_encoding
-                        except:
-                            response.encoding = 'GBK'
-                    text = response.text
-                    if 'm-table' in text or '板块' in text:
-                        # 探测成功，保存可用的请求头
-                        from data_processor import set_working_headers
-                        set_working_headers(headers)
-                        health_logger.info(f"服务监控探测到可用请求头并已保存")
-                        
-                        sector_success = True
-                        sector_error = None
-                        
-                        stock_url = extract_stock_url_from_sector(text)
-                        if stock_url:
-                            stocks_success, stocks_time, stocks_error = test_sector_detail_url_with_retry(stock_url)
-                        else:
-                            stocks_success = False
-                            stocks_time = 0
-                            stocks_error = '未找到板块详情URL'
-                        
-                        return {
-                            'sector_success': sector_success,
-                            'sector_time': response_time,
-                            'sector_error': sector_error,
-                            'stocks_success': stocks_success,
-                            'stocks_time': stocks_time,
-                            'stocks_error': stocks_error
-                        }
-                    last_error = '页面内容异常'
-                else:
-                    last_error = f'HTTP {response.status_code}'
-                    
-            except requests.exceptions.Timeout:
-                last_response_time = round((time.time() - start_time) * 1000, 2)
-                last_error = '请求超时'
-            except requests.exceptions.ConnectionError:
-                last_response_time = round((time.time() - start_time) * 1000, 2)
-                last_error = '网络连接失败'
-            except Exception as e:
-                last_response_time = round((time.time() - start_time) * 1000, 2)
-                last_error = str(e)[:30]
+    for attempt in range(max_attempts):
+        headers = generate_random_headers()
+        success, response_time, error, text = _verify_headers_with_url(THS_SECTOR_URL, headers)
+        last_response_time = response_time
+        
+        if success:
+            # 找到可用请求头，设为主请求头
+            set_primary_headers(headers)
+            health_logger.info(f"服务监控探测到新可用请求头 (第{attempt+1}次尝试)")
+            _probe_backup_async()
             
-            # 不是最后一次尝试则等待
-            if not (round_num == max_rounds - 1 and attempt == retries_per_round - 1):
-                time.sleep(retry_delay)
+            sector_success = True
+            sector_error = None
+            stock_url = extract_stock_url_from_sector(text) if text else None
+            if stock_url:
+                stocks_success, stocks_time, stocks_error = test_stock_detail_url(stock_url)
+            else:
+                stocks_success = False
+                stocks_time = 0
+                stocks_error = '未找到板块详情URL'
+            
+            return {
+                'sector_success': sector_success,
+                'sector_time': response_time,
+                'sector_error': sector_error,
+                'stocks_success': stocks_success,
+                'stocks_time': stocks_time,
+                'stocks_error': stocks_error
+            }
+        
+        last_error = error
+        if attempt < max_attempts - 1:
+            time.sleep(1)
     
-    error_logger.warning(f"服务监控板块检测最终失败({last_error})，已尝试{total_attempts}次，板块URL: {THS_SECTOR_URL}")
-    
+    # 全部失败
+    error_logger.warning(f"服务监控板块检测最终失败({last_error})，已尝试{max_attempts}次，板块URL: {THS_SECTOR_URL}")
     return {
         'sector_success': False,
         'sector_time': last_response_time,
-        'sector_error': last_error or f'重试{total_attempts}次均失败',
+        'sector_error': last_error or f'重试{max_attempts}次均失败',
         'stocks_success': False,
         'stocks_time': 0,
         'stocks_error': '板块检测失败'
     }
 
-def test_sector_detail_url_with_retry(sector_url):
-    max_rounds = 3
-    retries_per_round = 3
-    retry_delay = 1
-    last_result = (False, 0, '未知错误')
-    total_attempts = max_rounds * retries_per_round
+_backup_probe_thread = None
+
+def _probe_backup_async():
+    """异步探测备用请求头"""
+    global _backup_probe_thread
+    if _backup_probe_thread and _backup_probe_thread.is_alive():
+        return
+    _backup_probe_thread = threading.Thread(target=_probe_backup, daemon=True)
+    _backup_probe_thread.start()
+
+def _probe_backup():
+    """探测新的备用请求头，直到找到一个可用的"""
+    from data_processor import get_backup_headers, set_backup_headers, generate_random_headers
+    # 已有备用则跳过
+    if get_backup_headers():
+        return
     
-    for round_num in range(max_rounds):
-        for attempt in range(retries_per_round):
-            result = test_stock_detail_url(sector_url)
-            if result[0]:
-                return result
-            last_result = result
-            # 不是最后一次尝试则等待
-            if not (round_num == max_rounds - 1 and attempt == retries_per_round - 1):
-                time.sleep(retry_delay)
+    for attempt in range(9):
+        headers = generate_random_headers()
+        success, _, _, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
+        if success:
+            set_backup_headers(headers)
+            health_logger.info(f"备用请求头探测成功 (第{attempt+1}次尝试)")
+            return
+        time.sleep(1)
     
-    error = last_result[2]
-    error_logger.warning(f"服务监控个股检测最终失败({error})，已尝试{total_attempts}次，个股URL: {sector_url}")
-    
-    return last_result
+    health_logger.info("备用请求头探测失败，将在下次健康检查时重试")
 
 _health_check_thread = None
 
