@@ -110,6 +110,11 @@ if __name__ == '__main__':
         if not news_collection_thread.is_alive():
             news_collection_thread.start()
         
+        # 启动时自动执行一次健康检查
+        from health_checker import run_health_check_async
+        run_health_check_async()
+        system_logger.info("启动时自动执行健康检查")
+        
         monitor_process = multiprocessing.Process(target=monitor_loop, daemon=True)
         monitor_process.start()
         system_logger.info("监控进程已启动")

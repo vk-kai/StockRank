@@ -163,6 +163,7 @@ export default {
     this.startCountdown()
     this.fetchLatestNews()
     this.startNewsRotation()
+    this.fetchHealthStatus()
     window.addEventListener('resize', this.handleResize)
     this.$nextTick(() => {
       this.updateLayoutHeight()
