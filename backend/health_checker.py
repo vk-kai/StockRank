@@ -175,7 +175,7 @@ def test_stock_detail_url(sector_url):
 def test_sector_and_stocks():
     max_rounds = 3
     retries_per_round = 3
-    retry_delay = 10
+    retry_delay = 1
     last_error = None
     last_response_time = 0
     total_attempts = max_rounds * retries_per_round
@@ -260,7 +260,7 @@ def test_sector_and_stocks():
 def test_sector_detail_url_with_retry(sector_url):
     max_rounds = 3
     retries_per_round = 3
-    retry_delay = 10
+    retry_delay = 1
     last_result = (False, 0, '未知错误')
     total_attempts = max_rounds * retries_per_round
     
@@ -278,6 +278,18 @@ def test_sector_detail_url_with_retry(sector_url):
     error_logger.warning(f"服务监控个股检测最终失败({error})，已尝试{total_attempts}次，个股URL: {sector_url}")
     
     return last_result
+
+_health_check_thread = None
+
+def run_health_check_async():
+    """异步执行健康检查，避免阻塞HTTP请求"""
+    global _health_check_thread
+    if _health_check_thread and _health_check_thread.is_alive():
+        health_logger.info("健康检查正在执行中，跳过本次请求")
+        return
+    _health_check_thread = threading.Thread(target=run_health_check, daemon=True)
+    _health_check_thread.start()
+    health_logger.info("健康检查已异步启动")
 
 def run_health_check():
     global health_status

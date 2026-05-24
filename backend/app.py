@@ -8,7 +8,7 @@ from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
-from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, run_health_check
+from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
@@ -59,7 +59,8 @@ def create_app():
             return jsonify({'success': True})
         
         if request.method == 'POST':
-            run_health_check()
+            from health_checker import run_health_check_async
+            run_health_check_async()
         
         return jsonify({
             'status': 'ok',
