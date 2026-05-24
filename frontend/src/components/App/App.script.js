@@ -328,25 +328,22 @@ export default {
     async fetchCurrentData() {
       if (this.isReplayingToday) return
 
-      // 非交易日：用最近周五的历史分钟数据
+      // 非交易日：复用 loadHistoricalDataForReplay 路径（与日期选择器一致）
       if (!isTradingDay(new Date())) {
         const lastFriday = getLatestWeekday(new Date())
+        this.replayDate = lastFriday
+        this.minuteData = {}
+        this.lastTimeKeys = []
         try {
-          const response = await getMinuteDataByDate(lastFriday)
-          if (response.success) {
-            this.minuteData = response.data
-            this.lastTimeKeys = Object.keys(response.data).sort()
-            // 从最后一个时间点提取 currentData
-            const timeKeys = this.lastTimeKeys
-            if (timeKeys.length > 0) {
-              const lastKey = timeKeys[timeKeys.length - 1]
-              this.currentData = response.data[lastKey]?.data || []
-            }
-            this.lastUpdate = lastFriday
-            this.$nextTick(() => {
-              this.updateChart()
-            })
+          await this.loadHistoricalDataForReplay()
+          // 从最后一个时间点提取 currentData（供TOP10列表使用）
+          const timeKeys = Object.keys(this.minuteData).sort()
+          if (timeKeys.length > 0) {
+            const lastKey = timeKeys[timeKeys.length - 1]
+            this.currentData = this.minuteData[lastKey]?.data || []
           }
+          this.lastUpdate = lastFriday
+          this.updateChart()
         } catch (err) {
           console.error('获取历史分钟数据失败:', err)
           this.error = '非交易日，获取历史数据失败: ' + err.message
