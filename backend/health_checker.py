@@ -26,7 +26,6 @@ _shared_headers = None
 
 # ============ 健康状态 ============
 _health_status = {
-    'overall': 'checking',
     'news': {
         'status': 'checking',
         'last_check': None,
@@ -240,21 +239,14 @@ def run_full_health_check():
         'response_time': sector_time
     }
 
-    if news_ok and sector_ok:
-        _health_status['overall'] = 'ok'
-    elif not news_ok and not sector_ok:
-        _health_status['overall'] = 'error'
-    else:
-        _health_status['overall'] = 'partial'
-
     save_health_status()
 
-    if _health_status['overall'] == 'ok':
+    if news_ok and sector_ok:
         health_logger.info("健康检测通过：板块正常、新闻正常")
-    elif _health_status['overall'] == 'partial':
-        health_logger.info(f"健康检测部分异常：新闻={'正常' if news_ok else '异常'}、板块={'正常' if sector_ok else '异常'}")
-    else:
+    elif not news_ok and not sector_ok:
         health_logger.warning(f"健康检测失败：新闻={news_error}、板块={sector_error}")
+    else:
+        health_logger.info(f"健康检测部分异常：新闻={'正常' if news_ok else '异常'}、板块={'正常' if sector_ok else '异常'}")
 
     return _health_status
 
@@ -312,7 +304,6 @@ def start_health_checker():
             'error': None,
             'response_time': None
         }
-        _health_status['overall'] = 'ok'
         save_health_status()
         health_logger.info("启动健康检测：服务正常")
     else:
@@ -320,7 +311,6 @@ def start_health_checker():
         now = datetime.now().isoformat()
         _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '无法获取可用请求头', 'response_time': None}
         _health_status['sector'] = {'status': 'error', 'last_check': now, 'error': '无法获取可用请求头', 'response_time': None}
-        _health_status['overall'] = 'error'
         save_health_status()
         health_logger.warning("启动健康检测：无法获取可用请求头，将在定时检测中重试")
 
@@ -350,14 +340,16 @@ def save_health_status():
         error_logger.error(f"保存健康状态失败: {e}")
 
 def load_health_status():
-    """从文件加载健康状态"""
+    """从文件加载健康状态，只加载已知的键（news、sector），忽略旧键"""
     global _health_status
     try:
         if os.path.exists(HEALTH_FILE):
             with open(HEALTH_FILE, 'r', encoding='utf-8') as f:
                 saved = json.load(f)
                 if saved:
-                    _health_status = saved
+                    for key in ('news', 'sector'):
+                        if key in saved:
+                            _health_status[key] = saved[key]
     except Exception as e:
         error_logger.error(f"加载健康状态失败: {e}")
 

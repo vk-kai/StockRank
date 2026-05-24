@@ -83,6 +83,16 @@ export default {
       if (this.latestNews.length === 0) return null
       return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
     },
+    healthDisplayItems() {
+      const items = {}
+      if (this.healthStatus.news) {
+        items.news = this.healthStatus.news
+      }
+      if (this.healthStatus.sector) {
+        items.sector = this.healthStatus.sector
+      }
+      return items
+    },
     healthErrors() {
       const errors = []
       const labels = {
@@ -1177,7 +1187,9 @@ export default {
     getCrawlerKey(healthKey) {
       const map = {
         'ths_news': 'news',
-        'ths_sector': 'sector_flow'
+        'ths_sector': 'sector_flow',
+        'news': 'news',
+        'sector': 'sector_flow'
       }
       return map[healthKey] || healthKey
     },
@@ -1256,7 +1268,9 @@ export default {
     getHealthLabel(key) {
       const labels = {
         'ths_news': '同花顺新闻',
-        'ths_sector': '板块资金'
+        'ths_sector': '板块资金',
+        'news': '同花顺新闻',
+        'sector': '板块资金'
       }
       return labels[key] || key
     },

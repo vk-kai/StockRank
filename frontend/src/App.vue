@@ -48,7 +48,7 @@
       </div>
       <div class="monitor-card-body">
         <div 
-          v-for="(item, key) in healthStatus" 
+          v-for="(item, key) in healthDisplayItems" 
           :key="key" 
           class="monitor-card-row"
           :class="getMonitorRowClass(key, item)"
@@ -61,7 +61,7 @@
             重试
           </button>
         </div>
-        <div v-if="Object.keys(healthStatus).length === 0" class="monitor-card-row monitor-loading">
+        <div v-if="Object.keys(healthDisplayItems).length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
         </div>
