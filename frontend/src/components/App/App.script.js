@@ -343,7 +343,9 @@ export default {
               this.currentData = response.data[lastKey]?.data || []
             }
             this.lastUpdate = lastFriday
-            this.updateChart()
+            this.$nextTick(() => {
+              this.updateChart()
+            })
           }
         } catch (err) {
           console.error('获取历史分钟数据失败:', err)
@@ -573,7 +575,10 @@ export default {
         } else if (this.autoGrowCursor !== null) {
           cursor = this.autoGrowCursor
         }
-        
+
+        // 非交易日或选了历史日期时，当作回放模式（显示全部数据，无动画）
+        const isReplayMode = this.replayDate !== this.todayDate || !isTradingDay(new Date())
+
         const option = generateLiveReplayChartOption(
           timeData,
           this.minuteData,
@@ -581,7 +586,7 @@ export default {
           cursor,
           10,
           this.replayTopSectors,
-          this.replayDate !== this.todayDate
+          isReplayMode
         )
 
         try {
