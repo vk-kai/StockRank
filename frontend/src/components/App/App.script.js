@@ -17,6 +17,12 @@ function getLatestWeekday(date) {
   return d.toISOString().split('T')[0]
 }
 
+// 判断是否为交易日（周一到周五）
+function isTradingDay(date) {
+  const day = new Date(date).getDay()
+  return day !== 0 && day !== 6
+}
+
 export default {
   name: 'App',
   components: {
@@ -322,6 +328,30 @@ export default {
     async fetchCurrentData() {
       if (this.isReplayingToday) return
 
+      // 非交易日：用最近周五的历史分钟数据
+      if (!isTradingDay(new Date())) {
+        const lastFriday = getLatestWeekday(new Date())
+        try {
+          const response = await getMinuteDataByDate(lastFriday)
+          if (response.success) {
+            this.minuteData = response.data
+            this.lastTimeKeys = Object.keys(response.data).sort()
+            // 从最后一个时间点提取 currentData
+            const timeKeys = this.lastTimeKeys
+            if (timeKeys.length > 0) {
+              const lastKey = timeKeys[timeKeys.length - 1]
+              this.currentData = response.data[lastKey]?.data || []
+            }
+            this.lastUpdate = lastFriday
+            this.updateChart()
+          }
+        } catch (err) {
+          console.error('获取历史分钟数据失败:', err)
+          this.error = '非交易日，获取历史数据失败: ' + err.message
+        }
+        return
+      }
+
       try {
         const response = await getCurrentFlow()
         
@@ -502,6 +532,12 @@ export default {
     startCountdown() {
       this.countdownInterval = setInterval(() => {
         if (this.isReplayingToday) {
+          this.countdown = 300
+          return
+        }
+
+        // 非交易日不自动刷新
+        if (!isTradingDay(new Date())) {
           this.countdown = 300
           return
         }
@@ -728,13 +764,15 @@ export default {
         this.autoGrowCursor = null
       }
 
-      if (this.replayDate === this.todayDate) {
+      // 今天是交易日且选的是今天：用实时分钟数据
+      if (this.replayDate === this.todayDate && isTradingDay(new Date())) {
         this.historicalMinuteData = null
         this.lastTimeKeys = []
         await this.fetchMinuteData()
         return
       }
 
+      // 非交易日或选了历史日期：用 minute-by-date 接口
       this.historicalMinuteData = null
       this.minuteData = {}
       this.lastTimeKeys = []
@@ -749,7 +787,7 @@ export default {
     },
 
     async loadHistoricalDataForReplay() {
-      if (this.replayDate === this.todayDate) {
+      if (this.replayDate === this.todayDate && isTradingDay(new Date())) {
         return
       }
 
