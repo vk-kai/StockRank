@@ -328,26 +328,17 @@ export default {
     async fetchCurrentData() {
       if (this.isReplayingToday) return
 
-      // 非交易日：复用 loadHistoricalDataForReplay 路径（与日期选择器一致）
+      // 非交易日：模拟选择周五日期，走 loadReplayDateData 路径
       if (!isTradingDay(new Date())) {
-        const lastFriday = getLatestWeekday(new Date())
-        this.replayDate = lastFriday
-        this.minuteData = {}
-        this.lastTimeKeys = []
-        try {
-          await this.loadHistoricalDataForReplay()
-          // 从最后一个时间点提取 currentData（供TOP10列表使用）
-          const timeKeys = Object.keys(this.minuteData).sort()
-          if (timeKeys.length > 0) {
-            const lastKey = timeKeys[timeKeys.length - 1]
-            this.currentData = this.minuteData[lastKey]?.data || []
-          }
-          this.lastUpdate = lastFriday
-          this.updateChart()
-        } catch (err) {
-          console.error('获取历史分钟数据失败:', err)
-          this.error = '非交易日，获取历史数据失败: ' + err.message
+        this.replayDate = getLatestWeekday(new Date())
+        await this.loadReplayDateData()
+        // 从最后一个时间点提取 currentData（供TOP10列表使用）
+        const timeKeys = Object.keys(this.minuteData).sort()
+        if (timeKeys.length > 0) {
+          const lastKey = timeKeys[timeKeys.length - 1]
+          this.currentData = this.minuteData[lastKey]?.data || []
         }
+        this.lastUpdate = this.replayDate
         return
       }
 
@@ -573,7 +564,7 @@ export default {
           cursor = this.autoGrowCursor
         }
 
-        // 非交易日或选了历史日期时，当作回放模式（显示全部数据，无动画）
+        // 非今天或非交易日时当作回放模式
         const isReplayMode = this.replayDate !== this.todayDate || !isTradingDay(new Date())
 
         const option = generateLiveReplayChartOption(
@@ -748,10 +739,6 @@ export default {
     },
 
     onReplayDateChange() {
-      const weekday = getLatestWeekday(this.replayDate)
-      if (weekday !== this.replayDate) {
-        this.replayDate = weekday
-      }
       this.loadReplayDateData()
     },
 
