@@ -233,18 +233,14 @@ def get_sector_flow_data():
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
-                response_preview = response.text[:500] if response.text else '(空响应)'
-                error_logger.warning(f"请求被拒绝 (HTTP {response.status_code})，URL: {THS_SECTOR_URL}，返回内容: {response_preview}，立即更换请求头")
                 # 旧请求头失效，检查服务监控是否已探测到新请求头
                 new_headers, new_id = get_working_headers()
                 if new_headers and new_id != current_headers_id:
                     headers = dict(new_headers)
                     current_headers_id = new_id
-                    data_logger.info(f"旧请求头失效，切换到服务监控探测到的新请求头 (版本: {new_id})")
                 else:
                     headers = generate_random_headers()
                     current_headers_id = -1
-                    data_logger.info("旧请求头失效，无服务监控新请求头，使用随机生成的请求头")
                 continue
             
             response.raise_for_status()
@@ -293,11 +289,6 @@ def get_sector_flow_data():
                 headers = generate_random_headers()
         
         except Exception as e:
-            if USE_PROXY and PROXY_POOL:
-                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取数据失败，URL: {THS_SECTOR_URL}，错误: {e}")
-            else:
-                error_logger.error(f"第 {retry+1} 次尝试获取数据失败，URL: {THS_SECTOR_URL}，错误: {e}")
-            
             if retry < max_retries - 1:
                 headers = generate_random_headers()
                 if USE_PROXY:
@@ -305,7 +296,7 @@ def get_sector_flow_data():
                 import time
                 time.sleep(2)
     
-    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取数据，URL: {THS_SECTOR_URL}")
+    error_logger.error(f"板块数据获取最终失败，已尝试 {max_retries} 次，URL: {THS_SECTOR_URL}")
     set_crawler_idle('sector_flow')
     return []
 
@@ -442,19 +433,15 @@ def get_sector_stocks(sector_url):
             response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
-                response_preview = response.text[:500] if response.text else '(空响应)'
-                error_logger.warning(f"个股数据请求被拒绝 (HTTP {response.status_code})，URL: {sector_url}，返回内容: {response_preview}，立即更换请求头")
                 # 旧请求头失效，检查服务监控是否已探测到新请求头
                 new_headers, new_id = get_working_headers()
                 if new_headers and new_id != current_headers_id:
                     headers = dict(new_headers)
                     headers['Host'] = host
                     current_headers_id = new_id
-                    data_logger.info(f"旧请求头失效，切换到服务监控探测到的新请求头 (版本: {new_id})")
                 else:
                     headers = generate_random_headers(host=host)
                     current_headers_id = -1
-                    data_logger.info("旧请求头失效，无服务监控新请求头，使用随机生成的请求头")
                 continue
             
             response.raise_for_status()
@@ -485,11 +472,6 @@ def get_sector_stocks(sector_url):
                 headers = generate_random_headers(host=host)
         
         except Exception as e:
-            if USE_PROXY and PROXY_POOL:
-                error_logger.error(f"第 {retry+1} 次尝试使用代理 {proxy} 获取个股数据失败，URL: {sector_url}，错误: {e}")
-            else:
-                error_logger.error(f"第 {retry+1} 次尝试获取个股数据失败，URL: {sector_url}，错误: {e}")
-            
             if retry < max_retries - 1:
                 headers = generate_random_headers(host=host)
                 if USE_PROXY:
@@ -497,7 +479,7 @@ def get_sector_stocks(sector_url):
                 import time
                 time.sleep(2)
     
-    error_logger.error(f"已尝试 {max_retries} 次，均未能成功获取个股数据，URL: {sector_url}")
+    error_logger.error(f"个股数据获取最终失败，已尝试 {max_retries} 次，URL: {sector_url}")
     set_crawler_idle('stocks')
     return []
 
