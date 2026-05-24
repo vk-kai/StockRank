@@ -5,6 +5,11 @@ import { generateChartOption, generateSeries, collectAllSectors, generateLiveRep
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
+// 格式化日期为 YYYY-MM-DD
+function formatDate(date) {
+  return date.toISOString().split('T')[0]
+}
+
 // 获取最近的交易日（跳过周末，回退到周五）
 function getLatestWeekday(date) {
   const d = new Date(date)
@@ -14,7 +19,7 @@ function getLatestWeekday(date) {
   } else if (day === 6) { // 周六 -> 回退1天到周五
     d.setDate(d.getDate() - 1)
   }
-  return d.toISOString().split('T')[0]
+  return formatDate(d)
 }
 
 // 判断是否为交易日（周一到周五）
@@ -71,8 +76,8 @@ export default {
       replayTimer: null,
       replaySpeed: 200,
       replayTopSectors: [],
-      replayDate: getLatestWeekday(new Date()),
-      todayDate: getLatestWeekday(new Date()),
+      replayDate: formatDate(new Date()),
+      todayDate: formatDate(new Date()),
       historicalMinuteData: null,
       lastTimeKeys: [],
       autoGrowCursor: null,
@@ -84,7 +89,7 @@ export default {
     minReplayDate() {
       const date = new Date()
       date.setDate(date.getDate() - 30)
-      return getLatestWeekday(date)
+      return formatDate(date)
     },
     countdownMinutes() {
       return Math.floor(this.countdown / 60).toString().padStart(2, '0')
@@ -328,11 +333,17 @@ export default {
     async fetchCurrentData() {
       if (this.isReplayingToday) return
 
-      // 非交易日：模拟选择周五日期，走 loadReplayDateData 路径
+      // 非交易日：先展示当天（空数据），再自动跳转到最近周五
       if (!isTradingDay(new Date())) {
+        // 先设置为今天日期（展示空数据状态）
+        this.replayDate = formatDate(new Date())
+        this.minuteData = {}
+        this.currentData = []
+        this.lastUpdate = this.replayDate
+        this.updateChart()
+        // 自动模拟点击最近周五，加载周五数据
         this.replayDate = getLatestWeekday(new Date())
         await this.loadReplayDateData()
-        // 从最后一个时间点提取 currentData（供TOP10列表使用）
         const timeKeys = Object.keys(this.minuteData).sort()
         if (timeKeys.length > 0) {
           const lastKey = timeKeys[timeKeys.length - 1]
@@ -739,6 +750,10 @@ export default {
     },
 
     onReplayDateChange() {
+      // 如果选择的是非交易日（周末），自动跳转到对应的周五
+      if (!isTradingDay(this.replayDate)) {
+        this.replayDate = getLatestWeekday(this.replayDate)
+      }
       this.loadReplayDateData()
     },
 
