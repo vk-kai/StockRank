@@ -410,7 +410,7 @@ export default {
     },
 
     async fetchDataByTimeRange() {
-      await this.doHealthCheck()
+      await this.fetchHealthStatus()
       
       this.loading = true
       this.error = null
@@ -450,7 +450,7 @@ export default {
         return
       }
 
-      await this.doHealthCheck()
+      await this.fetchHealthStatus()
       
       this.loading = true
       this.error = null
