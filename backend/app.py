@@ -3,6 +3,7 @@ from flask_cors import CORS
 import threading
 import multiprocessing
 import os
+import traceback
 
 from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
@@ -84,6 +85,11 @@ def create_app():
             return jsonify({'success': True, 'message': f'{crawler_name} 状态已重置'})
         
         return jsonify({'success': False, 'message': '缺少 crawler 参数'}), 400
+    
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        error_logger.error(f"未捕获的异常: {e}\n{traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
     
     return app
 

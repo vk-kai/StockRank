@@ -1,6 +1,8 @@
 import os
 import json
 import time
+import threading
+import traceback
 from datetime import datetime
 from logger import get_logger
 from config import DATA_DIR
@@ -281,13 +283,20 @@ def test_sector_detail_url_with_retry(sector_url):
 
 _health_check_thread = None
 
+def _run_health_check_safe():
+    """带异常捕获的健康检查，确保任何报错都记录到日志"""
+    try:
+        run_health_check()
+    except Exception as e:
+        error_logger.error(f"健康检查执行异常: {e}\n{traceback.format_exc()}")
+
 def run_health_check_async():
     """异步执行健康检查，避免阻塞HTTP请求"""
     global _health_check_thread
     if _health_check_thread and _health_check_thread.is_alive():
         health_logger.info("健康检查正在执行中，跳过本次请求")
         return
-    _health_check_thread = threading.Thread(target=run_health_check, daemon=True)
+    _health_check_thread = threading.Thread(target=_run_health_check_safe, daemon=True)
     _health_check_thread.start()
     health_logger.info("健康检查已异步启动")
 
