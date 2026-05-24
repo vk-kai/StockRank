@@ -172,7 +172,6 @@ def _acquire_headers(max_attempts=9):
         headers = generate_random_headers()
         success, _, error, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
         if success:
-            health_logger.info(f"获取到可用请求头 (第{attempt+1}次尝试)")
             return headers, True
         if attempt < max_attempts - 1:
             time.sleep(1)
@@ -198,13 +197,11 @@ def run_full_health_check():
     if _shared_headers:
         sector_ok, sector_time, sector_error, _ = _verify_headers_with_url(THS_SECTOR_URL, _shared_headers)
         if not sector_ok:
-            health_logger.info("共享请求头板块验证失效，开始重新获取")
             new_headers, found = _acquire_headers(9)
             if found:
                 _shared_headers = new_headers
                 sector_ok = True
                 sector_error = None
-                health_logger.info("重新获取请求头成功")
             else:
                 _shared_headers = None
                 sector_error = sector_error or '板块请求头全部失效'
@@ -220,8 +217,6 @@ def run_full_health_check():
     # 第二步：检测新闻API
     if _shared_headers:
         news_ok, news_time, news_error = _test_news_with_headers(_shared_headers)
-        if not news_ok:
-            health_logger.info(f"新闻API检测失败: {news_error}")
     else:
         news_error = '无可用请求头'
 
@@ -241,12 +236,11 @@ def run_full_health_check():
 
     save_health_status()
 
-    if news_ok and sector_ok:
-        health_logger.info("健康检测通过：板块正常、新闻正常")
-    elif not news_ok and not sector_ok:
-        health_logger.warning(f"健康检测失败：新闻={news_error}、板块={sector_error}")
-    else:
-        health_logger.info(f"健康检测部分异常：新闻={'正常' if news_ok else '异常'}、板块={'正常' if sector_ok else '异常'}")
+    if not news_ok or not sector_ok:
+        if not news_ok and not sector_ok:
+            health_logger.warning(f"健康检测失败：新闻={news_error}、板块={sector_error}")
+        else:
+            health_logger.warning(f"健康检测部分异常：新闻={'正常' if news_ok else '异常'}、板块={'正常' if sector_ok else '异常'}")
 
     return _health_status
 
@@ -256,7 +250,7 @@ def _periodic_check_loop():
     """定时检测循环：每60秒检查一次请求头是否仍然有效"""
     global _check_running
 
-    health_logger.info("定时健康检测线程已启动（每60秒检测一次）")
+    health_logger.info("定时健康检测线程已启动")
 
     while _check_running:
         try:
@@ -279,15 +273,11 @@ def start_health_checker():
     global _check_thread, _check_running, _shared_headers
 
     if _check_running:
-        health_logger.info("健康检测已在运行中")
         return
 
-    # 启动时先获取可用请求头（最多9次尝试）
-    health_logger.info("健康检测启动：开始获取可用请求头...")
     new_headers, found = _acquire_headers(9)
     if found:
         _shared_headers = new_headers
-        health_logger.info("启动时请求头获取成功")
 
         # 验证新闻API
         news_ok, _, _ = _test_news_with_headers(_shared_headers)
@@ -305,7 +295,6 @@ def start_health_checker():
             'response_time': None
         }
         save_health_status()
-        health_logger.info("启动健康检测：服务正常")
     else:
         _shared_headers = None
         now = datetime.now().isoformat()
