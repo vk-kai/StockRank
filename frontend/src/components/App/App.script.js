@@ -638,13 +638,8 @@ export default {
         )
 
         try {
-          if (this.chartInstance) {
-            this.chartInstance.dispatchAction({
-              type: 'hideTip'
-            })
-          }
           this.chartInstance.setOption(option, {
-            notMerge: true,
+            replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
             lazyUpdate: true
           })
         } catch (e) {
