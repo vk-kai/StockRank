@@ -187,6 +187,35 @@ export default {
     },
     showChartLoading() {
       return (this.loading || this.healthChecking) && !this.chartHasData
+    },
+    replayTop10Sectors() {
+      if (this.selectedTimeRange !== 'today') return []
+
+      let items = []
+      const timeKeys = Object.keys(this.minuteData).sort()
+
+      if (timeKeys.length > 0) {
+        const latestKey = timeKeys[timeKeys.length - 1]
+        items = this.minuteData[latestKey]?.data || this.minuteData[latestKey] || []
+      } else if (this.currentData.length > 0) {
+        items = this.currentData
+      }
+
+      return [...items]
+        .filter(item => item && item.name)
+        .sort((a, b) => {
+          const aFlow = a.flow ?? a.total_flow ?? 0
+          const bFlow = b.flow ?? b.total_flow ?? 0
+          if (bFlow !== aFlow) return bFlow - aFlow
+          return (a.rank ?? 0) - (b.rank ?? 0)
+        })
+        .slice(0, 10)
+    },
+    replayTop10Title() {
+      if (this.selectedTimeRange !== 'today') return ''
+      return this.replayDate === this.todayDate
+        ? '今日资金流入TOP10'
+        : `${this.replayDate}资金流入TOP10`
     }
   },
   mounted() {
@@ -750,7 +779,7 @@ export default {
       
       this.replayTimer = setTimeout(() => {
         this.replayTimer = null
-        this.isReplayingToday = false
+        this.stopTodayReplay(true)
       }, replayDuration)
     },
 
@@ -766,6 +795,11 @@ export default {
         this.replayCursor = null
         this.replayTopSectors = []
         this.updateChart()
+        if (this.chartInstance) {
+          this.chartInstance.dispatchAction({
+            type: 'hideTip'
+          })
+        }
       }
     },
 

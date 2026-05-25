@@ -123,11 +123,11 @@
       </div>
     </div>
 
-    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange === 'today' && currentData.length > 0">
-      <h3 class="sector-title">今日资金流入TOP10</h3>
+    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange === 'today' && replayTop10Sectors.length > 0">
+      <h3 class="sector-title">{{ replayTop10Title }}</h3>
       <div class="sector-grid">
         <div 
-          v-for="sector in currentData.slice(0, 10)" 
+          v-for="sector in replayTop10Sectors" 
           :key="sector.rank"
           class="sector-card clickable"
           :class="{ 'top-3': sector.rank <= 3 }"
@@ -245,6 +245,4 @@
 </template>
 
 <script src="./components/App/App.script.js"></script>
-
-
 
