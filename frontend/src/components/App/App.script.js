@@ -78,6 +78,7 @@ export default {
       replayTopSectors: [],
       replayDate: formatDate(new Date()),
       todayDate: formatDate(new Date()),
+      hasBootstrappedTodayReplay: false,
       historicalMinuteData: null,
       lastTimeKeys: [],
       autoGrowCursor: null,
@@ -326,7 +327,9 @@ export default {
       }
     },
 
-    async fetchCurrentData() {
+    async fetchCurrentData(options = {}) {
+      const { skipMinuteData = false } = options
+
       if (this.isReplayingToday) return
 
       // 非交易日：先展示当天（空数据），再自动跳转到最近周五
@@ -358,7 +361,11 @@ export default {
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
           
           if (this.selectedTimeRange === 'today') {
-            await this.fetchMinuteData()
+            if (skipMinuteData) {
+              this.updateChart()
+            } else {
+              await this.fetchMinuteData()
+            }
           } else {
             this.updateChart()
           }
@@ -466,7 +473,17 @@ export default {
       try {
         if (this.selectedTimeRange === 'today') {
           this.accumulatedData = []
-          await this.fetchCurrentData()
+          if (!this.hasBootstrappedTodayReplay && isTradingDay(new Date())) {
+            this.hasBootstrappedTodayReplay = true
+            this.replayDate = '2099-12-31'
+            await this.$nextTick()
+            await this.fetchCurrentData({ skipMinuteData: true })
+            this.replayDate = this.todayDate
+            await this.$nextTick()
+            await this.onReplayDateChange()
+          } else {
+            await this.fetchCurrentData()
+          }
         } else {
           this.currentData = []
           await this.fetchAccumulatedData(this.selectedTimeRange)
@@ -757,7 +774,7 @@ export default {
       if (!isTradingDay(this.replayDate)) {
         this.replayDate = getLatestWeekday(this.replayDate)
       }
-      this.loadReplayDateData()
+      return this.loadReplayDateData()
     },
 
     async loadReplayDateData() {
