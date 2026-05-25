@@ -233,12 +233,12 @@ export default {
         return
       }
       
-      const _this = this
       this.$nextTick(() => {
         try {
           this.chartInstance = echarts.init(this.$refs.chart, null, {
             renderer: 'canvas'
           })
+          this.updateLayoutHeight()
           if (this.currentData.length > 0 || Object.keys(this.minuteData).length > 0 || Object.keys(this.historyData).length > 0) {
             this.updateChart()
           }
@@ -573,12 +573,9 @@ export default {
 
         // 非今天或非交易日时当作回放模式
         const isReplayMode = this.replayDate !== this.todayDate || !isTradingDay(new Date())
-        const liveTopSectors = !isReplayMode && this.currentData.length > 0
-          ? this.currentData.slice(0, 10).map(s => s.name)
-          : null
         const fixedTopSectors = (isReplayMode || this.isReplayingToday) && this.replayTopSectors.length > 0
           ? this.replayTopSectors
-          : liveTopSectors
+          : null
 
         const option = generateLiveReplayChartOption(
           timeData,
@@ -687,14 +684,14 @@ export default {
         option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
       }
 
-      try {
-        this.chartInstance.setOption(option, {
-          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
-          lazyUpdate: true
-        })
-      } catch (e) {
-        console.error('setOption 失败:', e)
-      }
+        try {
+          this.chartInstance.setOption(option, {
+            notMerge: true,
+            lazyUpdate: true
+          })
+        } catch (e) {
+          console.error('setOption 失败:', e)
+        }
     },
 
     async startTodayReplay() {
