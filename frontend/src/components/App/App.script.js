@@ -555,6 +555,10 @@ export default {
       }
 
       if (this.selectedTimeRange === 'today') {
+        if (this.replayDate === this.todayDate && !this.isReplayingToday) {
+          this.replayTopSectors = []
+        }
+
         const allTimeKeys = Object.keys(this.minuteData).sort()
         // 过滤掉非5分钟间隔的异常时间点
         const timeData = allTimeKeys.filter(key => {
@@ -684,14 +688,14 @@ export default {
         option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
       }
 
-        try {
-          this.chartInstance.setOption(option, {
-            notMerge: true,
-            lazyUpdate: true
-          })
-        } catch (e) {
-          console.error('setOption 失败:', e)
-        }
+      try {
+        this.chartInstance.setOption(option, {
+          notMerge: true,
+          lazyUpdate: true
+        })
+      } catch (e) {
+        console.error('setOption 失败:', e)
+      }
     },
 
     async startTodayReplay() {
