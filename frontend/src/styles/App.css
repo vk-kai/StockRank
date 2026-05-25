@@ -148,11 +148,19 @@
   .chart-container {
     margin-top: 64px;
   }
+
+  .sector-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
   .chart-container {
     margin-top: 64px;
+  }
+
+  .sector-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -517,6 +525,7 @@
   border-radius: 8px;
   padding: 20px;
   margin-top: -40px;
+  overflow: visible;
 }
 
 .sector-list h3 {
@@ -534,9 +543,8 @@
 
 .sector-grid {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 10px;
-  overflow-x: auto;
   padding-bottom: 10px;
 }
 
@@ -547,7 +555,7 @@
   cursor: pointer;
   transition: all 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  min-width: 130px;
+  min-width: 0;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   position: relative;

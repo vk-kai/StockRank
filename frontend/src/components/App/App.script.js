@@ -278,12 +278,8 @@ export default {
       chartContainer.style.height = (chartTotalSpace - chartPaddingY - chartBorderY) + 'px'
 
       if (sectorList) {
-        const sectorStyle = getComputedStyle(sectorList)
-        const sectorPaddingY = (parseFloat(sectorStyle.paddingTop) || 0) + (parseFloat(sectorStyle.paddingBottom) || 0)
-        const sectorBorderY = (parseFloat(sectorStyle.borderTopWidth) || 0) + (parseFloat(sectorStyle.borderBottomWidth) || 0)
-
-        sectorList.style.height = (sectorTotalSpace - sectorPaddingY - sectorBorderY) + 'px'
-        sectorList.style.overflowY = 'hidden'
+        sectorList.style.height = 'auto'
+        sectorList.style.overflowY = 'visible'
       }
 
       // 高度变化后重新调整echarts尺寸
@@ -577,6 +573,12 @@ export default {
 
         // 非今天或非交易日时当作回放模式
         const isReplayMode = this.replayDate !== this.todayDate || !isTradingDay(new Date())
+        const liveTopSectors = !isReplayMode && this.currentData.length > 0
+          ? this.currentData.slice(0, 10).map(s => s.name)
+          : null
+        const fixedTopSectors = (isReplayMode || this.isReplayingToday) && this.replayTopSectors.length > 0
+          ? this.replayTopSectors
+          : liveTopSectors
 
         const option = generateLiveReplayChartOption(
           timeData,
@@ -584,13 +586,13 @@ export default {
           this.colors,
           cursor,
           10,
-          this.replayTopSectors,
+          fixedTopSectors,
           isReplayMode
         )
 
         try {
           this.chartInstance.setOption(option, {
-            replaceMerge: ['series', 'xAxis', 'tooltip'],
+            replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
             lazyUpdate: true
           })
         } catch (e) {
