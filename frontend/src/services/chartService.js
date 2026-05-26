@@ -198,6 +198,7 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
 
 export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
   
   const topSectors = Array.isArray(fixedTopSectors) && fixedTopSectors.length > 0
     ? fixedTopSectors
@@ -303,7 +304,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       symbolSize: 5,
       data,
       lineStyle: {
-        width: 1.8,
+        width: isMobile ? 2.3 : 1.8,
         color
       },
       itemStyle: {
@@ -311,11 +312,12 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       },
       endLabel: {
         show: true,
-        distance: 10,
+        distance: isMobile ? 4 : 10,
         color: labelColor,
+        fontSize: isMobile ? 10 : 12,
         formatter: (params) => {
           const realValue = params?.data?.realValue ?? params?.value ?? null
-          return `${params.seriesName}  ${formatFlow(realValue)}`
+          return isMobile ? formatFlow(realValue) : `${params.seriesName}  ${formatFlow(realValue)}`
         }
       },
       labelLayout: {
@@ -380,6 +382,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       },
       axisLabel: {
         color: '#cbd5e1',
+        fontSize: isMobile ? 10 : 12,
         formatter: (value) => {
           if (axisMapping) {
             return axisMapping.getAxisLabel(value)
@@ -423,6 +426,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       },
       axisLabel: {
         color: '#cbd5e1',
+        fontSize: isMobile ? 10 : 12,
         formatter: (value) => {
           if (Math.abs(value) >= 1) {
             return `${value.toFixed(1)}亿`
@@ -489,10 +493,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       }
     },
     grid: {
-      left: 80,
-      right: 140,
-      top: 18,
-      bottom: 26,
+      left: isMobile ? 8 : 80,
+      right: isMobile ? 48 : 140,
+      top: isMobile ? 8 : 18,
+      bottom: isMobile ? 20 : 26,
       containLabel: true
     },
     xAxis: {
@@ -508,7 +512,9 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         show: false
       },
       axisLabel: {
-        color: '#cbd5e1'
+        color: '#cbd5e1',
+        fontSize: isMobile ? 10 : 12,
+        hideOverlap: true
       },
       splitLine: {
         show: false

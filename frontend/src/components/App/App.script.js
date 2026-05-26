@@ -296,8 +296,8 @@ export default {
       const monitorBottom = monitorCard.getBoundingClientRect().bottom
       const remainingHeight = window.innerHeight - monitorBottom
 
+      const isMobile = window.innerWidth <= 768
       // 先给TOP10分配30%，再给折线图分配70%
-      const sectorTotalSpace = remainingHeight * 0.3
       const chartTotalSpace = remainingHeight * 0.7
 
       // chart-container的height需要减去padding和border（content-box模型）
@@ -305,7 +305,9 @@ export default {
       const chartPaddingY = (parseFloat(chartStyle.paddingTop) || 0) + (parseFloat(chartStyle.paddingBottom) || 0)
       const chartBorderY = (parseFloat(chartStyle.borderTopWidth) || 0) + (parseFloat(chartStyle.borderBottomWidth) || 0)
 
-      chartContainer.style.height = (chartTotalSpace - chartPaddingY - chartBorderY) + 'px'
+      chartContainer.style.height = isMobile
+        ? '460px'
+        : (chartTotalSpace - chartPaddingY - chartBorderY) + 'px'
 
       if (sectorList) {
         sectorList.style.height = 'auto'

@@ -156,7 +156,17 @@
 
 @media (max-width: 768px) {
   .chart-container {
-    margin-top: 64px;
+    margin-top: 32px;
+    min-height: 460px;
+    padding: 10px;
+  }
+
+  .chart-controls {
+    margin-bottom: 6px;
+  }
+
+  .replay-date-selector {
+    padding: 5px 10px;
   }
 
   .sector-grid {
@@ -914,7 +924,7 @@
   }
 
   .chart {
-    height: 350px;
+    min-height: 410px;
   }
 
   .sector-grid {
