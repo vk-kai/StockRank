@@ -7,6 +7,136 @@ function getFlowValue(item) {
   return null
 }
 
+function analyzeDataDistribution(values) {
+  if (!values || values.length === 0) {
+    return {
+      bins: [],
+      binCounts: [],
+      maxCount: 0,
+      totalRange: [0, 100]
+    }
+  }
+
+  const minVal = Math.min(...values.filter(v => v !== null && v !== undefined))
+  const maxVal = Math.max(...values.filter(v => v !== null && v !== undefined))
+  
+  if (minVal === maxVal) {
+    return {
+      bins: [[minVal - 10, minVal + 10]],
+      binCounts: [values.length],
+      maxCount: values.length,
+      totalRange: [minVal - 10, minVal + 10]
+    }
+  }
+
+  const binCount = Math.min(10, Math.ceil(values.length / 5))
+  const binWidth = (maxVal - minVal) / binCount
+  
+  const bins = []
+  for (let i = 0; i < binCount; i++) {
+    const start = minVal + i * binWidth
+    const end = minVal + (i + 1) * binWidth
+    bins.push([start, end])
+  }
+
+  const binCounts = bins.map(([start, end]) => {
+    return values.filter(v => v !== null && v !== undefined && v >= start && v < end).length
+  })
+
+  const maxCount = Math.max(...binCounts)
+
+  return {
+    bins,
+    binCounts,
+    maxCount,
+    totalRange: [minVal, maxVal]
+  }
+}
+
+function buildDynamicAxisMapping(distribution) {
+  const { bins, binCounts, maxCount, totalRange } = distribution
+  
+  if (bins.length === 0 || maxCount === 0) {
+    return {
+      segments: [],
+      mapValueToAxis: (value) => value,
+      getAxisLabel: (value) => `${value.toFixed(1)}亿`
+    }
+  }
+
+  const totalPoints = binCounts.reduce((sum, count) => sum + count, 0)
+  const segments = []
+  let accumulatedSpace = 0
+
+  bins.forEach(([start, end], index) => {
+    const count = binCounts[index]
+    const proportion = count / totalPoints
+    const spaceAllocation = proportion * 0.8 + 0.2 / bins.length
+    
+    segments.push({
+      range: [start, end],
+      axisRange: [accumulatedSpace, accumulatedSpace + spaceAllocation],
+      count,
+      proportion
+    })
+    
+    accumulatedSpace += spaceAllocation
+  })
+
+  const mapValueToAxis = (value) => {
+    if (value === null || value === undefined) return null
+    
+    for (const segment of segments) {
+      const [start, end] = segment.range
+      const [axisStart, axisEnd] = segment.axisRange
+      
+      if (value >= start && value < end) {
+        const positionInRange = (value - start) / (end - start)
+        return axisStart + positionInRange * (axisEnd - axisStart)
+      }
+    }
+    
+    if (value >= totalRange[1]) {
+      return 1.0
+    }
+    if (value < totalRange[0]) {
+      return 0.0
+    }
+    
+    return null
+  }
+
+  const getAxisLabel = (axisValue) => {
+    for (const segment of segments) {
+      const [axisStart, axisEnd] = segment.axisRange
+      const [start, end] = segment.range
+      
+      if (axisValue >= axisStart && axisValue < axisEnd) {
+        const positionInRange = (axisValue - axisStart) / (axisEnd - axisStart)
+        const realValue = start + positionInRange * (end - start)
+        
+        if (realValue >= 1000) {
+          return `${(realValue / 1000).toFixed(1)}k亿`
+        } else if (realValue >= 10) {
+          return `${realValue.toFixed(0)}亿`
+        } else if (realValue >= 1) {
+          return `${realValue.toFixed(1)}亿`
+        } else {
+          return `${(realValue * 10000).toFixed(0)}万`
+        }
+      }
+    }
+    
+    return `${axisValue.toFixed(2)}`
+  }
+
+  return {
+    segments,
+    mapValueToAxis,
+    getAxisLabel
+  }
+}
+
 function getVisibleTimeData(timeData, replayCursor) {
   if (!Array.isArray(timeData) || timeData.length === 0) return []
   if (replayCursor === null || replayCursor === undefined) return timeData
@@ -105,8 +235,18 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   const useBrokenAxis = maxFlow > 15
 
+  let axisMapping = null
+  if (useBrokenAxis) {
+    const distribution = analyzeDataDistribution(allFlowValues)
+    axisMapping = buildDynamicAxisMapping(distribution)
+  }
+
   function mapValueToAxis(value) {
     if (value === null || value === undefined) return null
+    if (!useBrokenAxis) return value
+    if (axisMapping) {
+      return axisMapping.mapValueToAxis(value)
+    }
     if (value <= 100) {
       return value * 0.15 / 100
     } else if (value <= 400) {
@@ -118,11 +258,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
-  // 根据流入资金排名计算白色渐变色：从亮白(高流入)到暗白(低流入)
   function getLabelColor(index, total) {
     if (total <= 1) return '#ffffff'
-    const ratio = index / (total - 1) // 0=最高流入, 1=最低流入
-    const brightness = Math.round(255 - ratio * 100) // 255 -> 155
+    const ratio = index / (total - 1)
+    const brightness = Math.round(255 - ratio * 100)
     return `rgb(${brightness}, ${brightness}, ${brightness + Math.round((255 - brightness) * 0.3)})`
   }
 
@@ -143,7 +282,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       if (!seen) return null
 
       return {
-        value: useBrokenAxis ? mapValueToAxis(flow) : flow,
+        value: mapValueToAxis(flow),
         realValue: flow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
@@ -200,11 +339,31 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
   let yAxisConfig
   if (useBrokenAxis) {
-    const tickValues = [0, 50, 100, 150, 200, 250, 300, 350, 400]
-    if (maxFlow > 400) {
-      const step = Math.ceil((maxFlow - 400) / 3 / 100) * 100
-      for (let v = 400 + step; v <= maxFlow; v += step) {
-        tickValues.push(v)
+    let tickValues = []
+    
+    if (axisMapping && axisMapping.segments.length > 0) {
+      axisMapping.segments.forEach(segment => {
+        const [start, end] = segment.range
+        const [axisStart, axisEnd] = segment.axisRange
+        const midValue = (start + end) / 2
+        const midAxis = (axisStart + axisEnd) / 2
+        
+        tickValues.push({ axisValue: axisStart, realValue: start })
+        tickValues.push({ axisValue: midAxis, realValue: midValue })
+      })
+      
+      const lastSegment = axisMapping.segments[axisMapping.segments.length - 1]
+      tickValues.push({ 
+        axisValue: lastSegment.axisRange[1], 
+        realValue: lastSegment.range[1] 
+      })
+    } else {
+      tickValues = [0, 50, 100, 150, 200, 250, 300, 350, 400]
+      if (maxFlow > 400) {
+        const step = Math.ceil((maxFlow - 400) / 3 / 100) * 100
+        for (let v = 400 + step; v <= maxFlow; v += step) {
+          tickValues.push(v)
+        }
       }
     }
     
@@ -222,6 +381,10 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       axisLabel: {
         color: '#cbd5e1',
         formatter: (value) => {
+          if (axisMapping) {
+            return axisMapping.getAxisLabel(value)
+          }
+          
           let realValue
           if (value <= 0.15) {
             realValue = value * 100 / 0.15
@@ -366,11 +529,13 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   }
 
   let maxFlow = 5
+  const allFlowValues = []
   series.forEach(s => {
     if (s.data && Array.isArray(s.data)) {
       s.data.forEach(item => {
         if (item && item.value !== null && item.value !== undefined) {
           maxFlow = Math.max(maxFlow, item.value)
+          allFlowValues.push(item.value)
         }
       })
     }
@@ -378,8 +543,18 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
   const useBrokenAxis = maxFlow > 15
 
+  let axisMapping = null
+  if (useBrokenAxis) {
+    const distribution = analyzeDataDistribution(allFlowValues)
+    axisMapping = buildDynamicAxisMapping(distribution)
+  }
+
   function mapValueToAxis(value) {
     if (value === null || value === undefined) return null
+    if (!useBrokenAxis) return value
+    if (axisMapping) {
+      return axisMapping.mapValueToAxis(value)
+    }
     if (value <= 100) {
       return value * 0.15 / 100
     } else if (value <= 400) {
@@ -406,6 +581,85 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       })
     }
   })
+
+  let yAxisConfig
+  if (useBrokenAxis) {
+    let tickValues = []
+    
+    if (axisMapping && axisMapping.segments.length > 0) {
+      axisMapping.segments.forEach(segment => {
+        const [start, end] = segment.range
+        const [axisStart, axisEnd] = segment.axisRange
+        const midValue = (start + end) / 2
+        const midAxis = (axisStart + axisEnd) / 2
+        
+        tickValues.push({ axisValue: axisStart, realValue: start })
+        tickValues.push({ axisValue: midAxis, realValue: midValue })
+      })
+      
+      const lastSegment = axisMapping.segments[axisMapping.segments.length - 1]
+      tickValues.push({ 
+        axisValue: lastSegment.axisRange[1], 
+        realValue: lastSegment.range[1] 
+      })
+    } else {
+      tickValues = [0, 50, 100, 150, 200, 250, 300, 350, 400]
+      if (maxFlow > 400) {
+        const step = Math.ceil((maxFlow - 400) / 3 / 100) * 100
+        for (let v = 400 + step; v <= maxFlow; v += step) {
+          tickValues.push(v)
+        }
+      }
+    }
+
+    yAxisConfig = {
+      type: 'value',
+      min: 0,
+      max: 1,
+      interval: 0.1,
+      axisLabel: {
+        color: '#8ba4c7',
+        formatter: (value) => {
+          if (axisMapping) {
+            return axisMapping.getAxisLabel(value)
+          }
+          
+          let realValue
+          if (value <= 0.15) {
+            realValue = value * 100 / 0.15
+          } else if (value <= 0.75) {
+            realValue = 100 + (value - 0.15) * 300 / 0.6
+          } else {
+            const extra = (value - 0.75) * (maxFlow - 400) / 0.25
+            realValue = 400 + extra
+          }
+          
+          if (realValue >= 1000) {
+            return `${(realValue / 1000).toFixed(1)}k亿`
+          } else if (realValue >= 10) {
+            return `${realValue.toFixed(0)}亿`
+          } else if (realValue >= 1) {
+            return `${realValue.toFixed(1)}亿`
+          } else {
+            return `${(realValue * 10000).toFixed(0)}万`
+          }
+        }
+      }
+    }
+  } else {
+    yAxisConfig = {
+      type: 'value',
+      axisLabel: {
+        color: '#8ba4c7',
+        formatter: (value) => {
+          if (Math.abs(value) >= 1) {
+            return `${value.toFixed(1)}亿`
+          }
+          return `${(value * 10000).toFixed(0)}万`
+        }
+      }
+    }
+  }
 
   return {
     backgroundColor: '#111827',
@@ -519,47 +773,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
         show: false
       }
     },
-    yAxis: useBrokenAxis ? {
-      type: 'value',
-      min: 0,
-      max: 1,
-      interval: 0.1,
-      axisLabel: {
-        color: '#8ba4c7',
-        formatter: (value) => {
-          let realValue
-          if (value <= 0.15) {
-            realValue = value * 100 / 0.15
-          } else if (value <= 0.75) {
-            realValue = 100 + (value - 0.15) * 300 / 0.6
-          } else {
-            const extra = (value - 0.75) * (maxFlow - 400) / 0.25
-            realValue = 400 + extra
-          }
-          
-          if (realValue >= 1000) {
-            return `${(realValue / 1000).toFixed(1)}k亿`
-          } else if (realValue >= 10) {
-            return `${realValue.toFixed(0)}亿`
-          } else if (realValue >= 1) {
-            return `${realValue.toFixed(1)}亿`
-          } else {
-            return `${(realValue * 10000).toFixed(0)}万`
-          }
-        }
-      }
-    } : {
-      type: 'value',
-      axisLabel: {
-        color: '#8ba4c7',
-        formatter: (value) => {
-          if (Math.abs(value) >= 1) {
-            return `${value.toFixed(1)}亿`
-          }
-          return `${(value * 10000).toFixed(0)}万`
-        }
-      }
-    },
+    yAxis: yAxisConfig,
     series: mappedSeries
   }
 }
