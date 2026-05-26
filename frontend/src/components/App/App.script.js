@@ -579,7 +579,6 @@ export default {
           return
         }
 
-        // 非交易日不自动刷新
         if (!isTradingDay(new Date())) {
           this.countdown = 300
           return
@@ -588,8 +587,7 @@ export default {
         if (this.countdown > 0) {
           this.countdown--
         } else {
-          this.fetchData()
-          this.countdown = 300
+          window.location.reload()
         }
       }, 1000)
     },
