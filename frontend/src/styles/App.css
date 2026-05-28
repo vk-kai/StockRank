@@ -905,13 +905,33 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 10px;
   padding: 24px 0 4px;
   color: #d7dde8;
   font-size: 12px;
   line-height: 1;
   text-align: center;
   flex-wrap: wrap;
+}
+
+.footer-record-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.footer-record-link:hover {
+  color: #ffffff;
+}
+
+.footer-divider {
+  color: rgba(215, 221, 232, 0.45);
+}
+
+.cdn-service-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .cdn-provider-link {

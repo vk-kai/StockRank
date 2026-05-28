@@ -187,17 +187,28 @@
     </div>
 
     <footer class="cdn-footer">
-      <span>本网站由</span>
       <a
-        class="cdn-provider-link"
-        href="https://www.upyun.com/?utm_source=lianmeng&utm_medium=referral"
+        class="footer-record-link"
+        href="http://beian.miit.gov.cn/"
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="又拍云"
       >
-        <img src="/upyun-logo.png" alt="又拍云" class="cdn-provider-logo" />
+        陕ICP备2022001273号
       </a>
-      <span>提供CDN加速服务</span>
+      <span class="footer-divider">|</span>
+      <span class="cdn-service-text">
+        <span>本网站由</span>
+        <a
+          class="cdn-provider-link"
+          href="https://www.upyun.com/?utm_source=lianmeng&utm_medium=referral"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="又拍云"
+        >
+          <img src="/upyun-logo.png" alt="又拍云" class="cdn-provider-logo" />
+        </a>
+        <span>提供CDN加速服务</span>
+      </span>
     </footer>
     
     <SecurityAlert />
