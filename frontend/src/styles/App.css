@@ -905,11 +905,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   padding: 24px 0 4px;
-  color: #8ba4c7;
-  font-size: 13px;
-  line-height: 1.4;
+  color: #d7dde8;
+  font-size: 12px;
+  line-height: 1;
   text-align: center;
   flex-wrap: wrap;
 }
@@ -918,6 +918,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -928,9 +929,9 @@
 
 .cdn-provider-logo {
   display: block;
-  width: 82px;
-  max-width: 28vw;
-  height: auto;
+  width: auto;
+  max-width: 72px;
+  height: 18px;
   object-fit: contain;
 }
 
