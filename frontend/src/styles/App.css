@@ -901,6 +901,39 @@
   cursor: pointer;
 }
 
+.cdn-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 0 4px;
+  color: #8ba4c7;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  flex-wrap: wrap;
+}
+
+.cdn-provider-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.cdn-provider-link:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.cdn-provider-logo {
+  display: block;
+  width: 82px;
+  max-width: 28vw;
+  height: auto;
+  object-fit: contain;
+}
+
 @media (max-width: 1200px) {
   .sector-grid {
     grid-template-columns: repeat(5, 1fr);

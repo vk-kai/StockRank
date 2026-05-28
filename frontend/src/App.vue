@@ -185,6 +185,20 @@
       <p>{{ error }}</p>
       <button @click="retry">重试</button>
     </div>
+
+    <footer class="cdn-footer">
+      <span>本网站由</span>
+      <a
+        class="cdn-provider-link"
+        href="https://www.upyun.com/?utm_source=lianmeng&utm_medium=referral"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="又拍云"
+      >
+        <img src="/upyun-logo.png" alt="又拍云" class="cdn-provider-logo" />
+      </a>
+      <span>提供CDN加速服务</span>
+    </footer>
     
     <SecurityAlert />
 
