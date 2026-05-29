@@ -15,7 +15,7 @@ health_logger = get_logger('health')
 HEALTH_DATA_DIR = os.path.join(DATA_DIR, 'health')
 HEALTH_FILE = os.path.join(HEALTH_DATA_DIR, 'status.json')
 
-THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/free/1/"
+THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/buy/order/DESC/ajax/1/"
 NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"
 
 if not os.path.exists(HEALTH_DATA_DIR):

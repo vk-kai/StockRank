@@ -8,7 +8,7 @@ import time
 from backend.data_processor import generate_random_headers
 from backend.config import NEWS_URL
 
-THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/tradezdf/order/desc/ajax/1/"
+THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/buy/order/DESC/ajax/1/"
 THS_STOCKS_URL = "https://q.10jqka.com.cn/gn/detail/code/301466/"
 
 def print_headers(headers):
