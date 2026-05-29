@@ -727,6 +727,38 @@ def generate_daily_summary_for_date(date_str):
         return False
 
 # 加载最近N天的每日数据
+def _build_daily_summary_from_latest_realtime(date_str):
+    realtime_data = load_realtime_data(date_str)
+    if not realtime_data or realtime_data.get('_invalid'):
+        return None
+
+    time_keys = sorted([key for key in realtime_data.keys() if not key.startswith('_')])
+    if not time_keys:
+        return None
+
+    latest_record = realtime_data.get(time_keys[-1])
+    latest_data = latest_record.get('data') if isinstance(latest_record, dict) else None
+    if not isinstance(latest_data, list):
+        return None
+
+    sorted_sectors = sorted(
+        latest_data,
+        key=lambda item: item.get('flow', 0) or 0,
+        reverse=True
+    )
+
+    summary = []
+    for index, item in enumerate(sorted_sectors[:10]):
+        summary.append({
+            'rank': index + 1,
+            'name': item.get('name', ''),
+            'flow': item.get('flow', 0) or 0,
+            'net_flow': item.get('net_flow', 0) or 0,
+            'change': item.get('change', 0) or 0
+        })
+
+    return summary or None
+
 def load_recent_daily_data(days):
     try:
         result = {}
@@ -739,6 +771,12 @@ def load_recent_daily_data(days):
                     daily_record = load_daily_data(date_str)
                     if daily_record and 'data' in daily_record:
                         result[date_str] = daily_record['data']
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        if today >= cutoff_date:
+            today_summary = _build_daily_summary_from_latest_realtime(today)
+            if today_summary:
+                result[today] = today_summary
         
         return result
     except Exception as e:

@@ -166,7 +166,7 @@ def get_history():
         today = datetime.now().strftime('%Y-%m-%d')
         today_daily_record = load_daily_data(today)
         
-        if today_daily_record and 'data' in today_daily_record:
+        if today_daily_record and 'data' in today_daily_record and today not in history:
             if today not in history:
                 history[today] = []
             for i, item in enumerate(today_daily_record['data']):
