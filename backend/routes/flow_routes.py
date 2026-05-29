@@ -37,6 +37,22 @@ def _get_latest_from_realtime_data(realtime_data):
         return last_record['data'], last_record.get('timestamp')
     return None, None
 
+def _has_today_market_summary(summary, now):
+    if not is_market_summary_complete(summary):
+        return False
+
+    timestamp_text = summary.get('turnover_timestamp') or summary.get('timestamp')
+    if not timestamp_text:
+        return False
+
+    try:
+        timestamp = datetime.fromisoformat(timestamp_text)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.astimezone()
+        return timestamp.astimezone(now.tzinfo).date() == now.date()
+    except Exception:
+        return False
+
 @flow_bp.route('/current', methods=['GET'])
 def get_current_flow():
     try:
@@ -287,7 +303,7 @@ def get_market_summary_route():
     try:
         now = datetime.now().astimezone()
         market_summary = load_market_summary_cache()
-        if is_trading_day(now) and is_trading_time(now) and not is_market_summary_complete(market_summary):
+        if not _has_today_market_summary(market_summary, now):
             market_summary = refresh_market_summary_cache()
         return jsonify({
             'success': True,

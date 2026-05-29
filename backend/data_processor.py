@@ -1419,10 +1419,18 @@ def is_market_summary_complete(summary):
     if not isinstance(summary, dict):
         return False
     indices = summary.get('indices')
-    return isinstance(indices, dict) and all(
-        isinstance(indices.get(code), dict) and indices[code].get('price') is not None
+    indices_complete = isinstance(indices, dict) and all(
+        isinstance(indices.get(code), dict) and _safe_float(indices[code].get('price'), None) is not None
         for code in ('000001', '399001', '399006')
     )
+    breadth = summary.get('breadth')
+    breadth_complete = isinstance(breadth, dict) and all(
+        _safe_float(breadth.get(key), None) is not None
+        for key in ('up_count', 'down_count', 'limit_up_count', 'limit_down_count')
+    )
+    turnover = summary.get('turnover')
+    turnover_complete = isinstance(turnover, dict) and _safe_float(turnover.get('turnover'), None) is not None
+    return indices_complete and breadth_complete and turnover_complete
 
 
 def get_top5_comparison_data(date_str):

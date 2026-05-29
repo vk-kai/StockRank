@@ -630,7 +630,9 @@ export default {
       }
       
       if (this.selectedTimeRange !== 'today') {
-        this.stopTodayReplay(true)
+        this.stopTodayReplay(false)
+        this.replayCursor = null
+        this.replayTopSectors = []
       }
       try {
         if (this.selectedTimeRange === 'today') {
@@ -849,6 +851,8 @@ export default {
         if (isToday && this.currentData.length > 0) {
           // 使用currentData的前5个板块，与下方TOP10列表保持一致
           allSectors = this.currentData.slice(0, 10).map(s => s.name)
+        } else if (!isToday && this.accumulatedData.length > 0) {
+          allSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
         } else {
           // 从所有时间点数据中收集出现过的板块
           allSectors = collectAllSectors(timeData, allData, isToday)
