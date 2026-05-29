@@ -909,9 +909,68 @@ def load_recent_realtime_data(hours):
         return {}
 
 MARKET_INDEX_URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
+SINA_INDEX_URL = "https://hq.sinajs.cn/list=sh000001,sz399001,sz399006"
 STOCK_STAT_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+THS_INDEX_FLASH_URL = "https://q.10jqka.com.cn/api.php?t=indexflash&"
+THS_TURNOVER_MINUTE_URL = "https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data"
+JRJ_MARKET_URL = "https://gateway.jrj.com/quot-dc/zdt/market"
 
 latest_market_data = {}
+MARKET_SUMMARY_CACHE_FILE = os.path.join(REALTIME_DIR, 'market_summary.json')
+MARKET_FAST_REFRESH_SECONDS = 15
+MARKET_TURNOVER_REFRESH_SECONDS = 60
+
+def _safe_float(value, default=0):
+    try:
+        if value is None or value == '-':
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+def _last_list_value(value):
+    if isinstance(value, list) and value:
+        last = value[-1]
+        if isinstance(last, list) and last:
+            return last[-1]
+        return last
+    return value
+
+def _last_dict_value(data, key):
+    if isinstance(data, dict):
+        if key in data:
+            return data.get(key)
+        last_data = data.get('last_zdt')
+        if isinstance(last_data, dict) and key in last_data:
+            return last_data.get(key)
+    return None
+
+def _pick_first_number(data, keys):
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        value = data.get(key)
+        number = _safe_float(value, None)
+        if number is not None:
+            return number
+    for value in data.values():
+        if isinstance(value, dict):
+            number = _pick_first_number(value, keys)
+            if number is not None:
+                return number
+    return None
+
+def _parse_json_or_jsonp(text):
+    if not text:
+        return None
+    content = text.strip()
+    if content.startswith('{') or content.startswith('['):
+        return json.loads(content)
+    start = content.find('(')
+    end = content.rfind(')')
+    if start != -1 and end > start:
+        return json.loads(content[start + 1:end])
+    return None
 
 def get_market_index_data():
     global latest_market_data
@@ -962,6 +1021,60 @@ def get_market_index_data():
     except Exception as e:
         error_logger.error(f"获取大盘指数数据失败: {e}")
     
+    return get_sina_market_index_data()
+
+def get_sina_market_index_data():
+    global latest_market_data
+
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Referer': 'https://finance.sina.com.cn/'
+    }
+    code_map = {
+        'sh000001': '000001',
+        'sz399001': '399001',
+        'sz399006': '399006'
+    }
+
+    try:
+        response = requests.get(SINA_INDEX_URL, headers=headers, timeout=10)
+        response.encoding = 'gbk'
+        indices = {}
+
+        for part in response.text.split(';'):
+            if 'hq_str_' not in part or '="' not in part:
+                continue
+            raw_code = part.split('hq_str_', 1)[1].split('=', 1)[0]
+            code = code_map.get(raw_code)
+            if not code:
+                continue
+            values_text = part.split('="', 1)[1].rstrip('"')
+            values = values_text.split(',')
+            if len(values) < 4 or not values[0]:
+                continue
+
+            name = values[0]
+            prev_close = _safe_float(values[2], None)
+            price = _safe_float(values[3], None)
+            if price is None or prev_close in (None, 0):
+                continue
+
+            change_amount = price - prev_close
+            indices[code] = {
+                'code': code,
+                'name': name,
+                'price': round(price, 2),
+                'change': change_amount / prev_close,
+                'change_amount': round(change_amount, 2)
+            }
+
+        if indices:
+            latest_market_data['indices'] = indices
+            return indices
+        error_logger.error(f"新浪大盘指数数据格式异常: {response.text[:300]}")
+    except Exception as e:
+        error_logger.error(f"获取新浪大盘指数数据失败: {e}")
+
     return None
 
 def get_stock_statistics():
@@ -1051,6 +1164,228 @@ def get_market_overview():
         }
     
     return None
+
+def get_ths_market_breadth():
+    headers = generate_random_headers(
+        host='q.10jqka.com.cn',
+        referer='https://q.10jqka.com.cn/'
+    )
+    headers.update({
+        'Accept': 'application/json, text/plain, */*',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'X-Requested-With': 'XMLHttpRequest'
+    })
+
+    try:
+        response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = _parse_json_or_jsonp(response.text)
+        if not isinstance(data, dict):
+            error_logger.error(f"同花顺涨跌家数数据格式异常: {response.text[:300]}")
+            return None
+
+        zdfb_data = data.get('zdfb_data') if isinstance(data.get('zdfb_data'), dict) else data
+        zdt_data = data.get('zdt_data') if isinstance(data.get('zdt_data'), dict) else data
+        limit_up = _last_dict_value(zdt_data, 'ztzs')
+        limit_down = _last_dict_value(zdt_data, 'dtzs')
+
+        return {
+            'index_point': _pick_first_number(data, ['point', 'zs', 'zsz', 'dpzs', 'shzs', 'shindex', 'index']),
+            'up_count': int(_safe_float(zdfb_data.get('znum'), 0)),
+            'down_count': int(_safe_float(zdfb_data.get('dnum'), 0)),
+            'limit_up_count': int(_safe_float(_last_list_value(limit_up), 0)),
+            'limit_down_count': int(_safe_float(_last_list_value(limit_down), 0)),
+            'source': 'ths',
+            'raw_keys': list(data.keys())
+        }
+    except Exception as e:
+        error_logger.error(f"获取同花顺涨跌家数失败: {e}")
+        return None
+
+def get_ths_turnover_summary():
+    headers = generate_random_headers(
+        host='dq.10jqka.com.cn',
+        referer='https://dq.10jqka.com.cn/'
+    )
+    headers.update({
+        'Accept': 'application/json, text/plain, */*',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin'
+    })
+
+    try:
+        response = requests.get(
+            THS_TURNOVER_MINUTE_URL,
+            params={'chart_key': 'turnover_minute'},
+            headers=headers,
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+        chart = data.get('data', {}).get('charts', {})
+        header = chart.get('header', [])
+        header_map = {
+            item.get('key'): item.get('val')
+            for item in header
+            if isinstance(item, dict)
+        }
+
+        return {
+            'turnover': _safe_float(header_map.get('turnover'), None),
+            'turnover_pre': _safe_float(header_map.get('turnover_pre'), None),
+            'turnover_change': _safe_float(header_map.get('turnover_change'), None),
+            'predict_turnover': _safe_float(header_map.get('predict_turnover'), None),
+            'mtime': chart.get('mtime'),
+            'source': 'ths'
+        }
+    except Exception as e:
+        error_logger.error(f"获取同花顺成交额数据失败: {e}")
+        return None
+
+def get_jrj_market_breadth():
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+        'Origin': 'https://summary.jrj.com.cn',
+        'Referer': 'https://summary.jrj.com.cn/',
+        'User-Agent': get_random_user_agent(),
+        'productId': '6000021'
+    }
+
+    try:
+        response = requests.post(JRJ_MARKET_URL, headers=headers, json={}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        stock = data.get('data', {}).get('stock', {})
+        if data.get('code') != 20000 or not isinstance(stock, dict):
+            error_logger.error(f"金融界涨跌停数据格式异常: {data}")
+            return None
+
+        return {
+            'up_count': int(_safe_float(stock.get('up'), 0)),
+            'down_count': int(_safe_float(stock.get('down'), 0)),
+            'limit_up_count': int(_safe_float(stock.get('zt'), 0)),
+            'limit_down_count': int(_safe_float(stock.get('dt'), 0)),
+            'flat_count': int(_safe_float(stock.get('zero'), 0)),
+            'total_count': int(_safe_float(stock.get('total'), 0)),
+            'stopped_count': int(_safe_float(stock.get('stopped'), 0)),
+            'source': 'jrj'
+        }
+    except Exception as e:
+        error_logger.error(f"获取金融界涨跌停家数失败: {e}")
+        return None
+
+def get_market_summary():
+    cached_summary = latest_market_data.get('summary')
+    if not cached_summary and os.path.exists(MARKET_SUMMARY_CACHE_FILE):
+        try:
+            with open(MARKET_SUMMARY_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cached_summary = json.load(f)
+        except Exception:
+            cached_summary = None
+
+    ths_breadth = get_ths_market_breadth()
+    breadth = ths_breadth or get_jrj_market_breadth()
+    turnover = get_ths_turnover_summary()
+    indices = get_market_index_data()
+    if not indices and isinstance(cached_summary, dict):
+        indices = cached_summary.get('indices')
+    main_index = indices.get('000001') if isinstance(indices, dict) else None
+    if not main_index and isinstance(cached_summary, dict):
+        main_index = cached_summary.get('main_index')
+
+    summary = {
+        'breadth': breadth,
+        'turnover': turnover,
+        'indices': indices,
+        'main_index': main_index,
+        'timestamp': datetime.now().astimezone().isoformat()
+    }
+    latest_market_data['summary'] = summary
+    return summary
+
+def get_market_fast_summary():
+    cached_summary = load_market_summary_cache() or {}
+    ths_breadth = get_ths_market_breadth()
+    breadth = ths_breadth or get_jrj_market_breadth() or cached_summary.get('breadth')
+    indices = get_market_index_data() or cached_summary.get('indices')
+    main_index = indices.get('000001') if isinstance(indices, dict) else cached_summary.get('main_index')
+
+    summary = {
+        'breadth': breadth,
+        'turnover': cached_summary.get('turnover'),
+        'indices': indices,
+        'main_index': main_index,
+        'timestamp': datetime.now().astimezone().isoformat(),
+        'turnover_timestamp': cached_summary.get('turnover_timestamp') or cached_summary.get('timestamp')
+    }
+    latest_market_data['summary'] = summary
+    save_market_summary_cache(summary)
+    return summary
+
+def should_refresh_market_turnover(summary):
+    if not isinstance(summary, dict) or not summary.get('turnover'):
+        return True
+    timestamp_text = summary.get('turnover_timestamp') or summary.get('timestamp')
+    if not timestamp_text:
+        return True
+    try:
+        timestamp = datetime.fromisoformat(timestamp_text)
+        return (datetime.now().astimezone() - timestamp).total_seconds() >= MARKET_TURNOVER_REFRESH_SECONDS
+    except Exception:
+        return True
+
+def refresh_market_summary_cache(fast_only=False):
+    cached_summary = load_market_summary_cache() or {}
+    summary = get_market_fast_summary()
+
+    if not fast_only and should_refresh_market_turnover(cached_summary):
+        turnover = get_ths_turnover_summary()
+        if turnover:
+            summary['turnover'] = turnover
+            summary['turnover_timestamp'] = datetime.now().astimezone().isoformat()
+            latest_market_data['summary'] = summary
+            save_market_summary_cache(summary)
+
+    return summary
+
+def save_market_summary_cache(summary):
+    try:
+        os.makedirs(os.path.dirname(MARKET_SUMMARY_CACHE_FILE), exist_ok=True)
+        with open(MARKET_SUMMARY_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        error_logger.error(f"保存首页大盘摘要缓存失败: {e}")
+        return False
+
+def load_market_summary_cache():
+    if latest_market_data.get('summary'):
+        return latest_market_data.get('summary')
+
+    try:
+        if not os.path.exists(MARKET_SUMMARY_CACHE_FILE):
+            return None
+        with open(MARKET_SUMMARY_CACHE_FILE, 'r', encoding='utf-8') as f:
+            summary = json.load(f)
+        latest_market_data['summary'] = summary
+        return summary
+    except Exception as e:
+        error_logger.error(f"读取首页大盘摘要缓存失败: {e}")
+        return None
+
+def is_market_summary_complete(summary):
+    if not isinstance(summary, dict):
+        return False
+    indices = summary.get('indices')
+    return isinstance(indices, dict) and all(
+        isinstance(indices.get(code), dict) and indices[code].get('price') is not None
+        for code in ('000001', '399001', '399006')
+    )
+
 
 def get_top5_comparison_data(date_str):
     try:

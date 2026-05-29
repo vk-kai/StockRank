@@ -270,6 +270,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     const color = colors[index % colors.length]
     const labelColor = getLabelColor(index, topSectors.length)
     let seen = false
+    let lastFlow = null
 
     const data = displayTimeData.map((timeKey, idx) => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
@@ -278,19 +279,22 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
 
       if (flow !== null && flow !== undefined) {
         seen = true
+        lastFlow = flow
       }
 
       if (!seen) return null
+      const displayFlow = flow !== null && flow !== undefined ? flow : lastFlow
 
       return {
-        value: mapValueToAxis(flow),
-        realValue: flow,
+        value: mapValueToAxis(displayFlow),
+        realValue: displayFlow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
         appearances: sectorItem?.appearances ?? null,
         time: timeKey,
-        name: sectorName
+        name: sectorName,
+        carried: flow === null || flow === undefined
       }
     })
 
@@ -298,7 +302,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       name: sectorName,
       type: 'line',
       smooth: 0.3,
-      connectNulls: false,
+      connectNulls: true,
       showSymbol: false,
       symbol: 'circle',
       symbolSize: 5,
@@ -786,25 +790,40 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
 export function generateSeries(topSectors, timeData, allData, colors, isToday) {
   return topSectors.map((sectorName, index) => {
+    let seen = false
+    let lastFlow = null
+    let lastChange = 0
+
     const data = timeData.map(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
-      const flow = sectorItem?.flow || null
-      const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : 0
+      const flow = getFlowValue(sectorItem)
+      const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : lastChange
+
+      if (flow !== null && flow !== undefined) {
+        seen = true
+        lastFlow = flow
+        lastChange = change
+      }
+
+      if (!seen) return null
+      const displayFlow = flow !== null && flow !== undefined ? flow : lastFlow
 
       if (isToday) {
         return {
-          value: flow,
-          change
+          value: displayFlow,
+          change,
+          carried: flow === null || flow === undefined
         }
       }
 
       return {
-        value: flow,
+        value: displayFlow,
         change,
         totalFlow: sectorItem?.total_flow ?? 0,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
-        appearances: sectorItem?.appearances ?? 0
+        appearances: sectorItem?.appearances ?? 0,
+        carried: flow === null || flow === undefined
       }
     })
 

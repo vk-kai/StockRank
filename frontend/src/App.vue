@@ -9,6 +9,11 @@
           </svg>
           <span>GitHub</span>
         </a>
+        <div class="title-actions">
+          <button class="config-button" @click="goToConfig">AI配置</button>
+          <button class="log-button" @click="goToLogs">日志</button>
+          <button class="house-button" @click="goToHouseKline">房价K线</button>
+        </div>
       </div>
       <div class="controls">
         <div class="time-selector">
@@ -27,6 +32,19 @@
           下次刷新：{{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
 
+        <div class="market-index-strip">
+          <span
+            v-for="indexItem in marketIndexCards"
+            :key="indexItem.code"
+            class="market-index-chip"
+          >
+            {{ indexItem.name }} {{ formatMarketNumber(indexItem.price) }}
+            <span :class="getValueTrendClass(indexItem.change)">
+              {{ formatMarketPercent(indexItem.change) }}
+            </span>
+          </span>
+        </div>
+
         <button class="config-button" @click="goToConfig">
           AI配置
         </button>
@@ -38,6 +56,32 @@
         </button>
       </div>
     </header>
+
+    <div class="market-summary-panel">
+      <div class="market-breadth-row">
+        <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
+        <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
+      </div>
+      <div class="market-breadth-bar" aria-label="上涨下跌比例">
+        <div class="market-breadth-fill market-breadth-fill-down" :style="{ width: getBreadthPercent('down') }"></div>
+        <div class="market-breadth-divider"></div>
+        <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
+      </div>
+      <div class="market-limit-row">
+        <span class="market-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
+        <span class="market-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
+      </div>
+
+      <div class="market-turnover-row">
+        <span class="market-turnover-label">今日实时成交额</span>
+        <span class="market-turnover-value">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
+        <span class="market-turnover-spacer"></span>
+        <span class="market-turnover-label">较上一日此时</span>
+        <span class="market-turnover-value" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)">
+          {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
+        </span>
+      </div>
+    </div>
 
     <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth">
       <div class="monitor-card-header">

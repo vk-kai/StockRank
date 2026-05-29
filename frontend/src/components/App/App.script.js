@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -83,7 +83,10 @@ export default {
       lastTimeKeys: [],
       autoGrowCursor: null,
       autoGrowTimer: null,
-      autoGrowSpeed: 200
+      autoGrowSpeed: 200,
+      marketSummary: null,
+      marketSummaryError: null,
+      marketSummaryInterval: null
     }
   },
   computed: {
@@ -106,6 +109,21 @@ export default {
     currentNewsItem() {
       if (this.latestNews.length === 0) return null
       return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
+    },
+    marketIndexCards() {
+      const indices = this.marketSummary?.indices || {}
+      const fallbackMainIndex = this.marketSummary?.main_index || {}
+      const indexMap = {
+        '000001': indices['000001'] || fallbackMainIndex,
+        '399001': indices['399001'] || {},
+        '399006': indices['399006'] || {}
+      }
+
+      return [
+        { ...indexMap['000001'], code: '000001', name: indexMap['000001'].name || '上证指数' },
+        { ...indexMap['399001'], code: '399001', name: indexMap['399001'].name || '深证成指' },
+        { ...indexMap['399006'], code: '399006', name: indexMap['399006'].name || '创业板' }
+      ]
     },
     healthDisplayItems() {
       const items = {}
@@ -227,6 +245,8 @@ export default {
     this.fetchLatestNews()
     this.startNewsRotation()
     this.fetchHealthStatus()
+    this.fetchMarketSummary()
+    this.startMarketSummaryRefresh()
     window.addEventListener('resize', this.handleResize)
     this.$nextTick(() => {
       this.updateLayoutHeight()
@@ -256,8 +276,115 @@ export default {
     if (this.autoGrowTimer) {
       clearInterval(this.autoGrowTimer)
     }
+    if (this.marketSummaryInterval) {
+      clearInterval(this.marketSummaryInterval)
+    }
   },
   methods: {
+    formatMarketAmount(value, showSign = true) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+      const amount = Number(value)
+      const sign = showSign ? (amount > 0 ? '+' : amount < 0 ? '-' : '') : ''
+      const absAmount = Math.abs(amount)
+      if (absAmount >= 1000000000000) {
+        return `${sign}${(absAmount / 1000000000000).toFixed(2)}万亿`
+      }
+      if (absAmount >= 100000000) {
+        return `${sign}${(absAmount / 100000000).toFixed(0)}亿`
+      }
+      return `${sign}${absAmount.toFixed(0)}`
+    },
+
+    formatMarketNumber(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+      return Number(value).toLocaleString('zh-CN', {
+        maximumFractionDigits: 2
+      })
+    },
+
+    formatMarketPercent(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+      const percent = Number(value) * 100
+      return `${percent > 0 ? '+' : ''}${percent.toFixed(2)}%`
+    },
+
+    formatMarketSignedNumber(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+      const number = Number(value)
+      return `${number > 0 ? '+' : ''}${number.toFixed(2)}`
+    },
+
+    getBreadthPercent(type) {
+      const upCount = Number(this.marketSummary?.breadth?.up_count) || 0
+      const downCount = Number(this.marketSummary?.breadth?.down_count) || 0
+      const total = upCount + downCount
+      if (total <= 0) return type === 'up' ? '50%' : '50%'
+
+      const value = type === 'up' ? upCount : downCount
+      return `${Math.max(8, Math.min(92, (value / total) * 100))}%`
+    },
+
+    formatTurnoverCompare(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return '较上日 --'
+      }
+      const amount = Number(value)
+      if (amount > 0) {
+        return `较上日增加${this.formatMarketAmount(amount, false)}`
+      }
+      if (amount < 0) {
+        return `较上日减少${this.formatMarketAmount(amount, false)}`
+      }
+      return '较上日持平'
+    },
+
+    getValueTrendClass(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return ''
+      const number = Number(value)
+      if (number > 0) return 'market-up'
+      if (number < 0) return 'market-down'
+      return ''
+    },
+
+    async fetchMarketSummary() {
+      try {
+        const response = await getMarketSummary()
+        if (response.success) {
+          this.marketSummary = response.data
+          this.marketSummaryError = null
+        } else {
+          this.marketSummaryError = response.message || '获取大盘摘要失败'
+        }
+      } catch (err) {
+        console.error('获取大盘摘要失败:', err)
+        this.marketSummaryError = err.message
+      }
+    },
+
+    getMarketSummaryRefreshDelay() {
+      const now = new Date()
+      const hour = now.getHours()
+      const minute = now.getMinutes()
+      const inTradingTime = isTradingDay(now) && (
+        (hour === 9 && minute >= 30) ||
+        (hour >= 10 && hour < 11) ||
+        (hour === 11 && minute <= 30) ||
+        (hour >= 13 && hour < 15) ||
+        (hour === 15 && minute === 0)
+      )
+      return inTradingTime ? 15000 : 60000
+    },
+
+    startMarketSummaryRefresh() {
+      const scheduleNextRefresh = () => {
+        this.marketSummaryInterval = setTimeout(async () => {
+          await this.fetchMarketSummary()
+          scheduleNextRefresh()
+        }, this.getMarketSummaryRefreshDelay())
+      }
+      scheduleNextRefresh()
+    },
+
     initChart() {
       if (this.chartInstance) {
         return
@@ -292,9 +419,13 @@ export default {
       const sectorList = this.$refs.sectorList
       if (!monitorCard || !chartContainer) return
 
-      // 从视口底部算到服务监控卡片底部的距离
-      const monitorBottom = monitorCard.getBoundingClientRect().bottom
-      const remainingHeight = window.innerHeight - monitorBottom
+      const topBlocks = [
+        monitorCard,
+        this.$el.querySelector('.news-ticker-container'),
+        this.$el.querySelector('.market-summary-panel')
+      ].filter(Boolean)
+      const topBlocksBottom = Math.max(...topBlocks.map(el => el.getBoundingClientRect().bottom))
+      const remainingHeight = window.innerHeight - topBlocksBottom
 
       const isMobile = window.innerWidth <= 768
       // 先给TOP10分配30%，再给折线图分配70%

@@ -6,7 +6,8 @@ from data_processor import (
     get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
-    get_top5_comparison_data, get_sector_stocks
+    get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
+    refresh_market_summary_cache, is_market_summary_complete
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from logger import get_logger
@@ -79,17 +80,6 @@ def get_current_flow():
                     'timestamp': datetime.now().astimezone().isoformat(),
                     'message': '非交易时间，返回缓存数据'
                 })
-            
-            if _is_realtime_data_invalid(realtime_data):
-                new_data = get_sector_flow_data()
-                if new_data:
-                    return jsonify({
-                        'success': True,
-                        'data': new_data,
-                        'timestamp': datetime.now().astimezone().isoformat(),
-                        'message': '非交易时间，成功获取最新板块数据'
-                    })
-            
             recent_history = load_recent_daily_data(7)
             if recent_history:
                 dates_sorted = sorted(recent_history.keys(), reverse=True)
@@ -261,6 +251,15 @@ def get_minute_data_by_date():
 @flow_bp.route('/market', methods=['GET'])
 def get_market():
     try:
+        now = datetime.now().astimezone()
+        if not is_trading_day(now) or not is_trading_time(now):
+            return jsonify({
+                'success': True,
+                'data': load_market_summary_cache(),
+                'timestamp': datetime.now().astimezone().isoformat(),
+                'message': '非交易时间，返回缓存行情数据'
+            })
+
         market_data = get_market_overview()
         
         if market_data:
@@ -278,6 +277,27 @@ def get_market():
         error_logger.error(f"API /api/flow/market 异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/market]: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/market-summary', methods=['GET'])
+def get_market_summary_route():
+    try:
+        now = datetime.now().astimezone()
+        market_summary = load_market_summary_cache()
+        if is_trading_day(now) and is_trading_time(now) and not is_market_summary_complete(market_summary):
+            market_summary = refresh_market_summary_cache()
+        return jsonify({
+            'success': True,
+            'data': market_summary,
+            'timestamp': datetime.now().astimezone().isoformat()
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/flow/market-summary 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/market-summary]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

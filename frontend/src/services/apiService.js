@@ -112,6 +112,20 @@ export async function getMarketData() {
 }
 
 /**
+ * 获取首页大盘摘要数据
+ * @returns {Promise<Object>} 大盘摘要数据
+ */
+export async function getMarketSummary() {
+  try {
+    const response = await apiClient.get('/flow/market-summary')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘摘要失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取累计流入TOP板块
  * @param {number} days - 天数
  * @returns {Promise<Object>} 累计流入TOP板块数据

@@ -2,12 +2,13 @@ import os
 import time
 from datetime import datetime, timedelta
 import calendar
-from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger, get_top5_comparison_data, is_pushed, update_push_status
+from data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger, get_top5_comparison_data, is_pushed, update_push_status, refresh_market_summary_cache, MARKET_FAST_REFRESH_SECONDS
 from thread_monitor import heartbeat, register_thread
 from logger import get_logger
 
 _last_morning_summary_date = None
 _last_afternoon_summary_date = None
+_last_sector_collect_key = None
 cleanup_logger = get_logger('cleanup_flow')
 
 def is_trading_day(date):
@@ -71,10 +72,12 @@ def should_generate_afternoon_summary(now):
     return False
 
 def data_collection_thread():
-    global _last_morning_summary_date, _last_afternoon_summary_date
+    global _last_morning_summary_date, _last_afternoon_summary_date, _last_sector_collect_key
     register_thread('data_collector')
     system_logger.info("启动数据采集线程，每5分钟采集一次数据...")
     
+    trading_now = False
+
     while True:
         try:
             heartbeat('data_collector')
@@ -82,6 +85,10 @@ def data_collection_thread():
             today = now.strftime('%Y-%m-%d')
             current_minute = now.minute
             current_hour = now.hour
+            trading_now = is_trading_day(now) and is_trading_time(now)
+
+            if trading_now:
+                refresh_market_summary_cache()
             
             if current_hour == 0 and current_minute == 0:
                 yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -159,8 +166,10 @@ def data_collection_thread():
                 else:
                     system_logger.error(f"生成今日({today})的每日汇总失败")
             
-            if current_minute % 5 == 0:
-                if is_trading_day(now) and is_trading_time(now):
+            sector_collect_key = now.strftime('%Y-%m-%d %H:%M')
+            if current_minute % 5 == 0 and _last_sector_collect_key != sector_collect_key:
+                _last_sector_collect_key = sector_collect_key
+                if trading_now:
                     data = get_sector_flow_data()
                     if data:
                         minute_key = now.strftime('%H:%M')
@@ -176,4 +185,4 @@ def data_collection_thread():
         except Exception as e:
             error_logger.error(f"数据采集线程异常: {e}")
         
-        time.sleep(60)
+        time.sleep(MARKET_FAST_REFRESH_SECONDS if trading_now else 60)
