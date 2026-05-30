@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 import threading
 import multiprocessing
 import os
@@ -88,6 +89,18 @@ def create_app():
     
     @app.errorhandler(Exception)
     def handle_exception(e):
+        if isinstance(e, HTTPException):
+            if e.code and e.code >= 500:
+                error_logger.error(f"HTTP异常 {e.code}: {e}\n{traceback.format_exc()}")
+            else:
+                error_logger.warning(f"HTTP请求异常 {e.code}: {request.method} {request.path} - {e}")
+
+            return jsonify({
+                'success': False,
+                'error': e.description,
+                'code': e.code
+            }), e.code
+
         error_logger.error(f"未捕获的异常: {e}\n{traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
