@@ -3,7 +3,9 @@
     <header class="kline-header">
       <button @click="goBack" class="back-button">← 返回</button>
       <h1>🏠 西安二手房价格K线分析</h1>
-      <div class="header-spacer"></div>
+      <button @click="openQuantSystem" class="quant-button">
+        📈 量化交易系统
+      </button>
     </header>
 
     <div class="kline-controls">
@@ -68,6 +70,12 @@ export default {
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+
+    openQuantSystem() {
+      const baseUrl = window.location.origin
+      const quantUrl = `${baseUrl}/TrendZen/`
+      window.open(quantUrl, '_blank')
     },
 
     async fetchKlineData() {
@@ -583,8 +591,23 @@ export default {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.header-spacer {
-  width: 100px;
+.quant-button {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  border: 1px solid #40a9ff;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.quant-button:hover {
+  background: linear-gradient(135deg, #40a9ff, #1890ff);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
 }
 
 .kline-controls {
@@ -665,8 +688,9 @@ export default {
     font-size: 1.2rem;
   }
   
-  .header-spacer {
-    display: none;
+  .quant-button {
+    padding: 8px 16px;
+    font-size: 13px;
   }
   
   .period-btn {
