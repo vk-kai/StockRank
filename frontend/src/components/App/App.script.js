@@ -1124,6 +1124,12 @@ export default {
       this.$router.push('/house-kline')
     },
 
+    openQuantSystem() {
+      const baseUrl = window.location.origin
+      const quantUrl = `${baseUrl}/TrendZen/`
+      window.open(quantUrl, '_blank')
+    },
+
     loadNotificationState() {
       if (!('Notification' in window)) {
         this.enableNotification = false

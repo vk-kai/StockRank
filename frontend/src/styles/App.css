@@ -1371,6 +1371,26 @@
   transform: translateY(-2px);
 }
 
+.quant-button {
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  color: #fff;
+  border: 1px solid #40a9ff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.quant-button:hover {
+  background: linear-gradient(135deg, #40a9ff, #1890ff);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+}
+
 .security-button {
   background-color: #4CAF50;
   color: white;

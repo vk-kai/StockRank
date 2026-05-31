@@ -13,6 +13,7 @@
           <button class="config-button" @click="goToConfig">AI配置</button>
           <button class="log-button" @click="goToLogs">日志</button>
           <button class="house-button" @click="goToHouseKline">房价K线</button>
+          <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
         </div>
       </div>
       <div class="controls">
