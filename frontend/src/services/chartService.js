@@ -8,6 +8,15 @@ function getFlowValue(item) {
   return null
 }
 
+function formatAxisFlow(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
+  const absValue = Math.abs(value)
+  if (absValue >= 1000) return `${(value / 1000).toFixed(1)}k亿`
+  if (absValue >= 10) return `${value.toFixed(0)}亿`
+  if (absValue >= 1) return `${value.toFixed(1)}亿`
+  return `${value.toFixed(2)}亿`
+}
+
 function analyzeDataDistribution(values) {
   if (!values || values.length === 0) {
     return {
@@ -62,7 +71,7 @@ function buildDynamicAxisMapping(distribution) {
     return {
       segments: [],
       mapValueToAxis: (value) => value,
-      getAxisLabel: (value) => `${value.toFixed(1)}亿`
+      getAxisLabel: (value) => formatAxisFlow(value)
     }
   }
 
@@ -109,23 +118,16 @@ function buildDynamicAxisMapping(distribution) {
   }
 
   const getAxisLabel = (axisValue) => {
-    for (const segment of segments) {
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index]
       const [axisStart, axisEnd] = segment.axisRange
       const [start, end] = segment.range
+      const isLastSegment = index === segments.length - 1
       
-      if (axisValue >= axisStart && axisValue < axisEnd) {
+      if (axisValue >= axisStart && (isLastSegment ? axisValue <= axisEnd : axisValue < axisEnd)) {
         const positionInRange = (axisValue - axisStart) / (axisEnd - axisStart)
         const realValue = start + positionInRange * (end - start)
-        
-        if (realValue >= 1000) {
-          return `${(realValue / 1000).toFixed(1)}k亿`
-        } else if (realValue >= 10) {
-          return `${realValue.toFixed(0)}亿`
-        } else if (realValue >= 1) {
-          return `${realValue.toFixed(1)}亿`
-        } else {
-          return `${(realValue * 10000).toFixed(0)}万`
-        }
+        return formatAxisFlow(realValue)
       }
     }
     
@@ -421,15 +423,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
             realValue = 400 + extra
           }
           
-          if (realValue >= 1000) {
-            return `${(realValue / 1000).toFixed(1)}k亿`
-          } else if (realValue >= 10) {
-            return `${realValue.toFixed(0)}亿`
-          } else if (realValue >= 1) {
-            return `${realValue.toFixed(1)}亿`
-          } else {
-            return `${(realValue * 10000).toFixed(0)}万`
-          }
+          return formatAxisFlow(realValue)
         }
       },
       splitLine: {
@@ -452,10 +446,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color: '#cbd5e1',
         fontSize: isMobile ? 10 : 12,
         formatter: (value) => {
-          if (Math.abs(value) >= 1) {
-            return `${value.toFixed(1)}亿`
-          }
-          return `${(value * 10000).toFixed(0)}万`
+          return formatAxisFlow(value)
         }
       },
       splitLine: {
@@ -695,15 +686,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
             realValue = 400 + extra
           }
           
-          if (realValue >= 1000) {
-            return `${(realValue / 1000).toFixed(1)}k亿`
-          } else if (realValue >= 10) {
-            return `${realValue.toFixed(0)}亿`
-          } else if (realValue >= 1) {
-            return `${realValue.toFixed(1)}亿`
-          } else {
-            return `${(realValue * 10000).toFixed(0)}万`
-          }
+          return formatAxisFlow(realValue)
         }
       }
     }
@@ -720,10 +703,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
-          if (Math.abs(value) >= 1) {
-            return `${value.toFixed(1)}亿`
-          }
-          return `${(value * 10000).toFixed(0)}万`
+          return formatAxisFlow(value)
         }
       }
     }
