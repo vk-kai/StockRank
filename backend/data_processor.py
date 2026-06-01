@@ -264,7 +264,7 @@ def get_sector_flow_data():
     else:
         headers = normalize_ths_sector_headers()
     
-    max_retries = 3
+    max_retries = 9
     for retry in range(max_retries):
         try:
             proxies = None
@@ -341,7 +341,7 @@ def get_sector_flow_data():
                 if USE_PROXY:
                     load_proxy_pool()
                 import time
-                time.sleep(2)
+                time.sleep(6)
     
     error_logger.error(f"板块数据获取最终失败，已尝试 {max_retries} 次，URL: {THS_SECTOR_URL}")
     set_crawler_idle('sector_flow')
