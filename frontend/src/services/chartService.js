@@ -1,7 +1,8 @@
-import { formatFlow } from '../utils/formatters'
+import { formatFlow, formatNetFlow } from '../utils/formatters'
 
 function getFlowValue(item) {
   if (!item) return null
+  if (item.net_flow !== undefined && item.net_flow !== null) return item.net_flow
   if (item.flow !== undefined && item.flow !== null) return item.flow
   if (item.value !== undefined && item.value !== null) return item.value
   return null
@@ -39,8 +40,9 @@ function analyzeDataDistribution(values) {
     bins.push([start, end])
   }
 
-  const binCounts = bins.map(([start, end]) => {
-    return values.filter(v => v !== null && v !== undefined && v >= start && v < end).length
+  const binCounts = bins.map(([start, end], index) => {
+    const isLastBin = index === bins.length - 1
+    return values.filter(v => v !== null && v !== undefined && v >= start && (isLastBin ? v <= end : v < end)).length
   })
 
   const maxCount = Math.max(...binCounts)
@@ -71,7 +73,7 @@ function buildDynamicAxisMapping(distribution) {
   bins.forEach(([start, end], index) => {
     const count = binCounts[index]
     const proportion = count / totalPoints
-    const spaceAllocation = proportion * 0.8 + 0.2 / bins.length
+    const spaceAllocation = proportion * 0.88 + 0.12 / bins.length
     
     segments.push({
       range: [start, end],
@@ -232,9 +234,11 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     })
   })
 
+  const minFlow = allFlowValues.length > 0 ? Math.min(...allFlowValues) : 0
   const maxFlow = allFlowValues.length > 0 ? Math.max(5, ...allFlowValues) : 5
+  const flowRange = maxFlow - minFlow
 
-  const useBrokenAxis = maxFlow > 15
+  const useBrokenAxis = flowRange > 15
 
   let axisMapping = null
   if (useBrokenAxis) {
@@ -288,6 +292,9 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       return {
         value: mapValueToAxis(displayFlow),
         realValue: displayFlow,
+        inflow: sectorItem?.flow ?? null,
+        outflow: sectorItem?.outflow ?? null,
+        netFlow: sectorItem?.net_flow ?? displayFlow,
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -314,6 +321,17 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       itemStyle: {
         color
       },
+      markLine: index === 0 ? {
+        silent: true,
+        symbol: 'none',
+        data: [{ yAxis: useBrokenAxis ? mapValueToAxis(0) : 0 }],
+        label: { show: false },
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.35)',
+          type: 'dashed',
+          width: 1
+        }
+      } : undefined,
       endLabel: {
         show: true,
         distance: isMobile ? 4 : 10,
@@ -321,7 +339,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         fontSize: isMobile ? 10 : 12,
         formatter: (params) => {
           const realValue = params?.data?.realValue ?? params?.value ?? null
-          return isMobile ? formatFlow(realValue) : `${params.seriesName}  ${formatFlow(realValue)}`
+          return isMobile ? formatNetFlow(realValue) : `${params.seriesName}  ${formatNetFlow(realValue)}`
         }
       },
       labelLayout: {
@@ -379,6 +397,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       max: 1,
       interval: 0.1,
       axisLine: {
+        onZero: false,
         show: false
       },
       axisTick: {
@@ -423,6 +442,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     yAxisConfig = {
       type: 'value',
       axisLine: {
+        onZero: false,
         show: false
       },
       axisTick: {
@@ -479,16 +499,21 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
         list.forEach(param => {
           const change = param.data?.change
-          const value = param.data?.value
+          const netFlow = param.data?.realValue ?? param.data?.netFlow ?? param.data?.value
+          const inflow = param.data?.inflow
+          const outflow = param.data?.outflow
           const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
           const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
+          const netColor = netFlow === null || netFlow === undefined ? '#94a3b8' : (netFlow >= 0 ? '#ff7875' : '#7ec699')
           result += `
-            <div style="display:flex;justify-content:space-between;gap:16px;margin:4px 0;min-width:220px;">
+            <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
               <span style="color:#cbd5e1;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:${changeColor};font-weight:600;">${formatFlow(value)}</span>
+              <span style="color:#94a3b8;">流入 ${formatFlow(inflow)}</span>
+              <span style="color:#94a3b8;">流出 ${formatFlow(outflow)}</span>
+              <span style="color:${netColor};font-weight:600;">净流入 ${formatNetFlow(netFlow)}</span>
               <span style="color:${changeColor};font-weight:600;">${changeText}</span>
             </div>
           `
@@ -508,6 +533,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       boundaryGap: false,
       data: displayTimeData,
       axisLine: {
+        onZero: false,
         lineStyle: {
           color: 'rgba(148, 163, 184, 0.35)'
         }
@@ -538,20 +564,21 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     }
   }
 
-  let maxFlow = 5
   const allFlowValues = []
   series.forEach(s => {
     if (s.data && Array.isArray(s.data)) {
       s.data.forEach(item => {
         if (item && item.value !== null && item.value !== undefined) {
-          maxFlow = Math.max(maxFlow, item.value)
           allFlowValues.push(item.value)
         }
       })
     }
   })
+  const minFlow = allFlowValues.length > 0 ? Math.min(...allFlowValues) : 0
+  let maxFlow = allFlowValues.length > 0 ? Math.max(5, ...allFlowValues) : 5
+  const flowRange = maxFlow - minFlow
 
-  const useBrokenAxis = maxFlow > 15
+  const useBrokenAxis = flowRange > 15
 
   let axisMapping = null
   if (useBrokenAxis) {
@@ -592,6 +619,23 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     }
   })
 
+  if (mappedSeries.length > 0) {
+    mappedSeries[0] = {
+      ...mappedSeries[0],
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        data: [{ yAxis: useBrokenAxis ? mapValueToAxis(0) : 0 }],
+        label: { show: false },
+        lineStyle: {
+          color: 'rgba(148, 163, 184, 0.35)',
+          type: 'dashed',
+          width: 1
+        }
+      }
+    }
+  }
+
   let yAxisConfig
   if (useBrokenAxis) {
     let tickValues = []
@@ -627,6 +671,13 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       min: 0,
       max: 1,
       interval: 0.1,
+      axisLine: {
+        onZero: false,
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
@@ -659,6 +710,13 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
   } else {
     yAxisConfig = {
       type: 'value',
+      axisLine: {
+        onZero: false,
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
       axisLabel: {
         color: '#8ba4c7',
         formatter: (value) => {
@@ -697,22 +755,26 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
           const accumulatedChangePercent = param.data.accumulatedChangePercent
           const appearances = param.data.appearances
           const displayValue = useBrokenAxis ? (param.data.realValue ?? param.data.value) : param.data.value
+          const netFlow = param.data.netFlow ?? displayValue
+          const inflow = param.data.inflow
+          const outflow = param.data.outflow
 
           let changeHtml = '-'
           if (change !== null && change !== undefined) {
             const color = change >= 0 ? '#ee6666' : '#91cc75'
             changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
           }
+          const netColor = netFlow >= 0 ? '#ee6666' : '#91cc75'
 
           result += `
-            <div style="display:flex;justify-content:space-between;gap:20px;margin:4px 0;">
+            <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
               <span style="color:#8ba4a7;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:#ee6666;font-weight:bold;">
-                ${formatFlow(displayValue)}
-              </span>
+              <span style="color:#8ba4a7;">流入 ${formatFlow(inflow)}</span>
+              <span style="color:#8ba4a7;">流出 ${formatFlow(outflow)}</span>
+              <span style="color:${netColor};font-weight:bold;">净流入 ${formatNetFlow(netFlow)}</span>
               <span style="color:#8ba4a7;">
                 ${changeHtml}
               </span>
@@ -769,6 +831,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
       boundaryGap: false,
       data: timeData,
       axisLine: {
+        onZero: false,
         lineStyle: {
           color: 'rgba(148, 163, 184, 0.35)'
         }
@@ -812,6 +875,9 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       if (isToday) {
         return {
           value: displayFlow,
+          inflow: sectorItem?.flow ?? null,
+          outflow: sectorItem?.outflow ?? null,
+          netFlow: sectorItem?.net_flow ?? displayFlow,
           change,
           carried: flow === null || flow === undefined
         }
@@ -819,6 +885,9 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
 
       return {
         value: displayFlow,
+        inflow: sectorItem?.flow ?? null,
+        outflow: sectorItem?.outflow ?? null,
+        netFlow: sectorItem?.net_flow ?? displayFlow,
         change,
         totalFlow: sectorItem?.total_flow ?? 0,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
@@ -884,9 +953,10 @@ export function collectAllSectors(timeData, allData, isToday) {
       const stats = sectorStats.get(name)
       stats.count++
 
-      if (item.flow !== undefined && item.flow !== null) {
-        stats.totalFlow += item.flow
-        stats.latestFlow = item.flow
+      const flow = getFlowValue(item)
+      if (flow !== undefined && flow !== null) {
+        stats.totalFlow += flow
+        stats.latestFlow = flow
       }
 
       if (item.change !== undefined && item.change !== null) {

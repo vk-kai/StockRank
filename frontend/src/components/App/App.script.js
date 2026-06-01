@@ -222,18 +222,22 @@ export default {
       return [...items]
         .filter(item => item && item.name)
         .sort((a, b) => {
-          const aFlow = a.flow ?? a.total_flow ?? 0
-          const bFlow = b.flow ?? b.total_flow ?? 0
+          const aFlow = a.net_flow ?? a.flow ?? a.total_flow ?? 0
+          const bFlow = b.net_flow ?? b.flow ?? b.total_flow ?? 0
           if (bFlow !== aFlow) return bFlow - aFlow
           return (a.rank ?? 0) - (b.rank ?? 0)
         })
         .slice(0, 10)
+        .map((item, index) => ({
+          ...item,
+          rank: index + 1
+        }))
     },
     replayTop10Title() {
       if (this.selectedTimeRange !== 'today') return ''
       return this.replayDate === this.todayDate
-        ? '今日资金流入TOP10'
-        : `${this.replayDate}资金流入TOP10`
+        ? '今日净资金流入TOP10'
+        : `${this.replayDate}净资金流入TOP10`
     }
   },
   mounted() {
@@ -849,8 +853,11 @@ export default {
         
         let allSectors
         if (isToday && this.currentData.length > 0) {
-          // 使用currentData的前5个板块，与下方TOP10列表保持一致
-          allSectors = this.currentData.slice(0, 10).map(s => s.name)
+          // 使用净流入排序，和下方TOP10列表保持一致
+          allSectors = [...this.currentData]
+            .sort((a, b) => (b.net_flow ?? b.flow ?? 0) - (a.net_flow ?? a.flow ?? 0))
+            .slice(0, 10)
+            .map(s => s.name)
         } else if (!isToday && this.accumulatedData.length > 0) {
           allSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
         } else {
