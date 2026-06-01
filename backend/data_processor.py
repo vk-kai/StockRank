@@ -5,6 +5,8 @@ import os
 import random
 import string
 import hashlib
+import subprocess
+import time
 from bs4 import BeautifulSoup
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
@@ -48,13 +50,51 @@ if USE_PROXY:
     load_proxy_pool()
 
 latest_data = []
+_ths_cookie_cache = {
+    'cookie': '',
+    'expires_at': 0
+}
 
 def _generate_random_string(length):
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
 def _generate_random_cookie():
-    return 'vvvv=1'
+    return ''
+
+def _get_cached_ths_cookie():
+    if _ths_cookie_cache['cookie'] and _ths_cookie_cache['expires_at'] > time.time():
+        return _ths_cookie_cache['cookie']
+    return ''
+
+def refresh_ths_cookie():
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ths_cookie_refresh.js')
+    if not os.path.exists(script_path):
+        error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
+        return ''
+
+    try:
+        port = random.randint(9231, 9320)
+        result = subprocess.run(
+            ['node', script_path, THS_SECTOR_URL, str(port)],
+            capture_output=True,
+            text=True,
+            timeout=25
+        )
+        cookie = result.stdout.strip()
+        if result.returncode == 0 and cookie.startswith('v='):
+            _ths_cookie_cache['cookie'] = cookie
+            _ths_cookie_cache['expires_at'] = time.time() + 3600
+            data_logger.info("同花顺动态Cookie刷新成功")
+            return cookie
+
+        error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
+    except subprocess.TimeoutExpired:
+        error_logger.error("同花顺动态Cookie刷新超时")
+    except Exception as e:
+        error_logger.error(f"同花顺动态Cookie刷新异常: {e}")
+
+    return ''
 
 def _generate_random_browser_version():
     major = random.randint(120, 148)
@@ -67,8 +107,6 @@ def generate_random_headers(host=None, referer=None):
     browser_version = _generate_random_browser_version()
     major_version = browser_version.split('.')[0]
     
-    cookie = _generate_random_cookie()
-    
     sec_ch_ua = f'"Microsoft Edge";v="{major_version}", "Not.A/Brand";v="8", "Chromium";v="{major_version}"'
     user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36 Edg/{browser_version}'
     
@@ -80,7 +118,6 @@ def generate_random_headers(host=None, referer=None):
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
-        'Cookie': cookie,
         'Host': host or 'data.10jqka.com.cn',
         'Referer': referer or target_url,
         'sec-ch-ua': sec_ch_ua,
@@ -95,6 +132,28 @@ def generate_random_headers(host=None, referer=None):
     }
     
     return headers
+
+def normalize_ths_sector_headers(headers=None):
+    """Ensure cached headers are valid for the THS sector fund endpoint."""
+    normalized = dict(headers or generate_random_headers())
+    target_referer = 'https://data.10jqka.com.cn/funds/hyzjl/'
+    normalized['Host'] = 'data.10jqka.com.cn'
+    normalized['Referer'] = target_referer
+    normalized['Accept'] = 'text/html, */*; q=0.01'
+    normalized['X-Requested-With'] = 'XMLHttpRequest'
+    normalized['sec-fetch-dest'] = 'empty'
+    normalized['sec-fetch-mode'] = 'cors'
+    normalized['sec-fetch-site'] = 'same-origin'
+
+    cookie = normalized.get('Cookie', '')
+    if cookie.strip() == 'vvvv=1' or cookie.strip().startswith('checkcookie='):
+        normalized.pop('Cookie', None)
+
+    cached_cookie = _get_cached_ths_cookie()
+    if cached_cookie and not normalized.get('Cookie'):
+        normalized['Cookie'] = cached_cookie
+
+    return normalized
 
 def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
@@ -194,9 +253,9 @@ def get_sector_flow_data():
     # 优先使用健康检测的共享请求头，没有则随机生成
     shared = get_shared_headers()
     if shared:
-        headers = shared
+        headers = normalize_ths_sector_headers(shared)
     else:
-        headers = generate_random_headers()
+        headers = normalize_ths_sector_headers()
     
     max_retries = 3
     for retry in range(max_retries):
@@ -215,12 +274,15 @@ def get_sector_flow_data():
             response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
+                refreshed_cookie = refresh_ths_cookie()
                 # 请求头失效，重新获取共享请求头或随机生成
                 shared = get_shared_headers()
                 if shared:
-                    headers = shared
+                    headers = normalize_ths_sector_headers(shared)
                 else:
-                    headers = generate_random_headers()
+                    headers = normalize_ths_sector_headers()
+                if refreshed_cookie:
+                    headers['Cookie'] = refreshed_cookie
                 continue
             
             response.raise_for_status()
@@ -248,7 +310,7 @@ def get_sector_flow_data():
                 
                 if not has_valid_name:
                     error_logger.error(f"获取的板块数据名称无效（非中文），跳过本次数据保存")
-                    headers = generate_random_headers()
+                    headers = normalize_ths_sector_headers()
                     continue
                 
                 # 请求成功
@@ -264,11 +326,11 @@ def get_sector_flow_data():
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
                 error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_URL}，HTML内容预览: {html_preview}")
-                headers = generate_random_headers()
+                headers = normalize_ths_sector_headers()
         
         except Exception as e:
             if retry < max_retries - 1:
-                headers = generate_random_headers()
+                headers = normalize_ths_sector_headers()
                 if USE_PROXY:
                     load_proxy_pool()
                 import time

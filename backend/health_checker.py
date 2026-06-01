@@ -89,11 +89,10 @@ def get_news_headers():
 def get_sector_headers():
     """获取板块API请求头：优先使用共享请求头"""
     shared = get_shared_headers()
+    from data_processor import generate_random_headers, normalize_ths_sector_headers
     if shared:
-        return dict(shared)
-    # 无共享请求头时随机生成
-    from data_processor import generate_random_headers
-    return generate_random_headers()
+        return normalize_ths_sector_headers(shared)
+    return normalize_ths_sector_headers(generate_random_headers())
 
 def _is_trading_now():
     now = datetime.now()
@@ -115,6 +114,10 @@ def _verify_headers_with_url(url, headers, timeout=10):
     """用指定请求头请求URL，验证是否可用。返回 (成功, 响应时间, 错误信息, 响应文本)"""
     start_time = time.time()
     try:
+        if 'data.10jqka.com.cn/funds/hyzjl' in url:
+            from data_processor import normalize_ths_sector_headers
+            headers = normalize_ths_sector_headers(headers)
+
         session = requests.Session()
         session.trust_env = False
         response = session.get(url, headers=headers, timeout=timeout, verify=False)
@@ -180,10 +183,14 @@ def _test_news_with_headers(headers):
 
 def _acquire_headers(max_attempts=9):
     """尝试获取可用请求头，最多max_attempts次。返回 (headers, 成功)"""
-    from data_processor import generate_random_headers
+    from data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
 
     for attempt in range(max_attempts):
-        headers = generate_random_headers()
+        headers = normalize_ths_sector_headers(generate_random_headers())
+        if attempt == 1:
+            cookie = refresh_ths_cookie()
+            if cookie:
+                headers['Cookie'] = cookie
         success, _, error, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
         if success:
             return headers, True
