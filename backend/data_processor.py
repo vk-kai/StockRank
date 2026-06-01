@@ -10,7 +10,7 @@ import time
 import threading
 import sys
 from bs4 import BeautifulSoup
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -143,8 +143,8 @@ def generate_random_headers(host=None, referer=None):
 def normalize_ths_sector_headers(headers=None):
     """Ensure cached headers are valid for the THS sector fund endpoint."""
     normalized = dict(headers or generate_random_headers())
-    target_referer = 'https://data.10jqka.com.cn/funds/hyzjl/'
-    normalized['Host'] = 'data.10jqka.com.cn'
+    target_referer = 'https://q.10jqka.com.cn/thshy/'
+    normalized['Host'] = 'q.10jqka.com.cn'
     normalized['Referer'] = target_referer
     normalized['Accept'] = 'text/html, */*; q=0.01'
     normalized['X-Requested-With'] = 'XMLHttpRequest'
@@ -161,6 +161,18 @@ def normalize_ths_sector_headers(headers=None):
         normalized['Cookie'] = cached_cookie
 
     return normalized
+
+def _parse_ths_number(value, default=0):
+    text = (value or '').strip().replace(',', '')
+    if not text or text in ('--', '-'):
+        return default
+    try:
+        return float(text)
+    except Exception:
+        return default
+
+def _parse_ths_int(value, default=0):
+    return int(_parse_ths_number(value, default))
 
 def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
@@ -186,7 +198,7 @@ def parse_ths_sector_html(html_content, request_url=''):
             if len(cols) < 11:
                 continue
             
-            rank = int(cols[0].get_text(strip=True))
+            rank = _parse_ths_int(cols[0].get_text(strip=True))
             
             sector_link = cols[1].find('a')
             sector_name = sector_link.get_text(strip=True) if sector_link else ''
@@ -199,13 +211,13 @@ def parse_ths_sector_html(html_content, request_url=''):
             sector_index = cols[2].get_text(strip=True)
             
             change_text = cols[3].get_text(strip=True)
-            change = float(change_text.replace('%', '')) / 100 if change_text else 0
+            change = _parse_ths_number(change_text.replace('%', '')) / 100 if change_text else 0
             
-            inflow = float(cols[4].get_text(strip=True)) if cols[4].get_text(strip=True) else 0
-            outflow = float(cols[5].get_text(strip=True)) if cols[5].get_text(strip=True) else 0
-            net_flow = float(cols[6].get_text(strip=True)) if cols[6].get_text(strip=True) else 0
+            inflow = _parse_ths_number(cols[4].get_text(strip=True))
+            outflow = _parse_ths_number(cols[5].get_text(strip=True))
+            net_flow = _parse_ths_number(cols[6].get_text(strip=True))
             
-            company_count = int(cols[7].get_text(strip=True)) if cols[7].get_text(strip=True) else 0
+            company_count = _parse_ths_int(cols[7].get_text(strip=True))
             
             lead_stock_link = cols[8].find('a')
             lead_stock_name = lead_stock_link.get_text(strip=True) if lead_stock_link else ''
@@ -216,9 +228,9 @@ def parse_ths_sector_html(html_content, request_url=''):
                 lead_stock_url = lead_stock_url.replace('http://', 'https://')
             
             lead_stock_change_text = cols[9].get_text(strip=True)
-            lead_stock_change = float(lead_stock_change_text.replace('%', '')) / 100 if lead_stock_change_text else 0
+            lead_stock_change = _parse_ths_number(lead_stock_change_text.replace('%', '')) / 100 if lead_stock_change_text else 0
             
-            lead_stock_price = float(cols[10].get_text(strip=True)) if cols[10].get_text(strip=True) else 0
+            lead_stock_price = _parse_ths_number(cols[10].get_text(strip=True))
             
             sectors.append({
                 'rank': rank,
@@ -242,11 +254,7 @@ def parse_ths_sector_html(html_content, request_url=''):
             error_logger.error(f"解析板块行数据失败: {e}")
             continue
     
-    sectors.sort(key=lambda x: x['flow'], reverse=True)
-    for i, sector in enumerate(sectors[:10]):
-        sector['rank'] = i + 1
-    
-    return sectors[:10]
+    return sectors
 
 def get_sector_flow_data():
     from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_shared_headers
@@ -263,6 +271,64 @@ def get_sector_flow_data():
         headers = normalize_ths_sector_headers(shared)
     else:
         headers = normalize_ths_sector_headers()
+
+    def fetch_sector_page(session, url, request_headers, proxies):
+        response = session.get(url, headers=request_headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+        if response.status_code == 401 or response.status_code == 403:
+            return response, None
+
+        response.raise_for_status()
+
+        content_type = response.headers.get('Content-Type', '')
+        if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
+            response.encoding = 'GBK'
+        elif response.encoding == 'ISO-8859-1':
+            response.encoding = 'GBK'
+        else:
+            try:
+                response.encoding = response.apparent_encoding
+            except:
+                response.encoding = 'GBK'
+
+        return response, parse_ths_sector_html(response.text, url)
+
+    def refresh_headers_after_auth_error():
+        refreshed_cookie = refresh_ths_cookie()
+        shared_headers = get_shared_headers()
+        if shared_headers:
+            next_headers = normalize_ths_sector_headers(shared_headers)
+        else:
+            next_headers = normalize_ths_sector_headers()
+        if refreshed_cookie:
+            next_headers['Cookie'] = refreshed_cookie
+        return next_headers
+
+    def build_net_flow_watchlist(inflow_sectors, outflow_sectors):
+        selected = []
+        seen = set()
+
+        for item in inflow_sectors[:5]:
+            name = item.get('name')
+            if not name or name in seen:
+                continue
+            copied = dict(item)
+            copied['flow_group'] = 'net_in'
+            selected.append(copied)
+            seen.add(name)
+
+        for item in outflow_sectors[:5]:
+            name = item.get('name')
+            if not name or name in seen:
+                continue
+            copied = dict(item)
+            copied['flow_group'] = 'net_out'
+            selected.append(copied)
+            seen.add(name)
+
+        for i, sector in enumerate(selected):
+            sector['rank'] = i + 1
+
+        return selected
     
     max_retries = 9
     for retry in range(max_retries):
@@ -278,34 +344,18 @@ def get_sector_flow_data():
             
             session = requests.Session()
             session.trust_env = False
-            response = session.get(THS_SECTOR_URL, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            response, inflow_sectors = fetch_sector_page(session, THS_SECTOR_NET_IN_URL, headers, proxies)
             
             if response.status_code == 401 or response.status_code == 403:
-                refreshed_cookie = refresh_ths_cookie()
-                # 请求头失效，重新获取共享请求头或随机生成
-                shared = get_shared_headers()
-                if shared:
-                    headers = normalize_ths_sector_headers(shared)
-                else:
-                    headers = normalize_ths_sector_headers()
-                if refreshed_cookie:
-                    headers['Cookie'] = refreshed_cookie
+                headers = refresh_headers_after_auth_error()
                 continue
-            
-            response.raise_for_status()
-            
-            content_type = response.headers.get('Content-Type', '')
-            if 'charset=gbk' in content_type.lower() or 'charset=gb2312' in content_type.lower():
-                response.encoding = 'GBK'
-            elif response.encoding == 'ISO-8859-1':
-                response.encoding = 'GBK'
-            else:
-                try:
-                    response.encoding = response.apparent_encoding
-                except:
-                    response.encoding = 'GBK'
-            
-            sectors = parse_ths_sector_html(response.text, THS_SECTOR_URL)
+
+            response, outflow_sectors = fetch_sector_page(session, THS_SECTOR_NET_OUT_URL, headers, proxies)
+            if response.status_code == 401 or response.status_code == 403:
+                headers = refresh_headers_after_auth_error()
+                continue
+
+            sectors = build_net_flow_watchlist(inflow_sectors or [], outflow_sectors or [])
             
             if sectors:
                 has_valid_name = False
@@ -332,7 +382,7 @@ def get_sector_flow_data():
                 return sectors
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
-                error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_URL}，HTML内容预览: {html_preview}")
+                error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_NET_IN_URL} / {THS_SECTOR_NET_OUT_URL}，HTML内容预览: {html_preview}")
                 headers = normalize_ths_sector_headers()
         
         except Exception as e:

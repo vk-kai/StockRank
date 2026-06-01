@@ -5,7 +5,7 @@ import threading
 import traceback
 from datetime import datetime
 from logger import get_logger
-from config import DATA_DIR
+from config import DATA_DIR, THS_SECTOR_URL, THS_SECTOR_NET_OUT_URL
 import requests
 from bs4 import BeautifulSoup
 
@@ -15,7 +15,6 @@ health_logger = get_logger('health')
 HEALTH_DATA_DIR = os.path.join(DATA_DIR, 'health')
 HEALTH_FILE = os.path.join(HEALTH_DATA_DIR, 'status.json')
 
-THS_SECTOR_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/buy/order/DESC/ajax/1/"
 NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"
 
 if not os.path.exists(HEALTH_DATA_DIR):
@@ -114,7 +113,7 @@ def _verify_headers_with_url(url, headers, timeout=10):
     """用指定请求头请求URL，验证是否可用。返回 (成功, 响应时间, 错误信息, 响应文本)"""
     start_time = time.time()
     try:
-        if 'data.10jqka.com.cn/funds/hyzjl' in url:
+        if '10jqka.com.cn' in url and ('funds/hyzjl' in url or '/thshy/' in url):
             from data_processor import normalize_ths_sector_headers
             headers = normalize_ths_sector_headers(headers)
 
@@ -179,6 +178,17 @@ def _test_news_with_headers(headers):
     except Exception as e:
         return False, round((time.time() - start_time) * 1000, 2), str(e)[:30]
 
+def _test_sector_with_headers(headers):
+    in_ok, in_time, in_error, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
+    if not in_ok:
+        return False, in_time, in_error
+
+    out_ok, out_time, out_error, _ = _verify_headers_with_url(THS_SECTOR_NET_OUT_URL, headers)
+    if not out_ok:
+        return False, out_time, out_error
+
+    return True, max(in_time, out_time), None
+
 # ============ 请求头获取 ============
 
 def _acquire_headers(max_attempts=9):
@@ -191,7 +201,7 @@ def _acquire_headers(max_attempts=9):
             cookie = refresh_ths_cookie()
             if cookie:
                 headers['Cookie'] = cookie
-        success, _, error, _ = _verify_headers_with_url(THS_SECTOR_URL, headers)
+        success, _, error = _test_sector_with_headers(headers)
         if success:
             return headers, True
         if attempt < max_attempts - 1:
@@ -231,7 +241,7 @@ def run_full_health_check():
 
     if trading_now:
         if _shared_headers:
-            sector_ok, sector_time, sector_error, _ = _verify_headers_with_url(THS_SECTOR_URL, _shared_headers)
+            sector_ok, sector_time, sector_error = _test_sector_with_headers(_shared_headers)
             if not sector_ok:
                 new_headers, found = _acquire_headers(9)
                 if found:

@@ -219,15 +219,23 @@ export default {
         items = this.currentData
       }
 
-      return [...items]
+      const groupedItems = [...items]
         .filter(item => item && item.name)
-        .sort((a, b) => {
-          const aFlow = a.net_flow ?? a.flow ?? a.total_flow ?? 0
-          const bFlow = b.net_flow ?? b.flow ?? b.total_flow ?? 0
-          if (bFlow !== aFlow) return bFlow - aFlow
-          return (a.rank ?? 0) - (b.rank ?? 0)
-        })
-        .slice(0, 10)
+        .reduce((groups, item) => {
+          const netFlow = item.net_flow ?? item.flow ?? item.total_flow ?? 0
+          const group = item.flow_group || (netFlow < 0 ? 'net_out' : 'net_in')
+          if (group === 'net_out') {
+            groups.out.push(item)
+          } else {
+            groups.in.push(item)
+          }
+          return groups
+        }, { in: [], out: [] })
+
+      return [
+        ...groupedItems.in.sort((a, b) => (b.net_flow ?? b.flow ?? 0) - (a.net_flow ?? a.flow ?? 0)).slice(0, 5),
+        ...groupedItems.out.sort((a, b) => (a.net_flow ?? a.flow ?? 0) - (b.net_flow ?? b.flow ?? 0)).slice(0, 5)
+      ]
         .map((item, index) => ({
           ...item,
           rank: index + 1
@@ -236,8 +244,8 @@ export default {
     replayTop10Title() {
       if (this.selectedTimeRange !== 'today') return ''
       return this.replayDate === this.todayDate
-        ? '今日净资金流入TOP10'
-        : `${this.replayDate}净资金流入TOP10`
+        ? '今日净流入TOP5 / 净流出TOP5'
+        : `${this.replayDate}净流入TOP5 / 净流出TOP5`
     }
   },
   mounted() {
@@ -853,11 +861,8 @@ export default {
         
         let allSectors
         if (isToday && this.currentData.length > 0) {
-          // 使用净流入排序，和下方TOP10列表保持一致
-          allSectors = [...this.currentData]
-            .sort((a, b) => (b.net_flow ?? b.flow ?? 0) - (a.net_flow ?? a.flow ?? 0))
-            .slice(0, 10)
-            .map(s => s.name)
+          // 使用净流入TOP5 + 净流出TOP5，和下方列表保持一致
+          allSectors = this.replayTop10Sectors.map(s => s.name)
         } else if (!isToday && this.accumulatedData.length > 0) {
           allSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
         } else {

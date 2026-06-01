@@ -176,6 +176,9 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
           firstSeen: timeIndex,
           lastSeen: timeIndex,
           peakFlow: flow ?? 0,
+          troughFlow: flow ?? 0,
+          latestFlow: flow ?? 0,
+          flowGroup: item.flow_group || null,
           appearances: 0
         })
       }
@@ -183,21 +186,39 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
       const stats = sectorStats.get(item.name)
       stats.lastSeen = timeIndex
       stats.appearances += 1
+      if (item.flow_group) {
+        stats.flowGroup = item.flow_group
+      }
       if (flow !== null && flow !== undefined) {
         stats.peakFlow = Math.max(stats.peakFlow, flow)
+        stats.troughFlow = Math.min(stats.troughFlow, flow)
+        stats.latestFlow = flow
       }
     })
   })
 
-  return Array.from(sectorStats.values())
+  const stats = Array.from(sectorStats.values())
+  const inLimit = Math.ceil(limit / 2)
+  const outLimit = Math.floor(limit / 2)
+  const netIn = stats
+    .filter(item => item.flowGroup === 'net_in' || (!item.flowGroup && item.latestFlow >= 0))
     .sort((a, b) => {
       if (b.peakFlow !== a.peakFlow) return b.peakFlow - a.peakFlow
       if (a.firstSeen !== b.firstSeen) return a.firstSeen - b.firstSeen
-      if (b.appearances !== a.appearances) return b.appearances - a.appearances
-      return b.lastSeen - a.lastSeen
+      return b.appearances - a.appearances
     })
-    .slice(0, limit)
-    .map(item => item.name)
+    .slice(0, inLimit)
+
+  const netOut = stats
+    .filter(item => item.flowGroup === 'net_out' || (!item.flowGroup && item.latestFlow < 0))
+    .sort((a, b) => {
+      if (a.troughFlow !== b.troughFlow) return a.troughFlow - b.troughFlow
+      if (a.firstSeen !== b.firstSeen) return a.firstSeen - b.firstSeen
+      return b.appearances - a.appearances
+    })
+    .slice(0, outLimit)
+
+  return [...netIn, ...netOut].map(item => item.name)
 }
 
 export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false) {
