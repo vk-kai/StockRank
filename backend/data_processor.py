@@ -7,6 +7,8 @@ import string
 import hashlib
 import subprocess
 import time
+import threading
+import sys
 from bs4 import BeautifulSoup
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, USE_PROXY, get_random_user_agent
 from logger import get_logger
@@ -54,6 +56,7 @@ _ths_cookie_cache = {
     'cookie': '',
     'expires_at': 0
 }
+_ths_cookie_lock = threading.Lock()
 
 def _generate_random_string(length):
     chars = string.ascii_letters + string.digits
@@ -68,19 +71,23 @@ def _get_cached_ths_cookie():
     return ''
 
 def refresh_ths_cookie():
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ths_cookie_refresh.js')
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ths_cookie_refresh.py')
     if not os.path.exists(script_path):
         error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
         return ''
 
     try:
-        port = random.randint(9231, 9320)
-        result = subprocess.run(
-            ['node', script_path, THS_SECTOR_URL, str(port)],
-            capture_output=True,
-            text=True,
-            timeout=25
-        )
+        with _ths_cookie_lock:
+            cached_cookie = _get_cached_ths_cookie()
+            if cached_cookie:
+                return cached_cookie
+
+            result = subprocess.run(
+                [sys.executable, script_path, THS_SECTOR_URL],
+                capture_output=True,
+                text=True,
+                timeout=45
+            )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
             _ths_cookie_cache['cookie'] = cookie
@@ -1277,9 +1284,17 @@ def get_ths_market_breadth():
         'sec-fetch-site': 'same-origin',
         'X-Requested-With': 'XMLHttpRequest'
     })
+    cached_cookie = _get_cached_ths_cookie()
+    if cached_cookie:
+        headers['Cookie'] = cached_cookie
 
     try:
         response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
+        if response.status_code in (401, 403):
+            refreshed_cookie = refresh_ths_cookie()
+            if refreshed_cookie:
+                headers['Cookie'] = refreshed_cookie
+                response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
         response.raise_for_status()
         data = _parse_json_or_jsonp(response.text)
         if not isinstance(data, dict):

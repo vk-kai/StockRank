@@ -10,7 +10,6 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
         curl \
         fonts-liberation \
         fonts-noto-cjk \
-        nodejs \
         xvfb \
     && rm -rf /var/lib/apt/lists/*
 
