@@ -103,6 +103,8 @@ def browser_command(executable, port, profile_dir):
         TARGET_URL,
     ]
     if os.name != 'nt' and not os.environ.get('DISPLAY') and os.path.exists('/usr/bin/xvfb-run'):
+        if not shutil.which('xauth'):
+            raise RuntimeError('xvfb-run is installed but xauth is missing. Install xauth in the backend image.')
         return ['/usr/bin/xvfb-run', '-a', '--server-args=-screen 0 1200x900x24', executable, *args]
     return [executable, *args]
 
