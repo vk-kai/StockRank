@@ -526,11 +526,12 @@ def get_sector_stocks(sector_url):
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
                 error_logger.error(f"解析个股数据失败，返回空列表，URL: {sector_url}，HTML内容预览: {html_preview}")
-                headers = generate_random_headers(host=host)
+                headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
         
         except Exception as e:
+            error_logger.error(f"获取板块个股第 {retry + 1}/{max_retries} 次失败: {e}")
             if retry < max_retries - 1:
-                headers = generate_random_headers(host=host)
+                headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
                 if USE_PROXY:
                     load_proxy_pool()
                 import time

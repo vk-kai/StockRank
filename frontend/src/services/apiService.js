@@ -425,7 +425,8 @@ export async function getDailyReport(date) {
 export async function getSectorStocks(sectorUrl) {
   try {
     const response = await apiClient.get('/flow/sector-stocks', {
-      params: { url: sectorUrl }
+      params: { url: sectorUrl },
+      timeout: 45000
     })
     return response.data
   } catch (error) {
