@@ -149,6 +149,8 @@ def attach_fresh_ths_cookie(headers):
     return headers
 
 def _parse_ths_number(value, default=0):
+    if isinstance(value, (int, float)):
+        return value
     text = (value or '').strip().replace(',', '')
     if not text or text in ('--', '-'):
         return default
@@ -363,8 +365,9 @@ def get_sector_flow_data():
                 headers = normalize_ths_sector_headers()
         
         except Exception as e:
+            error_logger.error(f"板块数据获取第 {retry + 1}/{max_retries} 次失败: {e}")
             if retry < max_retries - 1:
-                headers = normalize_ths_sector_headers()
+                headers = attach_fresh_ths_cookie(normalize_ths_sector_headers())
                 if USE_PROXY:
                     load_proxy_pool()
                 import time
