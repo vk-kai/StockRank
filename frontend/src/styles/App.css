@@ -776,6 +776,24 @@
   overflow: hidden;
 }
 
+.sector-card.net-in-card {
+  background:
+    linear-gradient(135deg,
+      rgba(239, 83, 80, var(--flow-alpha, 0.22)) 0%,
+      rgba(120, 24, 36, var(--flow-deep-alpha, 0.25)) 100%),
+    linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
+  border-color: rgba(239, 83, 80, var(--flow-border-alpha, 0.31));
+}
+
+.sector-card.net-out-card {
+  background:
+    linear-gradient(135deg,
+      rgba(103, 194, 58, var(--flow-alpha, 0.22)) 0%,
+      rgba(18, 97, 72, var(--flow-deep-alpha, 0.25)) 100%),
+    linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
+  border-color: rgba(103, 194, 58, var(--flow-border-alpha, 0.31));
+}
+
 .sector-card::before {
   content: '';
   position: absolute;
@@ -800,7 +818,7 @@
 
 .sector-card.top-3 {
   border-color: rgba(255, 215, 0, 0.5);
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 193, 7, 0.1) 100%);
+  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.35), 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .sector-card.top-3::before {

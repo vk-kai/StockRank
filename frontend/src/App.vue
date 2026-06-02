@@ -173,9 +173,18 @@
       <div class="sector-grid">
         <div 
           v-for="sector in replayTop10Sectors" 
-          :key="sector.rank"
+          :key="`${sector.flow_direction || sector.flow_group || 'flow'}-${sector.rank}-${sector.name}`"
           class="sector-card clickable"
-          :class="{ 'top-3': sector.rank <= 3 }"
+          :class="{
+            'top-3': sector.rank <= 3,
+            'net-in-card': (sector.flow_direction || sector.flow_group) !== 'out' && (sector.flow_direction || sector.flow_group) !== 'net_out',
+            'net-out-card': (sector.flow_direction || sector.flow_group) === 'out' || (sector.flow_direction || sector.flow_group) === 'net_out'
+          }"
+          :style="{
+            '--flow-alpha': sector.flow_alpha || 0.22,
+            '--flow-deep-alpha': sector.flow_deep_alpha || 0.25,
+            '--flow-border-alpha': sector.flow_border_alpha || 0.31
+          }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
           @click="openStockModal(sector)"

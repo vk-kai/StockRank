@@ -63,10 +63,10 @@ _check_running = False
 # ============ 共享请求头接口 ============
 
 def get_shared_headers():
-    """获取健康检测确认可用的共享请求头，业务功能通过此接口获取请求头"""
-    global _shared_headers
-    if _shared_headers:
-        return dict(_shared_headers)
+    """兼容旧调用；健康检测不再共享同花顺请求头或 Cookie。"""
+    return None
+
+def update_shared_headers(headers):
     return None
 
 def get_news_headers():
@@ -197,10 +197,9 @@ def _acquire_headers(max_attempts=9):
 
     for attempt in range(max_attempts):
         headers = normalize_ths_sector_headers(generate_random_headers())
-        if attempt == 1:
-            cookie = refresh_ths_cookie()
-            if cookie:
-                headers['Cookie'] = cookie
+        cookie = refresh_ths_cookie(force=True)
+        if cookie:
+            headers['Cookie'] = cookie
         success, _, error = _test_sector_with_headers(headers)
         if success:
             return headers, True
@@ -228,7 +227,7 @@ def _acquire_news_headers(max_attempts=5):
 
 def run_full_health_check():
     """???????????????????????????"""
-    global _shared_headers, _health_status
+    global _health_status
 
     now = datetime.now().isoformat()
     trading_now = _is_trading_now()
@@ -240,38 +239,21 @@ def run_full_health_check():
     news_time = 0
 
     if trading_now:
-        if _shared_headers:
-            sector_ok, sector_time, sector_error = _test_sector_with_headers(_shared_headers)
-            if not sector_ok:
-                new_headers, found = _acquire_headers(9)
-                if found:
-                    _shared_headers = new_headers
-                    sector_ok = True
-                    sector_error = None
-                else:
-                    _shared_headers = None
-                    sector_error = sector_error or '?????????'
+        _, found = _acquire_headers(9)
+        if found:
+            sector_ok = True
+            sector_error = None
         else:
-            new_headers, found = _acquire_headers(9)
-            if found:
-                _shared_headers = new_headers
-                sector_ok = True
-                sector_error = None
-            else:
-                sector_error = '???????????'
+            sector_error = '???????????'
     else:
         sector_ok = True
         sector_error = '??????????????'
 
-    if _shared_headers:
-        news_ok, news_time, news_error = _test_news_with_headers(_shared_headers)
+    news_headers, found = _acquire_news_headers(5)
+    if found:
+        news_ok, news_time, news_error = _test_news_with_headers(news_headers)
     else:
-        new_headers, found = _acquire_news_headers(5)
-        if found:
-            _shared_headers = new_headers
-            news_ok, news_time, news_error = _test_news_with_headers(_shared_headers)
-        else:
-            news_error = '????????'
+        news_error = '????????'
 
     _health_status['news'] = {
         'status': 'ok' if news_ok else 'error',
@@ -319,19 +301,21 @@ def _periodic_check_loop():
 
 def start_health_checker():
     """???????????????????????????"""
-    global _check_thread, _check_running, _shared_headers
+    global _check_thread, _check_running
 
     if _check_running:
         return
 
     now = datetime.now().isoformat()
     trading_now = _is_trading_now()
-    acquire = _acquire_headers if trading_now else _acquire_news_headers
-    new_headers, found = acquire(9 if trading_now else 5)
+    sector_ok = True
+    if trading_now:
+        _, sector_ok = _acquire_headers(9)
 
-    if found:
-        _shared_headers = new_headers
-        news_ok, _, news_error = _test_news_with_headers(_shared_headers)
+    news_headers, news_found = _acquire_news_headers(5)
+
+    if sector_ok and news_found:
+        news_ok, _, news_error = _test_news_with_headers(news_headers)
         _health_status['news'] = {
             'status': 'ok' if news_ok else 'error',
             'last_check': now,
@@ -339,19 +323,18 @@ def start_health_checker():
             'response_time': None
         }
         _health_status['sector'] = {
-            'status': 'ok',
+            'status': 'ok' if sector_ok else 'error',
             'last_check': now,
             'error': None if trading_now else '??????????????',
             'response_time': None
         }
         save_health_status()
     else:
-        _shared_headers = None
         _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '???????????', 'response_time': None}
         _health_status['sector'] = {
-            'status': 'error' if trading_now else 'ok',
+            'status': 'error' if trading_now and not sector_ok else 'ok',
             'last_check': now,
-            'error': '???????????' if trading_now else '??????????????',
+            'error': '???????????' if trading_now and not sector_ok else '??????????????',
             'response_time': None
         }
         save_health_status()

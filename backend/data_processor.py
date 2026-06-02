@@ -21,7 +21,7 @@ cleanup_logger = get_logger('cleanup_flow')
 PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
 
-# 请求头由 health_checker 统一管理，业务功能通过 get_shared_headers() 获取
+# 同花顺请求不复用健康检测 Cookie；业务请求现场生成 Cookie。
 
 def load_proxy_pool():
     if not USE_PROXY:
@@ -52,10 +52,6 @@ if USE_PROXY:
     load_proxy_pool()
 
 latest_data = []
-_ths_cookie_cache = {
-    'cookie': '',
-    'expires_at': 0
-}
 _ths_cookie_lock = threading.Lock()
 
 def _generate_random_string(length):
@@ -65,12 +61,7 @@ def _generate_random_string(length):
 def _generate_random_cookie():
     return ''
 
-def _get_cached_ths_cookie():
-    if _ths_cookie_cache['cookie'] and _ths_cookie_cache['expires_at'] > time.time():
-        return _ths_cookie_cache['cookie']
-    return ''
-
-def refresh_ths_cookie():
+def refresh_ths_cookie(force=False):
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ths_cookie_refresh.py')
     if not os.path.exists(script_path):
         error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
@@ -78,10 +69,6 @@ def refresh_ths_cookie():
 
     try:
         with _ths_cookie_lock:
-            cached_cookie = _get_cached_ths_cookie()
-            if cached_cookie:
-                return cached_cookie
-
             result = subprocess.run(
                 [sys.executable, script_path, THS_SECTOR_URL],
                 capture_output=True,
@@ -90,8 +77,6 @@ def refresh_ths_cookie():
             )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
-            _ths_cookie_cache['cookie'] = cookie
-            _ths_cookie_cache['expires_at'] = time.time() + 3600
             data_logger.info("同花顺动态Cookie刷新成功")
             return cookie
 
@@ -156,11 +141,13 @@ def normalize_ths_sector_headers(headers=None):
     if cookie.strip() == 'vvvv=1' or cookie.strip().startswith('checkcookie='):
         normalized.pop('Cookie', None)
 
-    cached_cookie = _get_cached_ths_cookie()
-    if cached_cookie and not normalized.get('Cookie'):
-        normalized['Cookie'] = cached_cookie
-
     return normalized
+
+def attach_fresh_ths_cookie(headers):
+    cookie = refresh_ths_cookie(force=True)
+    if cookie:
+        headers['Cookie'] = cookie
+    return headers
 
 def _parse_ths_number(value, default=0):
     text = (value or '').strip().replace(',', '')
@@ -257,7 +244,7 @@ def parse_ths_sector_html(html_content, request_url=''):
     return sectors
 
 def get_sector_flow_data():
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_shared_headers
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     crawler_status = get_crawler_status()
     if crawler_status.get('sector_flow', {}).get('status') == 'failed':
@@ -265,12 +252,9 @@ def get_sector_flow_data():
         return []
     
     set_crawler_working('sector_flow')
-    # 优先使用健康检测的共享请求头，没有则随机生成
-    shared = get_shared_headers()
-    if shared:
-        headers = normalize_ths_sector_headers(shared)
-    else:
-        headers = normalize_ths_sector_headers()
+    # 业务采集现场生成 Cookie，不复用健康检测结果。
+    headers = normalize_ths_sector_headers()
+    headers = attach_fresh_ths_cookie(headers)
 
     def fetch_sector_page(session, url, request_headers, proxies):
         response = session.get(url, headers=request_headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
@@ -293,40 +277,34 @@ def get_sector_flow_data():
         return response, parse_ths_sector_html(response.text, url)
 
     def refresh_headers_after_auth_error():
-        refreshed_cookie = refresh_ths_cookie()
-        shared_headers = get_shared_headers()
-        if shared_headers:
-            next_headers = normalize_ths_sector_headers(shared_headers)
-        else:
-            next_headers = normalize_ths_sector_headers()
-        if refreshed_cookie:
-            next_headers['Cookie'] = refreshed_cookie
-        return next_headers
+        return attach_fresh_ths_cookie(normalize_ths_sector_headers())
 
     def build_net_flow_watchlist(inflow_sectors, outflow_sectors):
         selected = []
         seen = set()
 
-        for item in inflow_sectors[:5]:
+        inflow_top = sorted(inflow_sectors, key=lambda item: abs(_parse_ths_number(item.get('net_flow'))), reverse=True)
+        outflow_top = sorted(outflow_sectors, key=lambda item: abs(_parse_ths_number(item.get('net_flow'))), reverse=True)
+
+        for rank, item in enumerate(inflow_top[:5], start=1):
             name = item.get('name')
             if not name or name in seen:
                 continue
             copied = dict(item)
+            copied['rank'] = rank
             copied['flow_group'] = 'net_in'
             selected.append(copied)
             seen.add(name)
 
-        for item in outflow_sectors[:5]:
+        for rank, item in enumerate(outflow_top[:5], start=1):
             name = item.get('name')
             if not name or name in seen:
                 continue
             copied = dict(item)
+            copied['rank'] = rank
             copied['flow_group'] = 'net_out'
             selected.append(copied)
             seen.add(name)
-
-        for i, sector in enumerate(selected):
-            sector['rank'] = i + 1
 
         return selected
     
@@ -487,7 +465,7 @@ def parse_ths_stock_html(html_content, request_url=''):
     return stocks
 
 def get_sector_stocks(sector_url):
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_shared_headers
+    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     if not sector_url:
         error_logger.error("板块URL为空")
@@ -501,13 +479,8 @@ def get_sector_stocks(sector_url):
     host = parsed_url.netloc if parsed_url.netloc else 'q.10jqka.com.cn'
     
     set_crawler_working('stocks')
-    # 优先使用健康检测的共享请求头，没有则随机生成
-    shared = get_shared_headers()
-    if shared:
-        headers = dict(shared)
-        headers['Host'] = host
-    else:
-        headers = generate_random_headers(host=host)
+    # 个股详情请求现场生成 Cookie，不复用健康检测结果。
+    headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
     
     max_retries = 3
     for retry in range(max_retries):
@@ -527,12 +500,7 @@ def get_sector_stocks(sector_url):
             
             if response.status_code == 401 or response.status_code == 403:
                 # 请求头失效，重新获取
-                shared = get_shared_headers()
-                if shared:
-                    headers = dict(shared)
-                    headers['Host'] = host
-                else:
-                    headers = generate_random_headers(host=host)
+                headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
                 continue
             
             response.raise_for_status()
@@ -1334,17 +1302,13 @@ def get_ths_market_breadth():
         'sec-fetch-site': 'same-origin',
         'X-Requested-With': 'XMLHttpRequest'
     })
-    cached_cookie = _get_cached_ths_cookie()
-    if cached_cookie:
-        headers['Cookie'] = cached_cookie
+    headers = attach_fresh_ths_cookie(headers)
 
     try:
         response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
         if response.status_code in (401, 403):
-            refreshed_cookie = refresh_ths_cookie()
-            if refreshed_cookie:
-                headers['Cookie'] = refreshed_cookie
-                response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
+            headers = attach_fresh_ths_cookie(headers)
+            response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
         response.raise_for_status()
         data = _parse_json_or_jsonp(response.text)
         if not isinstance(data, dict):
@@ -1380,6 +1344,7 @@ def get_ths_turnover_summary():
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin'
     })
+    headers = attach_fresh_ths_cookie(headers)
 
     try:
         response = requests.get(
@@ -1388,6 +1353,14 @@ def get_ths_turnover_summary():
             headers=headers,
             timeout=10
         )
+        if response.status_code in (401, 403):
+            headers = attach_fresh_ths_cookie(headers)
+            response = requests.get(
+                THS_TURNOVER_MINUTE_URL,
+                params={'chart_key': 'turnover_minute'},
+                headers=headers,
+                timeout=10
+            )
         response.raise_for_status()
         data = response.json()
         chart = data.get('data', {}).get('charts', {})
@@ -1452,8 +1425,7 @@ def get_market_summary():
         except Exception:
             cached_summary = None
 
-    ths_breadth = get_ths_market_breadth()
-    breadth = ths_breadth or get_jrj_market_breadth()
+    breadth = get_jrj_market_breadth() or get_ths_market_breadth()
     turnover = get_ths_turnover_summary()
     indices = get_market_index_data()
     if not indices and isinstance(cached_summary, dict):
@@ -1474,8 +1446,7 @@ def get_market_summary():
 
 def get_market_fast_summary():
     cached_summary = load_market_summary_cache() or {}
-    ths_breadth = get_ths_market_breadth()
-    breadth = ths_breadth or get_jrj_market_breadth() or cached_summary.get('breadth')
+    breadth = get_jrj_market_breadth() or get_ths_market_breadth() or cached_summary.get('breadth')
     indices = get_market_index_data() or cached_summary.get('indices')
     main_index = indices.get('000001') if isinstance(indices, dict) else cached_summary.get('main_index')
 

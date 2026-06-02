@@ -232,14 +232,32 @@ export default {
           return groups
         }, { in: [], out: [] })
 
-      return [
-        ...groupedItems.in.sort((a, b) => (b.net_flow ?? b.flow ?? 0) - (a.net_flow ?? a.flow ?? 0)).slice(0, 5),
-        ...groupedItems.out.sort((a, b) => (a.net_flow ?? a.flow ?? 0) - (b.net_flow ?? b.flow ?? 0)).slice(0, 5)
-      ]
-        .map((item, index) => ({
+      const netValue = item => Number(item.net_flow ?? item.flow ?? 0) || 0
+      const inflowItems = groupedItems.in
+        .sort((a, b) => netValue(b) - netValue(a))
+        .slice(0, 5)
+      const outflowItems = groupedItems.out
+        .sort((a, b) => netValue(a) - netValue(b))
+        .slice(0, 5)
+      const maxInflow = Math.max(...inflowItems.map(item => Math.abs(netValue(item))), 1)
+      const maxOutflow = Math.max(...outflowItems.map(item => Math.abs(netValue(item))), 1)
+      const rankGroup = (list, direction, maxValue) => list.map((item, index) => {
+        const strength = Math.max(0.18, Math.min(1, Math.abs(netValue(item)) / maxValue))
+        return {
           ...item,
-          rank: index + 1
-        }))
+          rank: index + 1,
+          flow_direction: direction,
+          flow_strength: strength,
+          flow_alpha: (0.16 + strength * 0.34).toFixed(3),
+          flow_deep_alpha: (0.18 + strength * 0.38).toFixed(3),
+          flow_border_alpha: (0.22 + strength * 0.5).toFixed(3)
+        }
+      })
+
+      return [
+        ...rankGroup(inflowItems, 'in', maxInflow),
+        ...rankGroup(outflowItems, 'out', maxOutflow)
+      ]
     },
     replayTop10Title() {
       if (this.selectedTimeRange !== 'today') return ''
