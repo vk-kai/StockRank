@@ -143,8 +143,8 @@ def generate_random_headers(host=None, referer=None):
 def normalize_ths_sector_headers(headers=None):
     """Ensure cached headers are valid for the THS sector fund endpoint."""
     normalized = dict(headers or generate_random_headers())
-    target_referer = 'https://q.10jqka.com.cn/thshy/'
-    normalized['Host'] = 'q.10jqka.com.cn'
+    target_referer = 'https://data.10jqka.com.cn/funds/hyzjl/'
+    normalized['Host'] = 'data.10jqka.com.cn'
     normalized['Referer'] = target_referer
     normalized['Accept'] = 'text/html, */*; q=0.01'
     normalized['X-Requested-With'] = 'XMLHttpRequest'

@@ -21,8 +21,8 @@ MAX_NEWS_HOURS = 48
 
 DATA_URL = "https://push2.eastmoney.com/api/qt/clist/get"
 NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"
-THS_SECTOR_NET_IN_URL = "https://q.10jqka.com.cn/thshy/index/field/zjjlr/order/desc/page/1/ajax/1/"
-THS_SECTOR_NET_OUT_URL = "https://q.10jqka.com.cn/thshy/index/field/zjjlr/order/asc/page/1/ajax/1/"
+THS_SECTOR_NET_IN_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/"
+THS_SECTOR_NET_OUT_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/"
 THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 
 USE_PROXY = False
