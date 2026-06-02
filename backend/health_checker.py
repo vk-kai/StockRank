@@ -195,19 +195,21 @@ def _acquire_headers(max_attempts=9):
     """尝试获取可用请求头，最多max_attempts次。返回 (headers, 成功)"""
     from data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
 
+    last_time = 0
     for attempt in range(max_attempts):
         headers = normalize_ths_sector_headers(generate_random_headers())
         cookie = refresh_ths_cookie(force=True)
         if cookie:
             headers['Cookie'] = cookie
-        success, _, error = _test_sector_with_headers(headers)
+        success, response_time, error = _test_sector_with_headers(headers)
+        last_time = response_time
         if success:
-            return headers, True
+            return headers, True, response_time
         if attempt < max_attempts - 1:
             time.sleep(1)
 
     health_logger.warning(f"获取请求头失败，已尝试{max_attempts}次")
-    return None, False
+    return None, False, last_time
 
 def _acquire_news_headers(max_attempts=5):
     from data_processor import generate_random_headers
@@ -239,7 +241,7 @@ def run_full_health_check():
     news_time = 0
 
     if trading_now:
-        _, found = _acquire_headers(9)
+        _, found, sector_time = _acquire_headers(9)
         if found:
             sector_ok = True
             sector_error = None
@@ -310,7 +312,7 @@ def start_health_checker():
     trading_now = _is_trading_now()
     sector_ok = True
     if trading_now:
-        _, sector_ok = _acquire_headers(9)
+        _, sector_ok, sector_time = _acquire_headers(9)
 
     news_headers, news_found = _acquire_news_headers(5)
 
@@ -326,7 +328,7 @@ def start_health_checker():
             'status': 'ok' if sector_ok else 'error',
             'last_check': now,
             'error': None if trading_now else '??????????????',
-            'response_time': None
+            'response_time': sector_time if trading_now else None
         }
         save_health_status()
     else:

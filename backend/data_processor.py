@@ -77,7 +77,6 @@ def refresh_ths_cookie(force=False):
             )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
-            data_logger.info("同花顺动态Cookie刷新成功")
             return cookie
 
         error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
@@ -1097,11 +1096,13 @@ def _parse_json_or_jsonp(text):
         return json.loads(content[start + 1:end])
     return None
 
-def get_market_index_data():
+def get_eastmoney_market_index_data():
     global latest_market_data
     
     headers = {
-        'User-Agent': get_random_user_agent()
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://quote.eastmoney.com/'
     }
     
     params = {
@@ -1113,6 +1114,7 @@ def get_market_index_data():
     
     try:
         response = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
         data = response.json()
         
         if 'data' in data and 'diff' in data['data']:
@@ -1142,11 +1144,11 @@ def get_market_index_data():
             latest_market_data['indices'] = indices
             return indices
         else:
-            error_logger.error(f"获取大盘指数数据格式异常: {data}")
+            error_logger.warning(f"东方财富大盘指数数据格式异常: {data}")
     except Exception as e:
-        error_logger.error(f"获取大盘指数数据失败: {e}")
+        error_logger.warning(f"东方财富大盘指数数据获取失败: {e}")
     
-    return get_sina_market_index_data()
+    return None
 
 def get_sina_market_index_data():
     global latest_market_data
@@ -1196,10 +1198,22 @@ def get_sina_market_index_data():
         if indices:
             latest_market_data['indices'] = indices
             return indices
-        error_logger.error(f"新浪大盘指数数据格式异常: {response.text[:300]}")
+        error_logger.warning(f"新浪大盘指数数据格式异常: {response.text[:300]}")
     except Exception as e:
-        error_logger.error(f"获取新浪大盘指数数据失败: {e}")
+        error_logger.warning(f"新浪大盘指数数据获取失败，准备使用东方财富兜底: {e}")
 
+    return None
+
+def get_market_index_data():
+    indices = get_sina_market_index_data()
+    if indices:
+        return indices
+
+    indices = get_eastmoney_market_index_data()
+    if indices:
+        return indices
+
+    error_logger.error("大盘指数数据获取失败：新浪与东方财富均不可用")
     return None
 
 def get_stock_statistics():
