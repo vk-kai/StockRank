@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import traceback
 from config import DAILY_DIR, REALTIME_DIR
 from data_processor import (
-    get_sector_flow_data, load_recent_daily_data, load_recent_realtime_data,
+    load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
@@ -35,6 +35,20 @@ def _get_latest_from_realtime_data(realtime_data):
     last_record = realtime_data[last_time_key]
     if last_record and 'data' in last_record:
         return last_record['data'], last_record.get('timestamp')
+    return None, None
+
+def _get_latest_available_cached_flow(exclude_date=None):
+    recent_history = load_recent_daily_data(7)
+    if not recent_history:
+        return None, None
+
+    for latest_date in sorted(recent_history.keys(), reverse=True):
+        if exclude_date and latest_date == exclude_date:
+            continue
+        latest_record = recent_history[latest_date]
+        if latest_record and isinstance(latest_record, list) and len(latest_record) > 0:
+            return latest_record, latest_date
+
     return None, None
 
 def _has_today_market_summary(summary, now):
@@ -146,8 +160,18 @@ def get_current_flow():
                     'message': '交易时间，返回缓存数据'
                 })
             
-            system_logger.info("交易时间且无缓存数据，尝试获取最新板块数据")
-            new_data = get_sector_flow_data()
+            system_logger.info("交易时间且无当天缓存数据，跳过同步抓取并返回历史缓存")
+            latest_record, latest_date = _get_latest_available_cached_flow(exclude_date=today)
+            if latest_record:
+                return jsonify({
+                    'success': True,
+                    'data': latest_record,
+                    'timestamp': datetime.now().astimezone().isoformat(),
+                    'message': f'No current-day cache; returning cached flow data from {latest_date}'
+                })
+
+            system_logger.warning("No cached flow data; skipped synchronous crawl in /api/flow/current")
+            new_data = []
             if new_data:
                 return jsonify({
                     'success': True,
