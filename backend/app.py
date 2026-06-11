@@ -87,6 +87,42 @@ def create_app():
         
         return jsonify({'success': False, 'message': '缺少 crawler 参数'}), 400
     
+    @app.route('/api/system/restart', methods=['POST', 'OPTIONS'])
+    def restart_thread():
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True})
+        
+        data = request.get_json() or {}
+        thread_name = data.get('thread', '')
+        
+        if not thread_name:
+            return jsonify({'success': False, 'message': '缺少 thread 参数'}), 400
+        
+        global data_collection_thread, news_collection_thread
+        
+        if thread_name == 'data_collector':
+            if data_collection_thread.is_alive():
+                system_logger.info(f"[重启] data_collector 线程仍在运行，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+            
+            data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
+            data_collection_thread.start()
+            system_logger.info(f"[重启] data_collector 线程已重新启动")
+            return jsonify({'success': True, 'message': 'data_collector 线程已重启'})
+        
+        elif thread_name == 'news_collector':
+            if news_collection_thread.is_alive():
+                system_logger.info(f"[重启] news_collector 线程仍在运行，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+            
+            news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
+            news_collection_thread.start()
+            system_logger.info(f"[重启] news_collector 线程已重新启动")
+            return jsonify({'success': True, 'message': 'news_collector 线程已重启'})
+        
+        else:
+            return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
+    
     @app.errorhandler(Exception)
     def handle_exception(e):
         if isinstance(e, HTTPException):
