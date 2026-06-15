@@ -1963,9 +1963,118 @@
   color: #e0e6f0;
   font-size: 14px;
   line-height: 1.8;
-  white-space: pre-wrap;
-  word-wrap: break-word;
   padding: 10px;
+}
+
+.ai-analysis-content h1,
+.ai-analysis-content h2,
+.ai-analysis-content h3,
+.ai-analysis-content h4,
+.ai-analysis-content h5,
+.ai-analysis-content h6 {
+  color: #fff;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.ai-analysis-content h1 {
+  font-size: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+}
+
+.ai-analysis-content h2 {
+  font-size: 18px;
+}
+
+.ai-analysis-content h3 {
+  font-size: 16px;
+}
+
+.ai-analysis-content p {
+  margin-bottom: 12px;
+}
+
+.ai-analysis-content ul,
+.ai-analysis-content ol {
+  margin-bottom: 12px;
+  padding-left: 20px;
+}
+
+.ai-analysis-content li {
+  margin-bottom: 6px;
+}
+
+.ai-analysis-content strong {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.ai-analysis-content em {
+  color: #a5b4fc;
+}
+
+.ai-analysis-content code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #4ade80;
+}
+
+.ai-analysis-content pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.ai-analysis-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.ai-analysis-content blockquote {
+  border-left: 3px solid #7c3aed;
+  padding-left: 12px;
+  margin: 12px 0;
+  color: #a5b4fc;
+}
+
+.ai-analysis-content a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.ai-analysis-content a:hover {
+  text-decoration: underline;
+}
+
+.ai-analysis-content hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 20px 0;
+}
+
+.ai-analysis-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.ai-analysis-content th,
+.ai-analysis-content td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.ai-analysis-content th {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-weight: 600;
 }
 
 .ai-analysis-error {

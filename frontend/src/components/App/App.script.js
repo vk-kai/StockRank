@@ -1,4 +1,5 @@
 import * as echarts from 'echarts'
+import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, analyzeDailyFlow } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
@@ -268,6 +269,10 @@ export default {
       return this.replayDate === this.todayDate
         ? '今日净流入TOP5 / 净流出TOP5'
         : `${this.replayDate}净流入TOP5 / 净流出TOP5`
+    },
+    renderedAIAnalysis() {
+      if (!this.aiAnalysisResult) return ''
+      return marked.parse(this.aiAnalysisResult)
     }
   },
   mounted() {

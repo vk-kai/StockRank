@@ -339,31 +339,42 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
     
     # 添加分钟级走势数据摘要
     if minute_data:
-        analysis_text += "\n【盘中资金流向走势】\n"
+        analysis_text += "\n【盘中资金流向走势（每5分钟）】\n"
         time_keys = sorted([k for k in minute_data.keys() if not k.startswith('_')])
-        if time_keys:
-            # 提取关键时间点的数据
-            key_times = []
-            if len(time_keys) >= 3:
-                key_times = [time_keys[0], time_keys[len(time_keys)//2], time_keys[-1]]
+        
+        # 传递所有时间点的完整数据
+        for t in time_keys:
+            data = minute_data.get(t, {})
+            if isinstance(data, dict):
+                items = data.get('data', [])
             else:
-                key_times = time_keys
+                items = data if isinstance(data, list) else []
             
-            for t in key_times:
-                data = minute_data.get(t, {})
-                if isinstance(data, dict):
-                    items = data.get('data', [])
-                else:
-                    items = data if isinstance(data, list) else []
+            if items:
+                # 按净流入排序，取流入和流出各前5
+                sorted_items = sorted(items, key=lambda x: x.get('net_flow', 0), reverse=True)
+                top_in = sorted_items[:5]
+                top_out = [s for s in sorted_items if s.get('net_flow', 0) < 0][:5]
                 
-                if items:
-                    top_in = [s for s in items if s.get('net_flow', 0) > 0][:3]
-                    top_out = [s for s in items if s.get('net_flow', 0) < 0][:3]
-                    analysis_text += f"\n时间点 {t}:\n"
-                    if top_in:
-                        analysis_text += f"  流入前三: {', '.join([s.get('name','') for s in top_in])}\n"
-                    if top_out:
-                        analysis_text += f"  流出前三: {', '.join([s.get('name','') for s in top_out])}\n"
+                analysis_text += f"\n{t}\n"
+                if top_in:
+                    analysis_text += "流入: "
+                    inflow_strs = []
+                    for s in top_in:
+                        name = s.get('name', '')
+                        net_flow = s.get('net_flow', 0)
+                        change = s.get('change', 0)
+                        inflow_strs.append(f"{name}(+{format_amount(net_flow)}/{change*100:.2f}%)")
+                    analysis_text += ", ".join(inflow_strs) + "\n"
+                if top_out:
+                    analysis_text += "流出: "
+                    outflow_strs = []
+                    for s in top_out:
+                        name = s.get('name', '')
+                        net_flow = s.get('net_flow', 0)
+                        change = s.get('change', 0)
+                        outflow_strs.append(f"{name}(-{format_amount(abs(net_flow))}/{change*100:.2f}%)")
+                    analysis_text += ", ".join(outflow_strs) + "\n"
     
     # 添加大盘摘要数据
     if market_summary:

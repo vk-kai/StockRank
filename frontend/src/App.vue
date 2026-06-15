@@ -332,9 +332,7 @@
           <button class="close-btn" @click="closeAIAnalysisModal">×</button>
         </div>
         <div class="modal-body">
-          <div v-if="aiAnalysisResult" class="ai-analysis-content">
-            {{ aiAnalysisResult }}
-          </div>
+          <div v-if="aiAnalysisResult" class="ai-analysis-content" v-html="renderedAIAnalysis"></div>
           <div v-else-if="aiAnalysisError" class="ai-analysis-error">
             {{ aiAnalysisError }}
           </div>
