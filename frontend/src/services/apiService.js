@@ -465,14 +465,22 @@ export async function saveAIDailyPrompt(prompt, password) {
   }
 }
 
-export async function analyzeDailyFlow() {
+export async function startAnalyzeDailyFlow() {
   try {
-    const response = await apiClient.post('/flow/analyze-daily', {}, {
-      timeout: 120000
-    })
+    const response = await apiClient.post('/flow/analyze-daily/start')
     return response.data
   } catch (error) {
-    console.error('AI分析全天走势失败:', error)
+    console.error('启动AI分析失败:', error)
+    throw error
+  }
+}
+
+export async function getAnalyzeDailyFlowStatus() {
+  try {
+    const response = await apiClient.get('/flow/analyze-daily/status')
+    return response.data
+  } catch (error) {
+    console.error('查询AI分析状态失败:', error)
     throw error
   }
 }

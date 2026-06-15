@@ -1,7 +1,10 @@
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 import traceback
-from config import DAILY_DIR, REALTIME_DIR
+import threading
+import json
+import os
+from config import DAILY_DIR, REALTIME_DIR, AI_DAILY_RESULT_FILE, AI_DAILY_STATUS_FILE
 from data_processor import (
     load_recent_daily_data, load_recent_realtime_data,
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
@@ -15,6 +18,15 @@ from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
 system_logger = get_logger('system')
+
+# AI分析状态
+ai_analysis_status = {
+    'status': 'idle',  # idle, running, completed, failed
+    'message': '',
+    'start_time': None,
+    'end_time': None
+}
+ai_analysis_lock = threading.Lock()
 
 def _is_realtime_data_invalid(realtime_data):
     if not realtime_data:
@@ -439,9 +451,10 @@ def get_sector_stocks_api():
             'message': '服务器内部错误'
         }), 500
 
-@flow_bp.route('/analyze-daily', methods=['POST'])
-def analyze_daily_flow_api():
-    """AI分析全天走势"""
+def _run_ai_analysis_background():
+    """后台线程执行AI分析"""
+    global ai_analysis_status
+    
     try:
         now = datetime.now().astimezone()
         today = now.strftime('%Y-%m-%d')
@@ -501,13 +514,151 @@ def analyze_daily_flow_api():
         # 调用AI分析
         result = analyze_daily_flow(minute_data, top_sectors, market_summary)
         
-        return jsonify(result)
+        # 保存结果到md文件
+        if result.get('success') and result.get('analysis'):
+            with open(AI_DAILY_RESULT_FILE, 'w', encoding='utf-8') as f:
+                f.write(result.get('analysis', ''))
+        
+        # 保存状态到json文件
+        status_data = {
+            'status': 'completed',
+            'success': result.get('success', False),
+            'message': result.get('message', ''),
+            'end_time': datetime.now().astimezone().isoformat(),
+            'date': today
+        }
+        
+        with open(AI_DAILY_STATUS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, ensure_ascii=False)
+        
+        # 更新状态
+        with ai_analysis_lock:
+            ai_analysis_status['status'] = 'completed'
+            ai_analysis_status['message'] = result.get('message', '分析完成')
+            ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
+        
+        system_logger.info(f"AI全天走势分析后台任务完成")
         
     except Exception as e:
-        error_logger.error(f"API /api/flow/analyze-daily 异常: {e}")
+        error_logger.error(f"AI分析后台任务异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/flow/analyze-daily]: {str(e)}")
+        
+        # 保存失败状态
+        status_data = {
+            'status': 'failed',
+            'success': False,
+            'message': str(e),
+            'end_time': datetime.now().astimezone().isoformat()
+        }
+        
+        with open(AI_DAILY_STATUS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, ensure_ascii=False)
+        
+        # 更新状态
+        with ai_analysis_lock:
+            ai_analysis_status['status'] = 'failed'
+            ai_analysis_status['message'] = str(e)
+            ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
+
+
+@flow_bp.route('/analyze-daily/start', methods=['POST'])
+def analyze_daily_flow_start():
+    """发起AI分析全天走势（异步）"""
+    global ai_analysis_status
+    
+    try:
+        with ai_analysis_lock:
+            # 如果已经在运行，返回当前状态
+            if ai_analysis_status['status'] == 'running':
+                return jsonify({
+                    'success': True,
+                    'status': 'running',
+                    'message': '分析任务正在执行中，请稍后查询结果'
+                })
+            
+            # 重置状态
+            ai_analysis_status = {
+                'status': 'running',
+                'message': '分析任务已启动',
+                'start_time': datetime.now().astimezone().isoformat(),
+                'end_time': None
+            }
+        
+        # 清空旧的结果文件和状态文件
+        if os.path.exists(AI_DAILY_RESULT_FILE):
+            os.remove(AI_DAILY_RESULT_FILE)
+        if os.path.exists(AI_DAILY_STATUS_FILE):
+            os.remove(AI_DAILY_STATUS_FILE)
+        
+        # 启动后台线程
+        thread = threading.Thread(target=_run_ai_analysis_background)
+        thread.daemon = True
+        thread.start()
+        
+        system_logger.info("AI全天走势分析后台任务已启动")
+        
+        return jsonify({
+            'success': True,
+            'status': 'running',
+            'message': '分析任务已启动，请稍后查询结果'
+        })
+        
+    except Exception as e:
+        error_logger.error(f"API /api/flow/analyze-daily/start 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         return jsonify({
             'success': False,
-            'message': '服务器内部错误'
+            'message': '启动分析任务失败'
+        }), 500
+
+
+@flow_bp.route('/analyze-daily/status', methods=['GET'])
+def analyze_daily_flow_status():
+    """查询AI分析状态和结果"""
+    global ai_analysis_status
+    
+    try:
+        # 先检查状态文件
+        if os.path.exists(AI_DAILY_STATUS_FILE):
+            with open(AI_DAILY_STATUS_FILE, 'r', encoding='utf-8') as f:
+                status_data = json.load(f)
+            
+            # 如果结果已完成，读取md文件内容返回
+            if status_data.get('status') == 'completed':
+                analysis_content = ''
+                if os.path.exists(AI_DAILY_RESULT_FILE):
+                    with open(AI_DAILY_RESULT_FILE, 'r', encoding='utf-8') as f:
+                        analysis_content = f.read()
+                
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'analysis': analysis_content,
+                    'message': status_data.get('message', ''),
+                    'date': status_data.get('date', '')
+                })
+            elif status_data.get('status') == 'failed':
+                return jsonify({
+                    'success': False,
+                    'status': 'failed',
+                    'message': status_data.get('message', '分析失败')
+                })
+        
+        # 检查当前状态
+        with ai_analysis_lock:
+            current_status = ai_analysis_status.copy()
+        
+        return jsonify({
+            'success': True,
+            'status': current_status['status'],
+            'message': current_status['message'],
+            'start_time': current_status.get('start_time')
+        })
+        
+    except Exception as e:
+        error_logger.error(f"API /api/flow/analyze-daily/status 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': '查询状态失败'
         }), 500

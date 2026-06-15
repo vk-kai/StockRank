@@ -72,6 +72,8 @@ FEISHU_CONFIG_FILE = os.path.join(CONFIG_DIR, 'feishu_config.json')
 STOCK_MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'stock_monitor.json')
 AI_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_prompt.txt')
 AI_DAILY_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_prompt.txt')
+AI_DAILY_RESULT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_result.md')
+AI_DAILY_STATUS_FILE = os.path.join(CONFIG_DIR, 'ai_daily_status.json')
 MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'monitor_config.json')
 
 def load_monitor_config():

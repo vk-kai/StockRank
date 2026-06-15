@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, analyzeDailyFlow } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -1605,19 +1605,52 @@ export default {
       this.aiAnalysisError = null
       
       try {
-        const response = await analyzeDailyFlow()
+        // 发起分析任务
+        const startResponse = await startAnalyzeDailyFlow()
         
-        if (response.success) {
-          this.aiAnalysisResult = response.analysis
+        if (!startResponse.success) {
+          this.aiAnalysisError = startResponse.message || '启动分析失败'
           this.showAIAnalysisModal = true
-        } else {
-          this.aiAnalysisError = response.message || 'AI分析失败'
-          this.showAIAnalysisModal = true
+          this.aiAnalyzing = false
+          return
         }
+        
+        // 开始轮询状态
+        const maxAttempts = 60 // 最多轮询60次（约2分钟）
+        const pollInterval = 3000 // 每3秒查询一次
+        
+        for (let i = 0; i < maxAttempts; i++) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval))
+          
+          const statusResponse = await getAnalyzeDailyFlowStatus()
+          
+          if (statusResponse.status === 'completed') {
+            if (statusResponse.success) {
+              this.aiAnalysisResult = statusResponse.analysis
+              this.showAIAnalysisModal = true
+            } else {
+              this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+              this.showAIAnalysisModal = true
+            }
+            this.aiAnalyzing = false
+            return
+          } else if (statusResponse.status === 'failed') {
+            this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+            this.showAIAnalysisModal = true
+            this.aiAnalyzing = false
+            return
+          }
+          // 继续等待，状态为running
+        }
+        
+        // 超时
+        this.aiAnalysisError = 'AI分析超时，请稍后重试'
+        this.showAIAnalysisModal = true
+        this.aiAnalyzing = false
+        
       } catch (error) {
         this.aiAnalysisError = error.message || 'AI分析请求失败'
         this.showAIAnalysisModal = true
-      } finally {
         this.aiAnalyzing = false
       }
     },
