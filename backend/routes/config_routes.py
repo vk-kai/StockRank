@@ -10,7 +10,7 @@ import traceback
 
 from config import (
     AI_CONFIG_FILE, FEISHU_CONFIG_FILE, 
-    STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE
+    STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE
 )
 from data_processor import error_logger
 from logger import get_logger
@@ -418,3 +418,36 @@ def update_ai_prompt():
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/config/prompt POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新AI提示词失败'}), 500
+
+# ==================== 首页AI分析提示词配置 ====================
+@config_bp.route('/daily-prompt', methods=['GET'])
+def get_ai_daily_prompt():
+    try:
+        if os.path.exists(AI_DAILY_PROMPT_FILE):
+            with open(AI_DAILY_PROMPT_FILE, 'r', encoding='utf-8') as f:
+                prompt = f.read()
+                return jsonify({'success': True, 'data': prompt})
+        return jsonify({'success': True, 'data': ''})
+    except Exception as e:
+        error_logger.error(f"获取首页AI分析提示词失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/daily-prompt GET]: {str(e)}")
+        return jsonify({'success': False, 'message': '获取首页AI分析提示词失败'}), 500
+
+@config_bp.route('/daily-prompt', methods=['POST'])
+def update_ai_daily_prompt():
+    try:
+        data = request.json
+        
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+        
+        prompt = data.get('prompt', '')
+        with open(AI_DAILY_PROMPT_FILE, 'w', encoding='utf-8') as f:
+            f.write(prompt)
+        return jsonify({'success': True, 'message': '首页AI分析提示词更新成功'})
+    except Exception as e:
+        error_logger.error(f"更新首页AI分析提示词失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/daily-prompt POST]: {str(e)}")
+        return jsonify({'success': False, 'message': '更新首页AI分析提示词失败'}), 500

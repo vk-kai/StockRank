@@ -1920,3 +1920,70 @@
   }
 }
 
+/* AI分析按钮样式 */
+.ai-analyze-button {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.ai-analyze-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+  border-color: rgba(124, 58, 237, 0.7);
+}
+
+.ai-analyze-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* AI分析结果弹窗样式 */
+.ai-analysis-modal {
+  background: linear-gradient(135deg, #2d3561 0%, #1a1f35 100%);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.ai-analysis-content {
+  color: #e0e6f0;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  padding: 10px;
+}
+
+.ai-analysis-error {
+  color: #ef5350;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px;
+}
+
+@media (max-width: 768px) {
+  .ai-analyze-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .ai-analysis-modal {
+    max-width: 95%;
+    max-height: 85vh;
+  }
+}
+

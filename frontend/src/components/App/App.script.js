@@ -1,6 +1,6 @@
 import * as echarts from 'echarts'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, analyzeDailyFlow } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -86,7 +86,11 @@ export default {
       autoGrowSpeed: 200,
       marketSummary: null,
       marketSummaryError: null,
-      marketSummaryInterval: null
+      marketSummaryInterval: null,
+      aiAnalyzing: false,
+      showAIAnalysisModal: false,
+      aiAnalysisResult: null,
+      aiAnalysisError: null
     }
   },
   computed: {
@@ -1586,6 +1590,35 @@ export default {
         return `${label}运行正常`
       }
       return `${label}已停止`
+    },
+
+    async analyzeDailyFlow() {
+      if (this.aiAnalyzing) return
+      
+      this.aiAnalyzing = true
+      this.aiAnalysisResult = null
+      this.aiAnalysisError = null
+      
+      try {
+        const response = await analyzeDailyFlow()
+        
+        if (response.success) {
+          this.aiAnalysisResult = response.analysis
+          this.showAIAnalysisModal = true
+        } else {
+          this.aiAnalysisError = response.message || 'AI分析失败'
+          this.showAIAnalysisModal = true
+        }
+      } catch (error) {
+        this.aiAnalysisError = error.message || 'AI分析请求失败'
+        this.showAIAnalysisModal = true
+      } finally {
+        this.aiAnalyzing = false
+      }
+    },
+
+    closeAIAnalysisModal() {
+      this.showAIAnalysisModal = false
     }
   }
 }

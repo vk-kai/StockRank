@@ -9,6 +9,8 @@ import {
   saveStockMonitorConfig,
   getAIPrompt,
   saveAIPrompt,
+  getAIDailyPrompt,
+  saveAIDailyPrompt,
   getBannedIPs,
   unbanIP
 } from '../../services/apiService'
@@ -27,6 +29,7 @@ export default {
         { id: 'feishu', name: '飞书推送', icon: '📢' },
         { id: 'stock', name: '股票监控', icon: '📈' },
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
+        { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
         { id: 'security', name: 'IP黑名单', icon: '🛡️' }
       ],
       aiConfig: {
@@ -51,6 +54,7 @@ export default {
         stocks: []
       },
       aiPrompt: '',
+      aiDailyPrompt: '',
       bannedIPs: [],
       passwordModal: {
         show: false,
@@ -74,11 +78,12 @@ export default {
 
     async loadConfigs() {
       try {
-        const [aiRes, feishuRes, stockRes, promptRes] = await Promise.all([
+        const [aiRes, feishuRes, stockRes, promptRes, dailyPromptRes] = await Promise.all([
           getAIConfig(),
           getFeishuConfig(),
           getStockMonitorConfig(),
-          getAIPrompt()
+          getAIPrompt(),
+          getAIDailyPrompt()
         ])
 
         if (aiRes.success) {
@@ -96,6 +101,9 @@ export default {
         }
         if (promptRes.success) {
           this.aiPrompt = promptRes.data
+        }
+        if (dailyPromptRes.success) {
+          this.aiDailyPrompt = dailyPromptRes.data
         }
         
         await this.loadBannedIPs()
@@ -336,6 +344,44 @@ export default {
 
 你需要统一判断其对A股的影响价值。`
       this.showToast('已恢复默认提示词', 'info')
+    },
+
+    async saveDailyPromptConfig() {
+      this.showPasswordModal(async (password) => {
+        try {
+          const response = await saveAIDailyPrompt(this.aiDailyPrompt, password)
+          if (response.success) {
+            this.showToast('首页AI分析提示词保存成功', 'success')
+            await this.loadConfigs()
+          } else {
+            this.showToast(response.message || '保存失败', 'error')
+          }
+        } catch (error) {
+          if (error.response?.status === 401) {
+            this.showToast('密码错误', 'error')
+          } else {
+            const message = error.response?.data?.message || '保存失败'
+            this.showToast(message, 'error')
+          }
+        }
+      })
+    },
+
+    resetDailyPrompt() {
+      this.aiDailyPrompt = `你是一个专业的A股资金流向分析师。
+
+请根据以下全天板块资金流入数据和走势图数据，分析今日市场的资金流向特征、热点板块、市场情绪和潜在机会。
+
+请从以下几个方面进行分析：
+1. 整体市场资金流向趋势（流入/流出整体情况）
+2. 烆点板块分析（资金流入最多的板块及原因推测）
+3. 资金流出板块分析（资金流出最多的板块及原因推测）
+4. 盘中资金流向变化特点（早盘、午盘、尾盘的资金流向变化）
+5. 市场情绪判断（乐观/谨慎/恐慌等）
+6. 次日展望和建议
+
+请用简洁专业的语言进行分析，输出格式为纯文本，不要使用JSON格式。`
+      this.showToast('已恢复默认首页AI分析提示词', 'info')
     },
 
     showToast(message, type = 'success') {

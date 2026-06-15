@@ -14,6 +14,9 @@
           <button class="log-button" @click="goToLogs">日志</button>
           <button class="house-button" @click="goToHouseKline">房价K线</button>
           <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
+          <button class="ai-analyze-button" @click="analyzeDailyFlow" :disabled="aiAnalyzing">
+            {{ aiAnalyzing ? '分析中...' : '🤖 AI分析' }}
+          </button>
         </div>
       </div>
       <div class="controls">
@@ -267,7 +270,7 @@
     
     <SecurityAlert />
 
-    <!-- 涓偂璇︽儏寮圭獥 -->
+    <!-- 个股详情弹窗 -->
     <div class="modal-overlay" v-if="showStockModal" @click="closeStockModal">
       <div class="modal-container" @click.stop>
         <div class="modal-header">
@@ -316,6 +319,24 @@
               <div class="col">{{ stock.turnover }}</div>
               <div class="col">{{ stock.volume }}</div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI分析结果弹窗 -->
+    <div class="modal-overlay" v-if="showAIAnalysisModal" @click="closeAIAnalysisModal">
+      <div class="ai-analysis-modal" @click.stop>
+        <div class="modal-header">
+          <h3>🤖 AI全天走势分析</h3>
+          <button class="close-btn" @click="closeAIAnalysisModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div v-if="aiAnalysisResult" class="ai-analysis-content">
+            {{ aiAnalysisResult }}
+          </div>
+          <div v-else-if="aiAnalysisError" class="ai-analysis-error">
+            {{ aiAnalysisError }}
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@ from data_processor import (
     refresh_market_summary_cache, is_market_summary_complete
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
+from ai_analyzer import analyze_daily_flow
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -433,6 +434,79 @@ def get_sector_stocks_api():
         error_logger.error(f"API /api/flow/sector-stocks 异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/sector-stocks]: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500
+
+@flow_bp.route('/analyze-daily', methods=['POST'])
+def analyze_daily_flow_api():
+    """AI分析全天走势"""
+    try:
+        now = datetime.now().astimezone()
+        today = now.strftime('%Y-%m-%d')
+        
+        # 获取分钟级数据
+        minute_data = load_realtime_data(today)
+        if minute_data.get('_invalid'):
+            minute_data = {}
+        
+        # 获取当前板块数据作为TOP板块
+        realtime_data = load_realtime_data(today)
+        data, timestamp = _get_latest_from_realtime_data(realtime_data)
+        
+        # 如果没有实时数据，尝试获取今日汇总数据
+        if not data:
+            today_daily_record = load_daily_data(today)
+            if today_daily_record and 'data' in today_daily_record:
+                data = today_daily_record['data']
+        
+        # 构建TOP板块数据
+        top_sectors = []
+        if data:
+            # 按净流入排序
+            inflow_sectors = sorted(
+                [s for s in data if s.get('net_flow', 0) > 0],
+                key=lambda x: x.get('net_flow', 0),
+                reverse=True
+            )[:5]
+            outflow_sectors = sorted(
+                [s for s in data if s.get('net_flow', 0) < 0],
+                key=lambda x: x.get('net_flow', 0)
+            )[:5]
+            
+            for i, s in enumerate(inflow_sectors, 1):
+                top_sectors.append({
+                    'name': s.get('name', ''),
+                    'net_flow': s.get('net_flow', 0),
+                    'flow': s.get('flow', 0),
+                    'change': s.get('change', 0),
+                    'flow_direction': 'in',
+                    'rank': i
+                })
+            
+            for i, s in enumerate(outflow_sectors, 1):
+                top_sectors.append({
+                    'name': s.get('name', ''),
+                    'net_flow': s.get('net_flow', 0),
+                    'flow': s.get('flow', 0),
+                    'change': s.get('change', 0),
+                    'flow_direction': 'out',
+                    'rank': i
+                })
+        
+        # 获取大盘摘要数据
+        market_summary = load_market_summary_cache()
+        
+        # 调用AI分析
+        result = analyze_daily_flow(minute_data, top_sectors, market_summary)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        error_logger.error(f"API /api/flow/analyze-daily 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/analyze-daily]: {str(e)}")
         return jsonify({
             'success': False,
             'message': '服务器内部错误'

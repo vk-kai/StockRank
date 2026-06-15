@@ -444,3 +444,35 @@ export async function getHouseKline() {
     throw error
   }
 }
+
+export async function getAIDailyPrompt() {
+  try {
+    const response = await apiClient.get('/config/daily-prompt')
+    return response.data
+  } catch (error) {
+    console.error('获取首页AI分析提示词失败:', error)
+    throw error
+  }
+}
+
+export async function saveAIDailyPrompt(prompt, password) {
+  try {
+    const response = await apiClient.post('/config/daily-prompt', { prompt, password })
+    return response.data
+  } catch (error) {
+    console.error('保存首页AI分析提示词失败:', error)
+    throw error
+  }
+}
+
+export async function analyzeDailyFlow() {
+  try {
+    const response = await apiClient.post('/flow/analyze-daily', {}, {
+      timeout: 120000
+    })
+    return response.data
+  } catch (error) {
+    console.error('AI分析全天走势失败:', error)
+    throw error
+  }
+}

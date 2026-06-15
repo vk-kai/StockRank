@@ -3,7 +3,7 @@ import requests
 import time
 import re
 import threading
-from config import AI_CONFIG_FILE, AI_PROMPT_FILE
+from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -260,3 +260,225 @@ def is_important_news(analysis_result):
     action_suggestion = analysis_result.get('action_suggestion', '')
     
     return level == '重大' or action_suggestion == '立即推送'
+
+def load_ai_daily_prompt():
+    try:
+        with open(AI_DAILY_PROMPT_FILE, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        error_logger.error(f"加载首页AI分析提示词失败: {e}")
+        return None
+
+def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
+    """分析全天资金流向走势"""
+    global last_ai_call_time
+    
+    config = load_ai_config()
+    
+    if not config or not config.get('enabled'):
+        return {'success': False, 'message': 'AI分析未启用'}
+    
+    elapsed = time.time() - last_ai_call_time
+    if elapsed < AI_CALL_INTERVAL:
+        time.sleep(AI_CALL_INTERVAL - elapsed)
+    
+    last_ai_call_time = time.time()
+    
+    prompt = load_ai_daily_prompt()
+    if not prompt:
+        prompt = """你是一个专业的A股资金流向分析师。
+
+请根据以下全天板块资金流入数据和走势图数据，分析今日市场的资金流向特征、热点板块、市场情绪和潜在机会。
+
+请从以下几个方面进行分析：
+1. 整体市场资金流向趋势（流入/流出整体情况）
+2. 热点板块分析（资金流入最多的板块及原因推测）
+3. 资金流出板块分析（资金流出最多的板块及原因推测）
+4. 盘中资金流向变化特点（早盘、午盘、尾盘的资金流向变化）
+5. 市场情绪判断（乐观/谨慎/恐慌等）
+6. 次日展望和建议
+
+请用简洁专业的语言进行分析，输出格式为纯文本，不要使用JSON格式。"""
+    
+    api_url = config.get('api_url')
+    api_key = config.get('api_key')
+    model = config.get('model', 'gpt-3.5-turbo')
+    temperature = config.get('temperature', 0.7)
+    max_tokens = config.get('max_tokens', 2000)
+    timeout = min(config.get('timeout', 60), 120)
+    retry_count = config.get('retry_count', 3)
+    retry_interval = min(config.get('retry_interval', 10), 10)
+    
+    if not api_url or not api_key:
+        return {'success': False, 'message': 'AI配置不完整：缺少api_url或api_key'}
+    
+    full_url = config.get('full_url', False)
+    if not full_url and not api_url.endswith('/chat/completions'):
+        api_url = api_url.rstrip('/') + '/chat/completions'
+    
+    # 构建分析数据文本
+    analysis_text = "【今日板块资金流向数据】\n\n"
+    
+    # 添加TOP板块数据
+    if top_sectors:
+        analysis_text += "资金流入TOP5板块：\n"
+        inflow_sectors = [s for s in top_sectors if s.get('flow_direction') == 'in' or s.get('net_flow', 0) > 0]
+        for i, sector in enumerate(inflow_sectors[:5], 1):
+            name = sector.get('name', '')
+            net_flow = sector.get('net_flow', 0)
+            change = sector.get('change', 0)
+            analysis_text += f"{i}. {name}: 净流入{format_amount(net_flow)}, 涨跌幅{change*100:.2f}%\n"
+        
+        analysis_text += "\n资金流出TOP5板块：\n"
+        outflow_sectors = [s for s in top_sectors if s.get('flow_direction') == 'out' or s.get('net_flow', 0) < 0]
+        for i, sector in enumerate(outflow_sectors[:5], 1):
+            name = sector.get('name', '')
+            net_flow = sector.get('net_flow', 0)
+            change = sector.get('change', 0)
+            analysis_text += f"{i}. {name}: 净流出{format_amount(abs(net_flow))}, 涨跌幅{change*100:.2f}%\n"
+    
+    # 添加分钟级走势数据摘要
+    if minute_data:
+        analysis_text += "\n【盘中资金流向走势】\n"
+        time_keys = sorted([k for k in minute_data.keys() if not k.startswith('_')])
+        if time_keys:
+            # 提取关键时间点的数据
+            key_times = []
+            if len(time_keys) >= 3:
+                key_times = [time_keys[0], time_keys[len(time_keys)//2], time_keys[-1]]
+            else:
+                key_times = time_keys
+            
+            for t in key_times:
+                data = minute_data.get(t, {})
+                if isinstance(data, dict):
+                    items = data.get('data', [])
+                else:
+                    items = data if isinstance(data, list) else []
+                
+                if items:
+                    top_in = [s for s in items if s.get('net_flow', 0) > 0][:3]
+                    top_out = [s for s in items if s.get('net_flow', 0) < 0][:3]
+                    analysis_text += f"\n时间点 {t}:\n"
+                    if top_in:
+                        analysis_text += f"  流入前三: {', '.join([s.get('name','') for s in top_in])}\n"
+                    if top_out:
+                        analysis_text += f"  流出前三: {', '.join([s.get('name','') for s in top_out])}\n"
+    
+    # 添加大盘摘要数据
+    if market_summary:
+        analysis_text += "\n【大盘行情摘要】\n"
+        breadth = market_summary.get('breadth', {})
+        if breadth:
+            up_count = breadth.get('up_count', 0)
+            down_count = breadth.get('down_count', 0)
+            limit_up = breadth.get('limit_up_count', 0)
+            limit_down = breadth.get('limit_down_count', 0)
+            analysis_text += f"涨跌家数: 涨{up_count}家, 跌{down_count}家\n"
+            analysis_text += f"涨停跌停: 涨停{limit_up}家, 跌停{limit_down}家\n"
+        
+        turnover = market_summary.get('turnover', {})
+        if turnover:
+            total_turnover = turnover.get('turnover', 0)
+            turnover_change = turnover.get('turnover_change', 0)
+            analysis_text += f"成交额: {format_amount(total_turnover)}\n"
+            if turnover_change:
+                analysis_text += f"较上日变化: {format_amount(turnover_change, show_sign=True)}\n"
+    
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": analysis_text}
+    ]
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+    
+    for attempt in range(1, retry_count + 1):
+        try:
+            if _heartbeat_callback:
+                _heartbeat_callback()
+            
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=timeout
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                info_logger.info(f"AI全天走势分析成功")
+                return {'success': True, 'analysis': content}
+            
+            elif response.status_code == 429:
+                retry_after = response.headers.get('Retry-After', str(retry_interval))
+                try:
+                    wait_time = int(retry_after)
+                except:
+                    wait_time = retry_interval
+                if attempt < retry_count:
+                    time.sleep(wait_time)
+                    continue
+                return {'success': False, 'message': f'API速率限制，请稍后重试'}
+            
+            else:
+                error_msg = f'HTTP {response.status_code}'
+                try:
+                    error_data = response.json()
+                    if isinstance(error_data.get('error'), dict):
+                        error_msg = error_data['error'].get('message', error_msg)
+                except:
+                    pass
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': error_msg}
+                
+        except requests.exceptions.Timeout:
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': '请求超时'}
+            
+        except requests.exceptions.ConnectionError as e:
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'连接失败: {str(e)[:100]}'}
+            
+        except Exception as e:
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'异常: {str(e)[:100]}'}
+    
+    return {'success': False, 'message': 'AI分析失败，请稍后重试'}
+
+def format_amount(value, show_sign=False):
+    """格式化金额显示"""
+    if value is None:
+        return '--'
+    
+    amount = abs(value)
+    sign = '+' if value > 0 else '-' if value < 0 else ''
+    
+    if amount >= 100000000:
+        formatted = f"{amount/100000000:.2f}亿"
+    elif amount >= 10000:
+        formatted = f"{amount/10000:.2f}万"
+    else:
+        formatted = f"{amount:.0f}"
+    
+    if show_sign and value != 0:
+        return sign + formatted
+    return formatted

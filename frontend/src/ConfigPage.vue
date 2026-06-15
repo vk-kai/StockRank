@@ -251,6 +251,26 @@
         </div>
       </div>
 
+      <div v-if="activeTab === 'daily-prompt'" class="config-section">
+        <h2>📊 首页AI分析提示词配置</h2>
+        <div class="config-form">
+          <div class="form-group">
+            <label>首页AI分析提示词</label>
+            <textarea 
+              v-model="aiDailyPrompt" 
+              rows="20"
+              placeholder="AI分析全天走势时使用的系统提示词..."
+            ></textarea>
+            <span class="hint">该提示词用于指导AI如何分析首页的全天资金流向走势数据</span>
+          </div>
+
+          <div class="form-actions">
+            <button @click="saveDailyPromptConfig" class="btn-primary">保存配置</button>
+            <button @click="resetDailyPrompt" class="btn-secondary">恢复默认</button>
+          </div>
+        </div>
+      </div>
+
       <div v-if="activeTab === 'security'" class="config-section">
         <h2>🛡️ IP黑名单管理</h2>
         <div class="config-form">
