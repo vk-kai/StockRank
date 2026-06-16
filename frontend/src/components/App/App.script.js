@@ -94,7 +94,8 @@ export default {
       aiAnalysisError: null,
       aiAnalysisDate: null,
       aiAnalysisProgress: 0,
-      aiAnalysisStep: ''
+      aiAnalysisStep: '',
+      aiAnalysisPollTimer: null
     }
   },
   computed: {
@@ -289,6 +290,8 @@ export default {
     this.fetchHealthStatus()
     this.fetchMarketSummary()
     this.startMarketSummaryRefresh()
+    // 检查上次AI分析任务状态
+    this.checkAIAnalysisStatus()
     window.addEventListener('resize', this.handleResize)
     this.$nextTick(() => {
       this.updateLayoutHeight()
@@ -320,6 +323,9 @@ export default {
     }
     if (this.marketSummaryInterval) {
       clearInterval(this.marketSummaryInterval)
+    }
+    if (this.aiAnalysisPollTimer) {
+      clearInterval(this.aiAnalysisPollTimer)
     }
   },
   methods: {
@@ -1674,54 +1680,80 @@ export default {
         return
       }
       
-      // 开始轮询状态，获取真实进度
-      const maxAttempts = 120 // 最多轮询120次（约4分钟）
-      const pollInterval = 2000 // 每2秒查询一次
-      
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval))
-        
-        const statusResponse = await getAnalyzeDailyFlowStatus()
-        
-        // 更新进度和步骤（从后端获取真实数据）
-        if (statusResponse.status === 'running') {
-          this.aiAnalysisProgress = statusResponse.progress || 0
-          this.aiAnalysisStep = statusResponse.step || '处理中...'
-        }
-        
-        if (statusResponse.status === 'completed') {
-          this.aiAnalysisProgress = 100
-          this.aiAnalysisStep = '完成'
-          if (statusResponse.success) {
-            this.aiAnalysisResult = statusResponse.analysis
-            this.aiAnalysisDate = statusResponse.date
-            this.showAIAnalysisModal = true
-          } else {
-            this.aiAnalysisError = statusResponse.message || 'AI分析失败'
-            this.showAIAnalysisModal = true
-          }
-          this.aiAnalyzing = false
-          return
-        } else if (statusResponse.status === 'failed') {
-          this.aiAnalysisError = statusResponse.message || 'AI分析失败'
-          this.showAIAnalysisModal = true
-          this.aiAnalyzing = false
-          this.aiAnalysisProgress = 0
-          this.aiAnalysisStep = ''
-          return
-        }
-      }
-      
-      // 超时
-      this.aiAnalysisError = 'AI分析超时，请稍后重试'
-      this.showAIAnalysisModal = true
-      this.aiAnalyzing = false
-      this.aiAnalysisProgress = 0
-      this.aiAnalysisStep = ''
+      // 启动轮询跟踪状态
+      this.startAIAnalysisPolling()
     },
 
     closeAIAnalysisModal() {
       this.showAIAnalysisModal = false
+    },
+
+    async checkAIAnalysisStatus() {
+      // 初次进入页面时检查上次任务状态
+      try {
+        const statusResponse = await getAnalyzeDailyFlowStatus()
+        
+        if (statusResponse.status === 'running') {
+          // 上次任务还在运行，禁用按钮，开始跟踪
+          this.aiAnalyzing = true
+          this.aiAnalysisProgress = statusResponse.progress || 0
+          this.aiAnalysisStep = statusResponse.step || '处理中...'
+          this.startAIAnalysisPolling()
+        } else if (statusResponse.status === 'completed' && statusResponse.success) {
+          // 上次任务已完成，检查是否是今天的结果
+          const today = new Date().toISOString().split('T')[0]
+          if (statusResponse.date === today) {
+            this.aiAnalysisProgress = 100
+            this.aiAnalysisStep = '完成'
+            this.aiAnalysisResult = statusResponse.analysis
+            this.aiAnalysisDate = statusResponse.date
+          }
+        }
+      } catch (error) {
+        // 检查失败，忽略
+      }
+    },
+
+    startAIAnalysisPolling() {
+      // 每5秒轮询一次状态
+      if (this.aiAnalysisPollTimer) {
+        clearInterval(this.aiAnalysisPollTimer)
+      }
+      
+      this.aiAnalysisPollTimer = setInterval(async () => {
+        try {
+          const statusResponse = await getAnalyzeDailyFlowStatus()
+          
+          if (statusResponse.status === 'running') {
+            this.aiAnalysisProgress = statusResponse.progress || 0
+            this.aiAnalysisStep = statusResponse.step || '处理中...'
+          } else if (statusResponse.status === 'completed') {
+            clearInterval(this.aiAnalysisPollTimer)
+            this.aiAnalysisPollTimer = null
+            this.aiAnalysisProgress = 100
+            this.aiAnalysisStep = '完成'
+            if (statusResponse.success) {
+              this.aiAnalysisResult = statusResponse.analysis
+              this.aiAnalysisDate = statusResponse.date
+              this.showAIAnalysisModal = true
+            } else {
+              this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+              this.showAIAnalysisModal = true
+            }
+            this.aiAnalyzing = false
+          } else if (statusResponse.status === 'failed') {
+            clearInterval(this.aiAnalysisPollTimer)
+            this.aiAnalysisPollTimer = null
+            this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+            this.showAIAnalysisModal = true
+            this.aiAnalyzing = false
+            this.aiAnalysisProgress = 0
+            this.aiAnalysisStep = ''
+          }
+        } catch (error) {
+          // 轮询失败，继续
+        }
+      }, 5000)
     }
   }
 }
