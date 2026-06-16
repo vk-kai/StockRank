@@ -92,7 +92,9 @@ export default {
       showAIAnalysisModal: false,
       aiAnalysisResult: null,
       aiAnalysisError: null,
-      aiAnalysisDate: null
+      aiAnalysisDate: null,
+      aiAnalysisProgress: 0,
+      aiAnalysisStep: ''
     }
   },
   computed: {
@@ -1605,6 +1607,8 @@ export default {
       this.aiAnalysisResult = null
       this.aiAnalysisError = null
       this.aiAnalysisDate = null
+      this.aiAnalysisProgress = 0
+      this.aiAnalysisStep = '检查历史结果...'
       
       try {
         // 先查询是否有历史结果
@@ -1614,6 +1618,8 @@ export default {
         if (statusResponse.status === 'completed' && statusResponse.success) {
           const today = new Date().toISOString().split('T')[0]
           if (statusResponse.date === today) {
+            this.aiAnalysisProgress = 100
+            this.aiAnalysisStep = '完成'
             this.aiAnalysisResult = statusResponse.analysis
             this.aiAnalysisDate = statusResponse.date
             this.showAIAnalysisModal = true
@@ -1629,6 +1635,8 @@ export default {
         this.aiAnalysisError = error.message || 'AI分析请求失败'
         this.showAIAnalysisModal = true
         this.aiAnalyzing = false
+        this.aiAnalysisProgress = 0
+        this.aiAnalysisStep = ''
       }
     },
 
@@ -1639,6 +1647,8 @@ export default {
       this.aiAnalysisResult = null
       this.aiAnalysisError = null
       this.aiAnalysisDate = null
+      this.aiAnalysisProgress = 0
+      this.aiAnalysisStep = ''
       
       try {
         await this._startNewAnalysis()
@@ -1646,6 +1656,8 @@ export default {
         this.aiAnalysisError = error.message || 'AI分析请求失败'
         this.showAIAnalysisModal = true
         this.aiAnalyzing = false
+        this.aiAnalysisProgress = 0
+        this.aiAnalysisStep = ''
       }
     },
 
@@ -1657,19 +1669,29 @@ export default {
         this.aiAnalysisError = startResponse.message || '启动分析失败'
         this.showAIAnalysisModal = true
         this.aiAnalyzing = false
+        this.aiAnalysisProgress = 0
+        this.aiAnalysisStep = ''
         return
       }
       
-      // 开始轮询状态
-      const maxAttempts = 60 // 最多轮询60次（约2分钟）
-      const pollInterval = 3000 // 每3秒查询一次
+      // 开始轮询状态，获取真实进度
+      const maxAttempts = 120 // 最多轮询120次（约4分钟）
+      const pollInterval = 2000 // 每2秒查询一次
       
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise(resolve => setTimeout(resolve, pollInterval))
         
         const statusResponse = await getAnalyzeDailyFlowStatus()
         
+        // 更新进度和步骤（从后端获取真实数据）
+        if (statusResponse.status === 'running') {
+          this.aiAnalysisProgress = statusResponse.progress || 0
+          this.aiAnalysisStep = statusResponse.step || '处理中...'
+        }
+        
         if (statusResponse.status === 'completed') {
+          this.aiAnalysisProgress = 100
+          this.aiAnalysisStep = '完成'
           if (statusResponse.success) {
             this.aiAnalysisResult = statusResponse.analysis
             this.aiAnalysisDate = statusResponse.date
@@ -1684,15 +1706,18 @@ export default {
           this.aiAnalysisError = statusResponse.message || 'AI分析失败'
           this.showAIAnalysisModal = true
           this.aiAnalyzing = false
+          this.aiAnalysisProgress = 0
+          this.aiAnalysisStep = ''
           return
         }
-        // 继续等待，状态为running
       }
       
       // 超时
       this.aiAnalysisError = 'AI分析超时，请稍后重试'
       this.showAIAnalysisModal = true
       this.aiAnalyzing = false
+      this.aiAnalysisProgress = 0
+      this.aiAnalysisStep = ''
     },
 
     closeAIAnalysisModal() {

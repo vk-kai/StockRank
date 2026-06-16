@@ -15,7 +15,17 @@
           <button class="house-button" @click="goToHouseKline">房价K线</button>
           <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
           <button class="ai-analyze-button" @click="analyzeDailyFlow" :disabled="aiAnalyzing">
-            {{ aiAnalyzing ? '分析中...' : '🤖 AI分析' }}
+            <span class="button-text">
+              <template v-if="aiAnalyzing">
+                <span class="step-text">{{ aiAnalysisStep }}</span>
+                <span class="progress-text">{{ Math.round(aiAnalysisProgress) }}%</span>
+              </template>
+              <template v-else>🤖 AI分析</template>
+            </span>
+            <div class="water-fill" v-if="aiAnalyzing" :style="{ width: aiAnalysisProgress + '%' }">
+              <div class="wave"></div>
+              <div class="wave wave2"></div>
+            </div>
           </button>
         </div>
       </div>

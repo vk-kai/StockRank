@@ -1932,6 +1932,65 @@
   font-weight: 500;
   transition: all 0.3s ease;
   white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+  min-width: 140px;
+}
+
+.ai-analyze-button .button-text {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ai-analyze-button .step-text {
+  font-size: 13px;
+}
+
+.ai-analyze-button .progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+/* 水波填充效果 */
+.ai-analyze-button .water-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  z-index: 1;
+  transition: width 0.5s ease;
+  overflow: hidden;
+}
+
+.ai-analyze-button .wave {
+  position: absolute;
+  top: -10px;
+  left: 0;
+  width: 200%;
+  height: 20px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255,255,255,0.3) 0%, transparent 70%);
+  animation: wave-animation 1.5s infinite linear;
+}
+
+.ai-analyze-button .wave2 {
+  top: -5px;
+  animation: wave-animation 2s infinite linear reverse;
+  opacity: 0.5;
+}
+
+@keyframes wave-animation {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
 }
 
 .ai-analyze-button:hover:not(:disabled) {
@@ -1941,7 +2000,6 @@
 }
 
 .ai-analyze-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
   transform: none;
 }

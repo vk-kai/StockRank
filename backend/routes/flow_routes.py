@@ -23,10 +23,23 @@ system_logger = get_logger('system')
 ai_analysis_status = {
     'status': 'idle',  # idle, running, completed, failed
     'message': '',
+    'progress': 0,  # 0-100
+    'step': '',  # 当前步骤描述
     'start_time': None,
     'end_time': None
 }
 ai_analysis_lock = threading.Lock()
+
+def _update_ai_status(status, message, progress, step):
+    """更新AI分析状态"""
+    global ai_analysis_status
+    with ai_analysis_lock:
+        ai_analysis_status['status'] = status
+        ai_analysis_status['message'] = message
+        ai_analysis_status['progress'] = progress
+        ai_analysis_status['step'] = step
+        if status == 'completed' or status == 'failed':
+            ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
 
 def _is_realtime_data_invalid(realtime_data):
     if not realtime_data:
@@ -459,12 +472,14 @@ def _run_ai_analysis_background():
         now = datetime.now().astimezone()
         today = now.strftime('%Y-%m-%d')
         
-        # 获取分钟级数据
+        # 步骤1: 获取分钟级数据
+        _update_ai_status('running', '正在获取数据', 10, '获取分钟级数据')
         minute_data = load_realtime_data(today)
         if minute_data.get('_invalid'):
             minute_data = {}
         
-        # 获取当前板块数据作为TOP板块
+        # 步骤2: 获取板块数据
+        _update_ai_status('running', '正在获取数据', 20, '获取板块数据')
         realtime_data = load_realtime_data(today)
         data, timestamp = _get_latest_from_realtime_data(realtime_data)
         
@@ -474,7 +489,8 @@ def _run_ai_analysis_background():
             if today_daily_record and 'data' in today_daily_record:
                 data = today_daily_record['data']
         
-        # 构建TOP板块数据
+        # 步骤3: 整理TOP板块数据
+        _update_ai_status('running', '正在整理数据', 30, '整理板块数据')
         top_sectors = []
         if data:
             # 按净流入排序
@@ -508,18 +524,22 @@ def _run_ai_analysis_background():
                     'rank': i
                 })
         
-        # 获取大盘摘要数据
+        # 步骤4: 获取大盘摘要数据
+        _update_ai_status('running', '正在整理数据', 40, '获取大盘摘要')
         market_summary = load_market_summary_cache()
         
-        # 调用AI分析
+        # 步骤5: 调用AI分析
+        _update_ai_status('running', '正在调用AI', 50, '发送数据给AI')
         result = analyze_daily_flow(minute_data, top_sectors, market_summary)
         
-        # 保存结果到md文件
+        # 步骤6: 保存结果
+        _update_ai_status('running', '正在保存结果', 80, '保存分析结果')
         if result.get('success') and result.get('analysis'):
             with open(AI_DAILY_RESULT_FILE, 'w', encoding='utf-8') as f:
                 f.write(result.get('analysis', ''))
         
-        # 保存状态到json文件
+        # 步骤7: 保存状态
+        _update_ai_status('running', '正在保存结果', 90, '保存状态信息')
         status_data = {
             'status': 'completed',
             'success': result.get('success', False),
@@ -531,11 +551,8 @@ def _run_ai_analysis_background():
         with open(AI_DAILY_STATUS_FILE, 'w', encoding='utf-8') as f:
             json.dump(status_data, f, ensure_ascii=False)
         
-        # 更新状态
-        with ai_analysis_lock:
-            ai_analysis_status['status'] = 'completed'
-            ai_analysis_status['message'] = result.get('message', '分析完成')
-            ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
+        # 完成
+        _update_ai_status('completed', result.get('message', '分析完成'), 100, '完成')
         
     except Exception as e:
         error_logger.error(f"AI分析后台任务异常: {e}")
@@ -552,11 +569,7 @@ def _run_ai_analysis_background():
         with open(AI_DAILY_STATUS_FILE, 'w', encoding='utf-8') as f:
             json.dump(status_data, f, ensure_ascii=False)
         
-        # 更新状态
-        with ai_analysis_lock:
-            ai_analysis_status['status'] = 'failed'
-            ai_analysis_status['message'] = str(e)
-            ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
+        _update_ai_status('failed', str(e), 0, '失败')
 
 
 @flow_bp.route('/analyze-daily/start', methods=['POST'])
@@ -629,6 +642,8 @@ def analyze_daily_flow_status():
                 return jsonify({
                     'success': True,
                     'status': 'completed',
+                    'progress': 100,
+                    'step': '完成',
                     'analysis': analysis_content,
                     'message': status_data.get('message', ''),
                     'date': status_data.get('date', '')
@@ -637,16 +652,20 @@ def analyze_daily_flow_status():
                 return jsonify({
                     'success': False,
                     'status': 'failed',
+                    'progress': 0,
+                    'step': '失败',
                     'message': status_data.get('message', '分析失败')
                 })
         
-        # 检查当前状态
+        # 检查当前状态（正在运行中）
         with ai_analysis_lock:
             current_status = ai_analysis_status.copy()
         
         return jsonify({
             'success': True,
             'status': current_status['status'],
+            'progress': current_status.get('progress', 0),
+            'step': current_status.get('step', ''),
             'message': current_status['message'],
             'start_time': current_status.get('start_time')
         })
