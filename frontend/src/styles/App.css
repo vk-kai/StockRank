@@ -1959,6 +1959,42 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
+.ai-analysis-modal .modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.analysis-date {
+  color: #a5b4fc;
+  font-size: 13px;
+}
+
+.reanalyze-btn {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.reanalyze-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  transform: translateY(-1px);
+}
+
+.reanalyze-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .ai-analysis-content {
   color: #e0e6f0;
   font-size: 14px;

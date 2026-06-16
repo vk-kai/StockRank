@@ -337,6 +337,12 @@
             {{ aiAnalysisError }}
           </div>
         </div>
+        <div class="modal-footer">
+          <span v-if="aiAnalysisDate" class="analysis-date">分析日期: {{ aiAnalysisDate }}</span>
+          <button class="reanalyze-btn" @click="reanalyzeDailyFlow" :disabled="aiAnalyzing">
+            {{ aiAnalyzing ? '分析中...' : '重新分析' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

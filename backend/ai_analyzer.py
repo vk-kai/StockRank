@@ -273,12 +273,9 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
     """分析全天资金流向走势"""
     global last_ai_call_time
     
-    info_logger.info("开始AI全天走势分析...")
-    
     config = load_ai_config()
     
     if not config or not config.get('enabled'):
-        info_logger.info("AI分析未启用")
         return {'success': False, 'message': 'AI分析未启用'}
     
     elapsed = time.time() - last_ai_call_time
@@ -308,12 +305,9 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
     model = config.get('model', 'gpt-3.5-turbo')
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 2000)
-    # 增加超时时间到180秒，因为数据量大
     timeout = min(config.get('timeout', 180), 180)
     retry_count = config.get('retry_count', 3)
     retry_interval = min(config.get('retry_interval', 10), 10)
-    
-    info_logger.info(f"AI配置: model={model}, timeout={timeout}s, retry_count={retry_count}")
     
     if not api_url or not api_key:
         error_logger.error("AI配置不完整：缺少api_url或api_key")
@@ -322,8 +316,6 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
     full_url = config.get('full_url', False)
     if not full_url and not api_url.endswith('/chat/completions'):
         api_url = api_url.rstrip('/') + '/chat/completions'
-    
-    info_logger.info(f"AI API地址: {api_url}")
     
     # 构建分析数据文本
     analysis_text = "【今日板块资金流向数据】\n\n"
@@ -347,12 +339,10 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
             analysis_text += f"{i}. {name}: 净流出{format_amount(abs(net_flow))}, 涨跌幅{change*100:.2f}%\n"
     
     # 添加分钟级走势数据摘要
-    time_keys_count = 0
     if minute_data:
         analysis_text += "\n【盘中资金流向走势】\n"
         time_keys = sorted([k for k in minute_data.keys() if not k.startswith('_')])
         time_keys_count = len(time_keys)
-        info_logger.info(f"分钟数据时间点数量: {time_keys_count}")
         
         # 数据压缩策略：如果时间点超过25个，每10分钟取一个
         if time_keys_count > 25:
@@ -378,7 +368,6 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
                 if time_keys[-1] not in filtered_times:
                     filtered_times.append(time_keys[-1])
             
-            info_logger.info(f"数据压缩：从{time_keys_count}个时间点压缩到{len(filtered_times)}个")
             time_keys = filtered_times
         
         # 传递时间点的完整数据
@@ -435,15 +424,9 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
             if turnover_change:
                 analysis_text += f"较上日变化: {format_amount(turnover_change, show_sign=True)}\n"
     
-    # 记录数据长度
-    data_length = len(analysis_text)
-    info_logger.info(f"构建分析数据完成，数据长度: {data_length} 字符, 时间点数: {time_keys_count}")
-    
     # 如果数据过长，进行截断
-    if data_length > 15000:
-        info_logger.warning(f"数据过长({data_length}字符)，进行截断至15000字符")
+    if len(analysis_text) > 15000:
         analysis_text = analysis_text[:15000] + "\n\n[数据过长，已截断...]"
-        data_length = len(analysis_text)
     
     messages = [
         {"role": "system", "content": prompt},
@@ -462,27 +445,21 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
         "max_tokens": max_tokens
     }
     
-    info_logger.info(f"开始调用AI API，timeout={timeout}s")
-    
     for attempt in range(1, retry_count + 1):
         try:
             if _heartbeat_callback:
                 _heartbeat_callback()
             
-            start_time = time.time()
             response = requests.post(
                 api_url,
                 headers=headers,
                 json=payload,
                 timeout=timeout
             )
-            elapsed_time = time.time() - start_time
-            info_logger.info(f"AI API响应时间: {elapsed_time:.2f}s, 状态码: {response.status_code}")
             
             if response.status_code == 200:
                 result = response.json()
                 content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-                info_logger.info(f"AI全天走势分析成功，返回内容长度: {len(content)} 字符")
                 return {'success': True, 'analysis': content}
             
             elif response.status_code == 429:
@@ -491,19 +468,17 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
                     wait_time = int(retry_after)
                 except:
                     wait_time = retry_interval
-                info_logger.warning(f"API速率限制(429)，等待{wait_time}秒后重试，当前第{attempt}次")
                 if attempt < retry_count:
                     time.sleep(wait_time)
                     continue
                 return {'success': False, 'message': f'API速率限制，请稍后重试'}
             
             elif response.status_code == 504:
-                error_logger.error(f"AI API返回504 Gateway Timeout，数据长度: {data_length}, timeout设置: {timeout}s")
+                error_logger.error(f"AI API返回504 Gateway Timeout")
                 if attempt < retry_count:
-                    info_logger.info(f"第{attempt}次失败，等待{retry_interval}秒后重试")
                     time.sleep(retry_interval)
                     continue
-                return {'success': False, 'message': 'AI API超时(504)，数据量过大或API响应过慢，请稍后重试'}
+                return {'success': False, 'message': 'AI API超时(504)，请稍后重试'}
             
             else:
                 error_msg = f'HTTP {response.status_code}'
@@ -513,20 +488,18 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
                         error_msg = error_data['error'].get('message', error_msg)
                 except:
                     error_msg = response.text[:200] if response.text else error_msg
-                error_logger.error(f"AI API错误: {error_msg}, 状态码: {response.status_code}, 第{attempt}次尝试")
+                error_logger.error(f"AI API错误: {error_msg}, 状态码: {response.status_code}")
                 if attempt < retry_count:
                     time.sleep(retry_interval)
                     continue
                 return {'success': False, 'message': error_msg}
                 
         except requests.exceptions.Timeout:
-            elapsed_time = time.time() - start_time
-            error_logger.error(f"AI API请求超时，已等待{elapsed_time:.2f}s，数据长度: {data_length}, timeout设置: {timeout}s")
+            error_logger.error(f"AI API请求超时")
             if attempt < retry_count:
-                info_logger.info(f"第{attempt}次超时，等待{retry_interval}秒后重试")
                 time.sleep(retry_interval)
                 continue
-            return {'success': False, 'message': f'请求超时({timeout}秒)，数据量过大，请稍后重试'}
+            return {'success': False, 'message': f'请求超时，请稍后重试'}
             
         except requests.exceptions.ConnectionError as e:
             error_logger.error(f"AI API连接失败: {str(e)}")
@@ -536,7 +509,7 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
             return {'success': False, 'message': f'连接失败: {str(e)[:100]}'}
             
         except Exception as e:
-            error_logger.error(f"AI API异常: {str(e)}, 第{attempt}次尝试")
+            error_logger.error(f"AI API异常: {str(e)}")
             if attempt < retry_count:
                 time.sleep(retry_interval)
                 continue

@@ -91,7 +91,8 @@ export default {
       aiAnalyzing: false,
       showAIAnalysisModal: false,
       aiAnalysisResult: null,
-      aiAnalysisError: null
+      aiAnalysisError: null,
+      aiAnalysisDate: null
     }
   },
   computed: {
@@ -1603,56 +1604,95 @@ export default {
       this.aiAnalyzing = true
       this.aiAnalysisResult = null
       this.aiAnalysisError = null
+      this.aiAnalysisDate = null
       
       try {
-        // 发起分析任务
-        const startResponse = await startAnalyzeDailyFlow()
+        // 先查询是否有历史结果
+        const statusResponse = await getAnalyzeDailyFlowStatus()
         
-        if (!startResponse.success) {
-          this.aiAnalysisError = startResponse.message || '启动分析失败'
-          this.showAIAnalysisModal = true
-          this.aiAnalyzing = false
-          return
-        }
-        
-        // 开始轮询状态
-        const maxAttempts = 60 // 最多轮询60次（约2分钟）
-        const pollInterval = 3000 // 每3秒查询一次
-        
-        for (let i = 0; i < maxAttempts; i++) {
-          await new Promise(resolve => setTimeout(resolve, pollInterval))
-          
-          const statusResponse = await getAnalyzeDailyFlowStatus()
-          
-          if (statusResponse.status === 'completed') {
-            if (statusResponse.success) {
-              this.aiAnalysisResult = statusResponse.analysis
-              this.showAIAnalysisModal = true
-            } else {
-              this.aiAnalysisError = statusResponse.message || 'AI分析失败'
-              this.showAIAnalysisModal = true
-            }
-            this.aiAnalyzing = false
-            return
-          } else if (statusResponse.status === 'failed') {
-            this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+        // 如果有今天的已完成结果，直接显示
+        if (statusResponse.status === 'completed' && statusResponse.success) {
+          const today = new Date().toISOString().split('T')[0]
+          if (statusResponse.date === today) {
+            this.aiAnalysisResult = statusResponse.analysis
+            this.aiAnalysisDate = statusResponse.date
             this.showAIAnalysisModal = true
             this.aiAnalyzing = false
             return
           }
-          // 继续等待，状态为running
         }
         
-        // 超时
-        this.aiAnalysisError = 'AI分析超时，请稍后重试'
-        this.showAIAnalysisModal = true
-        this.aiAnalyzing = false
+        // 没有今天的结果，开始新分析
+        await this._startNewAnalysis()
         
       } catch (error) {
         this.aiAnalysisError = error.message || 'AI分析请求失败'
         this.showAIAnalysisModal = true
         this.aiAnalyzing = false
       }
+    },
+
+    async reanalyzeDailyFlow() {
+      if (this.aiAnalyzing) return
+      
+      this.aiAnalyzing = true
+      this.aiAnalysisResult = null
+      this.aiAnalysisError = null
+      this.aiAnalysisDate = null
+      
+      try {
+        await this._startNewAnalysis()
+      } catch (error) {
+        this.aiAnalysisError = error.message || 'AI分析请求失败'
+        this.showAIAnalysisModal = true
+        this.aiAnalyzing = false
+      }
+    },
+
+    async _startNewAnalysis() {
+      // 发起分析任务
+      const startResponse = await startAnalyzeDailyFlow()
+      
+      if (!startResponse.success) {
+        this.aiAnalysisError = startResponse.message || '启动分析失败'
+        this.showAIAnalysisModal = true
+        this.aiAnalyzing = false
+        return
+      }
+      
+      // 开始轮询状态
+      const maxAttempts = 60 // 最多轮询60次（约2分钟）
+      const pollInterval = 3000 // 每3秒查询一次
+      
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+        
+        const statusResponse = await getAnalyzeDailyFlowStatus()
+        
+        if (statusResponse.status === 'completed') {
+          if (statusResponse.success) {
+            this.aiAnalysisResult = statusResponse.analysis
+            this.aiAnalysisDate = statusResponse.date
+            this.showAIAnalysisModal = true
+          } else {
+            this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+            this.showAIAnalysisModal = true
+          }
+          this.aiAnalyzing = false
+          return
+        } else if (statusResponse.status === 'failed') {
+          this.aiAnalysisError = statusResponse.message || 'AI分析失败'
+          this.showAIAnalysisModal = true
+          this.aiAnalyzing = false
+          return
+        }
+        // 继续等待，状态为running
+      }
+      
+      // 超时
+      this.aiAnalysisError = 'AI分析超时，请稍后重试'
+      this.showAIAnalysisModal = true
+      this.aiAnalyzing = false
     },
 
     closeAIAnalysisModal() {

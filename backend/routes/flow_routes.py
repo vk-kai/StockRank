@@ -537,8 +537,6 @@ def _run_ai_analysis_background():
             ai_analysis_status['message'] = result.get('message', '分析完成')
             ai_analysis_status['end_time'] = datetime.now().astimezone().isoformat()
         
-        system_logger.info(f"AI全天走势分析后台任务完成")
-        
     except Exception as e:
         error_logger.error(f"AI分析后台任务异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
@@ -594,8 +592,6 @@ def analyze_daily_flow_start():
         thread = threading.Thread(target=_run_ai_analysis_background)
         thread.daemon = True
         thread.start()
-        
-        system_logger.info("AI全天走势分析后台任务已启动")
         
         return jsonify({
             'success': True,
