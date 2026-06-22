@@ -151,4 +151,4 @@
 </template>
 
 <script src="./components/NewsPage/NewsPage.script.js"></script>
-<style scoped src="./components/NewsPage/NewsPage.style.css"></style>
+<style src="./components/NewsPage/NewsPage.style.css"></style>
