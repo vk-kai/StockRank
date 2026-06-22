@@ -125,7 +125,10 @@
       <div class="news-ai-modal">
         <div class="news-ai-modal-header">
           <h3>🤖 AI新闻分析</h3>
-          <button class="news-ai-close" @click="closeNewsAnalysisModal">✕</button>
+          <div class="news-ai-header-right">
+            <span v-if="newsAnalysisDuration" class="news-ai-duration">耗时 {{ newsAnalysisDuration }}s</span>
+            <button class="news-ai-close" @click="closeNewsAnalysisModal">✕</button>
+          </div>
         </div>
         <div class="news-ai-modal-source" v-if="currentAnalysisNews">
           {{ currentAnalysisNews.title }}

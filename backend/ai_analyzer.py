@@ -567,36 +567,35 @@ C级（普通消息）
 注意：100%为超级利好，50%为中性，小于50%为利空。
 
 【输出格式要求】
-请以易读的Markdown格式返回，使用以下规范：
-- 用 ## 作为各部分标题
-- 关键结论、评分、等级、龙头股名称等用 **加粗** 高亮
+请以简洁直观的Markdown格式返回，使用以下规范：
+- 用 ## 作为各部分标题，标题中包含单位说明（如"/100"）
+- 关键结论、评分、龙头股名称用 **加粗** 高亮
 - 用表格呈现行业赛道与龙头股的对应关系
-- 各部分之间用 --- 分隔
-- 不要输出JSON
+- 不要使用emoji图标，不要输出JSON
 
 请按以下结构输出：
 
-## 🎯 利好度评分
-**XX分** / 100
+## 利好度评分 /100
+**XX**
 
-## 📊 信号级别
+## 信号级别
 **X级** - 说明
 
-## 🔥 性质判断
+## 性质判断
 **xxx**
 
-## 💼 利好赛道与龙头
+## 利好赛道与龙头
 | 板块 | 细分赛道 | 核心龙头 | 受益程度 |
 |------|---------|---------|---------|
 | xxx | xxx | **xxx** | 高/中/低 |
 
-## ⏰ 兑现程度
+## 兑现程度
 **xxx**
 
-## 🔁 持续性判断
+## 持续性判断
 **xxx**
 
-## 💡 投资价值
+## 投资价值
 一句话总结..."""
 
 
@@ -643,6 +642,8 @@ def analyze_news(title, content):
         {"role": "user", "content": news_text}
     ]
 
+    start_time = time.time()
+
     for attempt in range(1, retry_count + 1):
         try:
             if _heartbeat_callback:
@@ -653,7 +654,8 @@ def analyze_news(title, content):
             if response.status_code == 200:
                 result = response.json()
                 analysis = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-                return {'success': True, 'analysis': analysis}
+                duration = round(time.time() - start_time, 2)
+                return {'success': True, 'analysis': analysis, 'duration': duration}
 
             elif response.status_code == 429:
                 if attempt < retry_count:

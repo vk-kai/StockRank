@@ -34,6 +34,7 @@ export default {
       showNewsAnalysisModal: false,
       newsAnalysisResult: null,
       newsAnalysisError: null,
+      newsAnalysisDuration: null,
       currentAnalysisNews: null
     }
   },
@@ -580,6 +581,7 @@ export default {
       this.currentAnalysisNews = news
       this.newsAnalysisResult = null
       this.newsAnalysisError = null
+      this.newsAnalysisDuration = null
       this.showNewsAnalysisModal = true
       
       try {
@@ -587,6 +589,7 @@ export default {
         
         if (response.success) {
           this.newsAnalysisResult = response.analysis
+          this.newsAnalysisDuration = response.duration
         } else {
           this.newsAnalysisError = response.message || 'AI分析失败'
         }
@@ -601,6 +604,7 @@ export default {
       this.showNewsAnalysisModal = false
       this.newsAnalysisResult = null
       this.newsAnalysisError = null
+      this.newsAnalysisDuration = null
       this.currentAnalysisNews = null
     }
   }
