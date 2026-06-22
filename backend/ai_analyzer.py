@@ -535,3 +535,136 @@ def format_amount(value, show_sign=False):
     if show_sign and value != 0:
         return sign + formatted
     return formatted
+
+
+# 单条新闻AI分析提示词
+NEWS_ANALYSIS_PROMPT = """你是一名A股顶级游资和产业分析师。
+
+请根据以下新闻分析：
+
+1、利好度评分（0-100分）
+
+2、属于：重大利好 / 利好 / 中性 / 利空 / 重大利空
+
+3、利好哪些行业和细分赛道（按受益程度排序）
+
+4、对应A股核心受益龙头
+
+5、该消息属于：
+S级（可能改变市场主线）
+A级（可能引发板块行情）
+B级（影响部分个股）
+C级（普通消息）
+
+6、消息是否已经被市场兑现：
+未兑现 / 部分兑现 / 基本兑现
+
+7、持续性判断：
+一日游 / 短期热点 / 中期主线 / 长期主线
+
+8、一句话总结投资价值。
+
+注意：100%为超级利好，50%为中性，小于50%为利空。
+请以简洁的Markdown格式返回分析结果，不要输出JSON。"""
+
+
+def analyze_news(title, content):
+    """同步分析单条新闻"""
+    global last_ai_call_time
+
+    config = load_ai_config()
+
+    if not config or not config.get('enabled'):
+        return {'success': False, 'message': 'AI分析未启用'}
+
+    elapsed = time.time() - last_ai_call_time
+    if elapsed < AI_CALL_INTERVAL:
+        time.sleep(AI_CALL_INTERVAL - elapsed)
+
+    last_ai_call_time = time.time()
+
+    api_url = config.get('api_url')
+    api_key = config.get('api_key')
+    model = config.get('model', 'gpt-3.5-turbo')
+    temperature = config.get('temperature', 0.7)
+    max_tokens = config.get('max_tokens', 2000)
+    timeout = min(config.get('timeout', 120), 120)
+    retry_count = config.get('retry_count', 3)
+    retry_interval = min(config.get('retry_interval', 10), 10)
+
+    if not api_url or not api_key:
+        return {'success': False, 'message': 'AI配置不完整：缺少api_url或api_key'}
+
+    full_url = config.get('full_url', False)
+    if not full_url and not api_url.endswith('/chat/completions'):
+        api_url = api_url.rstrip('/') + '/chat/completions'
+
+    # 构建新闻内容
+    title_clean = clean_text(title)
+    content_clean = clean_text(content)
+    content_clean = truncate_text(content_clean, 1500)
+
+    news_text = f"新闻标题：{title_clean}\n\n新闻内容：{content_clean}"
+
+    messages = [
+        {"role": "system", "content": NEWS_ANALYSIS_PROMPT},
+        {"role": "user", "content": news_text}
+    ]
+
+    for attempt in range(1, retry_count + 1):
+        try:
+            if _heartbeat_callback:
+                _heartbeat_callback()
+
+            response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
+
+            if response.status_code == 200:
+                result = response.json()
+                analysis = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                return {'success': True, 'analysis': analysis}
+
+            elif response.status_code == 429:
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': 'API速率限制，请稍后重试'}
+
+            elif response.status_code == 504:
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': 'AI API超时(504)，请稍后重试'}
+
+            else:
+                error_msg = f'HTTP {response.status_code}'
+                try:
+                    error_data = response.json()
+                    if isinstance(error_data.get('error'), dict):
+                        error_msg = error_data['error'].get('message', error_msg)
+                except:
+                    pass
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': error_msg}
+
+        except requests.exceptions.Timeout:
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': '请求超时，请稍后重试'}
+
+        except requests.exceptions.ConnectionError as e:
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'连接失败'}
+
+        except Exception as e:
+            error_logger.error(f"新闻AI分析异常: {str(e)}")
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'异常: {str(e)[:100]}'}
+
+    return {'success': False, 'message': 'AI分析失败，请稍后重试'}

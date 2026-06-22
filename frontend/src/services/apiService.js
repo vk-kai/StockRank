@@ -484,3 +484,13 @@ export async function getAnalyzeDailyFlowStatus() {
     throw error
   }
 }
+
+export async function analyzeNews(title, content) {
+  try {
+    const response = await apiClient.post('/flow/analyze-news', { title, content }, { timeout: 120000 })
+    return response.data
+  } catch (error) {
+    console.error('新闻AI分析失败:', error)
+    throw error
+  }
+}

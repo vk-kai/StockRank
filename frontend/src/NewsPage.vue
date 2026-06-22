@@ -72,6 +72,15 @@
               <div class="news-source-badge" v-if="getNewsSource(news)">
                 {{ getNewsSource(news) }}
               </div>
+              <button 
+                class="news-ai-btn" 
+                @click.stop="analyzeNewsItem(news)"
+                :disabled="analyzingNewsId !== null"
+                :title="'AI分析此新闻'"
+              >
+                <span v-if="analyzingNewsId === news.id" class="ai-btn-spinner"></span>
+                <span v-else>🤖</span>
+              </button>
             </div>
             <div class="news-preview">{{ getProcessedContent(news) }}</div>
           </div>
@@ -110,6 +119,29 @@
     >
       ↑
     </button>
+
+    <!-- 新闻AI分析弹窗 -->
+    <div class="news-ai-modal-overlay" v-if="showNewsAnalysisModal" @click.self="closeNewsAnalysisModal">
+      <div class="news-ai-modal">
+        <div class="news-ai-modal-header">
+          <h3>🤖 AI新闻分析</h3>
+          <button class="news-ai-close" @click="closeNewsAnalysisModal">✕</button>
+        </div>
+        <div class="news-ai-modal-source" v-if="currentAnalysisNews">
+          {{ currentAnalysisNews.title }}
+        </div>
+        <div class="news-ai-modal-body">
+          <div v-if="analyzingNewsId" class="news-ai-loading">
+            <div class="spinner"></div>
+            <p>AI正在分析中...</p>
+          </div>
+          <div v-else-if="newsAnalysisError" class="news-ai-error">
+            <p>{{ newsAnalysisError }}</p>
+          </div>
+          <div v-else-if="newsAnalysisResult" class="news-ai-analysis-content" v-html="renderedNewsAnalysis"></div>
+        </div>
+      </div>
+    </div>
 
     <SecurityAlert />
   </div>

@@ -13,7 +13,7 @@ from data_processor import (
     refresh_market_summary_cache, is_market_summary_complete
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
-from ai_analyzer import analyze_daily_flow
+from ai_analyzer import analyze_daily_flow, analyze_news
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -676,4 +676,29 @@ def analyze_daily_flow_status():
         return jsonify({
             'success': False,
             'message': '查询状态失败'
+        }), 500
+
+
+@flow_bp.route('/analyze-news', methods=['POST'])
+def analyze_single_news():
+    """同步分析单条新闻"""
+    try:
+        data = request.get_json() or {}
+        title = data.get('title', '')
+        content = data.get('content', '')
+
+        if not title:
+            return jsonify({
+                'success': False,
+                'message': '新闻标题不能为空'
+            }), 400
+
+        result = analyze_news(title, content)
+        return jsonify(result)
+
+    except Exception as e:
+        error_logger.error(f"API /api/flow/analyze-news 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'分析失败: {str(e)[:100]}'
         }), 500

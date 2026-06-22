@@ -1,4 +1,5 @@
-import { getNews, getHealth, searchNews, isSecurityError } from '../../services/apiService'
+import { getNews, getHealth, searchNews, isSecurityError, analyzeNews } from '../../services/apiService'
+import { marked } from 'marked'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -27,7 +28,13 @@ export default {
       searchTimer: null,
       isSearching: false,
       currentSearchPage: 1,
-      showBackToTop: false
+      showBackToTop: false,
+      // 新闻AI分析
+      analyzingNewsId: null,
+      showNewsAnalysisModal: false,
+      newsAnalysisResult: null,
+      newsAnalysisError: null,
+      currentAnalysisNews: null
     }
   },
   computed: {
@@ -45,6 +52,10 @@ export default {
     },
     remainingNews() {
       return this.total - this.newsList.length
+    },
+    renderedNewsAnalysis() {
+      if (!this.newsAnalysisResult) return ''
+      return marked.parse(this.newsAnalysisResult)
     }
   },
   mounted() {
@@ -559,6 +570,38 @@ export default {
         top: 0,
         behavior: 'smooth'
       })
+    },
+
+    async analyzeNewsItem(news) {
+      // 防止重复点击
+      if (this.analyzingNewsId) return
+      
+      this.analyzingNewsId = news.id
+      this.currentAnalysisNews = news
+      this.newsAnalysisResult = null
+      this.newsAnalysisError = null
+      this.showNewsAnalysisModal = true
+      
+      try {
+        const response = await analyzeNews(news.title, this.getProcessedContent(news))
+        
+        if (response.success) {
+          this.newsAnalysisResult = response.analysis
+        } else {
+          this.newsAnalysisError = response.message || 'AI分析失败'
+        }
+      } catch (error) {
+        this.newsAnalysisError = error.message || 'AI分析请求失败'
+      } finally {
+        this.analyzingNewsId = null
+      }
+    },
+
+    closeNewsAnalysisModal() {
+      this.showNewsAnalysisModal = false
+      this.newsAnalysisResult = null
+      this.newsAnalysisError = null
+      this.currentAnalysisNews = null
     }
   }
 }
