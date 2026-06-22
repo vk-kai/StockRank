@@ -670,6 +670,18 @@
   font-weight: 600;
 }
 
+.news-ai-analysis-content h1 {
+  font-size: 18px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(124, 58, 237, 0.4);
+  margin-top: 0;
+}
+
+.news-ai-analysis-content h2 {
+  font-size: 15px;
+  color: #a5b4fc;
+}
+
 .news-ai-analysis-content p {
   margin: 8px 0;
 }
