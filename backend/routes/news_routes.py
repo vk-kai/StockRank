@@ -370,8 +370,8 @@ def get_news_score_trend():
                 'negative': stats.get('negative', 0),
                 'neutral': stats.get('neutral', 0)
             }
-        news_logger.info(f"评分趋势统计 - 总计: 利好{total_positive} 利空{total_negative} 中性{total_neutral}, 倾向: {tendency}")
-        news_logger.info(f"分桶详情: {bucket_details}")
+        system_logger.info(f"评分趋势统计 - 总计: 利好{total_positive} 利空{total_negative} 中性{total_neutral}, 倾向: {tendency}")
+        system_logger.info(f"分桶详情: {bucket_details}")
         
         return jsonify({
             'success': True,
