@@ -209,11 +209,11 @@ def process_news_with_ai_and_push(news_list):
                 send_feishu_message(news_title, content, url=url)
                 news_item['pushed'] = True
         
-        return list(existing_dict.values()), normal_items, pushed_items, ignored_items
+        return list(existing_dict.values()), normal_items, pushed_items, ignored_items, new_items
                 
     except Exception as e:
         error_logger.error(f"处理新闻AI分析和推送异常: {e}")
-        return news_list, [], [], []
+        return news_list, [], [], [], []
 
 def _background_analyze_news(new_items):
     """后台批量分析新新闻"""
@@ -293,6 +293,7 @@ def news_collection_thread():
             normal_items = result[1]
             pushed_items = result[2]
             ignored_items = result[3]
+            all_new_items = result[4]
             
             actual_new_count = save_news_data(all_news)
             
@@ -346,20 +347,17 @@ def news_collection_thread():
                 
                 news_logger.info(summary)
             
-            # 有新新闻时，触发后台AI分析（所有新增新闻）
-            if actual_new_count > 0:
-                all_new_items = normal_items + pushed_items + ignored_items
-                if all_new_items:
-                    from ai_analyzer import load_ai_config
-                    ai_config = load_ai_config()
-                    if ai_config and ai_config.get('enabled'):
-                        import threading as _threading
-                        # 只分析有id和title的，且未被缓存过的
-                        items_to_analyze = [item for item in all_new_items if item.get('id') and item.get('title')]
-                        if items_to_analyze:
-                            thread = _threading.Thread(target=_background_analyze_news, args=(items_to_analyze,))
-                            thread.daemon = True
-                            thread.start()
+            # 有新新闻时，触发后台AI分析（所有新增新闻，含重要新闻）
+            if actual_new_count > 0 and all_new_items:
+                from ai_analyzer import load_ai_config
+                ai_config = load_ai_config()
+                if ai_config and ai_config.get('enabled'):
+                    import threading as _threading
+                    items_to_analyze = [item for item in all_new_items if item.get('id') and item.get('title')]
+                    if items_to_analyze:
+                        thread = _threading.Thread(target=_background_analyze_news, args=(items_to_analyze,))
+                        thread.daemon = True
+                        thread.start()
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")
