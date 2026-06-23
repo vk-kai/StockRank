@@ -269,6 +269,24 @@ export default {
         neutralData = filteredIndices.map(i => data.series.neutral[i])
       }
       
+      // 准备数据：底部共识区(灰) + 顶部净差区(红/绿) + 分界折线
+      const baseData = xAxisData.map((label, idx) => {
+        return Math.min(positiveData[idx], negativeData[idx])
+      })
+      const topData = xAxisData.map((label, idx) => {
+        const pos = positiveData[idx]
+        const neg = negativeData[idx]
+        const diff = pos - neg
+        return {
+          value: Math.abs(diff),
+          itemStyle: {
+            color: diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#9ca3af')
+          }
+        }
+      })
+      // 分界折线（灰色区顶部 = min值），展示情绪拉锯高度
+      const lineData = xAxisData.map((label, idx) => Math.min(positiveData[idx], negativeData[idx]))
+
       const option = {
         tooltip: {
           trigger: 'axis',
@@ -284,19 +302,24 @@ export default {
               `<span style="color:#ef4444">●</span> 利好: ${pos}条<br/>` +
               `<span style="color:#22c55e">●</span> 利空: ${neg}条<br/>` +
               `<span style="color:#eab308">●</span> 中性: ${neu}条<br/>` +
-              `<span style="color:${diff >= 0 ? '#ef4444' : '#22c55e'};font-weight:bold">净情绪: ${sign}${diff}</span>`
+              `<span style="color:${diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#9ca3af')};font-weight:bold">净情绪: ${sign}${diff}</span>`
           }
         },
         legend: {
-          data: ['利好', '利空'],
+          data: [
+            { name: '共识区', icon: 'rect' },
+            { name: '利好多', icon: 'rect' },
+            { name: '利空多', icon: 'rect' },
+            { name: '情绪线', icon: 'circle' }
+          ],
           top: 2,
-          textStyle: { color: '#ccc', fontSize: 12 }
+          textStyle: { color: '#ccc', fontSize: 11 }
         },
         grid: {
           left: '3%',
           right: '4%',
           bottom: '3%',
-          top: 35,
+          top: 40,
           containLabel: true
         },
         xAxis: {
@@ -319,27 +342,48 @@ export default {
         },
         series: [
           {
-            name: '利好',
+            name: '共识区',
             type: 'bar',
-            data: positiveData,
-            barWidth: '35%',
-            barGap: '10%',
-            itemStyle: {
-              color: '#ef4444',
-              borderRadius: [3, 3, 0, 0]
-            },
-            emphasis: { itemStyle: { color: '#dc2626' } }
+            stack: 'mood',
+            data: baseData,
+            barWidth: '55%',
+            itemStyle: { color: '#6b7280' },
+            emphasis: { itemStyle: { color: '#4b5563' } }
           },
           {
-            name: '利空',
+            name: '利好多',
             type: 'bar',
-            data: negativeData,
-            barWidth: '35%',
-            itemStyle: {
-              color: '#22c55e',
-              borderRadius: [3, 3, 0, 0]
-            },
-            emphasis: { itemStyle: { color: '#16a34a' } }
+            stack: 'mood',
+            data: topData.map(d => ({
+              value: d.itemStyle.color === '#ef4444' ? d.value : 0,
+              itemStyle: { color: '#ef4444' }
+            })),
+            barWidth: '55%',
+            tooltip: { show: false }
+          },
+          {
+            name: '利空多',
+            type: 'bar',
+            stack: 'mood',
+            data: topData.map(d => ({
+              value: d.itemStyle.color === '#22c55e' ? d.value : 0,
+              itemStyle: { color: '#22c55e' }
+            })),
+            barWidth: '55%',
+            tooltip: { show: false }
+          },
+          {
+            name: '情绪线',
+            type: 'line',
+            data: lineData,
+            smooth: true,
+            showSymbol: true,
+            symbol: 'circle',
+            symbolSize: 5,
+            lineStyle: { width: 2, color: '#fbbf24', type: 'dashed' },
+            itemStyle: { color: '#fbbf24' },
+            z: 10,
+            tooltip: { show: false }
           }
         ]
       }
