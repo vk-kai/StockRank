@@ -116,7 +116,7 @@ def process_news_with_ai_and_push(news_list):
                 existing_keys[news_key] = news_item
         
         if not new_items:
-            return list(existing_dict.values()), [], [], []
+            return list(existing_dict.values()), [], [], [], []
         
         pushed_items = []
         ignored_items = []

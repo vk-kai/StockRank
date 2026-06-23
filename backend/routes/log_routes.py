@@ -212,6 +212,8 @@ def get_log_content(log_type):
             lines = f.readlines()
         
         parsed_lines = []
+        last_parsed = None
+        
         for line in lines:
             line = line.strip()
             if not line:
@@ -226,30 +228,40 @@ def get_log_content(log_type):
             
             if parsed:
                 if level_filter and parsed['level'] != level_filter:
+                    last_parsed = None
                     continue
                 
                 if module_filter and not match_module(parsed.get('module', ''), module_filter):
+                    last_parsed = None
                     continue
                 
                 if search_keyword and search_keyword.lower() not in line.lower():
+                    last_parsed = None
                     continue
                 
                 parsed_lines.append(parsed)
+                last_parsed = parsed
             else:
-                if level_filter or module_filter:
-                    continue
-                if search_keyword and search_keyword.lower() not in line.lower():
-                    continue
-                parsed_lines.append({
-                    'timestamp': '',
-                    'level': '',
-                    'module': '',
-                    'module_display': '',
-                    'source': '',
-                    'lineno': 0,
-                    'message': line,
-                    'raw': line
-                })
+                # 不匹配的行（堆栈信息等）附加到前一个日志条目
+                if last_parsed:
+                    # 将多行堆栈信息合并到前一个日志条目的message中
+                    last_parsed['message'] += '\n' + line
+                    last_parsed['raw'] += '\n' + line
+                else:
+                    # 如果没有前一个日志条目，且没有过滤条件，才作为独立条目
+                    if not level_filter and not module_filter:
+                        if search_keyword and search_keyword.lower() not in line.lower():
+                            continue
+                        parsed_lines.append({
+                            'timestamp': '',
+                            'level': '',
+                            'module': '',
+                            'module_display': '',
+                            'source': '',
+                            'lineno': 0,
+                            'message': line,
+                            'raw': line
+                        })
         
         total = len(parsed_lines)
         total_pages = max(1, (total + page_size - 1) // page_size)
