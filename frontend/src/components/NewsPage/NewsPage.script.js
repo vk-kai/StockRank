@@ -186,10 +186,11 @@ export default {
         const response = await getNewsScoreTrend()
         if (response.success) {
           this.scoreTrendData = response.data
-          this.$nextTick(() => {
+          // 延迟渲染确保DOM完成布局（修复首次进入饼图不显示）
+          setTimeout(() => {
             this.renderScoreTrendChart()
             this.renderScorePieChart()
-          })
+          }, 100)
         }
       } catch (err) {
         console.error('获取评分趋势数据失败:', err)
@@ -319,6 +320,28 @@ export default {
     toggleMarketHours() {
       this.onlyMarketHours = !this.onlyMarketHours
       this.renderScoreTrendChart()
+      this.renderScorePieChart()
+    },
+
+    // 从趋势数据中提取过滤后的统计（与折线图同步）
+    getFilteredPieData() {
+      const data = this.scoreTrendData
+      if (!data || !data.x_axis || data.x_axis.length === 0) return null
+
+      let positiveTotal = 0
+      let negativeTotal = 0
+      let neutralTotal = 0
+
+      data.x_axis.forEach((label, idx) => {
+        // 如果开启仅看盘中，跳过盘前盘后
+        if (this.onlyMarketHours && (label === '盘前' || label === '盘后')) return
+        positiveTotal += data.series.positive[idx] || 0
+        negativeTotal += data.series.negative[idx] || 0
+        neutralTotal += data.series.neutral[idx] || 0
+      })
+
+      const total = positiveTotal + negativeTotal + neutralTotal
+      return { positive: positiveTotal, negative: negativeTotal, neutral: neutralTotal, total }
     },
 
     renderScorePieChart() {
@@ -328,9 +351,9 @@ export default {
       if (!this.scorePieChart) {
         this.scorePieChart = echarts.init(chartDom)
       }
-      
-      const summary = this.scoreTrendData.summary
-      if (!summary || summary.total_analyzed === 0) {
+
+      const pieData = this.getFilteredPieData()
+      if (!pieData || pieData.total === 0) {
         this.scorePieChart.clear()
         this.scorePieChart.setOption({
           title: {
@@ -342,7 +365,7 @@ export default {
         })
         return
       }
-      
+
       const option = {
         tooltip: {
           trigger: 'item',
@@ -373,14 +396,14 @@ export default {
               label: { show: true, fontSize: 14, fontWeight: 'bold' }
             },
             data: [
-              { value: summary.total_positive, name: '利好', itemStyle: { color: '#ef4444' } },
-              { value: summary.total_negative, name: '利空', itemStyle: { color: '#22c55e' } },
-              { value: summary.total_neutral, name: '中性', itemStyle: { color: '#eab308' } }
+              { value: pieData.positive, name: '利好', itemStyle: { color: '#ef4444' } },
+              { value: pieData.negative, name: '利空', itemStyle: { color: '#22c55e' } },
+              { value: pieData.neutral, name: '中性', itemStyle: { color: '#eab308' } }
             ]
           }
         ]
       }
-      
+
       this.scorePieChart.setOption(option, true)
     },
 
