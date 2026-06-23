@@ -269,8 +269,23 @@ export default {
         neutralData = filteredIndices.map(i => data.series.neutral[i])
       }
       
-      // 共识区（灰色）：min值，标注较少方数量
-      // 利好>利空→正轴，利空>利好→负轴
+      // 共识区：红绿相间斜条纹
+      const stripedPattern = {
+        type: 'linear',
+        x: 0, y: 0, x2: 1, y2: 1,
+        colorStops: [
+          { offset: 0, color: 'rgba(239, 68, 68, 0.55)' },
+          { offset: 0.2, color: 'rgba(239, 68, 68, 0.55)' },
+          { offset: 0.2, color: 'rgba(34, 197, 94, 0.55)' },
+          { offset: 0.4, color: 'rgba(34, 197, 94, 0.55)' },
+          { offset: 0.4, color: 'rgba(239, 68, 68, 0.55)' },
+          { offset: 0.6, color: 'rgba(239, 68, 68, 0.55)' },
+          { offset: 0.6, color: 'rgba(34, 197, 94, 0.55)' },
+          { offset: 0.8, color: 'rgba(34, 197, 94, 0.55)' },
+          { offset: 0.8, color: 'rgba(239, 68, 68, 0.55)' },
+          { offset: 1, color: 'rgba(239, 68, 68, 0.55)' }
+        ]
+      }
       const consensusData = xAxisData.map((label, idx) => {
         const pos = positiveData[idx]
         const neg = negativeData[idx]
@@ -278,7 +293,7 @@ export default {
         const sign = pos >= neg ? 1 : -1
         return {
           value: minVal * sign,
-          itemStyle: { color: '#6b7280' }
+          itemStyle: { color: stripedPattern }
         }
       })
       // 净差区（赢家颜色）：|diff|，标注较多方数量
@@ -390,10 +405,11 @@ export default {
               fontSize: 11,
               fontWeight: 'bold',
               formatter: function(params) {
-                const v = marginLabels[params.dataIndex]
-                const consV = consensusLabels[params.dataIndex]
-                // 净差区有值时才标注较多方数量
-                if (v > consV) return v
+                const pos = positiveData[params.dataIndex]
+                const neg = negativeData[params.dataIndex]
+                const diff = pos - neg
+                // 净差区有值时才标注差值
+                if (diff !== 0) return (diff > 0 ? '+' : '') + diff
                 return ''
               }
             }
