@@ -62,9 +62,20 @@
           <span class="summary-item positive">利好 {{ scoreTrendData.summary.total_positive }}</span>
           <span class="summary-item negative">利空 {{ scoreTrendData.summary.total_negative }}</span>
           <span class="summary-item neutral">中性 {{ scoreTrendData.summary.total_neutral }}</span>
+          <button 
+            class="market-hours-toggle"
+            :class="{ 'active': onlyMarketHours }"
+            @click="toggleMarketHours"
+            :title="onlyMarketHours ? '显示盘前盘后' : '仅看盘中'"
+          >
+            {{ onlyMarketHours ? '🕐 仅盘中' : '🕐 全部时段' }}
+          </button>
         </div>
       </div>
-      <div ref="scoreTrendChart" class="score-trend-chart"></div>
+      <div class="score-charts-wrapper">
+        <div ref="scoreTrendChart" class="score-trend-chart"></div>
+        <div ref="scorePieChart" class="score-pie-chart"></div>
+      </div>
     </div>
 
     <div class="news-list" v-if="displayNewsList.length > 0">

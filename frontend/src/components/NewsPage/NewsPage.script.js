@@ -41,7 +41,10 @@ export default {
       scoreSummary: {},
       // 利好利空趋势图
       scoreTrendData: { summary: null },
-      scoreTrendChart: null
+      scoreTrendChart: null,
+      scorePieChart: null,
+      // 是否仅显示盘中（隐藏盘前盘后）
+      onlyMarketHours: false
     }
   },
   computed: {
@@ -105,6 +108,10 @@ export default {
     if (this.scoreTrendChart) {
       this.scoreTrendChart.dispose()
       this.scoreTrendChart = null
+    }
+    if (this.scorePieChart) {
+      this.scorePieChart.dispose()
+      this.scorePieChart = null
     }
   },
   methods: {
@@ -181,6 +188,7 @@ export default {
           this.scoreTrendData = response.data
           this.$nextTick(() => {
             this.renderScoreTrendChart()
+            this.renderScorePieChart()
           })
         }
       } catch (err) {
@@ -211,6 +219,25 @@ export default {
         return
       }
       
+      // 过滤盘前盘后（如果开启仅看盘中）
+      let xAxisData = data.x_axis
+      let positiveData = data.series.positive
+      let negativeData = data.series.negative
+      let neutralData = data.series.neutral
+      
+      if (this.onlyMarketHours) {
+        const filteredIndices = []
+        data.x_axis.forEach((label, idx) => {
+          if (label !== '盘前' && label !== '盘后') {
+            filteredIndices.push(idx)
+          }
+        })
+        xAxisData = filteredIndices.map(i => data.x_axis[i])
+        positiveData = filteredIndices.map(i => data.series.positive[i])
+        negativeData = filteredIndices.map(i => data.series.negative[i])
+        neutralData = filteredIndices.map(i => data.series.neutral[i])
+      }
+      
       const option = {
         tooltip: {
           trigger: 'axis',
@@ -238,7 +265,7 @@ export default {
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: data.x_axis,
+          data: xAxisData,
           axisLabel: {
             color: '#aaa',
             interval: 0,
@@ -261,7 +288,7 @@ export default {
             lineStyle: { width: 1, color: '#ef4444' },
             itemStyle: { color: '#ef4444' },
             emphasis: { focus: 'series' },
-            data: data.series.positive
+            data: positiveData
           },
           {
             name: '利空',
@@ -271,7 +298,7 @@ export default {
             lineStyle: { width: 1, color: '#22c55e' },
             itemStyle: { color: '#22c55e' },
             emphasis: { focus: 'series' },
-            data: data.series.negative
+            data: negativeData
           },
           {
             name: '中性',
@@ -281,7 +308,7 @@ export default {
             lineStyle: { width: 1, color: '#eab308' },
             itemStyle: { color: '#eab308' },
             emphasis: { focus: 'series' },
-            data: data.series.neutral
+            data: neutralData
           }
         ]
       }
@@ -289,9 +316,80 @@ export default {
       this.scoreTrendChart.setOption(option, true)
     },
 
+    toggleMarketHours() {
+      this.onlyMarketHours = !this.onlyMarketHours
+      this.renderScoreTrendChart()
+    },
+
+    renderScorePieChart() {
+      const chartDom = this.$refs.scorePieChart
+      if (!chartDom) return
+      
+      if (!this.scorePieChart) {
+        this.scorePieChart = echarts.init(chartDom)
+      }
+      
+      const summary = this.scoreTrendData.summary
+      if (!summary || summary.total_analyzed === 0) {
+        this.scorePieChart.clear()
+        this.scorePieChart.setOption({
+          title: {
+            text: '暂无数据',
+            left: 'center',
+            top: 'center',
+            textStyle: { color: '#999', fontSize: 14 }
+          }
+        })
+        return
+      }
+      
+      const option = {
+        tooltip: {
+          trigger: 'item',
+          formatter: '{b}: {c}条 ({d}%)'
+        },
+        legend: {
+          bottom: 5,
+          textStyle: { color: '#ccc', fontSize: 12 }
+        },
+        series: [
+          {
+            name: '情绪占比',
+            type: 'pie',
+            radius: ['40%', '70%'],
+            center: ['50%', '45%'],
+            avoidLabelOverlap: false,
+            itemStyle: {
+              borderRadius: 6,
+              borderColor: 'rgba(0,0,0,0.3)',
+              borderWidth: 2
+            },
+            label: {
+              show: true,
+              color: '#ccc',
+              formatter: '{b}\n{d}%'
+            },
+            emphasis: {
+              label: { show: true, fontSize: 14, fontWeight: 'bold' }
+            },
+            data: [
+              { value: summary.total_positive, name: '利好', itemStyle: { color: '#ef4444' } },
+              { value: summary.total_negative, name: '利空', itemStyle: { color: '#22c55e' } },
+              { value: summary.total_neutral, name: '中性', itemStyle: { color: '#eab308' } }
+            ]
+          }
+        ]
+      }
+      
+      this.scorePieChart.setOption(option, true)
+    },
+
     handleChartResize() {
       if (this.scoreTrendChart) {
         this.scoreTrendChart.resize()
+      }
+      if (this.scorePieChart) {
+        this.scorePieChart.resize()
       }
     },
 
