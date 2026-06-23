@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime
 import traceback
 from news_processor import get_recent_news, search_news
+from ai_analyzer import load_news_analysis_cache
 from data_processor import error_logger
 from logger import get_logger
 
@@ -24,6 +25,13 @@ def get_news():
                 importance = None
         
         result = get_recent_news(page, page_size, importance)
+        
+        # 附加AI分析评分
+        ai_cache = load_news_analysis_cache()
+        for item in result['news']:
+            cached = ai_cache.get(str(item.get('id')), {})
+            item['ai_score'] = cached.get('score')
+            item['ai_label'] = cached.get('label')
         
         return jsonify({
             'success': True,
@@ -72,6 +80,13 @@ def search_news_api():
             }), 400
         
         result = search_news(keyword, page, page_size, importance)
+        
+        # 附加AI分析评分
+        ai_cache = load_news_analysis_cache()
+        for item in result['news']:
+            cached = ai_cache.get(str(item.get('id')), {})
+            item['ai_score'] = cached.get('score')
+            item['ai_label'] = cached.get('label')
         
         return jsonify({
             'success': True,

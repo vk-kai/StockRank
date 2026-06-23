@@ -1,9 +1,10 @@
 import json
+import os
 import requests
 import time
 import re
 import threading
-from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE
+from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, NEWS_ANALYSIS_CACHE_FILE
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -516,6 +517,89 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
             return {'success': False, 'message': f'异常: {str(e)[:100]}'}
     
     return {'success': False, 'message': 'AI分析失败，请稍后重试'}
+
+
+# ============= 新闻分析缓存管理 =============
+
+_news_cache_lock = threading.Lock()
+
+def load_news_analysis_cache():
+    """加载新闻分析缓存"""
+    try:
+        with _news_cache_lock:
+            if os.path.exists(NEWS_ANALYSIS_CACHE_FILE):
+                with open(NEWS_ANALYSIS_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+    except Exception as e:
+        error_logger.error(f"加载新闻分析缓存失败: {e}")
+    return {}
+
+def save_news_analysis_cache(cache_data):
+    """保存新闻分析缓存"""
+    try:
+        with _news_cache_lock:
+            with open(NEWS_ANALYSIS_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False)
+    except Exception as e:
+        error_logger.error(f"保存新闻分析缓存失败: {e}")
+
+def get_news_analysis(news_id):
+    """获取单条新闻的缓存分析"""
+    cache = load_news_analysis_cache()
+    return cache.get(str(news_id))
+
+def save_news_analysis(news_id, analysis, duration):
+    """保存单条新闻的分析结果"""
+    cache = load_news_analysis_cache()
+    
+    # 从分析结果中提取评分
+    score = extract_score_from_analysis(analysis)
+    label = get_score_label(score)
+    
+    cache[str(news_id)] = {
+        'analysis': analysis,
+        'score': score,
+        'label': label,
+        'duration': duration,
+        'timestamp': time.time()
+    }
+    
+    # 限制缓存大小，最多保留500条
+    if len(cache) > 500:
+        # 按时间排序，保留最新的500条
+        sorted_items = sorted(cache.items(), key=lambda x: x[1].get('timestamp', 0), reverse=True)
+        cache = dict(sorted_items[:500])
+    
+    save_news_analysis_cache(cache)
+
+def extract_score_from_analysis(analysis):
+    """从AI分析文本中提取评分"""
+    if not analysis:
+        return None
+    try:
+        # 匹配标题行中的评分，如 "# A级（78/100）"
+        import re
+        match = re.search(r'(\d+)\s*/\s*100', analysis)
+        if match:
+            return int(match.group(1))
+        # 匹配单独的数字
+        match = re.search(r'\*\*(\d+)\*\*', analysis)
+        if match:
+            return int(match.group(1))
+    except:
+        pass
+    return None
+
+def get_score_label(score):
+    """根据评分获取标签"""
+    if score is None:
+        return '未分析'
+    if score > 50:
+        return '利好'
+    elif score == 50:
+        return '中性'
+    else:
+        return '利空'
 
 def format_amount(value, show_sign=False):
     """格式化金额显示"""

@@ -69,6 +69,13 @@
               <div class="news-title" @click="openNews(news.url)">
                 {{ news.title }}
               </div>
+              <span 
+                v-if="news.ai_score != null" 
+                class="news-score-badge" 
+                :class="getScoreClass(news.ai_score)"
+              >
+                {{ news.ai_label }}（{{ news.ai_score }}）
+              </span>
               <div class="news-source-badge" v-if="getNewsSource(news)">
                 {{ getNewsSource(news) }}
               </div>

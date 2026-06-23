@@ -13,7 +13,7 @@ from data_processor import (
     refresh_market_summary_cache, is_market_summary_complete
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
-from ai_analyzer import analyze_daily_flow, analyze_news
+from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -681,11 +681,12 @@ def analyze_daily_flow_status():
 
 @flow_bp.route('/analyze-news', methods=['POST'])
 def analyze_single_news():
-    """同步分析单条新闻"""
+    """分析单条新闻（优先返回缓存，无缓存则实时分析并缓存）"""
     try:
         data = request.get_json() or {}
         title = data.get('title', '')
         content = data.get('content', '')
+        news_id = data.get('id', '')
 
         if not title:
             return jsonify({
@@ -693,7 +694,25 @@ def analyze_single_news():
                 'message': '新闻标题不能为空'
             }), 400
 
+        # 优先返回缓存结果
+        if news_id:
+            cached = get_cached_news_analysis(news_id)
+            if cached and cached.get('analysis'):
+                return jsonify({
+                    'success': True,
+                    'analysis': cached['analysis'],
+                    'duration': cached.get('duration', 0),
+                    'cached': True
+                })
+
+        # 无缓存，实时分析
         result = analyze_news(title, content)
+        
+        # 分析成功则缓存
+        if result.get('success') and result.get('analysis') and news_id:
+            from ai_analyzer import save_news_analysis
+            save_news_analysis(news_id, result['analysis'], result.get('duration', 0))
+        
         return jsonify(result)
 
     except Exception as e:

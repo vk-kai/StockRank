@@ -577,15 +577,15 @@ export default {
       // 防止重复点击
       if (this.analyzingNewsId) return
       
-      this.analyzingNewsId = news.id
       this.currentAnalysisNews = news
       this.newsAnalysisResult = null
       this.newsAnalysisError = null
       this.newsAnalysisDuration = null
       this.showNewsAnalysisModal = true
       
+      // 如果新闻已有AI评分（说明已分析过），直接请求缓存结果
       try {
-        const response = await analyzeNews(news.title, this.getProcessedContent(news))
+        const response = await analyzeNews(news.title, this.getProcessedContent(news), news.id)
         
         if (response.success) {
           this.newsAnalysisResult = response.analysis
@@ -606,6 +606,13 @@ export default {
       this.newsAnalysisError = null
       this.newsAnalysisDuration = null
       this.currentAnalysisNews = null
+    },
+
+    getScoreClass(score) {
+      if (score == null) return ''
+      if (score > 50) return 'score-positive'
+      if (score < 50) return 'score-negative'
+      return 'score-neutral'
     }
   }
 }

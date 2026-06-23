@@ -74,6 +74,7 @@ AI_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_prompt.txt')
 AI_DAILY_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_prompt.txt')
 AI_DAILY_RESULT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_result.md')
 AI_DAILY_STATUS_FILE = os.path.join(CONFIG_DIR, 'ai_daily_status.json')
+NEWS_ANALYSIS_CACHE_FILE = os.path.join(CONFIG_DIR, 'news_analysis_cache.json')
 MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'monitor_config.json')
 
 def load_monitor_config():

@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
-from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback
+from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
 from logger import get_logger, cleanup_old_logs
@@ -215,6 +215,45 @@ def process_news_with_ai_and_push(news_list):
         error_logger.error(f"处理新闻AI分析和推送异常: {e}")
         return news_list, [], [], []
 
+def _background_analyze_news(new_items):
+    """后台批量分析新新闻"""
+    try:
+        set_busy('news_collector', True)
+        
+        from ai_analyzer import clean_text, truncate_text
+        
+        for item in new_items:
+            news_id = item.get('id')
+            title = item.get('title', '')
+            content = item.get('content', '')
+            
+            if not news_id or not title:
+                continue
+            
+            # 检查是否已有缓存
+            cached = get_news_analysis(news_id)
+            if cached:
+                continue
+            
+            heartbeat('news_collector')
+            
+            title_clean = clean_text(title)
+            content_clean = truncate_text(clean_text(content), 1500)
+            
+            result = analyze_news(title_clean, content_clean)
+            
+            if result.get('success') and result.get('analysis'):
+                save_news_analysis(news_id, result['analysis'], result.get('duration', 0))
+                news_add_logger.debug(f"新闻AI分析完成: {title[:30]}")
+            else:
+                news_add_logger.debug(f"新闻AI分析失败: {title[:30]} - {result.get('message', '')}")
+            
+    except Exception as e:
+        error_logger.error(f"后台新闻AI分析异常: {e}")
+    finally:
+        set_busy('news_collector', False)
+
+
 def news_collection_thread():
     global _last_cleanup_date
     register_thread('news_collector')
@@ -306,6 +345,18 @@ def news_collection_thread():
                 summary += f"，当前共 {recent_news_result['total']} 条"
                 
                 news_logger.info(summary)
+            
+            # 有新新闻时，触发后台AI分析（所有新增新闻）
+            if actual_new_count > 0 and new_items:
+                from ai_analyzer import load_ai_config
+                ai_config = load_ai_config()
+                if ai_config and ai_config.get('enabled'):
+                    import threading as _threading
+                    items_to_analyze = [item for item in new_items if item.get('id') and item.get('title')]
+                    if items_to_analyze:
+                        thread = _threading.Thread(target=_background_analyze_news, args=(items_to_analyze,))
+                        thread.daemon = True
+                        thread.start()
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")
