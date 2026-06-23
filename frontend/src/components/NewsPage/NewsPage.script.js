@@ -269,23 +269,31 @@ export default {
         neutralData = filteredIndices.map(i => data.series.neutral[i])
       }
       
-      // 准备数据：底部共识区(灰) + 顶部净差区(红/绿) + 分界折线
-      const baseData = xAxisData.map((label, idx) => {
-        return Math.min(positiveData[idx], negativeData[idx])
-      })
-      const topData = xAxisData.map((label, idx) => {
+      // 共识区（min值）：利好>利空→红色+正轴，利空>利好→绿色+负轴，相等→灰色
+      const consensusData = xAxisData.map((label, idx) => {
         const pos = positiveData[idx]
         const neg = negativeData[idx]
-        const diff = pos - neg
-        return {
-          value: Math.abs(diff),
-          itemStyle: {
-            color: diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#9ca3af')
-          }
+        const minVal = Math.min(pos, neg)
+        if (pos === neg) {
+          return { value: minVal, itemStyle: { color: '#9ca3af' } }
+        } else if (pos > neg) {
+          return { value: minVal, itemStyle: { color: '#ef4444' } }
+        } else {
+          return { value: -minVal, itemStyle: { color: '#22c55e' } }
         }
       })
-      // 分界折线（灰色区顶部 = min值），展示情绪拉锯高度
-      const lineData = xAxisData.map((label, idx) => Math.min(positiveData[idx], negativeData[idx]))
+      // 净差区（|diff|）：灰色，方向跟随赢家
+      const marginData = xAxisData.map((label, idx) => {
+        const pos = positiveData[idx]
+        const neg = negativeData[idx]
+        const diff = Math.abs(pos - neg)
+        if (pos > neg) {
+          return { value: diff, itemStyle: { color: '#6b7280' } }
+        } else if (neg > pos) {
+          return { value: -diff, itemStyle: { color: '#6b7280' } }
+        }
+        return { value: 0, itemStyle: { color: '#6b7280' } }
+      })
 
       const option = {
         tooltip: {
@@ -307,10 +315,9 @@ export default {
         },
         legend: {
           data: [
-            { name: '共识区', icon: 'rect' },
-            { name: '利好多', icon: 'rect' },
-            { name: '利空多', icon: 'rect' },
-            { name: '情绪线', icon: 'circle' }
+            { name: '利好区', icon: 'rect' },
+            { name: '利空区', icon: 'rect' },
+            { name: '净差区', icon: 'rect' }
           ],
           top: 2,
           textStyle: { color: '#ccc', fontSize: 11 }
@@ -319,7 +326,7 @@ export default {
           left: '3%',
           right: '4%',
           bottom: '3%',
-          top: 40,
+          top: 35,
           containLabel: true
         },
         xAxis: {
@@ -335,7 +342,7 @@ export default {
         },
         yAxis: {
           type: 'value',
-          name: '新闻条数',
+          name: '利好↑ 利空↓',
           nameTextStyle: { color: '#888', fontSize: 11 },
           axisLabel: { color: '#aaa' },
           splitLine: { lineStyle: { color: '#222' } }
@@ -345,45 +352,21 @@ export default {
             name: '共识区',
             type: 'bar',
             stack: 'mood',
-            data: baseData,
-            barWidth: '55%',
-            itemStyle: { color: '#6b7280' },
-            emphasis: { itemStyle: { color: '#4b5563' } }
+            data: consensusData,
+            barWidth: '55%'
           },
           {
-            name: '利好多',
+            name: '净差区',
             type: 'bar',
             stack: 'mood',
-            data: topData.map(d => ({
-              value: d.itemStyle.color === '#ef4444' ? d.value : 0,
-              itemStyle: { color: '#ef4444' }
-            })),
+            data: marginData,
             barWidth: '55%',
-            tooltip: { show: false }
-          },
-          {
-            name: '利空多',
-            type: 'bar',
-            stack: 'mood',
-            data: topData.map(d => ({
-              value: d.itemStyle.color === '#22c55e' ? d.value : 0,
-              itemStyle: { color: '#22c55e' }
-            })),
-            barWidth: '55%',
-            tooltip: { show: false }
-          },
-          {
-            name: '情绪线',
-            type: 'line',
-            data: lineData,
-            smooth: true,
-            showSymbol: true,
-            symbol: 'circle',
-            symbolSize: 5,
-            lineStyle: { width: 2, color: '#fbbf24', type: 'dashed' },
-            itemStyle: { color: '#fbbf24' },
-            z: 10,
-            tooltip: { show: false }
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              lineStyle: { color: '#666', width: 1 },
+              data: [{ yAxis: 0 }]
+            }
           }
         ]
       }
