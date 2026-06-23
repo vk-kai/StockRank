@@ -55,13 +55,13 @@
     <div class="score-trend-section">
       <div class="score-trend-header">
         <h3 class="score-trend-title">📊 今日利好利空分布</h3>
-        <div class="score-trend-summary" v-if="scoreTrendData.summary">
+        <div class="score-trend-summary">
           <span class="tendency-badge" :class="tendencyClass">
-            {{ scoreTrendData.summary.tendency }}
+            {{ filteredTendency }}
           </span>
-          <span class="summary-item positive">利好 {{ scoreTrendData.summary.total_positive }}</span>
-          <span class="summary-item negative">利空 {{ scoreTrendData.summary.total_negative }}</span>
-          <span class="summary-item neutral">中性 {{ scoreTrendData.summary.total_neutral }}</span>
+          <span class="summary-item positive">利好 {{ filteredPieData.positive }}</span>
+          <span class="summary-item negative">利空 {{ filteredPieData.negative }}</span>
+          <span class="summary-item neutral">中性 {{ filteredPieData.neutral }}</span>
           <button 
             class="market-hours-toggle"
             :class="{ 'active': onlyMarketHours }"

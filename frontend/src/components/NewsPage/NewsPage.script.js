@@ -68,10 +68,40 @@ export default {
       return marked.parse(this.newsAnalysisResult)
     },
     tendencyClass() {
-      const tendency = this.scoreTrendData?.summary?.tendency
+      const tendency = this.filteredTendency
       if (tendency === '偏利好') return 'tendency-positive'
       if (tendency === '偏利空') return 'tendency-negative'
       return 'tendency-neutral'
+    },
+    // 过滤后的统计（跟随"仅看盘中"）
+    filteredPieData() {
+      const data = this.scoreTrendData
+      if (!data || !data.x_axis || data.x_axis.length === 0) {
+        return { positive: 0, negative: 0, neutral: 0, total: 0 }
+      }
+      let positiveTotal = 0
+      let negativeTotal = 0
+      let neutralTotal = 0
+      data.x_axis.forEach((label, idx) => {
+        if (this.onlyMarketHours && (label === '盘前' || label === '盘后')) return
+        positiveTotal += data.series.positive[idx] || 0
+        negativeTotal += data.series.negative[idx] || 0
+        neutralTotal += data.series.neutral[idx] || 0
+      })
+      return {
+        positive: positiveTotal,
+        negative: negativeTotal,
+        neutral: neutralTotal,
+        total: positiveTotal + negativeTotal + neutralTotal
+      }
+    },
+    // 过滤后的倾向判断
+    filteredTendency() {
+      const d = this.filteredPieData
+      if (d.total === 0) return '暂无数据'
+      if (d.positive > d.negative * 1.5) return '偏利好'
+      if (d.negative > d.positive * 1.5) return '偏利空'
+      return '多空均衡'
     }
   },
   mounted() {
@@ -323,25 +353,9 @@ export default {
       this.renderScorePieChart()
     },
 
-    // 从趋势数据中提取过滤后的统计（与折线图同步）
+    // 从computed获取过滤后的统计（与折线图同步）
     getFilteredPieData() {
-      const data = this.scoreTrendData
-      if (!data || !data.x_axis || data.x_axis.length === 0) return null
-
-      let positiveTotal = 0
-      let negativeTotal = 0
-      let neutralTotal = 0
-
-      data.x_axis.forEach((label, idx) => {
-        // 如果开启仅看盘中，跳过盘前盘后
-        if (this.onlyMarketHours && (label === '盘前' || label === '盘后')) return
-        positiveTotal += data.series.positive[idx] || 0
-        negativeTotal += data.series.negative[idx] || 0
-        neutralTotal += data.series.neutral[idx] || 0
-      })
-
-      const total = positiveTotal + negativeTotal + neutralTotal
-      return { positive: positiveTotal, negative: negativeTotal, neutral: neutralTotal, total }
+      return this.filteredPieData
     },
 
     renderScorePieChart() {
