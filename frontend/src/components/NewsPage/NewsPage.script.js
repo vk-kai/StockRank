@@ -43,8 +43,8 @@ export default {
       scoreTrendData: { summary: null },
       scoreTrendChart: null,
       scorePieChart: null,
-      // 是否仅显示盘中（隐藏盘前盘后）
-      onlyMarketHours: false
+      // 是否仅显示盘中（隐藏盘前盘后），默认只看盘中
+      onlyMarketHours: true
     }
   },
   computed: {
@@ -476,20 +476,23 @@ export default {
         },
         title: {
           text: '{val|' + overallScore + '}\n{label|' + scoreLabel + '}',
-          left: '56%',
-          top: '36%',
+          left: '55%',
+          top: 'center',
           textAlign: 'center',
+          textVerticalAlign: 'middle',
           textStyle: {
             rich: {
               val: {
                 fontSize: 28,
                 fontWeight: 'bold',
                 color: scoreColor,
-                lineHeight: 32
+                lineHeight: 32,
+                align: 'center'
               },
               label: {
                 fontSize: 11,
-                color: '#888'
+                color: '#888',
+                align: 'center'
               }
             }
           }
