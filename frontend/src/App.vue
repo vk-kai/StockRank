@@ -10,6 +10,7 @@
           <span>GitHub</span>
         </a>
         <div class="title-actions">
+          <button class="yuntu-button" @click="openDapanYuntu">📊 大盘云图</button>
           <button class="config-button" @click="goToConfig">AI配置</button>
           <button class="log-button" @click="goToLogs">日志</button>
           <button class="house-button" @click="goToHouseKline">房价K线</button>

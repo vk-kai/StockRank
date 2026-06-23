@@ -1178,6 +1178,10 @@ export default {
       window.open(quantUrl, '_blank')
     },
 
+    openDapanYuntu() {
+      window.open('https://dapanyuntu.com/', '_blank')
+    },
+
     loadNotificationState() {
       if (!('Notification' in window)) {
         this.enableNotification = false

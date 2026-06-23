@@ -30,7 +30,7 @@
 }
 
 .header h1 {
-  font-size: 28px;
+  font-size: 22px;
   color: #fff;
   font-weight: 700;
   text-align: center;
@@ -1407,6 +1407,26 @@
   background: linear-gradient(135deg, #40a9ff, #1890ff);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+}
+
+.yuntu-button {
+  background: linear-gradient(135deg, #722ed1, #531dab);
+  color: #fff;
+  border: 1px solid #9254de;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(114, 46, 209, 0.3);
+}
+
+.yuntu-button:hover {
+  background: linear-gradient(135deg, #9254de, #722ed1);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(114, 46, 209, 0.4);
 }
 
 .security-button {

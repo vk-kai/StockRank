@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache
@@ -213,6 +214,7 @@ def process_news_with_ai_and_push(news_list):
                 
     except Exception as e:
         error_logger.error(f"处理新闻AI分析和推送异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         return news_list, [], [], [], []
 
 def _background_analyze_news(new_items):
@@ -250,6 +252,7 @@ def _background_analyze_news(new_items):
             
     except Exception as e:
         error_logger.error(f"后台新闻AI分析异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
     finally:
         set_busy('news_collector', False)
 
@@ -361,6 +364,7 @@ def news_collection_thread():
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")
+            error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         
         time.sleep(30)
         
@@ -381,3 +385,4 @@ def init_news_data():
             news_logger.info("初始化新闻数据：API未返回数据")
     except Exception as e:
         error_logger.error(f"初始化新闻数据失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
