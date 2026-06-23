@@ -151,7 +151,11 @@
           <div v-else-if="newsAnalysisError" class="news-ai-error">
             <p>{{ newsAnalysisError }}</p>
           </div>
-          <div v-else-if="newsAnalysisResult" class="news-ai-analysis-content" v-html="renderedNewsAnalysis"></div>
+          <div v-else-if="newsAnalysisResult && newsAnalysisResult !== '正在加载缓存分析...'" class="news-ai-analysis-content" v-html="renderedNewsAnalysis"></div>
+          <div v-else-if="newsAnalysisResult === '正在加载缓存分析...'" class="news-ai-loading-cache">
+            <div class="spinner-small"></div>
+            <p>{{ newsAnalysisResult }}</p>
+          </div>
         </div>
       </div>
     </div>

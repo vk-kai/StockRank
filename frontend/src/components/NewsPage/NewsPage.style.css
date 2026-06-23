@@ -282,7 +282,6 @@
 
 .news-title {
   color: #fff;
-  font-size: 18px;
   line-height: 1.6;
   font-weight: 600;
   cursor: pointer;
@@ -688,6 +687,20 @@
 
 .news-ai-loading p {
   color: #a5b4fc;
+}
+
+.news-ai-loading-cache {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.news-ai-loading-cache p {
+  color: #4ade80;
+  margin-top: 15px;
+  font-size: 14px;
 }
 
 .news-ai-error {

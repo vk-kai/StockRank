@@ -599,13 +599,33 @@ export default {
       this.newsAnalysisDuration = null
       this.showNewsAnalysisModal = true
       
-      // 如果新闻已有AI评分（说明已分析过），直接请求缓存结果
+      // 如果新闻已有AI评分（说明已分析过），显示加载缓存状态
+      const hasCache = news.ai_score != null
+      if (hasCache) {
+        this.newsAnalysisResult = '正在加载缓存分析...'
+      } else {
+        this.analyzingNewsId = news.id
+      }
+      
       try {
         const response = await analyzeNews(news.title, this.getProcessedContent(news), news.id)
         
         if (response.success) {
           this.newsAnalysisResult = response.analysis
           this.newsAnalysisDuration = response.duration
+          
+          // 如果是实时分析（非缓存），更新新闻列表中的评分
+          if (!response.cached && news.id) {
+            const newsItem = this.newsList.find(n => n.id === news.id)
+            if (newsItem) {
+              // 从分析结果中提取评分和标签
+              const scoreMatch = response.analysis.match(/(\d+)\/100/)
+              if (scoreMatch) {
+                newsItem.ai_score = parseInt(scoreMatch[1])
+                newsItem.ai_label = newsItem.ai_score > 50 ? '利好' : (newsItem.ai_score < 50 ? '利空' : '中性')
+              }
+            }
+          }
         } else {
           this.newsAnalysisError = response.message || 'AI分析失败'
         }
