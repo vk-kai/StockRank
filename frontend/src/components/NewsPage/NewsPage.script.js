@@ -269,30 +269,38 @@ export default {
         neutralData = filteredIndices.map(i => data.series.neutral[i])
       }
       
-      // 共识区（min值）：利好>利空→红色+正轴，利空>利好→绿色+负轴，相等→灰色
+      // 共识区（灰色）：min值，标注较少方数量
+      // 利好>利空→正轴，利空>利好→负轴
       const consensusData = xAxisData.map((label, idx) => {
         const pos = positiveData[idx]
         const neg = negativeData[idx]
         const minVal = Math.min(pos, neg)
-        if (pos === neg) {
-          return { value: minVal, itemStyle: { color: '#9ca3af' } }
-        } else if (pos > neg) {
-          return { value: minVal, itemStyle: { color: '#ef4444' } }
-        } else {
-          return { value: -minVal, itemStyle: { color: '#22c55e' } }
+        const sign = pos >= neg ? 1 : -1
+        return {
+          value: minVal * sign,
+          itemStyle: { color: '#6b7280' }
         }
       })
-      // 净差区（|diff|）：灰色，方向跟随赢家
+      // 净差区（赢家颜色）：|diff|，标注较多方数量
       const marginData = xAxisData.map((label, idx) => {
         const pos = positiveData[idx]
         const neg = negativeData[idx]
         const diff = Math.abs(pos - neg)
-        if (pos > neg) {
-          return { value: diff, itemStyle: { color: '#6b7280' } }
-        } else if (neg > pos) {
-          return { value: -diff, itemStyle: { color: '#6b7280' } }
+        const isPositiveWin = pos > neg
+        const sign = isPositiveWin ? 1 : -1
+        const color = isPositiveWin ? '#ef4444' : (diff === 0 ? '#9ca3af' : '#22c55e')
+        return {
+          value: diff * sign,
+          itemStyle: { color: color }
         }
-        return { value: 0, itemStyle: { color: '#6b7280' } }
+      })
+      // 共识区标签：较少方数量
+      const consensusLabels = xAxisData.map((label, idx) => {
+        return Math.min(positiveData[idx], negativeData[idx])
+      })
+      // 净差区标签：较多方数量
+      const marginLabels = xAxisData.map((label, idx) => {
+        return Math.max(positiveData[idx], negativeData[idx])
       })
 
       const option = {
@@ -315,9 +323,9 @@ export default {
         },
         legend: {
           data: [
-            { name: '利好区', icon: 'rect' },
-            { name: '利空区', icon: 'rect' },
-            { name: '净差区', icon: 'rect' }
+            { name: '共识区', icon: 'rect' },
+            { name: '利好多', icon: 'rect' },
+            { name: '利空多', icon: 'rect' }
           ],
           top: 2,
           textStyle: { color: '#ccc', fontSize: 11 }
@@ -353,7 +361,16 @@ export default {
             type: 'bar',
             stack: 'mood',
             data: consensusData,
-            barWidth: '55%'
+            barWidth: '55%',
+            label: {
+              show: true,
+              color: '#e5e7eb',
+              fontSize: 10,
+              formatter: function(params) {
+                const v = consensusLabels[params.dataIndex]
+                return v > 0 ? v : ''
+              }
+            }
           },
           {
             name: '净差区',
@@ -366,6 +383,19 @@ export default {
               symbol: 'none',
               lineStyle: { color: '#666', width: 1 },
               data: [{ yAxis: 0 }]
+            },
+            label: {
+              show: true,
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 'bold',
+              formatter: function(params) {
+                const v = marginLabels[params.dataIndex]
+                const consV = consensusLabels[params.dataIndex]
+                // 净差区有值时才标注较多方数量
+                if (v > consV) return v
+                return ''
+              }
             }
           }
         ]
