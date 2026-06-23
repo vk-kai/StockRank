@@ -1,4 +1,4 @@
-import { getNews, getHealth, searchNews, isSecurityError, analyzeNews } from '../../services/apiService'
+import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary } from '../../services/apiService'
 import { marked } from 'marked'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -35,7 +35,9 @@ export default {
       newsAnalysisResult: null,
       newsAnalysisError: null,
       newsAnalysisDuration: null,
-      currentAnalysisNews: null
+      currentAnalysisNews: null,
+      // 日期评分统计（从后端获取）
+      scoreSummary: {}
     }
   },
   computed: {
@@ -63,6 +65,7 @@ export default {
     this.loadNotificationState()
     this.loadFilterState()
     this.fetchNews()
+    this.loadScoreSummary()
     this.startCountdown()
     this.fetchSystemHealth()
     this.startHealthCheck()
@@ -129,12 +132,25 @@ export default {
         this.error = '获取新闻失败: ' + err.message
       } finally {
         this.loading = false
+        // 新闻加载完成后更新评分统计
+        this.loadScoreSummary()
       }
     },
 
     retry() {
       this.error = null
       this.fetchNews()
+    },
+
+    async loadScoreSummary() {
+      try {
+        const response = await getNewsScoreSummary()
+        if (response.success) {
+          this.scoreSummary = response.data
+        }
+      } catch (err) {
+        console.error('获取评分统计失败:', err)
+      }
     },
 
     startCountdown() {
@@ -410,16 +426,9 @@ export default {
       const dateStr = this.getDateString(timeStr)
       if (!dateStr) return ''
       
-      const dayNews = this.displayNewsList.filter(n => this.getDateString(n.time) === dateStr)
-      const analyzed = dayNews.filter(n => n.ai_score != null)
-      
-      if (analyzed.length === 0) return ''
-      
-      const positive = analyzed.filter(n => n.ai_score > 50).length
-      const negative = analyzed.filter(n => n.ai_score < 50).length
-      const neutral = analyzed.filter(n => n.ai_score === 50).length
-      
-      return `利好${positive} 利空${negative} 中性${neutral}（共分析${analyzed.length}条）`
+      // 从后端获取的统计数据中查找
+      const summary = this.scoreSummary[dateStr]
+      return summary ? summary.text : ''
     },
 
     getDateString(timeStr) {
@@ -625,6 +634,8 @@ export default {
                 newsItem.ai_label = newsItem.ai_score > 50 ? '利好' : (newsItem.ai_score < 50 ? '利空' : '中性')
               }
             }
+            // 更新评分统计
+            this.loadScoreSummary()
           }
         } else {
           this.newsAnalysisError = response.message || 'AI分析失败'

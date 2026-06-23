@@ -494,3 +494,17 @@ export async function analyzeNews(title, content, newsId) {
     throw error
   }
 }
+
+/**
+ * 获取新闻AI评分统计（每天的利好/利空/中性数量）
+ * @returns {Promise<Object>} 评分统计数据
+ */
+export async function getNewsScoreSummary() {
+  try {
+    const response = await apiClient.get('/news/score-summary')
+    return response.data
+  } catch (error) {
+    console.error('获取新闻评分统计失败:', error)
+    throw error
+  }
+}
