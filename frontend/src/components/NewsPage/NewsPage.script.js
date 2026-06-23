@@ -412,9 +412,9 @@ export default {
               formatter: function(params) {
                 const pos = positiveData[params.dataIndex]
                 const neg = negativeData[params.dataIndex]
-                const diff = pos - neg
-                // 净差区有值时才标注差值
-                if (diff !== 0) return (diff > 0 ? '+' : '') + diff
+                const diff = Math.abs(pos - neg)
+                // 净差区有值时才标注差值（绝对值，颜色已区分方向）
+                if (diff !== 0) return diff
                 return ''
               }
             }
@@ -460,6 +460,11 @@ export default {
         return
       }
 
+      // 综合评分（从后端summary获取，无数据时默认50）
+      const overallScore = this.scoreTrendData.summary?.overall_score ?? 50
+      const scoreColor = overallScore > 50 ? '#ef4444' : (overallScore < 50 ? '#22c55e' : '#eab308')
+      const scoreLabel = overallScore > 60 ? '偏利好' : (overallScore < 40 ? '偏利空' : '多空均衡')
+
       const option = {
         tooltip: {
           trigger: 'item',
@@ -468,6 +473,26 @@ export default {
         legend: {
           bottom: 0,
           textStyle: { color: '#ccc', fontSize: 11 }
+        },
+        title: {
+          text: '{val|' + overallScore + '}\n{label|' + scoreLabel + '}',
+          left: '56%',
+          top: '36%',
+          textAlign: 'center',
+          textStyle: {
+            rich: {
+              val: {
+                fontSize: 28,
+                fontWeight: 'bold',
+                color: scoreColor,
+                lineHeight: 32
+              },
+              label: {
+                fontSize: 11,
+                color: '#888'
+              }
+            }
+          }
         },
         series: [
           {

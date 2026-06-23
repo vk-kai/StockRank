@@ -274,7 +274,8 @@ def get_news_score_trend():
             return axis
         
         # 按时间桶分组统计（只统计今天）
-        bucket_stats = {}  # {bucket_label: {'positive': n, 'negative': n, 'neutral': n}}
+        bucket_stats = {}  # {bucket_label: {'positive': n, 'negative': n, 'neutral': n, 'scores': []}}
+        all_scores = []  # 收集今日所有评分
         for item in all_news:
             news_id = str(item.get('id', ''))
             time_str = item.get('time', '')
@@ -310,6 +311,13 @@ def get_news_score_trend():
             score = cached.get('score')
             
             if score is not None:
+                # 收集所有评分用于计算综合分
+                all_scores.append(score)
+                # 同时记录每个桶的评分
+                if 'scores' not in bucket_stats[bucket]:
+                    bucket_stats[bucket]['scores'] = []
+                bucket_stats[bucket]['scores'].append(score)
+                
                 if score > 50:
                     bucket_stats[bucket]['positive'] += 1
                 elif score < 50:
@@ -351,12 +359,18 @@ def get_news_score_trend():
         total_neutral = sum(s.get('neutral', 0) for s in bucket_stats.values())
         total_analyzed = total_positive + total_negative + total_neutral
         
-        # 倾向判断
+        # 综合情绪评分（0-100，50为中性）
+        if all_scores:
+            overall_score = round(sum(all_scores) / len(all_scores))
+        else:
+            overall_score = 50
+        
+        # 倾向判断（基于综合评分）
         if total_analyzed == 0:
             tendency = '暂无数据'
-        elif total_positive > total_negative * 1.5:
+        elif overall_score >= 60:
             tendency = '偏利好'
-        elif total_negative > total_positive * 1.5:
+        elif overall_score <= 40:
             tendency = '偏利空'
         else:
             tendency = '多空均衡'
@@ -388,6 +402,7 @@ def get_news_score_trend():
                     'total_negative': total_negative,
                     'total_neutral': total_neutral,
                     'total_analyzed': total_analyzed,
+                    'overall_score': overall_score,
                     'tendency': tendency
                 }
             },
