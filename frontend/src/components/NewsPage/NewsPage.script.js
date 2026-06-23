@@ -274,25 +274,29 @@ export default {
           trigger: 'axis',
           axisPointer: { type: 'shadow' },
           formatter: function(params) {
-            const p = params[0]
-            const idx = p.dataIndex
+            const idx = params[0].dataIndex
             const pos = positiveData[idx]
             const neg = negativeData[idx]
             const neu = neutralData[idx]
             const diff = pos - neg
             const sign = diff > 0 ? '+' : ''
-            return `${p.axisValue}<br/>` +
+            return `${params[0].axisValue}<br/>` +
               `<span style="color:#ef4444">●</span> 利好: ${pos}条<br/>` +
               `<span style="color:#22c55e">●</span> 利空: ${neg}条<br/>` +
               `<span style="color:#eab308">●</span> 中性: ${neu}条<br/>` +
               `<span style="color:${diff >= 0 ? '#ef4444' : '#22c55e'};font-weight:bold">净情绪: ${sign}${diff}</span>`
           }
         },
+        legend: {
+          data: ['利好', '利空'],
+          top: 2,
+          textStyle: { color: '#ccc', fontSize: 12 }
+        },
         grid: {
           left: '3%',
           right: '4%',
           bottom: '3%',
-          top: 30,
+          top: 35,
           containLabel: true
         },
         xAxis: {
@@ -308,45 +312,34 @@ export default {
         },
         yAxis: {
           type: 'value',
-          name: '利好-利空',
+          name: '新闻条数',
           nameTextStyle: { color: '#888', fontSize: 11 },
-          axisLabel: { 
-            color: '#aaa',
-            formatter: function(v) {
-              return v > 0 ? '+' + v : v
-            }
-          },
+          axisLabel: { color: '#aaa' },
           splitLine: { lineStyle: { color: '#222' } }
         },
         series: [
           {
-            name: '净情绪',
+            name: '利好',
             type: 'bar',
-            data: xAxisData.map((label, idx) => {
-              const diff = positiveData[idx] - negativeData[idx]
-              return {
-                value: diff,
-                itemStyle: {
-                  color: diff >= 0 ? '#ef4444' : '#22c55e'
-                }
-              }
-            }),
-            barWidth: '60%',
-            markLine: {
-              silent: true,
-              symbol: 'none',
-              lineStyle: { color: '#666', type: 'dashed' },
-              data: [{ yAxis: 0 }]
+            data: positiveData,
+            barWidth: '35%',
+            barGap: '10%',
+            itemStyle: {
+              color: '#ef4444',
+              borderRadius: [3, 3, 0, 0]
             },
-            label: {
-              show: true,
-              position: 'top',
-              color: '#ccc',
-              fontSize: 10,
-              formatter: function(params) {
-                return params.value > 0 ? '+' + params.value : (params.value < 0 ? params.value : '')
-              }
-            }
+            emphasis: { itemStyle: { color: '#dc2626' } }
+          },
+          {
+            name: '利空',
+            type: 'bar',
+            data: negativeData,
+            barWidth: '35%',
+            itemStyle: {
+              color: '#22c55e',
+              borderRadius: [3, 3, 0, 0]
+            },
+            emphasis: { itemStyle: { color: '#16a34a' } }
           }
         ]
       }
