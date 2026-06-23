@@ -509,15 +509,15 @@
 }
 
 .news-score-badge.score-positive {
-  background: rgba(74, 222, 128, 0.2);
-  color: #4ade80;
-  border: 1px solid rgba(74, 222, 128, 0.4);
-}
-
-.news-score-badge.score-negative {
   background: rgba(248, 113, 113, 0.2);
   color: #f87171;
   border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.news-score-badge.score-negative {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.4);
 }
 
 .news-score-badge.score-neutral {
