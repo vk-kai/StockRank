@@ -406,6 +406,22 @@ export default {
       return currentDate !== prevDate
     },
 
+    getDateScoreSummary(timeStr) {
+      const dateStr = this.getDateString(timeStr)
+      if (!dateStr) return ''
+      
+      const dayNews = this.displayNewsList.filter(n => this.getDateString(n.time) === dateStr)
+      const analyzed = dayNews.filter(n => n.ai_score != null)
+      
+      if (analyzed.length === 0) return ''
+      
+      const positive = analyzed.filter(n => n.ai_score > 50).length
+      const negative = analyzed.filter(n => n.ai_score < 50).length
+      const neutral = analyzed.filter(n => n.ai_score === 50).length
+      
+      return `利好${positive} 利空${negative} 中性${neutral}（共分析${analyzed.length}条）`
+    },
+
     getDateString(timeStr) {
       if (!timeStr) return ''
       

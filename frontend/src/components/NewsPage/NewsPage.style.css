@@ -195,6 +195,10 @@
   color: #4fc3f7;
   font-size: 16px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
 }
 
 .date-divider::before,
@@ -202,7 +206,7 @@
   content: '';
   position: absolute;
   top: 50%;
-  width: 35%;
+  width: 25%;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(79, 195, 247, 0.5), transparent);
 }
@@ -213,6 +217,17 @@
 
 .date-divider::after {
   right: 0;
+}
+
+.date-text {
+  white-space: nowrap;
+}
+
+.date-summary {
+  font-size: 12px;
+  font-weight: 400;
+  color: #a5b4fc;
+  white-space: nowrap;
 }
 
 .news-item {

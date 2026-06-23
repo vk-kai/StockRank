@@ -57,7 +57,10 @@
           v-if="shouldShowDateDivider(news, index)"
           class="date-divider"
         >
-          {{ formatDate(news.time) }}
+          <span class="date-text">{{ formatDate(news.time) }}</span>
+          <span class="date-summary" v-if="getDateScoreSummary(news.time)">
+            {{ getDateScoreSummary(news.time) }}
+          </span>
         </div>
         <div 
           class="news-item"
