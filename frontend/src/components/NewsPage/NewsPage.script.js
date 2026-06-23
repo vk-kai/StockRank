@@ -367,7 +367,12 @@ export default {
           type: 'value',
           name: '利好↑ 利空↓',
           nameTextStyle: { color: '#888', fontSize: 11 },
-          axisLabel: { color: '#aaa' },
+          axisLabel: { 
+            color: '#aaa',
+            formatter: function(v) {
+              return Math.abs(v)
+            }
+          },
           splitLine: { lineStyle: { color: '#222' } }
         },
         series: [
