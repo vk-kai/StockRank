@@ -239,7 +239,12 @@ export default {
           type: 'category',
           boundaryGap: false,
           data: data.x_axis,
-          axisLabel: { color: '#aaa' },
+          axisLabel: {
+            color: '#aaa',
+            interval: 0,
+            rotate: 45,
+            fontSize: 11
+          },
           axisLine: { lineStyle: { color: '#444' } }
         },
         yAxis: {

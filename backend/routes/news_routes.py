@@ -217,7 +217,13 @@ def get_news_score_summary():
 
 @news_bp.route('/news/score-trend', methods=['GET'])
 def get_news_score_trend():
-    """获取今日按小时分组的利好/利空/中性趋势数据"""
+    """获取今日利好/利空/中性趋势数据
+    
+    时间分桶规则：
+    - 盘前 00:00-08:59 综合统计一次
+    - 盘中 09:00-15:00 每10分钟统计一次
+    - 盘后 15:00-23:59 综合统计一次
+    """
     try:
         # 加载所有新闻数据
         all_news = []
@@ -240,9 +246,35 @@ def get_news_score_trend():
         
         # 获取今日日期
         today = datetime.now().strftime('%Y-%m-%d')
+        now = datetime.now()
         
-        # 按小时分组统计（只统计今天）
-        hour_stats = {}  # {hour: {'positive': n, 'negative': n, 'neutral': n}}
+        # 时间桶标签函数
+        def get_bucket_label(dt):
+            """根据时间返回所属的时间桶标签"""
+            hour = dt.hour
+            minute = dt.minute
+            # 盘前：0:00 - 8:59
+            if hour < 9:
+                return '盘前'
+            # 盘中：9:00 - 15:00（每10分钟）
+            if hour < 15 or (hour == 15 and minute == 0):
+                bucket_minute = (minute // 10) * 10
+                return f"{hour:02d}:{bucket_minute:02d}"
+            # 盘后：15:00 之后
+            return '盘后'
+        
+        # 生成完整时间轴模板（按顺序）
+        def generate_full_axis():
+            axis = ['盘前']
+            for h in range(9, 15):
+                for m in range(0, 60, 10):
+                    axis.append(f"{h:02d}:{m:02d}")
+            axis.append('15:00')
+            axis.append('盘后')
+            return axis
+        
+        # 按时间桶分组统计（只统计今天）
+        bucket_stats = {}  # {bucket_label: {'positive': n, 'negative': n, 'neutral': n}}
         for item in all_news:
             news_id = str(item.get('id', ''))
             time_str = item.get('time', '')
@@ -259,7 +291,6 @@ def get_news_score_trend():
                         dt = datetime.fromtimestamp(int(time_str))
                     else:
                         dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                        # 处理时区：转换为本地时间
                         if dt.tzinfo is not None:
                             dt = dt.astimezone().replace(tzinfo=None)
                 else:
@@ -271,51 +302,53 @@ def get_news_score_trend():
             if dt.strftime('%Y-%m-%d') != today:
                 continue
             
-            hour = dt.hour
+            bucket = get_bucket_label(dt)
+            if bucket not in bucket_stats:
+                bucket_stats[bucket] = {'positive': 0, 'negative': 0, 'neutral': 0}
             
-            # 初始化小时统计
-            if hour not in hour_stats:
-                hour_stats[hour] = {'positive': 0, 'negative': 0, 'neutral': 0}
-            
-            # 检查是否有AI分析
             cached = ai_cache.get(news_id, {})
             score = cached.get('score')
             
             if score is not None:
                 if score > 50:
-                    hour_stats[hour]['positive'] += 1
+                    bucket_stats[bucket]['positive'] += 1
                 elif score < 50:
-                    hour_stats[hour]['negative'] += 1
+                    bucket_stats[bucket]['negative'] += 1
                 else:
-                    hour_stats[hour]['neutral'] += 1
+                    bucket_stats[bucket]['neutral'] += 1
         
-        # 生成从0点到当前小时的完整小时序列
-        current_hour = datetime.now().hour
-        hours = list(range(0, current_hour + 1))
+        # 生成时间轴：只显示到当前时间为止
+        current_bucket = get_bucket_label(now)
+        full_axis = generate_full_axis()
+        
+        x_axis = []
+        for label in full_axis:
+            if label == '盘前':
+                x_axis.append(label)
+                continue
+            if label == '盘后':
+                # 只有当前已进入盘后才显示
+                if now.hour >= 15:
+                    x_axis.append(label)
+                continue
+            # 普通时间点（9:00 ~ 15:00）
+            if label == '15:00':
+                if now.hour >= 15:
+                    x_axis.append(label)
+                continue
+            h, m = map(int, label.split(':'))
+            if (h < now.hour) or (h == now.hour and m <= now.minute):
+                x_axis.append(label)
         
         # 构建图表数据
-        x_axis = [f"{h:02d}:00" for h in hours]
-        positive_data = [hour_stats.get(h, {}).get('positive', 0) for h in hours]
-        negative_data = [hour_stats.get(h, {}).get('negative', 0) for h in hours]
-        neutral_data = [hour_stats.get(h, {}).get('neutral', 0) for h in hours]
-        
-        # 计算累计值
-        cum_positive = []
-        cum_negative = []
-        cum_neutral = []
-        sum_p, sum_n, sum_neu = 0, 0, 0
-        for h in hours:
-            sum_p += hour_stats.get(h, {}).get('positive', 0)
-            sum_n += hour_stats.get(h, {}).get('negative', 0)
-            sum_neu += hour_stats.get(h, {}).get('neutral', 0)
-            cum_positive.append(sum_p)
-            cum_negative.append(sum_n)
-            cum_neutral.append(sum_neu)
+        positive_data = [bucket_stats.get(label, {}).get('positive', 0) for label in x_axis]
+        negative_data = [bucket_stats.get(label, {}).get('negative', 0) for label in x_axis]
+        neutral_data = [bucket_stats.get(label, {}).get('neutral', 0) for label in x_axis]
         
         # 今日总计
-        total_positive = sum(hour_stats.get(h, {}).get('positive', 0) for h in hours)
-        total_negative = sum(hour_stats.get(h, {}).get('negative', 0) for h in hours)
-        total_neutral = sum(hour_stats.get(h, {}).get('neutral', 0) for h in hours)
+        total_positive = sum(s.get('positive', 0) for s in bucket_stats.values())
+        total_negative = sum(s.get('negative', 0) for s in bucket_stats.values())
+        total_neutral = sum(s.get('neutral', 0) for s in bucket_stats.values())
         total_analyzed = total_positive + total_negative + total_neutral
         
         # 倾向判断
@@ -335,10 +368,7 @@ def get_news_score_trend():
                 'series': {
                     'positive': positive_data,
                     'negative': negative_data,
-                    'neutral': neutral_data,
-                    'cumulative_positive': cum_positive,
-                    'cumulative_negative': cum_negative,
-                    'cumulative_neutral': cum_neutral
+                    'neutral': neutral_data
                 },
                 'summary': {
                     'total_positive': total_positive,
