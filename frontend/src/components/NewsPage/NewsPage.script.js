@@ -272,30 +272,31 @@ export default {
       const option = {
         tooltip: {
           trigger: 'axis',
-          axisPointer: { type: 'cross' },
+          axisPointer: { type: 'shadow' },
           formatter: function(params) {
-            let result = params[0].axisValue + '<br/>'
-            params.forEach(p => {
-              result += `${p.marker} ${p.seriesName}: ${p.value}条<br/>`
-            })
-            return result
+            const p = params[0]
+            const idx = p.dataIndex
+            const pos = positiveData[idx]
+            const neg = negativeData[idx]
+            const neu = neutralData[idx]
+            const diff = pos - neg
+            const sign = diff > 0 ? '+' : ''
+            return `${p.axisValue}<br/>` +
+              `<span style="color:#ef4444">●</span> 利好: ${pos}条<br/>` +
+              `<span style="color:#22c55e">●</span> 利空: ${neg}条<br/>` +
+              `<span style="color:#eab308">●</span> 中性: ${neu}条<br/>` +
+              `<span style="color:${diff >= 0 ? '#ef4444' : '#22c55e'};font-weight:bold">净情绪: ${sign}${diff}</span>`
           }
-        },
-        legend: {
-          data: ['利好', '利空', '中性'],
-          top: 5,
-          textStyle: { color: '#ccc' }
         },
         grid: {
           left: '3%',
           right: '4%',
           bottom: '3%',
-          top: 40,
+          top: 30,
           containLabel: true
         },
         xAxis: {
           type: 'category',
-          boundaryGap: false,
           data: xAxisData,
           axisLabel: {
             color: '#aaa',
@@ -307,42 +308,45 @@ export default {
         },
         yAxis: {
           type: 'value',
-          axisLabel: { color: '#aaa' },
+          name: '利好-利空',
+          nameTextStyle: { color: '#888', fontSize: 11 },
+          axisLabel: { 
+            color: '#aaa',
+            formatter: function(v) {
+              return v > 0 ? '+' + v : v
+            }
+          },
           splitLine: { lineStyle: { color: '#222' } }
         },
         series: [
           {
-            name: '利好',
-            type: 'line',
-            smooth: true,
-            showSymbol: false,
-            areaStyle: { opacity: 0.15, color: '#ef4444' },
-            lineStyle: { width: 2, color: '#ef4444' },
-            itemStyle: { color: '#ef4444' },
-            emphasis: { focus: 'series' },
-            data: positiveData
-          },
-          {
-            name: '利空',
-            type: 'line',
-            smooth: true,
-            showSymbol: false,
-            areaStyle: { opacity: 0.15, color: '#22c55e' },
-            lineStyle: { width: 2, color: '#22c55e' },
-            itemStyle: { color: '#22c55e' },
-            emphasis: { focus: 'series' },
-            data: negativeData
-          },
-          {
-            name: '中性',
-            type: 'line',
-            smooth: true,
-            showSymbol: false,
-            areaStyle: { opacity: 0.1, color: '#eab308' },
-            lineStyle: { width: 2, color: '#eab308' },
-            itemStyle: { color: '#eab308' },
-            emphasis: { focus: 'series' },
-            data: neutralData
+            name: '净情绪',
+            type: 'bar',
+            data: xAxisData.map((label, idx) => {
+              const diff = positiveData[idx] - negativeData[idx]
+              return {
+                value: diff,
+                itemStyle: {
+                  color: diff >= 0 ? '#ef4444' : '#22c55e'
+                }
+              }
+            }),
+            barWidth: '60%',
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              lineStyle: { color: '#666', type: 'dashed' },
+              data: [{ yAxis: 0 }]
+            },
+            label: {
+              show: true,
+              position: 'top',
+              color: '#ccc',
+              fontSize: 10,
+              formatter: function(params) {
+                return params.value > 0 ? '+' + params.value : (params.value < 0 ? params.value : '')
+              }
+            }
           }
         ]
       }
