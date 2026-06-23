@@ -1,5 +1,6 @@
-import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary } from '../../services/apiService'
+import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary, getNewsScoreTrend } from '../../services/apiService'
 import { marked } from 'marked'
+import * as echarts from 'echarts'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -37,7 +38,10 @@ export default {
       newsAnalysisDuration: null,
       currentAnalysisNews: null,
       // 日期评分统计（从后端获取）
-      scoreSummary: {}
+      scoreSummary: {},
+      // 利好利空趋势图
+      scoreTrendData: { summary: null },
+      scoreTrendChart: null
     }
   },
   computed: {
@@ -59,6 +63,12 @@ export default {
     renderedNewsAnalysis() {
       if (!this.newsAnalysisResult) return ''
       return marked.parse(this.newsAnalysisResult)
+    },
+    tendencyClass() {
+      const tendency = this.scoreTrendData?.summary?.tendency
+      if (tendency === '偏利好') return 'tendency-positive'
+      if (tendency === '偏利空') return 'tendency-negative'
+      return 'tendency-neutral'
     }
   },
   mounted() {
@@ -66,12 +76,15 @@ export default {
     this.loadFilterState()
     this.fetchNews()
     this.loadScoreSummary()
+    this.loadScoreTrend()
     this.startCountdown()
     this.fetchSystemHealth()
     this.startHealthCheck()
     
     // 监听滚动事件
     window.addEventListener('scroll', this.handleScroll)
+    // 监听窗口大小变化，重绘图表
+    window.addEventListener('resize', this.handleChartResize)
   },
   beforeUnmount() {
     if (this.countdownInterval) {
@@ -86,6 +99,13 @@ export default {
     
     // 移除滚动监听
     window.removeEventListener('scroll', this.handleScroll)
+    // 移除窗口大小监听
+    window.removeEventListener('resize', this.handleChartResize)
+    // 销毁图表实例
+    if (this.scoreTrendChart) {
+      this.scoreTrendChart.dispose()
+      this.scoreTrendChart = null
+    }
   },
   methods: {
     goBack() {
@@ -132,8 +152,9 @@ export default {
         this.error = '获取新闻失败: ' + err.message
       } finally {
         this.loading = false
-        // 新闻加载完成后更新评分统计
+        // 新闻加载完成后更新评分统计和趋势图
         this.loadScoreSummary()
+        this.loadScoreTrend()
       }
     },
 
@@ -150,6 +171,122 @@ export default {
         }
       } catch (err) {
         console.error('获取评分统计失败:', err)
+      }
+    },
+
+    async loadScoreTrend() {
+      try {
+        const response = await getNewsScoreTrend()
+        if (response.success) {
+          this.scoreTrendData = response.data
+          this.$nextTick(() => {
+            this.renderScoreTrendChart()
+          })
+        }
+      } catch (err) {
+        console.error('获取评分趋势数据失败:', err)
+      }
+    },
+
+    renderScoreTrendChart() {
+      const chartDom = this.$refs.scoreTrendChart
+      if (!chartDom) return
+      
+      // 初始化图表
+      if (!this.scoreTrendChart) {
+        this.scoreTrendChart = echarts.init(chartDom)
+      }
+      
+      const data = this.scoreTrendData
+      if (!data || !data.x_axis || data.x_axis.length === 0) {
+        this.scoreTrendChart.clear()
+        this.scoreTrendChart.setOption({
+          title: {
+            text: '暂无今日分析数据',
+            left: 'center',
+            top: 'center',
+            textStyle: { color: '#999', fontSize: 14 }
+          }
+        })
+        return
+      }
+      
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross' },
+          formatter: function(params) {
+            let result = params[0].axisValue + '<br/>'
+            params.forEach(p => {
+              result += `${p.marker} ${p.seriesName}: ${p.value}条<br/>`
+            })
+            return result
+          }
+        },
+        legend: {
+          data: ['利好', '利空', '中性'],
+          top: 5,
+          textStyle: { color: '#ccc' }
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          top: 40,
+          containLabel: true
+        },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: data.x_axis,
+          axisLabel: { color: '#aaa' },
+          axisLine: { lineStyle: { color: '#444' } }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { color: '#aaa' },
+          splitLine: { lineStyle: { color: '#222' } }
+        },
+        series: [
+          {
+            name: '利好',
+            type: 'line',
+            stack: 'total',
+            areaStyle: { opacity: 0.6, color: '#ef4444' },
+            lineStyle: { width: 1, color: '#ef4444' },
+            itemStyle: { color: '#ef4444' },
+            emphasis: { focus: 'series' },
+            data: data.series.positive
+          },
+          {
+            name: '利空',
+            type: 'line',
+            stack: 'total',
+            areaStyle: { opacity: 0.6, color: '#22c55e' },
+            lineStyle: { width: 1, color: '#22c55e' },
+            itemStyle: { color: '#22c55e' },
+            emphasis: { focus: 'series' },
+            data: data.series.negative
+          },
+          {
+            name: '中性',
+            type: 'line',
+            stack: 'total',
+            areaStyle: { opacity: 0.5, color: '#eab308' },
+            lineStyle: { width: 1, color: '#eab308' },
+            itemStyle: { color: '#eab308' },
+            emphasis: { focus: 'series' },
+            data: data.series.neutral
+          }
+        ]
+      }
+      
+      this.scoreTrendChart.setOption(option, true)
+    },
+
+    handleChartResize() {
+      if (this.scoreTrendChart) {
+        this.scoreTrendChart.resize()
       }
     },
 
@@ -638,8 +775,9 @@ export default {
                 newsItem.ai_label = newsItem.ai_score > 50 ? '利好' : (newsItem.ai_score < 50 ? '利空' : '中性')
               }
             }
-            // 更新评分统计
+            // 更新评分统计和趋势图
             this.loadScoreSummary()
+            this.loadScoreTrend()
           }
         } else {
           this.newsAnalysisError = response.message || 'AI分析失败'

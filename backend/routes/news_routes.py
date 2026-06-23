@@ -214,3 +214,147 @@ def get_news_score_summary():
             'success': False,
             'message': '服务器内部错误'
         }), 500
+
+@news_bp.route('/news/score-trend', methods=['GET'])
+def get_news_score_trend():
+    """获取今日按小时分组的利好/利空/中性趋势数据"""
+    try:
+        # 加载所有新闻数据
+        all_news = []
+        if os.path.exists(NEWS_DIR):
+            for filename in os.listdir(NEWS_DIR):
+                if filename.endswith('.json'):
+                    file_path = os.path.join(NEWS_DIR, filename)
+                    try:
+                        if os.path.getsize(file_path) == 0:
+                            continue
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if isinstance(data, list):
+                                all_news.extend(data)
+                    except (json.JSONDecodeError, Exception):
+                        continue
+        
+        # 加载AI分析缓存
+        ai_cache = load_news_analysis_cache()
+        
+        # 获取今日日期
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # 按小时分组统计（只统计今天）
+        hour_stats = {}  # {hour: {'positive': n, 'negative': n, 'neutral': n}}
+        for item in all_news:
+            news_id = str(item.get('id', ''))
+            time_str = item.get('time', '')
+            
+            if not time_str:
+                continue
+            
+            # 解析时间
+            try:
+                if isinstance(time_str, (int, float)):
+                    dt = datetime.fromtimestamp(float(time_str))
+                elif isinstance(time_str, str):
+                    if time_str.isdigit():
+                        dt = datetime.fromtimestamp(int(time_str))
+                    else:
+                        dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                        # 处理时区：转换为本地时间
+                        if dt.tzinfo is not None:
+                            dt = dt.astimezone().replace(tzinfo=None)
+                else:
+                    continue
+            except (ValueError, TypeError, OSError):
+                continue
+            
+            # 只统计今天
+            if dt.strftime('%Y-%m-%d') != today:
+                continue
+            
+            hour = dt.hour
+            
+            # 初始化小时统计
+            if hour not in hour_stats:
+                hour_stats[hour] = {'positive': 0, 'negative': 0, 'neutral': 0}
+            
+            # 检查是否有AI分析
+            cached = ai_cache.get(news_id, {})
+            score = cached.get('score')
+            
+            if score is not None:
+                if score > 50:
+                    hour_stats[hour]['positive'] += 1
+                elif score < 50:
+                    hour_stats[hour]['negative'] += 1
+                else:
+                    hour_stats[hour]['neutral'] += 1
+        
+        # 生成从0点到当前小时的完整小时序列
+        current_hour = datetime.now().hour
+        hours = list(range(0, current_hour + 1))
+        
+        # 构建图表数据
+        x_axis = [f"{h:02d}:00" for h in hours]
+        positive_data = [hour_stats.get(h, {}).get('positive', 0) for h in hours]
+        negative_data = [hour_stats.get(h, {}).get('negative', 0) for h in hours]
+        neutral_data = [hour_stats.get(h, {}).get('neutral', 0) for h in hours]
+        
+        # 计算累计值
+        cum_positive = []
+        cum_negative = []
+        cum_neutral = []
+        sum_p, sum_n, sum_neu = 0, 0, 0
+        for h in hours:
+            sum_p += hour_stats.get(h, {}).get('positive', 0)
+            sum_n += hour_stats.get(h, {}).get('negative', 0)
+            sum_neu += hour_stats.get(h, {}).get('neutral', 0)
+            cum_positive.append(sum_p)
+            cum_negative.append(sum_n)
+            cum_neutral.append(sum_neu)
+        
+        # 今日总计
+        total_positive = sum(hour_stats.get(h, {}).get('positive', 0) for h in hours)
+        total_negative = sum(hour_stats.get(h, {}).get('negative', 0) for h in hours)
+        total_neutral = sum(hour_stats.get(h, {}).get('neutral', 0) for h in hours)
+        total_analyzed = total_positive + total_negative + total_neutral
+        
+        # 倾向判断
+        if total_analyzed == 0:
+            tendency = '暂无数据'
+        elif total_positive > total_negative * 1.5:
+            tendency = '偏利好'
+        elif total_negative > total_positive * 1.5:
+            tendency = '偏利空'
+        else:
+            tendency = '多空均衡'
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'x_axis': x_axis,
+                'series': {
+                    'positive': positive_data,
+                    'negative': negative_data,
+                    'neutral': neutral_data,
+                    'cumulative_positive': cum_positive,
+                    'cumulative_negative': cum_negative,
+                    'cumulative_neutral': cum_neutral
+                },
+                'summary': {
+                    'total_positive': total_positive,
+                    'total_negative': total_negative,
+                    'total_neutral': total_neutral,
+                    'total_analyzed': total_analyzed,
+                    'tendency': tendency
+                }
+            },
+            'timestamp': datetime.now().astimezone().isoformat()
+        })
+    except Exception as e:
+        error_logger.error(f"API /api/news/score-trend 异常: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/news/score-trend]: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '服务器内部错误'
+        }), 500

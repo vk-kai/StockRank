@@ -508,3 +508,17 @@ export async function getNewsScoreSummary() {
     throw error
   }
 }
+
+/**
+ * 获取今日按小时分组的利好利空趋势数据
+ * @returns {Promise<Object>} 趋势数据
+ */
+export async function getNewsScoreTrend() {
+  try {
+    const response = await apiClient.get('/news/score-trend')
+    return response.data
+  } catch (error) {
+    console.error('获取评分趋势数据失败:', error)
+    throw error
+  }
+}

@@ -51,6 +51,22 @@
       </div>
     </div>
 
+    <!-- 今日利好利空分布图 -->
+    <div class="score-trend-section">
+      <div class="score-trend-header">
+        <h3 class="score-trend-title">📊 今日利好利空分布</h3>
+        <div class="score-trend-summary" v-if="scoreTrendData.summary">
+          <span class="tendency-badge" :class="tendencyClass">
+            {{ scoreTrendData.summary.tendency }}
+          </span>
+          <span class="summary-item positive">利好 {{ scoreTrendData.summary.total_positive }}</span>
+          <span class="summary-item negative">利空 {{ scoreTrendData.summary.total_negative }}</span>
+          <span class="summary-item neutral">中性 {{ scoreTrendData.summary.total_neutral }}</span>
+        </div>
+      </div>
+      <div ref="scoreTrendChart" class="score-trend-chart"></div>
+    </div>
+
     <div class="news-list" v-if="displayNewsList.length > 0">
       <template v-for="(news, index) in displayNewsList" :key="news.id">
         <div 
