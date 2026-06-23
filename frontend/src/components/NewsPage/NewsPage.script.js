@@ -388,15 +388,15 @@ export default {
           formatter: '{b}: {c}条 ({d}%)'
         },
         legend: {
-          bottom: 5,
-          textStyle: { color: '#ccc', fontSize: 12 }
+          bottom: 0,
+          textStyle: { color: '#ccc', fontSize: 11 }
         },
         series: [
           {
             name: '情绪占比',
             type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '45%'],
+            radius: ['35%', '62%'],
+            center: ['55%', '42%'],
             avoidLabelOverlap: false,
             itemStyle: {
               borderRadius: 6,
@@ -406,7 +406,10 @@ export default {
             label: {
               show: true,
               color: '#ccc',
-              formatter: '{b}\n{d}%'
+              fontSize: 11,
+              formatter: '{b}\n{d}%',
+              overflow: 'none',
+              distanceToLabelLine: 4
             },
             emphasis: {
               label: { show: true, fontSize: 14, fontWeight: 'bold' }
