@@ -347,16 +347,19 @@ def news_collection_thread():
                 news_logger.info(summary)
             
             # 有新新闻时，触发后台AI分析（所有新增新闻）
-            if actual_new_count > 0 and new_items:
-                from ai_analyzer import load_ai_config
-                ai_config = load_ai_config()
-                if ai_config and ai_config.get('enabled'):
-                    import threading as _threading
-                    items_to_analyze = [item for item in new_items if item.get('id') and item.get('title')]
-                    if items_to_analyze:
-                        thread = _threading.Thread(target=_background_analyze_news, args=(items_to_analyze,))
-                        thread.daemon = True
-                        thread.start()
+            if actual_new_count > 0:
+                all_new_items = normal_items + pushed_items + ignored_items
+                if all_new_items:
+                    from ai_analyzer import load_ai_config
+                    ai_config = load_ai_config()
+                    if ai_config and ai_config.get('enabled'):
+                        import threading as _threading
+                        # 只分析有id和title的，且未被缓存过的
+                        items_to_analyze = [item for item in all_new_items if item.get('id') and item.get('title')]
+                        if items_to_analyze:
+                            thread = _threading.Thread(target=_background_analyze_news, args=(items_to_analyze,))
+                            thread.daemon = True
+                            thread.start()
             
         except Exception as e:
             error_logger.error(f"新闻采集线程异常: {e}")
