@@ -348,9 +348,11 @@ export default {
       const chartDom = this.$refs.scorePieChart
       if (!chartDom) return
       
-      if (!this.scorePieChart) {
-        this.scorePieChart = echarts.init(chartDom)
+      // 强制销毁重建，避免echarts内部状态残留导致数据不更新
+      if (this.scorePieChart) {
+        this.scorePieChart.dispose()
       }
+      this.scorePieChart = echarts.init(chartDom)
 
       const pieData = this.getFilteredPieData()
       if (!pieData || pieData.total === 0) {
