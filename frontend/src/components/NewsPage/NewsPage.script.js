@@ -314,9 +314,10 @@ export default {
           {
             name: '利好',
             type: 'line',
-            stack: 'total',
-            areaStyle: { opacity: 0.6, color: '#ef4444' },
-            lineStyle: { width: 1, color: '#ef4444' },
+            smooth: true,
+            showSymbol: false,
+            areaStyle: { opacity: 0.15, color: '#ef4444' },
+            lineStyle: { width: 2, color: '#ef4444' },
             itemStyle: { color: '#ef4444' },
             emphasis: { focus: 'series' },
             data: positiveData
@@ -324,9 +325,10 @@ export default {
           {
             name: '利空',
             type: 'line',
-            stack: 'total',
-            areaStyle: { opacity: 0.6, color: '#22c55e' },
-            lineStyle: { width: 1, color: '#22c55e' },
+            smooth: true,
+            showSymbol: false,
+            areaStyle: { opacity: 0.15, color: '#22c55e' },
+            lineStyle: { width: 2, color: '#22c55e' },
             itemStyle: { color: '#22c55e' },
             emphasis: { focus: 'series' },
             data: negativeData
@@ -334,9 +336,10 @@ export default {
           {
             name: '中性',
             type: 'line',
-            stack: 'total',
-            areaStyle: { opacity: 0.5, color: '#eab308' },
-            lineStyle: { width: 1, color: '#eab308' },
+            smooth: true,
+            showSymbol: false,
+            areaStyle: { opacity: 0.1, color: '#eab308' },
+            lineStyle: { width: 2, color: '#eab308' },
             itemStyle: { color: '#eab308' },
             emphasis: { focus: 'series' },
             data: neutralData
