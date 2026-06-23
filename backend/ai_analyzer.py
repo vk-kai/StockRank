@@ -572,6 +572,22 @@ def save_news_analysis(news_id, analysis, duration):
     
     save_news_analysis_cache(cache)
 
+def clear_news_analysis_cache():
+    """清空新闻AI分析缓存（每日清理时调用）"""
+    try:
+        with _news_cache_lock:
+            if os.path.exists(NEWS_ANALYSIS_CACHE_FILE):
+                # 删除缓存文件
+                os.remove(NEWS_ANALYSIS_CACHE_FILE)
+                info_logger.info("新闻AI分析缓存已清空")
+                return True
+            else:
+                info_logger.info("新闻AI分析缓存文件不存在，无需清理")
+                return False
+    except Exception as e:
+        error_logger.error(f"清空新闻AI分析缓存失败: {e}")
+        return False
+
 def extract_score_from_analysis(analysis):
     """从AI分析文本中提取评分"""
     if not analysis:

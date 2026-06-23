@@ -3,7 +3,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
-from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache
+from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache
 from feishu_pusher import push_important_news
 from stock_monitor import should_push_news
 from logger import get_logger, cleanup_old_logs
@@ -121,7 +121,46 @@ def process_news_with_ai_and_push(news_list):
         pushed_items = []
         ignored_items = []
         
-        if important_items:
+        # 如果飞书推送未启用，跳过所有推送逻辑
+        if not feishu_enabled:
+            ai_logger.info(f"飞书推送已关闭，跳过重要新闻推送逻辑")
+            # 重要新闻仍然进行AI分析，但不推送
+            if important_items and ai_enabled:
+                items_to_analyze = important_items[:5]
+                if len(important_items) > 5:
+                    ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
+                
+                set_busy('news_collector', True)
+                try:
+                    analysis_results = batch_analyze_news(items_to_analyze)
+                finally:
+                    set_busy('news_collector', False)
+                
+                for news_item in items_to_analyze:
+                    news_id = news_item.get('id')
+                    analysis = analysis_results.get(news_id)
+                    news_item['ai_analyzed'] = True
+                    
+                    if analysis:
+                        news_item['ai_analysis'] = analysis
+                        news_item['core_event'] = analysis.get('core_event', '')
+                        # 不推送，只记录分析结果
+                        ignored_items.append({
+                            'title': news_item.get('title', ''),
+                            'reason': f'{analysis.get("reason", "")}（飞书推送已关闭）',
+                            'level': analysis.get('level', '')
+                        })
+                    else:
+                        ignored_items.append({
+                            'title': news_item.get('title', ''),
+                            'reason': 'AI分析失败（飞书推送已关闭）',
+                            'level': '未知'
+                        })
+                
+                for news_item in important_items[5:]:
+                    news_item['ai_analyzed'] = False
+                    news_item['core_event'] = ''
+        elif important_items:
             if ai_enabled:
                 items_to_analyze = important_items[:5]
                 if len(important_items) > 5:
@@ -183,32 +222,36 @@ def process_news_with_ai_and_push(news_list):
                             'core_event': ''
                         })
         
-        for news_item in new_items:
-            should_push, matched_stocks = should_push_news(news_item)
-            if should_push and not news_item.get('pushed'):
-                from feishu_pusher import send_feishu_message
-                from datetime import datetime as dt
-                
-                stock_names = "、".join([s['name'] for s in matched_stocks])
-                news_title = news_item.get('title', '')
-                news_content = news_item.get('content', '')
-                news_time = news_item.get('time', '')
-                
-                if news_time:
-                    try:
-                        ts = int(news_time)
-                        news_time = dt.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-                    except (ValueError, TypeError, OSError):
-                        pass
-                
-                parts = [f"匹配股票：{stock_names}"]
-                if news_time:
-                    parts.append(news_time)
-                parts.append(f"<font color='red'>{news_content}</font>")
-                content = "\n\n".join(parts)
-                url = news_item.get('url')
-                send_feishu_message(news_title, content, url=url)
-                news_item['pushed'] = True
+        # 股票匹配推送（仅在飞书启用时执行）
+        if feishu_enabled:
+            for news_item in new_items:
+                should_push, matched_stocks = should_push_news(news_item)
+                if should_push and not news_item.get('pushed'):
+                    from feishu_pusher import send_feishu_message
+                    from datetime import datetime as dt
+                    
+                    stock_names = "、".join([s['name'] for s in matched_stocks])
+                    news_title = news_item.get('title', '')
+                    news_content = news_item.get('content', '')
+                    news_time = news_item.get('time', '')
+                    
+                    if news_time:
+                        try:
+                            ts = int(news_time)
+                            news_time = dt.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+                        except (ValueError, TypeError, OSError):
+                            pass
+                    
+                    parts = [f"匹配股票：{stock_names}"]
+                    if news_time:
+                        parts.append(news_time)
+                    parts.append(f"<font color='red'>{news_content}</font>")
+                    content = "\n\n".join(parts)
+                    url = news_item.get('url')
+                    send_feishu_message(news_title, content, url=url)
+                    news_item['pushed'] = True
+        else:
+            ai_logger.info(f"飞书推送已关闭，跳过股票匹配推送逻辑")
         
         return list(existing_dict.values()), normal_items, pushed_items, ignored_items, new_items
                 
@@ -273,6 +316,7 @@ def news_collection_thread():
                 if _last_cleanup_date != today:
                     cleanup_logger.info("开始执行每日清理任务...")
                     
+                    # 清理新闻数据
                     news_cleanup_result = cleanup_old_news()
                     if news_cleanup_result['cleaned']:
                         cleanup_logger.info(f"新闻数据清理完成: 删除 {news_cleanup_result['deleted_count']} 个文件，"
@@ -280,6 +324,14 @@ def news_collection_thread():
                     else:
                         cleanup_logger.info(f"新闻数据无需清理: {news_cleanup_result['reason']}")
                     
+                    # 清理新闻AI分析缓存（每天凌晨清空）
+                    ai_cache_cleaned = clear_news_analysis_cache()
+                    if ai_cache_cleaned:
+                        cleanup_logger.info("新闻AI分析缓存已清空，第二天将重新分析")
+                    else:
+                        cleanup_logger.info("新闻AI分析缓存清理失败或无需清理")
+                    
+                    # 清理日志文件
                     log_cleanup_result = cleanup_old_logs(hours=48)
                     if log_cleanup_result:
                         cleanup_logger.info(f"日志文件清理完成: 删除 {len(log_cleanup_result)} 个文件: {', '.join(log_cleanup_result)}")
