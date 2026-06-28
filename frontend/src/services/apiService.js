@@ -489,12 +489,42 @@ export async function getSectorStocks(sectorUrl) {
   }
 }
 
-export async function getHouseKline() {
+export async function getHouseKline(id = 'house', period = 'monthly') {
   try {
-    const response = await apiClient.get('/house/kline')
+    const response = await apiClient.get('/house/kline', { params: { id, period } })
     return response.data
   } catch (error) {
-    console.error('获取房价K线数据失败:', error)
+    console.error('获取K线数据失败:', error)
+    throw error
+  }
+}
+
+export async function getHouseDatasets() {
+  try {
+    const response = await apiClient.get('/house/datasets')
+    return response.data
+  } catch (error) {
+    console.error('获取K线数据集列表失败:', error)
+    throw error
+  }
+}
+
+export async function saveHouseDataset(payload) {
+  try {
+    const response = await apiClient.post('/house/datasets', payload)
+    return response.data
+  } catch (error) {
+    console.error('保存K线数据集失败:', error)
+    throw error
+  }
+}
+
+export async function deleteHouseDataset(id) {
+  try {
+    const response = await apiClient.delete(`/house/datasets/${id}`)
+    return response.data
+  } catch (error) {
+    console.error('删除K线数据集失败:', error)
     throw error
   }
 }
