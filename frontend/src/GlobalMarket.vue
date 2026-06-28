@@ -221,18 +221,16 @@ export default {
         value: [i.lng, i.lat, +(i.change * 100).toFixed(2), i.price, i.region]
       }))
 
-      // 圆圈填充：浅色，让圆圈内"红涨绿跌"的文字清晰可读；方向由边框+文字颜色体现
+      // 圆圈颜色：基调 涨=红、跌=绿；颜色深浅随涨跌幅变化（幅度越大颜色越深）
       const colorOf = v => {
         const pct = Math.abs(v[2])
-        const opacity = Math.min(Math.max(pct / 4 * 0.35, 0.22), 0.55)
-        return v[2] >= 0 ? `rgba(255, 77, 79, ${opacity})` : `rgba(82, 196, 26, ${opacity})`
+        const opacity = Math.min(Math.max(0.5 + (pct / 3) * 0.46, 0.5), 0.97)
+        return v[2] >= 0 ? `rgba(240, 45, 45, ${opacity})` : `rgba(30, 185, 55, ${opacity})`
       }
-      // 边框：鲜亮红/绿，强化方向
-      const borderColorOf = v => v[2] >= 0 ? '#ff4d4f' : '#52c41a'
+      // 边框：亮红/亮绿，勾出圆圈轮廓
+      const borderColorOf = v => v[2] >= 0 ? '#ff7875' : '#95de64'
       // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
-      // 圆圈内文字：涨=红、跌=绿（红涨绿跌）
-      const textColorOf = v => v[2] >= 0 ? '#ff4d4f' : '#52c41a'
 
       this.chart.setOption({
         backgroundColor: 'transparent',
@@ -287,15 +285,17 @@ export default {
           },
           label: {
             show: true,
-            // 圆圈内显示涨跌幅（红涨绿跌）
+            // 圆圈内显示涨跌幅，白色文字（深色圆点上清晰）
             formatter: p => {
               const chg = p.value[2]
               return (chg >= 0 ? '+' : '') + chg + '%'
             },
-            color: p => textColorOf(p.value),
+            color: '#fff',
             fontSize: 13,
             fontWeight: 'bold',
-            position: 'inside'
+            position: 'inside',
+            textShadowColor: 'rgba(0,0,0,0.45)',
+            textShadowBlur: 3
           },
           // 高亮：圆圈放大、边框加粗、光晕增强
           emphasis: {

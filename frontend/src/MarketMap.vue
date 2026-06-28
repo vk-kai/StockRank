@@ -26,7 +26,7 @@
         @mousemove="onMouseMove"
         @mouseup="onMouseUp"
         @mouseleave="onMouseLeave"
-        @dblclick="resetZoom"
+        @dblclick="onDblClick"
       ></canvas>
       <div
         ref="tooltipEl"
@@ -43,7 +43,7 @@
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
       </div>
-      <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击复位</div>
+      <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
         <p>正在加载全市场数据，请稍候...</p>
@@ -90,6 +90,21 @@ function interpColor(change) {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 const fmtPct = c => (c >= 0 ? '+' : '') + c + '%'
+
+// 股票代码 → 雪球个股页：https://xueqiu.com/S/SH601288 （交易所前缀大写 + 6 位代码）
+function xueqiuUrl(code) {
+  if (!code) return ''
+  const c = String(code).trim()
+  let m = c.match(/^(sh|sz|bj)(\d{6})$/i)
+  if (m) return `https://xueqiu.com/S/${m[1].toUpperCase()}${m[2]}`
+  m = c.match(/(\d{6})/)
+  if (m) {
+    const d = m[1]
+    const prefix = d[0] === '6' ? 'SH' : (d[0] === '8' || d[0] === '4') ? 'BJ' : 'SZ'
+    return `https://xueqiu.com/S/${prefix}${d}`
+  }
+  return `https://xueqiu.com/S/${c.toUpperCase()}`
+}
 
 // Squarified Treemap（Bruls 等人算法）：把 items 按 value 比例铺满 rect，
 // 尽量让每个矩形接近正方形。直接给每个 item 写入 x/y/w/h（布局坐标）。
@@ -235,13 +250,16 @@ export default {
       const wrap = this.$refs.wrapperEl
       const canvas = this.$refs.canvasEl
       if (!wrap || !canvas) return
-      const r = wrap.getBoundingClientRect()
+      // 用容器内容区尺寸算布局，并显式设置 canvas 显示尺寸，
+      // 保证 布局坐标 == 屏幕可用面积，treemap 正好铺满、不会溢出屏幕
       const pad = 4
-      const w = Math.max(0, r.width - pad * 2)
-      const h = Math.max(0, r.height - pad * 2)
+      const w = Math.max(0, wrap.clientWidth - pad * 2)
+      const h = Math.max(0, wrap.clientHeight - pad * 2)
       this.cssW = w
       this.cssH = h
       this.dpr = window.devicePixelRatio || 1
+      canvas.style.width = w + 'px'
+      canvas.style.height = h + 'px'
       canvas.width = Math.round(w * this.dpr)
       canvas.height = Math.round(h * this.dpr)
     },
@@ -372,6 +390,14 @@ export default {
       this._raf = requestAnimationFrame(() => { this._raf = 0; this.render() })
     },
 
+    // 限制平移范围：缩放 k>=1 时地图始终覆盖整个视口，绝不出现虚无空白；
+    // k=1（最小）时 tx/ty 锁死为 0，即初始全图、不能拖。
+    clampView() {
+      const k = this.view.k
+      this.view.tx = clamp(this.view.tx, this.cssW * (1 - k), 0)
+      this.view.ty = clamp(this.view.ty, this.cssH * (1 - k), 0)
+    },
+
     // 滚轮缩放（以鼠标位置为中心），限定 1~12 倍，永远不会触发空白 bug
     onWheel(e) {
       const r = this.$refs.canvasEl.getBoundingClientRect()
@@ -384,6 +410,7 @@ export default {
       this.view.k = nk
       this.view.tx = mx - Lx * nk
       this.view.ty = my - Ly * nk
+      this.clampView()
       this.scheduleRender()
     },
     onMouseDown(e) {
@@ -401,6 +428,7 @@ export default {
         this.view.ty += my - this.lastY
         this.lastX = mx
         this.lastY = my
+        this.clampView()
         this.scheduleRender()
         return
       }
@@ -418,6 +446,21 @@ export default {
     resetZoom() {
       this.view = { k: 1, tx: 0, ty: 0 }
       this.render()
+    },
+    // 双击：落在个股上 → 新标签页打开雪球；落在行业/空白 → 复位缩放
+    onDblClick(e) {
+      if (!this.layout) return
+      const r = this.$refs.canvasEl.getBoundingClientRect()
+      const mx = e.clientX - r.left, my = e.clientY - r.top
+      const Lx = (mx - this.view.tx) / this.view.k
+      const Ly = (my - this.view.ty) / this.view.k
+      const hit = this.hitTest(Lx, Ly)
+      if (hit && hit.node && hit.node.code) {
+        const url = xueqiuUrl(hit.node.code)
+        if (url) window.open(url, '_blank')
+        return
+      }
+      this.resetZoom()
     },
 
     updateHover(mx, my) {
@@ -449,9 +492,18 @@ export default {
         for (const l2 of s.children) {
           if (Lx < l2.x || Lx > l2.x + l2.w || Ly < l2.y || Ly > l2.y + l2.h) continue
           if (l2.headerH > 0 && Ly < l2.y + l2.headerH) return { node: l2 }
+          // 个股层：精确命中优先；落在子像素缝隙时吸附到中心最近的个股，
+          // 避免悬停缝隙时错误地回退到二级行业、显示成"别的股票"
+          let hit = null, near = null, nearD = Infinity
           for (const st of l2.children) {
-            if (Lx >= st.x && Lx <= st.x + st.w && Ly >= st.y && Ly <= st.y + st.h) return { node: st }
+            if (st.w == null || st.h == null) continue
+            if (!hit && Lx >= st.x && Lx <= st.x + st.w && Ly >= st.y && Ly <= st.y + st.h) hit = st
+            const dx = Lx - (st.x + st.w / 2), dy = Ly - (st.y + st.h / 2)
+            const d = dx * dx + dy * dy
+            if (d < nearD) { nearD = d; near = st }
           }
+          if (hit) return { node: hit }
+          if (near) return { node: near }
           return { node: l2 }
         }
         return { node: s }
