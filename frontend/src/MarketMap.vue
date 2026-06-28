@@ -11,8 +11,8 @@
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
         </button>
-        <button @click="fetchData(true)" class="mm-refresh-btn" :disabled="loading">
-          {{ loading ? '加载中...' : '⚡ 刷新行情' }}
+        <button @click="fetchData(true)" class="mm-refresh-btn" :disabled="refreshing">
+          <span class="mm-refresh-spin" :class="{ on: refreshing }">↻</span> 刷新行情
         </button>
       </div>
     </header>
@@ -44,6 +44,11 @@
         </div>
       </div>
       <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
+      <div class="mm-legend">
+        <div class="mm-legend-bar">
+          <div v-for="(s, i) in legendSteps" :key="i" class="mm-legend-step" :style="{ background: s.color }">{{ s.label }}</div>
+        </div>
+      </div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
         <p>正在加载全市场数据，请稍候...</p>
@@ -178,6 +183,11 @@ export default {
   computed: {
     hasData() {
       return this.tree.length > 0
+    },
+    // 图例：与 COLOR_STOPS 一一对应，每块标注涨跌幅阈值（左=跌/绿 → 中=0/灰 → 右=涨/红）
+    legendSteps() {
+      const labels = ['-4%', '-3%', '-2%', '-1%', '0%', '1%', '2%', '3%', '4%']
+      return COLOR_STOPS.map(([, rgb], i) => ({ label: labels[i], color: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` }))
     }
   },
   async mounted() {
@@ -274,7 +284,8 @@ export default {
           name: l2.name, change: l2.change, value: l2.value || 0,
           headerH: 0,
           children: (l2.children || []).map(s => ({
-            name: s.name, code: s.code, change: s.change, value: s.value || 0
+            name: s.name, code: s.code, change: s.change, value: s.value || 0,
+            color: interpColor(s.change)
           }))
         }))
       }))
@@ -307,28 +318,29 @@ export default {
       if (!this.layout) return
 
       const { k, tx, ty } = this.view
-      const X = x => x * k + tx
-      const Y = y => y * k + ty
-      const W = w => w * k
-      const H = h => h * k
-
+      const cw = this.cssW, ch = this.cssH
       ctx.lineWidth = 1
       ctx.strokeStyle = '#070b13'
 
       for (const s of this.layout) {
-        // 一级行业内：先画二级、个股
+        // 一级 sector 视口剔除：整个板块在视口外则跳过其全部子级
+        const sx = s.x * k + tx, sy = s.y * k + ty, sw = s.w * k, sh = s.h * k
+        if (sx >= cw || sx + sw <= 0 || sy >= ch || sy + sh <= 0) continue
         for (const l2 of s.children) {
+          const lx = l2.x * k + tx, ly = l2.y * k + ty, lw = l2.w * k, lh = l2.h * k
+          if (lx >= cw || lx + lw <= 0 || ly >= ch || ly + lh <= 0) continue
           // 个股
           for (const st of l2.children) {
-            const x = X(st.x), y = Y(st.y), w = W(st.w), h = H(st.h)
+            const x = st.x * k + tx, y = st.y * k + ty, w = st.w * k, h = st.h * k
             if (w < 0.5 || h < 0.5) continue
-            ctx.fillStyle = interpColor(st.change)
+            if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
+            ctx.fillStyle = st.color
             ctx.fillRect(x, y, w, h)
-            ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
-            if (w >= 46 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h)
+            if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+            if (w >= 54 && h >= 28) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
+            else if (w >= 40 && h >= 15) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
           }
           // 二级标题条
-          const lx = X(l2.x), ly = Y(l2.y), lw = W(l2.w), lh = H(l2.h)
           if (l2.headerH > 0) {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
@@ -342,47 +354,50 @@ export default {
           ctx.strokeStyle = '#070b13'
         }
         // 一级标题条 + 边框
-        const sxp = X(s.x), syp = Y(s.y), swp = W(s.w), shp = H(s.h)
         if (s.headerH > 0) {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
-          ctx.fillRect(sxp, syp, swp, hh)
-          this.drawHeaderText(ctx, `${s.name}    ${fmtPct(s.change)}`, sxp + 8, syp, swp, hh, clamp(hh * 0.72, 11, 17))
+          ctx.fillRect(sx, sy, sw, hh)
+          this.drawHeaderText(ctx, `${s.name}    ${fmtPct(s.change)}`, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2
         ctx.strokeStyle = '#000'
-        ctx.strokeRect(sxp + 1, syp + 1, swp - 2, shp - 2)
+        ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2)
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
       }
     },
 
-    // 个股标签：名称 + 涨跌幅，白色（与行业字同色），无黑边，仅极淡阴影保证亮色块上可读
-    drawStockLabel(ctx, name, change, x, y, w, h) {
-      const cx = x + w / 2, cy = y + h / 2
-      const nameSize = clamp(Math.min(w, h) * 0.2, 10, 16)
-      const pctSize = nameSize * 0.85
+    // 个股标签（分级）：面积够大→名称+涨跌幅；中等→仅名称；太小→不显示（调用方按阈值过滤）
+    drawStockLabel(ctx, name, change, x, y, w, h, withPct) {
+      const cx = x + w / 2
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillStyle = '#fff'
-      ctx.shadowColor = 'rgba(0,0,0,0.35)'
-      ctx.shadowBlur = 2
-      ctx.font = `bold ${nameSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
-      ctx.fillText(name, cx, cy - nameSize * 0.55)
-      ctx.font = `bold ${pctSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
-      ctx.fillText(fmtPct(change), cx, cy + pctSize * 0.6)
-      ctx.shadowBlur = 0
+      const font = s => `bold ${s}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
+      if (withPct) {
+        const nameSize = clamp(Math.min(w, h) * 0.2, 11, 16)
+        const pctSize = nameSize * 0.82
+        const cy = y + h / 2
+        ctx.font = font(nameSize)
+        ctx.fillText(name, cx, cy - nameSize * 0.55)
+        ctx.font = font(pctSize)
+        ctx.fillText(fmtPct(change), cx, cy + pctSize * 0.6)
+      } else {
+        // 仅名称：按宽高自适应字号，保证名称能放进格子
+        const n = Math.max(name.length, 2)
+        const size = Math.round(clamp(Math.min((w / n) * 0.95, h * 0.62), 9, 15))
+        ctx.font = font(size)
+        ctx.fillText(name, cx, y + h / 2)
+      }
     },
     drawHeaderText(ctx, text, x, y, w, hh, size) {
       if (w < 30) return
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       ctx.fillStyle = '#fff'
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'
-      ctx.shadowBlur = 2
       ctx.font = `bold ${size}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
       ctx.fillText(text, x, y + hh / 2)
-      ctx.shadowBlur = 0
     },
 
     scheduleRender() {
@@ -552,6 +567,9 @@ export default {
 .mm-cache-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .mm-refresh-btn:hover:not(:disabled) { background: linear-gradient(135deg, #40a9ff, #1890ff); transform: translateY(-1px); }
 .mm-refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.mm-refresh-spin { display: inline-block; margin-right: 3px; font-size: 13px; line-height: 1; }
+.mm-refresh-spin.on { animation: mm-btn-spin 0.8s linear infinite; }
+@keyframes mm-btn-spin { to { transform: rotate(360deg); } }
 
 .mm-chart-wrapper {
   flex: 1;
@@ -599,6 +617,37 @@ export default {
   padding: 3px 8px;
   border-radius: 4px;
   pointer-events: none;
+}
+
+.mm-legend {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 15;
+  background: rgba(38, 41, 49, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 7px 9px 6px;
+  pointer-events: none;
+}
+.mm-legend-bar {
+  display: flex;
+  gap: 1px;
+  width: 252px;
+  height: 18px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.mm-legend-step {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: bold;
+  color: #fff;
+  height: 100%;
+  white-space: nowrap;
 }
 
 .mm-loading {
