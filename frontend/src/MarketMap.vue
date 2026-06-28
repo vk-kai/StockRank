@@ -44,18 +44,20 @@
         </div>
       </div>
       <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
-      <div class="mm-legend">
-        <div class="mm-legend-bar">
-          <div v-for="(s, i) in legendSteps" :key="i" class="mm-legend-step" :style="{ background: s.color }">{{ s.label }}</div>
-        </div>
-      </div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
         <p>正在加载全市场数据，请稍候...</p>
       </div>
     </div>
 
-    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</div>
+    <div class="mm-footer">
+      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
+      <div class="mm-legend">
+        <div class="mm-legend-bar">
+          <div v-for="(s, i) in legendSteps" :key="i" class="mm-legend-step" :style="{ background: s.color }">{{ s.label }}</div>
+        </div>
+      </div>
+    </div>
     <SecurityAlert />
   </div>
 </template>
@@ -337,8 +339,8 @@ export default {
             ctx.fillStyle = st.color
             ctx.fillRect(x, y, w, h)
             if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
-            if (w >= 54 && h >= 28) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
-            else if (w >= 40 && h >= 15) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
+            if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
+            else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
           }
           // 二级标题条
           if (l2.headerH > 0) {
@@ -376,8 +378,8 @@ export default {
       ctx.fillStyle = '#fff'
       const font = s => `bold ${s}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
       if (withPct) {
-        const nameSize = clamp(Math.min(w, h) * 0.2, 11, 16)
-        const pctSize = nameSize * 0.82
+        const nameSize = clamp(Math.min(w, h) * 0.19, 10, 15)
+        const pctSize = nameSize * 0.8
         const cy = y + h / 2
         ctx.font = font(nameSize)
         ctx.fillText(name, cx, cy - nameSize * 0.55)
@@ -386,7 +388,7 @@ export default {
       } else {
         // 仅名称：按宽高自适应字号，保证名称能放进格子
         const n = Math.max(name.length, 2)
-        const size = Math.round(clamp(Math.min((w / n) * 0.95, h * 0.62), 9, 15))
+        const size = Math.round(clamp(Math.min((w / n) * 0.95, h * 0.6), 8, 14))
         ctx.font = font(size)
         ctx.fillText(name, cx, y + h / 2)
       }
@@ -620,14 +622,7 @@ export default {
 }
 
 .mm-legend {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 15;
-  background: rgba(38, 41, 49, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  padding: 7px 9px 6px;
+  flex-shrink: 0;
   pointer-events: none;
 }
 .mm-legend-bar {
@@ -665,7 +660,8 @@ export default {
 .spinner { width: 40px; height: 40px; border: 3px solid rgba(58, 74, 107, 0.3); border-top-color: #1890ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.mm-footer { text-align: center; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
+.mm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
+.mm-footer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 768px) {
   .market-map-page { padding: 6px; }
