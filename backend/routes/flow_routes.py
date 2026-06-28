@@ -11,7 +11,7 @@ from data_processor import (
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
     refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices,
-    get_market_map_sectors, get_market_map_stocks
+    get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
@@ -49,9 +49,10 @@ def global_indices():
 
 @flow_bp.route('/market-map', methods=['GET'])
 def market_map():
-    """获取大盘云图行业板块列表（新浪数据源）"""
+    """获取大盘云图三级嵌套数据（申万一级→二级→个股）。
+    行业+市值来自东方财富缓存（低频），涨跌幅来自新浪实时行情。"""
     try:
-        data = get_market_map_sectors()
+        data = get_market_map_tree()
         if data:
             return jsonify({'success': True, 'data': data})
         return jsonify({'success': False, 'error': '获取大盘云图数据失败'}), 500
@@ -60,6 +61,19 @@ def market_map():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/market-map]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-refresh-cache', methods=['POST'])
+def market_map_refresh():
+    """手动刷新大盘云图行业+市值缓存（东方财富，低频调用）"""
+    try:
+        cache = refresh_market_map_cache()
+        if cache:
+            return jsonify({'success': True, 'message': f'缓存已更新，共{cache["count"]}只股票', 'count': cache['count']})
+        return jsonify({'success': False, 'error': '缓存刷新失败'}), 500
+    except Exception as e:
+        error_logger.error(f"大盘云图缓存刷新错误: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

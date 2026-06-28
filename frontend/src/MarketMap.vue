@@ -4,13 +4,15 @@
       <button @click="goBack" class="mm-back-button">← 返回</button>
       <h1>🗺️ A股大盘云图</h1>
       <div class="mm-header-right">
-        <span class="mm-breadcrumb" v-if="currentSector">
-          全市场 / <strong>{{ currentSectorName }}</strong>
-          <button class="mm-back-sector" @click="backToSectors">返回全部</button>
+        <span class="mm-stats" v-if="totalSectors">
+          {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
         </span>
-        <span class="mm-update" v-if="updateTime">更新：{{ updateTime }}</span>
-        <button @click="fetchSectors(true)" class="mm-refresh-btn" :disabled="loading">
-          {{ loading ? '刷新中...' : '🔄 刷新' }}
+        <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
+        <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
+          {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
+        </button>
+        <button @click="fetchData(true)" class="mm-refresh-btn" :disabled="loading">
+          {{ loading ? '加载中...' : '⚡ 刷新行情' }}
         </button>
       </div>
     </header>
@@ -18,27 +20,27 @@
     <div class="mm-chart-wrapper">
       <div ref="chartEl" class="mm-chart"></div>
       <div class="mm-legend">
-        <span class="legend-grad up"></span>
-        <span class="legend-label">涨</span>
-        <span class="legend-zero"></span>
-        <span class="legend-label">跌</span>
-        <span class="legend-grad down"></span>
-        <span class="legend-tip">面积=市值 · 颜色=涨跌幅 · 点击板块下钻个股 · 双击返回</span>
+        <span class="legend-block up-deep"></span>
+        <span class="legend-block up-light"></span>
+        <span class="legend-zero">0</span>
+        <span class="legend-block down-light"></span>
+        <span class="legend-block down-deep"></span>
+        <span class="legend-tip">面积=流通市值 · 颜色=涨跌幅 · 悬停查看详情</span>
       </div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
-        <p>加载中...</p>
+        <p>正在加载全市场数据，请稍候...</p>
       </div>
     </div>
 
-    <div class="mm-footer">数据来源：新浪财经 · 面积代表总市值，颜色代表涨跌幅 · 仅供投资参考</div>
+    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅 · 仅供投资参考</div>
     <SecurityAlert />
   </div>
 </template>
 
 <script>
 import * as echarts from 'echarts'
-import { getMarketMap, getMarketMapStocks } from './services/apiService'
+import { getMarketMap, refreshMarketMapCache } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 export default {
@@ -47,23 +49,25 @@ export default {
   data() {
     return {
       loading: false,
-      sectors: [],
-      currentSector: null,
-      currentSectorName: '',
-      stocks: [],
+      cacheLoading: false,
+      refreshing: false,
+      tree: [],
+      totalSectors: 0,
+      totalStocks: 0,
       updateTime: '',
+      cacheTime: '',
       chart: null,
       timer: null
     }
   },
   computed: {
     hasData() {
-      return (this.currentSector && this.stocks.length > 0) || this.sectors.length > 0
+      return this.tree.length > 0
     }
   },
   async mounted() {
-    await this.fetchSectors(true)
-    this.timer = setInterval(() => this.autoRefresh(), 30000)
+    await this.fetchData(true)
+    this.timer = setInterval(() => this.fetchData(false), 30000)
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -78,114 +82,114 @@ export default {
     goBack() {
       this.$router.push('/')
     },
-    async fetchSectors(showLoading) {
+    async fetchData(showLoading) {
+      // 防重入：上一次请求未返回时跳过（避免5秒高频下请求堆积）
+      if (this.refreshing) return
+      this.refreshing = true
       this.loading = showLoading
       try {
         const res = await getMarketMap()
         if (res.success) {
-          this.sectors = res.data.sectors
+          this.tree = res.data.tree
+          this.totalSectors = res.data.total_sectors
+          this.totalStocks = res.data.total_stocks
           this.updateTime = res.data.update_time
-          this.currentSector = null
-          this.currentSectorName = ''
-          this.stocks = []
-          this.$nextTick(() => this.renderSectors())
+          this.cacheTime = res.data.cache_time || ''
+          this.$nextTick(() => this.render())
         }
       } catch (e) {
-        console.error('获取板块失败', e)
+        console.error('获取大盘云图失败', e)
       } finally {
         this.loading = false
+        this.refreshing = false
       }
     },
-    async fetchStocks(sector, showLoading) {
-      this.loading = showLoading
+    async refreshCache() {
+      this.cacheLoading = true
       try {
-        const res = await getMarketMapStocks(sector.code)
+        const res = await refreshMarketMapCache()
         if (res.success) {
-          this.currentSector = sector
-          this.currentSectorName = sector.name
-          this.stocks = res.data.stocks
-          this.updateTime = res.data.update_time
-          this.$nextTick(() => this.renderStocks())
+          await this.fetchData(true)
         }
       } catch (e) {
-        console.error('获取个股失败', e)
+        console.error('刷新行业库失败', e)
       } finally {
-        this.loading = false
-      }
-    },
-    backToSectors() {
-      this.fetchSectors(false)
-    },
-    async autoRefresh() {
-      // 仅在板块层级自动刷新，避免打断下钻浏览
-      if (this.currentSector) return
-      try {
-        const res = await getMarketMap()
-        if (res.success) {
-          this.sectors = res.data.sectors
-          this.updateTime = res.data.update_time
-          this.renderSectors()
-        }
-      } catch (e) {
-        // 静默失败
+        this.cacheLoading = false
       }
     },
     handleResize() {
       if (this.chart) this.chart.resize()
     },
-    // 涨跌幅(%) → 颜色：红涨绿跌，幅度越大越深
-    colorOf(change) {
-      const c = Math.abs(change)
-      // 钳制在 0~6% 范围，避免极端值
-      const ratio = Math.min(c / 6, 1)
-      // 透明度 0.25~0.95
-      const opacity = 0.25 + ratio * 0.7
+    // 统一配色：涨=红色系，跌=绿色系；幅度越大越深
+    // baseOpacity 传入则固定透明度（用于行业条带）
+    colorOf(change, baseOpacity = 0) {
+      const pct = Math.abs(change)
+      const opacity = baseOpacity > 0
+        ? baseOpacity
+        : Math.min(0.5 + pct * 0.08, 0.95)
       return change >= 0
-        ? `rgba(240, 65, 55, ${opacity})`
-        : `rgba(40, 175, 99, ${opacity})`
-    },
-    textColorOf(change) {
-      return Math.abs(change) > 2 ? '#fff' : '#f0f3fa'
+        ? `rgba(228, 48, 56, ${opacity})`
+        : `rgba(28, 168, 86, ${opacity})`
     },
     initChart() {
       const el = this.$refs.chartEl
       if (!el) return
-      if (this.chart) {
-        this.chart.dispose()
-      }
+      if (this.chart) this.chart.dispose()
       this.chart = echarts.init(el)
     },
-    renderSectors() {
+    render() {
       this.initChart()
       if (!this.chart) return
-      const data = this.sectors.map(s => ({
-        name: s.name,
-        value: s.value,
-        sectorCode: s.code,
-        change: s.change,
-        leader: s.leader,
-        leaderChange: s.leader_change
+
+      // 构建三级嵌套数据：申万一级 → 申万二级 → 个股
+      // 每个叶子(个股)和分组都附 itemStyle.color 实现统一红绿着色
+      const data = this.tree.map(l1 => ({
+        name: l1.name,
+        change: l1.change,
+        itemStyle: { color: this.colorOf(l1.change, 0.5) },
+        children: l1.children.map(l2 => ({
+          name: l2.name,
+          change: l2.change,
+          itemStyle: { color: this.colorOf(l2.change, 0.6) },
+          children: l2.children.map(s => ({
+            name: s.name,
+            value: s.value,
+            change: s.change,
+            code: s.code,
+            itemStyle: { color: this.colorOf(s.change) }
+          }))
+        }))
       }))
+
+      // 最大个股市值（用于决定小块是否显示文字）
+      let maxValue = 1
+      this.tree.forEach(l1 => l1.children.forEach(l2 => {
+        if (l2.children[0] && l2.children[0].value > maxValue) maxValue = l2.children[0].value
+      }))
+
       this.chart.setOption({
         backgroundColor: 'transparent',
         tooltip: {
-          backgroundColor: 'rgba(20,25,45,0.95)',
+          backgroundColor: 'rgba(20,25,45,0.96)',
           borderColor: '#3a4a6b',
           borderWidth: 1,
           padding: [12, 16],
           textStyle: { color: '#e0e6f0', fontSize: 13 },
           formatter: p => {
             const d = p.data
-            const c = d.change
+            const c = d.change || 0
             const cc = c >= 0 ? '#ff4d4f' : '#52c41a'
-            const cap = (d.value / 1e8).toFixed(1)
-            const leaderStr = d.leader ? `<br/><span style="color:#8ba4c7">领涨：${d.leader} <span style="color:${d.leaderChange >= 0 ? '#ff4d4f' : '#52c41a'}">${d.leaderChange >= 0 ? '+' : ''}${d.leaderChange}%</span></span>` : ''
-            return `<div style="min-width:150px">
+            // 个股层（叶子，value 是原始数值）
+            if (d.children === undefined) {
+              return `<div style="min-width:160px">
+                <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name} <span style="color:#8ba4c7;font-weight:normal;font-size:12px">${d.code}</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${cc};font-weight:bold;font-size:16px">${c >= 0 ? '+' : ''}${c}%</span></div>
+              </div>`
+            }
+            // 一级或二级分组
+            return `<div style="min-width:140px">
               <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name}</div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#8ba4c7">总市值</span><span>${cap} 亿</span></div>
-              <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${cc};font-weight:bold;font-size:15px">${c >= 0 ? '+' : ''}${c}%</span></div>
-              ${leaderStr}
-              <div style="color:#5a6b8c;margin-top:6px;font-size:11px">点击查看个股</div>
+              <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">区间涨跌</span><span style="color:${cc};font-weight:bold">${c >= 0 ? '+' : ''}${c}%</span></div>
             </div>`
           }
         },
@@ -194,134 +198,61 @@ export default {
           roam: false,
           nodeClick: false,
           data,
-          breadcrumb: { show: false },
           left: 8,
           right: 8,
           top: 8,
           bottom: 8,
-          label: {
+          // 分组标题（显示在矩形顶部条带）
+          upperLabel: {
             show: true,
+            height: 22,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 'bold',
+            textShadowColor: 'rgba(0,0,0,0.6)',
+            textShadowBlur: 4,
             formatter: p => {
-              const c = p.data.change
+              const c = p.data.change || 0
               const sign = c >= 0 ? '+' : ''
-              return `{n|${p.name}}\n{c|${sign}${c}%}`
-            },
-            rich: {
-              n: { color: '#fff', fontSize: 14, fontWeight: 'bold', lineHeight: 22, textShadowColor: 'rgba(0,0,0,0.4)', textShadowBlur: 3 },
-              c: { color: '#fff', fontSize: 13, lineHeight: 18, textShadowColor: 'rgba(0,0,0,0.4)', textShadowBlur: 3 }
+              return `${p.name}  ${sign}${c}%`
             }
           },
-          upperLabel: { show: false },
-          itemStyle: {
-            borderColor: '#0a0e17',
-            borderWidth: 2,
-            gapWidth: 2
-          },
-          levels: [{
-            itemStyle: {
-              borderColor: '#0a0e17',
-              borderWidth: 2,
-              gapWidth: 2
-            }
-          }],
-          visualDimension: null
-        }]
-      }, true)
-      // 点击下钻到个股
-      this.chart.off('click')
-      this.chart.on('click', params => {
-        if (params.data && params.data.sectorCode) {
-          this.fetchStocks({ code: params.data.sectorCode, name: params.data.name }, true)
-        }
-      })
-      // 双击返回
-      this.chart.getZr().off('dblclick')
-      this.chart.getZr().on('dblclick', () => {
-        if (this.currentSector) this.backToSectors()
-      })
-    },
-    renderStocks() {
-      this.initChart()
-      if (!this.chart) return
-      const self = this
-      const data = this.stocks.map(s => ({
-        name: s.name,
-        value: s.value,
-        code: s.code,
-        change: s.change,
-        price: s.price
-      }))
-      this.chart.setOption({
-        backgroundColor: 'transparent',
-        title: {
-          text: `${this.currentSectorName} · 个股云图`,
-          left: 16,
-          top: 8,
-          textStyle: { color: '#8ba4c7', fontSize: 14, fontWeight: 'normal' }
-        },
-        tooltip: {
-          backgroundColor: 'rgba(20,25,45,0.95)',
-          borderColor: '#3a4a6b',
-          borderWidth: 1,
-          padding: [12, 16],
-          textStyle: { color: '#e0e6f0', fontSize: 13 },
-          formatter: p => {
-            const d = p.data
-            const c = d.change
-            const cc = c >= 0 ? '#ff4d4f' : '#52c41a'
-            return `<div style="min-width:150px">
-              <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name} <span style="color:#8ba4c7;font-weight:normal">${d.code}</span></div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#8ba4c7">现价</span><span>${d.price}</span></div>
-              <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${cc};font-weight:bold;font-size:15px">${c >= 0 ? '+' : ''}${c}%</span></div>
-            </div>`
-          }
-        },
-        series: [{
-          type: 'treemap',
-          roam: false,
-          nodeClick: false,
-          data: data.map(d => ({
-            ...d,
-            itemStyle: { color: self.colorOf(d.change) }
-          })),
           breadcrumb: { show: false },
-          left: 8,
-          right: 8,
-          top: 50,
-          bottom: 8,
+          // 三级 levels：一级(粗分组) → 二级(细分组) → 个股
+          levels: [
+            {
+              // 申万一级：最粗边框 + 大间隙
+              itemStyle: { borderColor: '#050a14', borderWidth: 4, gapWidth: 4 },
+              upperLabel: { height: 24, fontSize: 15 }
+            },
+            {
+              // 申万二级：中等边框
+              itemStyle: { borderColor: '#050a14', borderWidth: 2, gapWidth: 2 },
+              upperLabel: { height: 18, fontSize: 11 }
+            },
+            {
+              // 个股：细边框
+              itemStyle: { borderColor: '#050a14', borderWidth: 1, gapWidth: 1 }
+            }
+          ],
           label: {
             show: true,
             formatter: p => {
-              const c = p.data.change
+              if (p.data.children !== undefined) return ''  // 分组不显示内部label
+              const c = p.data.change || 0
               const sign = c >= 0 ? '+' : ''
-              // 大块显示名称+涨跌，小块只显示涨跌
-              if (p.data.value < this.maxStockValue() * 0.04) {
-                return `{c|${sign}${c}%}`
-              }
+              // 小块只显示涨跌幅，不显示名称
+              if (p.data.value < maxValue * 0.02) return `{c|${sign}${c}%}`
+              if (p.data.value < maxValue * 0.08) return `{c|${sign}${c}%}`
               return `{n|${p.name}}\n{c|${sign}${c}%}`
             },
             rich: {
-              n: { color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 20, textShadowColor: 'rgba(0,0,0,0.4)', textShadowBlur: 3 },
-              c: { color: '#fff', fontSize: 11, lineHeight: 16, textShadowColor: 'rgba(0,0,0,0.4)', textShadowBlur: 3 }
+              n: { color: '#fff', fontSize: 11, fontWeight: 'bold', lineHeight: 18, textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 3 },
+              c: { color: '#fff', fontSize: 10, lineHeight: 14, textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 3 }
             }
-          },
-          upperLabel: { show: false },
-          itemStyle: {
-            borderColor: '#0a0e17',
-            borderWidth: 2,
-            gapWidth: 2
           }
         }]
       }, true)
-      this.chart.off('click')
-      // 双击返回全部板块
-      this.chart.getZr().off('dblclick')
-      this.chart.getZr().on('dblclick', () => {
-        this.backToSectors()
-      })
-    },
-    maxStockValue() {
-      return this.stocks.length ? this.stocks[0].value : 1
     }
   }
 }
@@ -330,7 +261,10 @@ export default {
 <style scoped>
 .market-map-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(228, 48, 56, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(28, 168, 86, 0.05) 0%, transparent 50%),
+    linear-gradient(135deg, #050a14 0%, #0a1628 40%, #08101e 100%);
   color: #e0e6f0;
   padding: 20px;
   display: flex;
@@ -362,32 +296,9 @@ export default {
   gap: 14px;
 }
 
-.mm-breadcrumb {
+.mm-stats {
   font-size: 13px;
   color: #8ba4c7;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mm-breadcrumb strong {
-  color: #e0e6f0;
-}
-
-.mm-back-sector {
-  background: rgba(58, 74, 107, 0.5);
-  border: 1px solid #4a5a7b;
-  border-radius: 4px;
-  color: #e0e6f0;
-  padding: 3px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  margin-left: 4px;
-  transition: all 0.2s ease;
-}
-
-.mm-back-sector:hover {
-  background: rgba(58, 74, 107, 0.8);
 }
 
 .mm-update {
@@ -422,6 +333,27 @@ export default {
   transition: all 0.3s ease;
 }
 
+.mm-cache-btn {
+  padding: 8px 14px;
+  background: rgba(58, 74, 107, 0.6);
+  border: 1px solid #4a5a7b;
+  border-radius: 6px;
+  color: #8ba4c7;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s ease;
+}
+
+.mm-cache-btn:hover:not(:disabled) {
+  background: rgba(58, 74, 107, 0.9);
+  color: #e0e6f0;
+}
+
+.mm-cache-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .mm-refresh-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #40a9ff, #1890ff);
   transform: translateY(-2px);
@@ -439,14 +371,14 @@ export default {
   border-radius: 12px;
   border: 1px solid rgba(58, 74, 107, 0.5);
   padding: 16px;
-  min-height: 600px;
+  min-height: 620px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 .mm-chart {
   width: 100%;
   height: 100%;
-  min-height: 580px;
+  min-height: 600px;
 }
 
 .mm-legend {
@@ -455,43 +387,36 @@ export default {
   left: 24px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   font-size: 12px;
   color: #8ba4c7;
   pointer-events: none;
   z-index: 5;
 }
 
-.legend-grad {
-  width: 60px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.legend-grad.up {
-  background: linear-gradient(90deg, rgba(240,65,55,0.25), rgba(240,65,55,0.95));
-}
-
-.legend-grad.down {
-  background: linear-gradient(90deg, rgba(40,175,99,0.95), rgba(40,175,99,0.25));
-}
-
-.legend-zero {
-  width: 4px;
-  height: 14px;
-  background: #8ba4c7;
+.legend-block {
+  width: 26px;
+  height: 12px;
   border-radius: 2px;
   display: inline-block;
 }
 
-.legend-label {
+.legend-block.up-deep { background: rgba(228, 48, 56, 0.95); }
+.legend-block.up-light { background: rgba(228, 48, 56, 0.5); }
+.legend-block.down-light { background: rgba(28, 168, 86, 0.5); }
+.legend-block.down-deep { background: rgba(28, 168, 86, 0.95); }
+
+.legend-zero {
+  width: 20px;
+  text-align: center;
   font-size: 11px;
+  color: #8ba4c7;
 }
 
 .legend-tip {
   margin-left: 12px;
   color: #5a6b8c;
+  font-size: 11px;
 }
 
 .mm-loading {
@@ -501,19 +426,20 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 14, 23, 0.6);
+  background: rgba(5, 10, 20, 0.7);
   color: #8ba4c7;
   z-index: 10;
+  border-radius: 12px;
 }
 
 .spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(58, 74, 107, 0.4);
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(58, 74, 107, 0.3);
   border-top-color: #1890ff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 @keyframes spin {
@@ -536,8 +462,8 @@ export default {
     text-align: center;
   }
   .mm-header h1 { font-size: 1.1rem; }
-  .mm-chart-wrapper { min-height: 460px; }
-  .mm-chart { min-height: 440px; }
+  .mm-chart-wrapper { min-height: 480px; }
+  .mm-chart { min-height: 460px; }
   .legend-tip { display: none; }
 }
 </style>

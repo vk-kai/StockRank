@@ -73,6 +73,19 @@ export async function getMarketMap() {
 }
 
 /**
+ * 刷新大盘云图行业+市值缓存（低频，手动触发）
+ */
+export async function refreshMarketMapCache() {
+  try {
+    const response = await apiClient.post('/flow/market-map-refresh-cache')
+    return response.data
+  } catch (error) {
+    console.error('刷新大盘云图缓存失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取板块下的个股（云图下钻）
  */
 export async function getMarketMapStocks(sectorCode) {
