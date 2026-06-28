@@ -43,6 +43,36 @@ import * as echarts from 'echarts'
 import { getMarketMap, refreshMarketMapCache } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
+// dapanyuntu 配色色阶：涨跌幅(%) → [R,G,B]
+// 跌：大幅=亮绿，小幅=深绿；涨：小幅=深红，大幅=亮红；0%=灰
+const COLOR_STOPS = [
+  [-10, [0, 214, 65]],   // ≤-4% 亮绿 #00d641
+  [-3, [26, 164, 72]],   // -3% #1aa448
+  [-2, [14, 111, 47]],   // -2% #0e6f2f
+  [-1, [8, 84, 33]],     // -1% #085421
+  [0, [66, 68, 83]],     // 0% #424453
+  [1, [109, 20, 20]],    // +1% #6d1414
+  [2, [150, 16, 16]],    // +2% #961010
+  [3, [190, 8, 8]],      // +3% #be0808
+  [10, [228, 20, 20]]    // ≥+4% 亮红 #e41414
+]
+
+function interpColor(change) {
+  const c = Math.max(-10, Math.min(10, change))
+  for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
+    const [p1, col1] = COLOR_STOPS[i]
+    const [p2, col2] = COLOR_STOPS[i + 1]
+    if (c >= p1 && c <= p2) {
+      const t = p2 === p1 ? 0 : (c - p1) / (p2 - p1)
+      const r = Math.round(col1[0] + (col2[0] - col1[0]) * t)
+      const g = Math.round(col1[1] + (col2[1] - col1[1]) * t)
+      const b = Math.round(col1[2] + (col2[2] - col1[2]) * t)
+      return `rgb(${r},${g},${b})`
+    }
+  }
+  return 'rgb(66,68,83)'
+}
+
 export default {
   name: 'MarketMap',
   components: { SecurityAlert },
@@ -120,16 +150,15 @@ export default {
     handleResize() {
       if (this.chart) this.chart.resize()
     },
-    // 统一配色：涨=红色系，跌=绿色系；幅度越大越深
-    // baseOpacity 传入则固定透明度（用于行业条带）
-    colorOf(change, baseOpacity = 0) {
-      const pct = Math.abs(change)
-      const opacity = baseOpacity > 0
-        ? baseOpacity
-        : Math.min(0.5 + pct * 0.08, 0.95)
-      return change >= 0
-        ? `rgba(228, 48, 56, ${opacity})`
-        : `rgba(28, 168, 86, ${opacity})`
+    // 统一配色（参考 dapanyuntu 精确色阶）
+    colorOf(change) {
+      return interpColor(change)
+    },
+    // 文字颜色：亮绿背景用深字，其余用白字
+    textColorOf(change) {
+      if (change <= -4) return '#0a3d1a'
+      if (Math.abs(change) < 0.5) return '#c0c4d0'
+      return '#fff'
     },
     initChart() {
       const el = this.$refs.chartEl
@@ -142,30 +171,31 @@ export default {
       if (!this.chart) return
 
       // 构建三级嵌套数据：申万一级 → 申万二级 → 个股
-      // 每个叶子(个股)和分组都附 itemStyle.color 实现统一红绿着色
-      const data = this.tree.map(l1 => ({
-        name: l1.name,
-        change: l1.change,
-        itemStyle: { color: this.colorOf(l1.change, 0.5) },
-        children: l1.children.map(l2 => ({
-          name: l2.name,
-          change: l2.change,
-          itemStyle: { color: this.colorOf(l2.change, 0.6) },
-          children: l2.children.map(s => ({
-            name: s.name,
-            value: s.value,
-            change: s.change,
-            code: s.code,
-            itemStyle: { color: this.colorOf(s.change) }
-          }))
-        }))
-      }))
-
-      // 最大个股市值（用于决定小块是否显示文字）
-      let maxValue = 1
-      this.tree.forEach(l1 => l1.children.forEach(l2 => {
-        if (l2.children[0] && l2.children[0].value > maxValue) maxValue = l2.children[0].value
-      }))
+      // 每个节点附 itemStyle.color 和 label.color 实现统一红绿着色
+      const buildNode = (n, isLeaf) => {
+        const node = {
+          name: n.name,
+          change: n.change,
+          itemStyle: { color: this.colorOf(n.change) },
+          label: { color: this.textColorOf(n.change) }
+        }
+        if (isLeaf) {
+          node.value = n.value
+          node.code = n.code
+        } else {
+          node.children = n.children
+        }
+        return node
+      }
+      const data = this.tree.map(l1 => {
+        const l1Node = buildNode(l1, false)
+        l1Node.children = l1.children.map(l2 => {
+          const l2Node = buildNode(l2, false)
+          l2Node.children = l2.children.map(s => buildNode(s, true))
+          return l2Node
+        })
+        return l1Node
+      })
 
       this.chart.setOption({
         backgroundColor: 'transparent',
@@ -195,14 +225,16 @@ export default {
         },
         series: [{
           type: 'treemap',
-          roam: false,
+          // 滚轮缩放 + 拖动平移：整个云图一次性全部显示，
+          // 缩小看全局，放大看清某区域的个股细节（放不下的标签自动隐藏，放大后自动显示）
+          roam: true,
           nodeClick: false,
           data,
-          left: 8,
-          right: 8,
-          top: 8,
-          bottom: 8,
-          // 分组标题（显示在矩形顶部条带）
+          left: 4,
+          right: 4,
+          top: 4,
+          bottom: 4,
+          breadcrumb: { show: false },
           upperLabel: {
             show: true,
             height: 22,
@@ -217,39 +249,33 @@ export default {
               return `${p.name}  ${sign}${c}%`
             }
           },
-          breadcrumb: { show: false },
           // 三级 levels：一级(粗分组) → 二级(细分组) → 个股
           levels: [
             {
-              // 申万一级：最粗边框 + 大间隙
               itemStyle: { borderColor: '#050a14', borderWidth: 4, gapWidth: 4 },
               upperLabel: { height: 24, fontSize: 15 }
             },
             {
-              // 申万二级：中等边框
               itemStyle: { borderColor: '#050a14', borderWidth: 2, gapWidth: 2 },
               upperLabel: { height: 18, fontSize: 11 }
             },
             {
-              // 个股：细边框
               itemStyle: { borderColor: '#050a14', borderWidth: 1, gapWidth: 1 }
             }
           ],
+          // 个股标签：面积过小放不下的标签 ECharts 自动隐藏，缩放后变大自动显示
           label: {
             show: true,
             formatter: p => {
-              if (p.data.children !== undefined) return ''  // 分组不显示内部label
+              if (p.data.children !== undefined) return ''
               const c = p.data.change || 0
               const sign = c >= 0 ? '+' : ''
-              // 小块只显示涨跌幅，不显示名称
-              if (p.data.value < maxValue * 0.02) return `{c|${sign}${c}%}`
-              if (p.data.value < maxValue * 0.08) return `{c|${sign}${c}%}`
-              return `{n|${p.name}}\n{c|${sign}${c}%}`
+              return `${p.name}\n${sign}${c}%`
             },
-            rich: {
-              n: { color: '#fff', fontSize: 11, fontWeight: 'bold', lineHeight: 18, textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 3 },
-              c: { color: '#fff', fontSize: 10, lineHeight: 14, textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 3 }
-            }
+            fontSize: 11,
+            fontWeight: 'bold',
+            textShadowColor: 'rgba(0,0,0,0.5)',
+            textShadowBlur: 2
           }
         }]
       }, true)
@@ -260,15 +286,16 @@ export default {
 
 <style scoped>
 .market-map-page {
-  min-height: 100vh;
+  height: 100vh;
   background:
     radial-gradient(ellipse at 20% 20%, rgba(228, 48, 56, 0.06) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 80%, rgba(28, 168, 86, 0.05) 0%, transparent 50%),
     linear-gradient(135deg, #050a14 0%, #0a1628 40%, #08101e 100%);
   color: #e0e6f0;
-  padding: 20px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .mm-header {
@@ -370,15 +397,16 @@ export default {
   background: rgba(26, 35, 53, 0.6);
   border-radius: 12px;
   border: 1px solid rgba(58, 74, 107, 0.5);
-  padding: 16px;
-  min-height: 620px;
+  padding: 8px;
+  min-height: 400px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 }
 
 .mm-chart {
   width: 100%;
   height: 100%;
-  min-height: 600px;
+  min-height: 380px;
 }
 
 .mm-legend {
@@ -401,10 +429,10 @@ export default {
   display: inline-block;
 }
 
-.legend-block.up-deep { background: rgba(228, 48, 56, 0.95); }
-.legend-block.up-light { background: rgba(228, 48, 56, 0.5); }
-.legend-block.down-light { background: rgba(28, 168, 86, 0.5); }
-.legend-block.down-deep { background: rgba(28, 168, 86, 0.95); }
+.legend-block.up-deep { background: #e41414; }
+.legend-block.up-light { background: #6d1414; }
+.legend-block.down-light { background: #085421; }
+.legend-block.down-deep { background: #00d641; }
 
 .legend-zero {
   width: 20px;
@@ -462,8 +490,8 @@ export default {
     text-align: center;
   }
   .mm-header h1 { font-size: 1.1rem; }
-  .mm-chart-wrapper { min-height: 480px; }
-  .mm-chart { min-height: 460px; }
+  .mm-chart-wrapper { min-height: 300px; }
+  .mm-chart { min-height: 280px; }
   .legend-tip { display: none; }
 }
 </style>
