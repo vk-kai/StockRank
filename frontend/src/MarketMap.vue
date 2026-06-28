@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 滚轮放大查看个股 · 仅供投资参考</div>
+    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 点击行业放大下钻，底部面包屑逐级返回 · 仅供投资参考</div>
     <SecurityAlert />
   </div>
 </template>
@@ -146,10 +146,8 @@ export default {
     colorOf(change) {
       return interpColor(change)
     },
-    // 文字颜色：亮绿背景用深字，其余用白字
-    textColorOf(change) {
-      if (change <= -4) return '#0a3d1a'
-      if (Math.abs(change) < 0.5) return '#c0c4d0'
+    // 文字颜色：统一白色（股票字体要求为白色，不能是黑色）
+    textColorOf() {
       return '#fff'
     },
     initChart() {
@@ -164,30 +162,31 @@ export default {
       this.initChart()
       if (!this.chart) return
 
-      // 扁平化为二级结构：申万一级 → 个股（与截图一致，最大化个股面积、提升可读性）
-      // 后端返回的是三级(一级→二级→个股)，这里把二级分组展开合并到其所属一级行业下
-      const data = this.tree.map(l1 => {
-        const stocks = []
-        ;(l1.children || []).forEach(l2 => {
-          ;(l2.children || []).forEach(s => {
-            stocks.push({
-              name: s.name,
-              change: s.change,
-              code: s.code,
-              value: s.value,
-              itemStyle: { color: this.colorOf(s.change) },
-              label: { color: this.textColorOf(s.change) }
-            })
-          })
-        })
-        return {
-          name: l1.name,
-          change: l1.change,
-          // 行业标题条：深色底 + 白字（与截图一致）；下方区域由个股红绿填满
-          itemStyle: { color: '#1d2230' },
-          label: { color: '#fff' },
-          children: stocks
+      // 构建三级嵌套数据：申万一级 → 申万二级 → 个股
+      // 每个节点附 itemStyle.color 和 label.color 实现统一红绿着色
+      const buildNode = (n, isLeaf) => {
+        const node = {
+          name: n.name,
+          change: n.change,
+          itemStyle: { color: this.colorOf(n.change) },
+          label: { color: this.textColorOf(n.change) }
         }
+        if (isLeaf) {
+          node.value = n.value
+          node.code = n.code
+        } else {
+          node.children = n.children
+        }
+        return node
+      }
+      const data = this.tree.map(l1 => {
+        const l1Node = buildNode(l1, false)
+        l1Node.children = l1.children.map(l2 => {
+          const l2Node = buildNode(l2, false)
+          l2Node.children = l2.children.map(s => buildNode(s, true))
+          return l2Node
+        })
+        return l1Node
       })
 
       this.chart.setOption({
@@ -202,14 +201,14 @@ export default {
             const d = p.data
             const c = d.change || 0
             const cc = c >= 0 ? '#ff4d4f' : '#52c41a'
-            // 个股层（叶子，无 children）
+            // 个股层（叶子，value 是原始数值）
             if (d.children === undefined) {
               return `<div style="min-width:160px">
                 <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name} <span style="color:#8ba4c7;font-weight:normal;font-size:12px">${d.code}</span></div>
                 <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${cc};font-weight:bold;font-size:16px">${c >= 0 ? '+' : ''}${c}%</span></div>
               </div>`
             }
-            // 一级行业分组
+            // 一级或二级分组
             return `<div style="min-width:140px">
               <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name}</div>
               <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">区间涨跌</span><span style="color:${cc};font-weight:bold">${c >= 0 ? '+' : ''}${c}%</span></div>
@@ -218,44 +217,55 @@ export default {
         },
         series: [{
           type: 'treemap',
-          // 滚轮缩放 + 拖动平移：缩小看全局，放大看清个股细节。
-          // 关键：scaleLimit 限定 min=1，禁止缩小到原始比例以下——
-          // ECharts treemap 在缩小到 <1x 时会触发已知 bug 导致整个云图空白
-          roam: true,
-          nodeClick: false,
-          scaleLimit: { min: 1, max: 8 },
+          name: 'A股',
+          // 缩放交互：放弃滚轮缩放(roam)。ECharts treemap 的滚轮缩放在缩小到<1x时会触发
+          // 已知 bug 导致整个云图空白，且 treemap 不能用 scaleLimit 可靠约束，屡修屡坏。
+          // 改用官方稳定的「点击下钻」：点击一级行业/二级行业即放大该节点，
+          // 底部面包屑(breadcrumb)逐级返回。这是 ECharts treemap 推荐的稳定交互。
+          roam: false,
+          nodeClick: 'zoomToNode',
           data,
-          left: 2,
-          right: 2,
-          top: 2,
-          bottom: 2,
-          breadcrumb: { show: false },
-          // 一级行业顶部标题（深底白字 + 涨跌幅）
+          left: 4,
+          right: 4,
+          top: 4,
+          bottom: 4,
+          breadcrumb: {
+            show: true,
+            height: 22,
+            bottom: 2,
+            left: 'center',
+            itemStyle: { color: 'rgba(26,35,53,0.92)', borderColor: '#3a4a6b', borderWidth: 1 },
+            emphasis: { itemStyle: { color: '#2a3548' } }
+          },
           upperLabel: {
             show: true,
-            height: 20,
+            height: 22,
             color: '#fff',
             fontSize: 13,
             fontWeight: 'bold',
             textShadowColor: 'rgba(0,0,0,0.6)',
-            textShadowBlur: 3,
+            textShadowBlur: 4,
             formatter: p => {
               const c = p.data.change || 0
               const sign = c >= 0 ? '+' : ''
               return `${p.name}  ${sign}${c}%`
             }
           },
-          // 二级 levels：一级行业(分组) → 个股(叶子)，黑色细描边
+          // 三级 levels：一级(粗分组) → 二级(细分组) → 个股
           levels: [
             {
-              itemStyle: { borderColor: '#000', borderWidth: 2, gapWidth: 2 },
-              upperLabel: { height: 20, fontSize: 13 }
+              itemStyle: { borderColor: '#050a14', borderWidth: 4, gapWidth: 4 },
+              upperLabel: { height: 24, fontSize: 15 }
             },
             {
-              itemStyle: { borderColor: '#000', borderWidth: 1, gapWidth: 1 }
+              itemStyle: { borderColor: '#050a14', borderWidth: 2, gapWidth: 2 },
+              upperLabel: { height: 18, fontSize: 11 }
+            },
+            {
+              itemStyle: { borderColor: '#050a14', borderWidth: 1, gapWidth: 1 }
             }
           ],
-          // 个股标签：名称(粗体白字) + 涨跌幅；面积过小放不下的标签 ECharts 自动隐藏，放大后自动显示
+          // 个股标签：面积过小放不下的标签 ECharts 自动隐藏，缩放后变大自动显示
           label: {
             show: true,
             formatter: p => {
@@ -264,11 +274,12 @@ export default {
               const sign = c >= 0 ? '+' : ''
               return `${p.name}\n${sign}${c}%`
             },
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: 'bold',
-            lineHeight: 17,
-            textShadowColor: 'rgba(0,0,0,0.7)',
-            textShadowBlur: 3
+            textBorderColor: 'rgba(0,0,0,0.7)',
+            textBorderWidth: 1.5,
+            textShadowColor: 'rgba(0,0,0,0.4)',
+            textShadowBlur: 2
           }
         }]
       }, true)
