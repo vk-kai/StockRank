@@ -47,6 +47,19 @@ export async function getCurrentFlow() {
 }
 
 /**
+ * 获取全球主要股市指数
+ */
+export async function getGlobalIndices() {
+  try {
+    const response = await apiClient.get('/flow/global-indices')
+    return response.data
+  } catch (error) {
+    console.error('获取全球指数失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取历史资金流入数据
  * @param {number} days - 天数
  * @returns {Promise<Object>} 历史数据

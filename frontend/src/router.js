@@ -5,6 +5,7 @@ import ConfigPage from './ConfigPage.vue'
 import LogPage from './LogPage.vue'
 import DailyReport from './DailyReport.vue'
 import HouseKline from './HouseKline.vue'
+import GlobalMarket from './GlobalMarket.vue'
 
 const routes = [
   {
@@ -36,6 +37,11 @@ const routes = [
     path: '/house-kline',
     name: 'HouseKline',
     component: HouseKline
+  },
+  {
+    path: '/global-market',
+    name: 'GlobalMarket',
+    component: GlobalMarket
   }
 ]
 

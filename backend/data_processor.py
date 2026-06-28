@@ -1220,6 +1220,128 @@ def get_market_index_data():
     error_logger.error("大盘指数数据获取失败：新浪与东方财富均不可用")
     return None
 
+# 全球主要股市指数配置：(名称, 东方财富secid, 新浪兜底代码, 纬度, 经度, 国家/地区)
+GLOBAL_INDICES_CONFIG = [
+    ('上证指数', '1.000001', None, 31.23, 121.47, '中国'),
+    ('深证成指', '0.399001', None, 22.54, 114.06, '中国'),
+    ('沪深300', '1.000300', None, 31.23, 121.47, '中国'),
+    ('恒生指数', '100.HSI', 'int_hangseng', 22.32, 114.17, '香港'),
+    ('台湾加权', '100.TWII', None, 25.03, 121.57, '台湾'),
+    ('日经225', '100.N225', 'int_nikkei', 35.68, 139.69, '日本'),
+    ('韩国KOSPI', '100.KS11', None, 37.57, 126.98, '韩国'),
+    ('富时马来西亚', '100.KLSE', None, 3.14, 101.69, '马来西亚'),
+    ('印尼综合', '100.JKSE', None, -6.21, 106.85, '印尼'),
+    ('越南胡志明', '100.VNINDEX', None, 10.78, 106.70, '越南'),
+    ('印度SENSEX', '100.SENSEX', 'b_SENSEX', 19.08, 72.88, '印度'),
+    ('澳大利亚ASX200', '100.AS51', None, -33.87, 151.21, '澳大利亚'),
+    ('道琼斯', '100.DJIA', 'int_dji', 40.71, -74.01, '美国'),
+    ('纳斯达克', '100.NDX', 'int_nasdaq', 40.71, -74.01, '美国'),
+    ('标普500', '100.SPX', 'int_sp500', 40.71, -74.01, '美国'),
+    ('巴西BOVESPA', '100.BVSP', None, -23.55, -46.63, '巴西'),
+    ('英国富时100', '100.FTSE', 'int_ftse', 51.51, -0.13, '英国'),
+    ('德国DAX30', '100.GDAXI', None, 50.11, 8.68, '德国'),
+    ('法国CAC40', '100.FCHI', None, 48.86, 2.35, '法国'),
+    ('荷兰AEX', '100.AEX', None, 52.37, 4.90, '荷兰'),
+    ('瑞士SMI', '100.SSMI', None, 47.37, 8.54, '瑞士'),
+    ('俄罗斯RTS', '100.RTS', None, 55.75, 37.62, '俄罗斯'),
+]
+
+def get_global_market_indices():
+    """获取全球主要股市指数（双源：东方财富为主，新浪兜底）"""
+    secids = ','.join(cfg[1] for cfg in GLOBAL_INDICES_CONFIG)
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://quote.eastmoney.com/'
+    }
+    params = {
+        'fltt': 2,
+        'invt': 2,
+        'fields': 'f2,f3,f4,f12,f14',
+        'secids': secids
+    }
+
+    result = {}
+    em_ok = False
+    try:
+        response = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        diff = data.get('data', {}).get('diff', []) if data.get('data') else []
+        em_map = {item.get('f12'): item for item in diff}
+        for cfg in GLOBAL_INDICES_CONFIG:
+            name, secid, sina_code, lat, lng, region = cfg
+            em_code = secid.split('.')[-1]
+            item = em_map.get(em_code)
+            if item and item.get('f2') not in ('-', None):
+                result[secid] = {
+                    'name': name,
+                    'code': secid,
+                    'price': float(item.get('f2', 0) or 0),
+                    'change': float(item.get('f3', 0) or 0) / 100,
+                    'change_amount': float(item.get('f4', 0) or 0),
+                    'lat': lat,
+                    'lng': lng,
+                    'region': region,
+                    'source': 'eastmoney'
+                }
+                em_ok = True
+    except Exception as e:
+        error_logger.warning(f"东方财富全球指数获取失败，尝试新浪兜底: {e}")
+
+    # 新浪兜底：补齐东方财富未取到的指数
+    sina_needed = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[2] and cfg[1] not in result]
+    if sina_needed:
+        try:
+            sina_codes = ','.join(cfg[2] for cfg in sina_needed)
+            s_headers = {
+                'User-Agent': get_random_user_agent(),
+                'Referer': 'https://finance.sina.com.cn/'
+            }
+            s_resp = requests.get("https://hq.sinajs.cn/list=" + sina_codes, headers=s_headers, timeout=10)
+            s_resp.encoding = 'gbk'
+            for part in s_resp.text.split(';'):
+                if 'hq_str_' not in part or '="' not in part:
+                    continue
+                key = part.split('hq_str_', 1)[1].split('=', 1)[0]
+                values_text = part.split('="', 1)[1].rstrip('"')
+                values = values_text.split(',')
+                if len(values) < 4 or not values[1]:
+                    continue
+                price = _safe_float(values[1], None)
+                change_pct = _safe_float(values[3], None)
+                if price is None or change_pct is None:
+                    continue
+                for cfg in sina_needed:
+                    if cfg[2] == key and cfg[1] not in result:
+                        name, secid, _, lat, lng, region = cfg
+                        result[secid] = {
+                            'name': name,
+                            'code': secid,
+                            'price': round(price, 2),
+                            'change': change_pct / 100,
+                            'change_amount': round(price * change_pct / 100, 2),
+                            'lat': lat,
+                            'lng': lng,
+                            'region': region,
+                            'source': 'sina'
+                        }
+                        break
+        except Exception as e:
+            error_logger.warning(f"新浪全球指数兜底获取失败: {e}")
+
+    if not result:
+        error_logger.error("全球指数数据获取失败：东方财富与新浪均不可用")
+        return None
+
+    indices = list(result.values())
+    indices.sort(key=lambda x: x.get('change', 0), reverse=True)
+    return {
+        'indices': indices,
+        'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'source': 'eastmoney' if em_ok else 'sina'
+    }
+
 def get_stock_statistics():
     global latest_market_data
     

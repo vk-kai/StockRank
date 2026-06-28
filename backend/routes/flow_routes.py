@@ -10,7 +10,7 @@ from data_processor import (
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
-    refresh_market_summary_cache, is_market_summary_complete
+    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
@@ -29,6 +29,22 @@ ai_analysis_status = {
     'end_time': None
 }
 ai_analysis_lock = threading.Lock()
+
+@flow_bp.route('/global-indices', methods=['GET'])
+def global_indices():
+    """获取全球主要股市指数（东方财富为主，新浪兜底）"""
+    try:
+        data = get_global_market_indices()
+        if data:
+            return jsonify({'success': True, 'data': data})
+        return jsonify({'success': False, 'error': '获取全球指数数据失败'}), 500
+    except Exception as e:
+        error_msg = f"全球指数接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/global-indices]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 def _update_ai_status(status, message, progress, step):
     """更新AI分析状态"""

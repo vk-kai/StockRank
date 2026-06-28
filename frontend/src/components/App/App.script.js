@@ -89,6 +89,7 @@ export default {
       marketSummaryError: null,
       marketSummaryInterval: null,
       aiAnalyzing: false,
+      showMoreMenu: false,
       showAIAnalysisModal: false,
       aiAnalysisResult: null,
       aiAnalysisError: null,
@@ -1180,6 +1181,10 @@ export default {
 
     openDapanYuntu() {
       window.open('https://dapanyuntu.com/', '_blank')
+    },
+
+    goToGlobalMarket() {
+      this.$router.push('/global-market')
     },
 
     loadNotificationState() {
