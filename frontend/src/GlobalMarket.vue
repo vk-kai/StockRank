@@ -221,18 +221,18 @@ export default {
         value: [i.lng, i.lat, +(i.change * 100).toFixed(2), i.price, i.region]
       }))
 
-      // 圆圈颜色：涨=鲜红，跌=鲜绿；最低透明度0.7，保证小幅涨跌也清晰可辨红绿
+      // 圆圈填充：浅色，让圆圈内"红涨绿跌"的文字清晰可读；方向由边框+文字颜色体现
       const colorOf = v => {
         const pct = Math.abs(v[2])
-        const opacity = Math.min(Math.max(pct / 4 * 0.3, 0.7), 0.98)
-        return v[2] >= 0 ? `rgba(240, 49, 49, ${opacity})` : `rgba(30, 190, 60, ${opacity})`
+        const opacity = Math.min(Math.max(pct / 4 * 0.35, 0.22), 0.55)
+        return v[2] >= 0 ? `rgba(255, 77, 79, ${opacity})` : `rgba(82, 196, 26, ${opacity})`
       }
-      // 边框颜色（更亮，强化红绿区分）
-      const borderColorOf = v => v[2] >= 0 ? '#ffccc7' : '#b7eb8f'
-      // 圆圈大小：按涨跌幅绝对值，最小30最大60（放大圆圈，让涨跌幅文字和颜色都看得清）
+      // 边框：鲜亮红/绿，强化方向
+      const borderColorOf = v => v[2] >= 0 ? '#ff4d4f' : '#52c41a'
+      // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
-      // 圆圈内文字颜色：统一白色高对比
-      const textColorOf = () => '#fff'
+      // 圆圈内文字：涨=红、跌=绿（红涨绿跌）
+      const textColorOf = v => v[2] >= 0 ? '#ff4d4f' : '#52c41a'
 
       this.chart.setOption({
         backgroundColor: 'transparent',
@@ -281,13 +281,13 @@ export default {
           itemStyle: {
             color: p => colorOf(p.value),
             borderColor: p => borderColorOf(p.value),
-            borderWidth: 2,
-            shadowBlur: 18,
-            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,45,85,0.8)' : 'rgba(19,209,124,0.8)')
+            borderWidth: 2.5,
+            shadowBlur: 14,
+            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.45)' : 'rgba(82,196,26,0.45)')
           },
           label: {
             show: true,
-            // 圆圈内显示涨跌幅
+            // 圆圈内显示涨跌幅（红涨绿跌）
             formatter: p => {
               const chg = p.value[2]
               return (chg >= 0 ? '+' : '') + chg + '%'
@@ -295,9 +295,7 @@ export default {
             color: p => textColorOf(p.value),
             fontSize: 13,
             fontWeight: 'bold',
-            position: 'inside',
-            textBorderColor: 'rgba(0,0,0,0.45)',
-            textBorderWidth: 1.5
+            position: 'inside'
           },
           // 高亮：圆圈放大、边框加粗、光晕增强
           emphasis: {
