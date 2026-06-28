@@ -23,7 +23,7 @@
               <div class="wave wave2"></div>
             </div>
           </button>
-          <button class="yuntu-button" @click="openDapanYuntu">📊 大盘云图</button>
+          <button class="yuntu-button" @click="goToMarketMap">📊 大盘云图</button>
           <button class="global-button" @click="goToGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
           <div class="more-menu-wrapper">

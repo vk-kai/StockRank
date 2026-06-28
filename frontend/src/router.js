@@ -6,6 +6,7 @@ import LogPage from './LogPage.vue'
 import DailyReport from './DailyReport.vue'
 import HouseKline from './HouseKline.vue'
 import GlobalMarket from './GlobalMarket.vue'
+import MarketMap from './MarketMap.vue'
 
 const routes = [
   {

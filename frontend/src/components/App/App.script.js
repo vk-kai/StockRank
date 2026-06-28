@@ -1183,6 +1183,10 @@ export default {
       window.open('https://dapanyuntu.com/', '_blank')
     },
 
+    goToMarketMap() {
+      this.$router.push('/market-map')
+    },
+
     goToGlobalMarket() {
       this.$router.push('/global-market')
     },

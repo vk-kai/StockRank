@@ -60,6 +60,34 @@ export async function getGlobalIndices() {
 }
 
 /**
+ * 获取大盘云图行业板块列表
+ */
+export async function getMarketMap() {
+  try {
+    const response = await apiClient.get('/flow/market-map')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取板块下的个股（云图下钻）
+ */
+export async function getMarketMapStocks(sectorCode) {
+  try {
+    const response = await apiClient.get('/flow/market-map-stocks', {
+      params: { sector: sectorCode }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取板块个股失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取历史资金流入数据
  * @param {number} days - 天数
  * @returns {Promise<Object>} 历史数据

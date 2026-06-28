@@ -1343,6 +1343,111 @@ def get_global_market_indices():
         'source': 'eastmoney' if em_ok else 'sina'
     }
 
+# 新浪行业板块与个股接口（大盘云图用，避免东方财富反爬）
+SINA_SECTOR_LIST_URL = "https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php"
+SINA_SECTOR_STOCKS_URL = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
+
+def get_market_map_sectors():
+    """获取全市场行业板块（大盘云图用），按市值排序（数据源：新浪）。
+    返回每个板块：名称、代码(node)、涨跌幅(%)、总市值(元)、成交额、领涨股"""
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Referer': 'https://finance.sina.com.cn/'
+    }
+    try:
+        response = requests.get(SINA_SECTOR_LIST_URL, headers=headers, timeout=10)
+        response.encoding = 'gbk'
+        import re
+        m = re.search(r'\{.*\}', response.text, re.S)
+        if not m:
+            error_logger.warning("大盘云图板块数据格式异常")
+            return None
+        raw = m.group(0).replace("'", '"')
+        d = json.loads(raw)
+
+        sectors = []
+        for node, val in d.items():
+            p = val.split(',')
+            if len(p) < 13:
+                continue
+            name = p[1]
+            change = _safe_float(p[4], 0)          # 涨跌幅 %
+            turnover = _safe_float(p[6], 0)         # 成交额
+            market_cap = _safe_float(p[7], 0)       # 总市值
+            if market_cap <= 0:
+                continue
+            sectors.append({
+                'name': name,
+                'code': node,
+                'change': round(change, 2),
+                'value': market_cap,
+                'turnover': turnover,
+                'leader': p[12] if len(p) > 12 else '',
+                'leader_change': round(_safe_float(p[9], 0), 2)
+            })
+        if not sectors:
+            error_logger.warning("大盘云图板块数据为空")
+            return None
+        sectors.sort(key=lambda x: x['value'], reverse=True)
+        return {
+            'sectors': sectors,
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'source': 'sina'
+        }
+    except Exception as e:
+        error_logger.warning(f"大盘云图板块数据获取失败: {e}")
+        return None
+
+def get_market_map_stocks(sector_code):
+    """获取指定板块下的个股（云图下钻），按流通市值排序（数据源：新浪）"""
+    if not sector_code:
+        return None
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Referer': 'https://vip.stock.finance.sina.com.cn/'
+    }
+    params = {
+        'page': 1,
+        'num': 200,
+        'sort': 'mktcap',
+        'asc': 0,
+        'node': sector_code,
+        'symbol': '',
+        '_s_r_a': 'page'
+    }
+    try:
+        response = requests.get(SINA_SECTOR_STOCKS_URL, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        items = response.json()
+        if not isinstance(items, list):
+            error_logger.warning(f"板块 {sector_code} 个股返回格式异常")
+            return None
+        stocks = []
+        for s in items:
+            mktcap = _safe_float(s.get('mktcap'), 0)   # 流通市值（万元）
+            if mktcap <= 0:
+                continue
+            stocks.append({
+                'name': s.get('name', ''),
+                'code': s.get('symbol', ''),
+                'change': round(_safe_float(s.get('changepercent'), 0), 2),  # 涨跌幅 %
+                'value': mktcap,
+                'price': _safe_float(s.get('trade'), 0)
+            })
+        if not stocks:
+            error_logger.warning(f"板块 {sector_code} 个股数据为空")
+        # 已按 mktcap 降序请求，兜底再排一次
+        stocks.sort(key=lambda x: x['value'], reverse=True)
+        return {
+            'stocks': stocks,
+            'sector_code': sector_code,
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'source': 'sina'
+        }
+    except Exception as e:
+        error_logger.warning(f"板块 {sector_code} 个股获取失败: {e}")
+        return None
+
 def get_stock_statistics():
     global latest_market_data
     

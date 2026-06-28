@@ -10,7 +10,8 @@ from data_processor import (
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
-    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices
+    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices,
+    get_market_map_sectors, get_market_map_stocks
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
@@ -43,6 +44,41 @@ def global_indices():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/global-indices]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map', methods=['GET'])
+def market_map():
+    """获取大盘云图行业板块列表（新浪数据源）"""
+    try:
+        data = get_market_map_sectors()
+        if data:
+            return jsonify({'success': True, 'data': data})
+        return jsonify({'success': False, 'error': '获取大盘云图数据失败'}), 500
+    except Exception as e:
+        error_msg = f"大盘云图接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/market-map]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-stocks', methods=['GET'])
+def market_map_stocks():
+    """获取指定板块下的个股（云图下钻，新浪数据源）"""
+    sector_code = request.args.get('sector', '').strip()
+    if not sector_code:
+        return jsonify({'success': False, 'error': '缺少板块代码参数 sector'}), 400
+    try:
+        data = get_market_map_stocks(sector_code)
+        if data:
+            return jsonify({'success': True, 'data': data})
+        return jsonify({'success': False, 'error': '获取板块个股数据失败'}), 500
+    except Exception as e:
+        error_msg = f"板块个股接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/market-map-stocks]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
