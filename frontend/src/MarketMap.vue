@@ -19,21 +19,13 @@
 
     <div class="mm-chart-wrapper">
       <div ref="chartEl" class="mm-chart"></div>
-      <div class="mm-legend">
-        <span class="legend-block up-deep"></span>
-        <span class="legend-block up-light"></span>
-        <span class="legend-zero">0</span>
-        <span class="legend-block down-light"></span>
-        <span class="legend-block down-deep"></span>
-        <span class="legend-tip">面积=流通市值 · 颜色=涨跌幅 · 悬停查看详情</span>
-      </div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
         <p>正在加载全市场数据，请稍候...</p>
       </div>
     </div>
 
-    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅 · 仅供投资参考</div>
+    <div class="mm-footer">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 滚轮放大查看个股 · 仅供投资参考</div>
     <SecurityAlert />
   </div>
 </template>
@@ -163,38 +155,39 @@ export default {
     initChart() {
       const el = this.$refs.chartEl
       if (!el) return
-      if (this.chart) this.chart.dispose()
-      this.chart = echarts.init(el)
+      // 仅首次创建实例，后续刷新复用同一实例（避免销毁重建导致画面闪烁/缩放丢失）
+      if (!this.chart) {
+        this.chart = echarts.init(el)
+      }
     },
     render() {
       this.initChart()
       if (!this.chart) return
 
-      // 构建三级嵌套数据：申万一级 → 申万二级 → 个股
-      // 每个节点附 itemStyle.color 和 label.color 实现统一红绿着色
-      const buildNode = (n, isLeaf) => {
-        const node = {
-          name: n.name,
-          change: n.change,
-          itemStyle: { color: this.colorOf(n.change) },
-          label: { color: this.textColorOf(n.change) }
-        }
-        if (isLeaf) {
-          node.value = n.value
-          node.code = n.code
-        } else {
-          node.children = n.children
-        }
-        return node
-      }
+      // 扁平化为二级结构：申万一级 → 个股（与截图一致，最大化个股面积、提升可读性）
+      // 后端返回的是三级(一级→二级→个股)，这里把二级分组展开合并到其所属一级行业下
       const data = this.tree.map(l1 => {
-        const l1Node = buildNode(l1, false)
-        l1Node.children = l1.children.map(l2 => {
-          const l2Node = buildNode(l2, false)
-          l2Node.children = l2.children.map(s => buildNode(s, true))
-          return l2Node
+        const stocks = []
+        ;(l1.children || []).forEach(l2 => {
+          ;(l2.children || []).forEach(s => {
+            stocks.push({
+              name: s.name,
+              change: s.change,
+              code: s.code,
+              value: s.value,
+              itemStyle: { color: this.colorOf(s.change) },
+              label: { color: this.textColorOf(s.change) }
+            })
+          })
         })
-        return l1Node
+        return {
+          name: l1.name,
+          change: l1.change,
+          // 行业标题条：深色底 + 白字（与截图一致）；下方区域由个股红绿填满
+          itemStyle: { color: '#1d2230' },
+          label: { color: '#fff' },
+          children: stocks
+        }
       })
 
       this.chart.setOption({
@@ -209,14 +202,14 @@ export default {
             const d = p.data
             const c = d.change || 0
             const cc = c >= 0 ? '#ff4d4f' : '#52c41a'
-            // 个股层（叶子，value 是原始数值）
+            // 个股层（叶子，无 children）
             if (d.children === undefined) {
               return `<div style="min-width:160px">
                 <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name} <span style="color:#8ba4c7;font-weight:normal;font-size:12px">${d.code}</span></div>
                 <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${cc};font-weight:bold;font-size:16px">${c >= 0 ? '+' : ''}${c}%</span></div>
               </div>`
             }
-            // 一级或二级分组
+            // 一级行业分组
             return `<div style="min-width:140px">
               <div style="font-weight:bold;font-size:15px;margin-bottom:6px">${d.name}</div>
               <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">区间涨跌</span><span style="color:${cc};font-weight:bold">${c >= 0 ? '+' : ''}${c}%</span></div>
@@ -225,45 +218,44 @@ export default {
         },
         series: [{
           type: 'treemap',
-          // 滚轮缩放 + 拖动平移：整个云图一次性全部显示，
-          // 缩小看全局，放大看清某区域的个股细节（放不下的标签自动隐藏，放大后自动显示）
+          // 滚轮缩放 + 拖动平移：缩小看全局，放大看清个股细节。
+          // 关键：scaleLimit 限定 min=1，禁止缩小到原始比例以下——
+          // ECharts treemap 在缩小到 <1x 时会触发已知 bug 导致整个云图空白
           roam: true,
           nodeClick: false,
+          scaleLimit: { min: 1, max: 8 },
           data,
-          left: 4,
-          right: 4,
-          top: 4,
-          bottom: 4,
+          left: 2,
+          right: 2,
+          top: 2,
+          bottom: 2,
           breadcrumb: { show: false },
+          // 一级行业顶部标题（深底白字 + 涨跌幅）
           upperLabel: {
             show: true,
-            height: 22,
+            height: 20,
             color: '#fff',
             fontSize: 13,
             fontWeight: 'bold',
             textShadowColor: 'rgba(0,0,0,0.6)',
-            textShadowBlur: 4,
+            textShadowBlur: 3,
             formatter: p => {
               const c = p.data.change || 0
               const sign = c >= 0 ? '+' : ''
               return `${p.name}  ${sign}${c}%`
             }
           },
-          // 三级 levels：一级(粗分组) → 二级(细分组) → 个股
+          // 二级 levels：一级行业(分组) → 个股(叶子)，黑色细描边
           levels: [
             {
-              itemStyle: { borderColor: '#050a14', borderWidth: 4, gapWidth: 4 },
-              upperLabel: { height: 24, fontSize: 15 }
+              itemStyle: { borderColor: '#000', borderWidth: 2, gapWidth: 2 },
+              upperLabel: { height: 20, fontSize: 13 }
             },
             {
-              itemStyle: { borderColor: '#050a14', borderWidth: 2, gapWidth: 2 },
-              upperLabel: { height: 18, fontSize: 11 }
-            },
-            {
-              itemStyle: { borderColor: '#050a14', borderWidth: 1, gapWidth: 1 }
+              itemStyle: { borderColor: '#000', borderWidth: 1, gapWidth: 1 }
             }
           ],
-          // 个股标签：面积过小放不下的标签 ECharts 自动隐藏，缩放后变大自动显示
+          // 个股标签：名称(粗体白字) + 涨跌幅；面积过小放不下的标签 ECharts 自动隐藏，放大后自动显示
           label: {
             show: true,
             formatter: p => {
@@ -272,10 +264,11 @@ export default {
               const sign = c >= 0 ? '+' : ''
               return `${p.name}\n${sign}${c}%`
             },
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: 'bold',
-            textShadowColor: 'rgba(0,0,0,0.5)',
-            textShadowBlur: 2
+            lineHeight: 17,
+            textShadowColor: 'rgba(0,0,0,0.7)',
+            textShadowBlur: 3
           }
         }]
       }, true)
@@ -292,7 +285,7 @@ export default {
     radial-gradient(ellipse at 80% 80%, rgba(28, 168, 86, 0.05) 0%, transparent 50%),
     linear-gradient(135deg, #050a14 0%, #0a1628 40%, #08101e 100%);
   color: #e0e6f0;
-  padding: 16px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -302,73 +295,80 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 20px;
+  padding: 6px 14px;
   background: rgba(26, 35, 53, 0.8);
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid rgba(58, 74, 107, 0.5);
   backdrop-filter: blur(10px);
-  margin-bottom: 16px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .mm-header h1 {
-  font-size: 1.4rem;
+  font-size: 1.05rem;
   color: #fff;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .mm-header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .mm-stats {
-  font-size: 13px;
+  font-size: 12px;
   color: #8ba4c7;
+  white-space: nowrap;
 }
 
 .mm-update {
-  font-size: 12px;
+  font-size: 11px;
   color: #8ba4c7;
+  white-space: nowrap;
 }
 
 .mm-back-button {
-  padding: 10px 20px;
+  padding: 6px 14px;
   background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
   border: 1px solid #4a5a7b;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #e0e6f0;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 14px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .mm-back-button:hover {
   background: linear-gradient(135deg, #4a5a7b, #3a4a6b);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .mm-refresh-btn {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #1890ff, #096dd9);
   border: 1px solid #40a9ff;
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .mm-cache-btn {
-  padding: 8px 14px;
+  padding: 6px 10px;
   background: rgba(58, 74, 107, 0.6);
   border: 1px solid #4a5a7b;
   border-radius: 6px;
   color: #8ba4c7;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .mm-cache-btn:hover:not(:disabled) {
@@ -383,7 +383,7 @@ export default {
 
 .mm-refresh-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #40a9ff, #1890ff);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .mm-refresh-btn:disabled {
@@ -395,10 +395,10 @@ export default {
   flex: 1;
   position: relative;
   background: rgba(26, 35, 53, 0.6);
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid rgba(58, 74, 107, 0.5);
-  padding: 8px;
-  min-height: 400px;
+  padding: 4px;
+  min-height: 300px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
@@ -406,45 +406,7 @@ export default {
 .mm-chart {
   width: 100%;
   height: 100%;
-  min-height: 380px;
-}
-
-.mm-legend {
-  position: absolute;
-  bottom: 18px;
-  left: 24px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #8ba4c7;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.legend-block {
-  width: 26px;
-  height: 12px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.legend-block.up-deep { background: #e41414; }
-.legend-block.up-light { background: #6d1414; }
-.legend-block.down-light { background: #085421; }
-.legend-block.down-deep { background: #00d641; }
-
-.legend-zero {
-  width: 20px;
-  text-align: center;
-  font-size: 11px;
-  color: #8ba4c7;
-}
-
-.legend-tip {
-  margin-left: 12px;
-  color: #5a6b8c;
-  font-size: 11px;
+  min-height: 280px;
 }
 
 .mm-loading {
@@ -457,7 +419,7 @@ export default {
   background: rgba(5, 10, 20, 0.7);
   color: #8ba4c7;
   z-index: 10;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .spinner {
@@ -476,22 +438,22 @@ export default {
 
 .mm-footer {
   text-align: center;
-  padding: 14px;
+  padding: 5px 8px;
   color: #8ba4c7;
-  font-size: 0.85rem;
-  margin-top: 16px;
+  font-size: 0.72rem;
+  margin-top: 6px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
-  .market-map-page { padding: 10px; }
+  .market-map-page { padding: 6px; }
   .mm-header {
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     text-align: center;
   }
-  .mm-header h1 { font-size: 1.1rem; }
-  .mm-chart-wrapper { min-height: 300px; }
-  .mm-chart { min-height: 280px; }
-  .legend-tip { display: none; }
+  .mm-header h1 { font-size: 1rem; }
+  .mm-chart-wrapper { min-height: 240px; }
+  .mm-chart { min-height: 220px; }
 }
 </style>
