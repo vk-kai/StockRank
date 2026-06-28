@@ -122,10 +122,49 @@ export default {
       }
     },
 
+    // 英文国家名 → 中文映射（覆盖世界地图主要国家）
+    COUNTRY_ZH_MAP: {
+      'China': '中国', 'Russia': '俄罗斯', 'Mongolia': '蒙古',
+      'India': '印度', 'Japan': '日本', 'South Korea': '韩国', 'North Korea': '朝鲜',
+      'Thailand': '泰国', 'Vietnam': '越南', 'Myanmar': '缅甸', 'Malaysia': '马来西亚',
+      'Indonesia': '印度尼西亚', 'Philippines': '菲律宾', 'Pakistan': '巴基斯坦',
+      'Kazakhstan': '哈萨克斯坦', 'Iran': '伊朗', 'Saudi Arabia': '沙特阿拉伯',
+      'Iraq': '伊拉克', 'Turkey': '土耳其', 'United Arab Emirates': '阿联酋',
+      'Afghanistan': '阿富汗', 'Israel': '以色列',
+      'United States': '美国', 'Canada': '加拿大', 'Mexico': '墨西哥',
+      'Brazil': '巴西', 'Argentina': '阿根廷', 'Chile': '智利', 'Colombia': '哥伦比亚',
+      'Peru': '秘鲁', 'Venezuela': '委内瑞拉', 'Bolivia': '玻利维亚',
+      'United Kingdom': '英国', 'France': '法国', 'Germany': '德国', 'Italy': '意大利',
+      'Spain': '西班牙', 'Portugal': '葡萄牙', 'Netherlands': '荷兰', 'Belgium': '比利时',
+      'Switzerland': '瑞士', 'Austria': '奥地利', 'Sweden': '瑞典', 'Norway': '挪威',
+      'Finland': '芬兰', 'Denmark': '丹麦', 'Poland': '波兰', 'Greece': '希腊',
+      'Ireland': '爱尔兰', 'Czech Republic': '捷克', 'Ukraine': '乌克兰', 'Romania': '罗马尼亚',
+      'Hungary': '匈牙利', 'Croatia': '克罗地亚', 'Bulgaria': '保加利亚', 'Serbia': '塞尔维亚',
+      'Egypt': '埃及', 'South Africa': '南非', 'Nigeria': '尼日利亚', 'Morocco': '摩洛哥',
+      'Algeria': '阿尔及利亚', 'Kenya': '肯尼亚', 'Ethiopia': '埃塞俄比亚', 'Ghana': '加纳',
+      'Australia': '澳大利亚', 'New Zealand': '新西兰', 'Papua New Guinea': '巴布亚新几内亚',
+      'Dem. Rep. Congo': '刚果(金)', 'Dem. Rep. Korea': '朝鲜', 'Republic of Korea': '韩国',
+      'Czechia': '捷克', 'Bosnia and Herz.': '波黑', 'Dominican Rep.': '多米尼加',
+      'S. Sudan': '南苏丹', 'Central African Rep.': '中非', 'Eq. Guinea': '赤道几内亚',
+      'W. Sahara': '西撒哈拉', 'Falkland Is.': '福克兰群岛', 'Greenland': '格陵兰',
+      'Fr. S. Antarctic Lands': '法兰西南方领地', 'Antarctica': '南极洲',
+      'Taiwan': '台湾', 'Hong Kong': '香港'
+    },
+
     async loadMap() {
       try {
         const res = await fetch('/world.json')
         const geo = await res.json()
+        // 将国家英文名翻译为中文
+        if (geo.features) {
+          geo.features.forEach(f => {
+            const enName = f.properties && f.properties.name
+            const zhName = this.COUNTRY_ZH_MAP[enName]
+            if (zhName) {
+              f.properties.name = zhName
+            }
+          })
+        }
         echarts.registerMap('world', geo)
       } catch (e) {
         console.error('世界地图加载失败', e)
@@ -204,8 +243,18 @@ export default {
           roam: true,
           zoom: 1.3,
           scaleLimit: { min: 0.8, max: 8 },
-          itemStyle: { areaColor: '#0d1b2a', borderColor: '#1b3a5b' },
-          emphasis: { itemStyle: { areaColor: '#1b3a5b' }, label: { show: false } },
+          // 深色科技感海洋 + 发光边界
+          itemStyle: {
+            areaColor: '#0a1628',
+            borderColor: '#1e90ff',
+            borderWidth: 0.6,
+            shadowColor: 'rgba(30, 144, 255, 0.4)',
+            shadowBlur: 8
+          },
+          emphasis: {
+            itemStyle: { areaColor: '#1a3050', borderColor: '#00e0ff' },
+            label: { show: true, color: '#8ba4c7', fontSize: 10 }
+          },
           silent: false
         },
         series: [{
@@ -217,8 +266,8 @@ export default {
             color: p => colorOf(p.value),
             borderColor: p => borderColorOf(p.value),
             borderWidth: 2,
-            shadowBlur: 10,
-            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.5)' : 'rgba(82,196,26,0.5)')
+            shadowBlur: 18,
+            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,45,85,0.8)' : 'rgba(19,209,124,0.8)')
           },
           label: {
             show: true,
@@ -408,8 +457,8 @@ export default {
   display: inline-block;
 }
 
-.legend-item .dot.up { background: #ff4d4f; box-shadow: 0 0 8px #ff4d4f; }
-.legend-item .dot.down { background: #52c41a; box-shadow: 0 0 8px #52c41a; }
+.legend-item .dot.up { background: #ff2d55; box-shadow: 0 0 10px #ff2d55; }
+.legend-item .dot.down { background: #13d17c; box-shadow: 0 0 10px #13d17c; }
 
 .gm-rank {
   width: 280px;

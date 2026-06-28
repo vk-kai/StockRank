@@ -43,6 +43,11 @@ const routes = [
     path: '/global-market',
     name: 'GlobalMarket',
     component: GlobalMarket
+  },
+  {
+    path: '/market-map',
+    name: 'MarketMap',
+    component: MarketMap
   }
 ]
 
