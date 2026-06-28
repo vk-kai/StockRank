@@ -20,7 +20,7 @@
         <div class="gm-legend">
           <span class="legend-item"><i class="dot up"></i>上涨</span>
           <span class="legend-item"><i class="dot down"></i>下跌</span>
-          <span class="legend-tip">滚轮缩放 · 拖动平移</span>
+          <span class="legend-tip">颜色越深=涨跌幅越大 · 滚轮缩放 · 拖动平移</span>
         </div>
       </div>
 
@@ -39,7 +39,7 @@
         <div class="gm-rank-section">
           <h3 class="gm-rank-title down">📉 跌幅榜</h3>
           <div class="gm-rank-list">
-            <div v-for="item in topLosers" :key="item.code" class="gm-rank-item">
+            <div v-for="item in topLosers" :key="item.code" class="gm-rank-item clickable" @click="focusIndex(item)">
               <span class="gm-rank-region">{{ item.region }}</span>
               <span class="gm-rank-name">{{ item.name }}</span>
               <span class="gm-rank-change down">{{ formatChange(item.change) }}</span>
@@ -100,6 +100,28 @@ export default {
     goBack() {
       this.$router.push('/')
     },
+
+    // 点击榜单项：缩放到对应国家位置并高亮
+    focusIndex(item) {
+      if (!this.chart || !item) return
+      const lng = item.lng
+      const lat = item.lat
+      // 缩放并居中到目标坐标
+      this.chart.setOption({
+        geo: {
+          center: [lng, lat],
+          zoom: 4
+        }
+      })
+      // 高亮对应的散点并显示 tooltip
+      const seriesData = this.chart.getOption().series[0].data
+      const idx = seriesData.findIndex(d => d.code === item.code)
+      if (idx >= 0) {
+        this.chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx })
+        this.chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
+      }
+    },
+
     async loadMap() {
       try {
         const res = await fetch('/world.json')
@@ -144,8 +166,18 @@ export default {
         value: [i.lng, i.lat, +(i.change * 100).toFixed(2), i.price, i.region]
       }))
 
-      const colorOf = v => v[2] >= 0 ? '#ff4d4f' : '#52c41a'
-      const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 3 + 8, 8), 38)
+      // 圆圈颜色：涨为红色系，跌为绿色系；涨跌幅越大颜色越深（透明度越高）
+      const colorOf = v => {
+        const pct = Math.abs(v[2])
+        const opacity = Math.min(Math.max(pct / 4 * 0.6, 0.35), 0.95)
+        return v[2] >= 0 ? `rgba(255, 77, 79, ${opacity})` : `rgba(82, 196, 26, ${opacity})`
+      }
+      // 边框颜色（更亮）
+      const borderColorOf = v => v[2] >= 0 ? '#ff7875' : '#95de64'
+      // 圆圈大小：按涨跌幅绝对值，最小18，最大42
+      const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 18, 18), 42)
+      // 圆圈内文字颜色：随涨跌
+      const textColorOf = v => v[2] >= 0 ? '#fff1f0' : '#f6ffed'
 
       this.chart.setOption({
         backgroundColor: 'transparent',
@@ -177,26 +209,62 @@ export default {
           silent: false
         },
         series: [{
-          type: 'effectScatter',
+          type: 'scatter',
           coordinateSystem: 'geo',
           data: scatterData,
           symbolSize: v => sizeOf(v),
-          showEffectOn: 'render',
-          rippleEffect: { brushType: 'stroke', scale: 3, period: 4 },
           itemStyle: {
             color: p => colorOf(p.value),
-            shadowBlur: 8,
-            shadowColor: 'rgba(0,0,0,0.5)'
+            borderColor: p => borderColorOf(p.value),
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.5)' : 'rgba(82,196,26,0.5)')
           },
           label: {
             show: true,
-            position: 'right',
+            // 圆圈内显示涨跌幅
+            formatter: p => {
+              const chg = p.value[2]
+              return (chg >= 0 ? '+' : '') + chg + '%'
+            },
+            color: p => textColorOf(p.value),
+            fontSize: 10,
+            fontWeight: 'bold',
+            position: 'inside'
+          },
+          // 高亮：圆圈放大、边框加粗、光晕增强
+          emphasis: {
+            scale: 1.6,
+            itemStyle: {
+              borderColor: '#ffd666',
+              borderWidth: 3,
+              shadowBlur: 24,
+              shadowColor: '#ffd666'
+            },
+            label: { fontSize: 12 }
+          },
+          zlevel: 2
+        }, {
+          // 第二个系列：仅显示国名标签，放在圆圈下方
+          type: 'scatter',
+          coordinateSystem: 'geo',
+          data: scatterData,
+          symbolSize: 0,
+          label: {
+            show: true,
+            formatter: p => p.data.name,
             color: '#e0e6f0',
             fontSize: 11,
-            formatter: p => p.data.name,
+            fontWeight: 500,
+            position: 'bottom',
+            distance: 8,
             textShadowColor: '#000',
-            textShadowBlur: 4
+            textShadowBlur: 4,
+            backgroundColor: 'rgba(13, 27, 42, 0.7)',
+            padding: [2, 6],
+            borderRadius: 3
           },
+          tooltip: { show: false },
           zlevel: 2
         }]
       }, true)

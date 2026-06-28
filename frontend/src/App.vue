@@ -25,6 +25,7 @@
           </button>
           <button class="yuntu-button" @click="openDapanYuntu">📊 大盘云图</button>
           <button class="global-button" @click="goToGlobalMarket">🌍 全球股市地图</button>
+          <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
           <div class="more-menu-wrapper">
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
@@ -32,7 +33,6 @@
               <div class="more-dropdown-item" @click="goToConfig(); showMoreMenu = false">AI配置</div>
               <div class="more-dropdown-item" @click="goToLogs(); showMoreMenu = false">日志</div>
               <div class="more-dropdown-item" @click="goToHouseKline(); showMoreMenu = false">房价K线</div>
-              <div class="more-dropdown-item" @click="openQuantSystem(); showMoreMenu = false">📈 量化交易系统</div>
             </div>
           </div>
         </div>
