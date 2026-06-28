@@ -123,7 +123,8 @@ function squarify(items, x, y, w, h) {
   if (total <= 0) return
   const scale = (w * h) / total
   let curX = x, curY = y, curW = w, curH = h
-  let queue = positives.map(it => ({ a: it.value * scale, ref: it })).sort((p, q) => q.a - p.a)
+  // 不在此处重排：尊重调用方传入的顺序（buildLayout 已按需排序——L1 银行置顶，L2/个股按市值降序）
+  let queue = positives.map(it => ({ a: it.value * scale, ref: it }))
 
   const worst = (arr, len) => {
     let sum = 0, mx = -Infinity, mn = Infinity
@@ -292,6 +293,9 @@ export default {
         }))
       }))
       sectors.sort((a, b) => b.value - a.value)
+      // 银行强制置顶（放在左上角，参考 dapanyuntu），其余仍按市值降序
+      const bankIdx = sectors.findIndex(s => s.name === '银行')
+      if (bankIdx > 0) sectors.unshift(sectors.splice(bankIdx, 1)[0])
       for (const s of sectors) {
         s.children.sort((a, b) => b.value - a.value)
         for (const l2 of s.children) l2.children.sort((a, b) => b.value - a.value)
