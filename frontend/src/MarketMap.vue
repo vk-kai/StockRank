@@ -301,7 +301,8 @@ export default {
         for (const l2 of s.children) l2.children.sort((a, b) => b.value - a.value)
       }
 
-      squarify(sectors, 0, 0, this.cssW, this.cssH)
+      // 顶部留 6px 边距，避免最上面一级行业的标题被画布上沿截断
+      squarify(sectors, 0, 6, this.cssW, this.cssH - 6)
       for (const s of sectors) {
         s.headerH = s.h > 26 ? Math.min(18, s.h * 0.35) : 0
         squarify(s.children, s.x, s.y + s.headerH, s.w, s.h - s.headerH)
@@ -366,9 +367,9 @@ export default {
           ctx.fillRect(sx, sy, sw, hh)
           this.drawHeaderText(ctx, `${s.name}    ${fmtPct(s.change)}`, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
-        ctx.lineWidth = 2
-        ctx.strokeStyle = '#000'
-        ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2)
+        ctx.lineWidth = 2.5
+        ctx.strokeStyle = '#3a4a6b'
+        ctx.strokeRect(sx + 1.25, sy + 1.25, sw - 2.5, sh - 2.5)
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
       }
