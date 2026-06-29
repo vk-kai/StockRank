@@ -36,25 +36,25 @@
       <div class="modal">
         <h2>新增K线</h2>
         <div class="form-grid">
-          <label class="form-cell">标题
+          <div class="form-cell"><span class="form-label">标题</span>
             <input v-model="form.title" placeholder="如：奔驰二手车价格" class="inp" />
-          </label>
-          <label class="form-cell">单位
+          </div>
+          <div class="form-cell"><span class="form-label">单位</span>
             <input v-model="form.unit" placeholder="如：万 / 元（可空）" class="inp" />
-          </label>
-          <label class="form-cell">基础周期
+          </div>
+          <div class="form-cell"><span class="form-label">基础周期</span>
             <select v-model="form.basePeriod" class="inp">
               <option value="30min">30分钟（自动算日/月/季K）</option>
               <option value="daily">日K（自动算月/季K）</option>
               <option value="monthly">月K（自动算季K）</option>
             </select>
-          </label>
-          <label class="form-cell">起始日期
+          </div>
+          <div class="form-cell"><span class="form-label">起始日期</span>
             <input type="date" v-model="form.startDate" class="inp" />
-          </label>
-          <label class="form-cell">结束日期
+          </div>
+          <div class="form-cell"><span class="form-label">结束日期</span>
             <input type="date" v-model="form.endDate" class="inp" />
-          </label>
+          </div>
         </div>
         <button @click="generateFrames" class="action-btn primary">生成输入框</button>
 
@@ -367,7 +367,7 @@ export default {
       const labelInterval = Math.max(1, Math.floor(data.length / 12))
       const self = this
 
-      this.mainChart.setOption({
+      const option = {
         animation: false,
         backgroundColor: 'transparent',
         axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: '#777' } },
@@ -460,7 +460,12 @@ export default {
           { name: 'Signal', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: signalData, showSymbol: false, lineStyle: { color: '#faad14', width: 1.5 } },
           { name: 'Histogram', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: histogramData, barWidth: '40%' }
         ]
-      })
+      }
+      try {
+        this.mainChart.setOption(option)
+      } catch (e) {
+        console.error('K线图表渲染失败:', e)
+      }
     }
   }
 }
@@ -514,7 +519,7 @@ export default {
 .data-source { text-align: center; padding: 15px; color: #8ba4c7; font-size: 0.9rem; background: rgba(26,35,53,0.6); border-radius: 8px; border: 1px solid rgba(58,74,107,0.3); }
 
 /* 弹窗 + 表单 */
-.modal-mask { position: fixed; inset: 0; background: rgba(5,10,20,0.7); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; padding: 40px 16px; overflow-y: auto; }
+.modal-mask { position: fixed; inset: 0; background: rgba(5,10,20,0.7); display: flex; align-items: flex-start; justify-content: center; z-index: 2000; padding: 40px 16px; overflow-y: auto; }
 .modal { width: 100%; max-width: 720px; background: linear-gradient(135deg, #0d1321, #131a2e); border: 1px solid #3a4a6b; border-radius: 12px; padding: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
 .modal h2 { margin: 0 0 16px; color: #fff; font-size: 1.2rem; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }

@@ -1188,7 +1188,7 @@ def get_sina_market_index_data():
             name = values[0]
             prev_close = _safe_float(values[2], None)
             price = _safe_float(values[3], None)
-            if price is None or prev_close in (None, 0):
+            if price in (None, 0) or prev_close in (None, 0):
                 continue
 
             change_amount = price - prev_close
@@ -1531,7 +1531,9 @@ def _sina_batch_one(batch):
                 try:
                     pre_close = float(fields[2])
                     price = float(fields[3])
-                    if pre_close > 0:
+                    # price<=0：盘前/集合竞价尚未撮合/停牌无成交，新浪此时最新价为0，
+                    # 直接算会得到 -100%。跳过，下游回退为0%（持平），避免全屏 -100%。
+                    if pre_close > 0 and price > 0:
                         result[code] = round((price - pre_close) / pre_close * 100, 2)
                 except (ValueError, IndexError):
                     continue
