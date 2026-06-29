@@ -311,12 +311,13 @@ def get_news_score_trend():
             score = cached.get('score')
             
             if score is not None:
-                # 收集所有评分用于计算综合分
-                all_scores.append(score)
-                # 同时记录每个桶的评分
-                if 'scores' not in bucket_stats[bucket]:
-                    bucket_stats[bucket]['scores'] = []
-                bucket_stats[bucket]['scores'].append(score)
+                # 中性新闻（评分恰好=50）只计入中性计数，不参与综合总分计算
+                if score != 50:
+                    all_scores.append(score)
+                    # 同时记录每个桶的评分
+                    if 'scores' not in bucket_stats[bucket]:
+                        bucket_stats[bucket]['scores'] = []
+                    bucket_stats[bucket]['scores'].append(score)
                 
                 if score > 50:
                     bucket_stats[bucket]['positive'] += 1
@@ -359,7 +360,7 @@ def get_news_score_trend():
         total_neutral = sum(s.get('neutral', 0) for s in bucket_stats.values())
         total_analyzed = total_positive + total_negative + total_neutral
         
-        # 综合情绪评分（0-100，50为中性）
+        # 综合情绪评分（0-100，50为中性）：仅由利好/利空评分平均得出，中性不计入
         if all_scores:
             overall_score = round(sum(all_scores) / len(all_scores))
         else:
