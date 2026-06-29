@@ -47,10 +47,6 @@
       <div class="mm-changes-loading" v-show="changesLoading && hasData">
         <span class="mm-cl-dot"></span> 实时涨跌加载中…
       </div>
-      <div class="mm-loading" v-if="loading && !hasData">
-        <div class="spinner"></div>
-        <p>正在加载全市场数据，请稍候...</p>
-      </div>
     </div>
 
     <div class="mm-footer">
@@ -178,7 +174,6 @@ export default {
   components: { SecurityAlert },
   data() {
     return {
-      loading: false,
       cacheLoading: false,
       refreshing: false,
       changesLoading: false,
@@ -230,7 +225,6 @@ export default {
     async fetchData(showLoading) {
       if (this.refreshing) return
       this.refreshing = true
-      this.loading = showLoading
       try {
         // 首屏两阶段：先读行业+市值缓存秒开灰色(0%)云图，再请求实时涨跌幅二次上色
         if (showLoading && !this.hasData) {
@@ -247,7 +241,6 @@ export default {
       } catch (e) {
         console.error('获取大盘云图失败', e)
       } finally {
-        this.loading = false
         this.changesLoading = false
         this.refreshing = false
       }
@@ -685,21 +678,6 @@ export default {
   height: 100%;
   white-space: nowrap;
 }
-
-.mm-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 10, 20, 0.7);
-  color: #8ba4c7;
-  z-index: 10;
-  border-radius: 8px;
-}
-.spinner { width: 40px; height: 40px; border: 3px solid rgba(58, 74, 107, 0.3); border-top-color: #1890ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 .mm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
 .mm-footer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
