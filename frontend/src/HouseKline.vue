@@ -525,6 +525,10 @@ export default {
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .form-cell { display: flex; flex-direction: column; gap: 5px; color: #8ba4c7; font-size: 13px; }
 .inp { padding: 8px 10px; background: rgba(13,19,32,0.9); color: #e0e6f0; border: 1px solid #3a4a6b; border-radius: 6px; font-size: 13px; }
+/* 日期框：深色主题下原生日期控件必须声明 color-scheme:dark 才能正常渲染/交互；
+   并反相日历图标，否则图标在深色背景上几乎不可见，看着像“点不动” */
+.inp[type="date"] { color-scheme: dark; }
+.inp[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
 .frames-wrap { margin-top: 14px; }
 .frames-info { color: #8ba4c7; font-size: 12px; margin-bottom: 8px; }
 .frame-list { max-height: 360px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px; background: rgba(13,19,32,0.4); border-radius: 8px; }
