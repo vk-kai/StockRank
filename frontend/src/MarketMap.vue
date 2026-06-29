@@ -44,6 +44,9 @@
         </div>
       </div>
       <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
+      <div class="mm-changes-loading" v-show="changesLoading && hasData">
+        <span class="mm-cl-dot"></span> 实时涨跌加载中…
+      </div>
       <div class="mm-loading" v-if="loading && !hasData">
         <div class="spinner"></div>
         <p>正在加载全市场数据，请稍候...</p>
@@ -63,26 +66,26 @@
 </template>
 
 <script>
-import { getMarketMap, refreshMarketMapCache } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 // 配色色阶：涨跌幅(%) → [R,G,B]。跌=绿、涨=红、0%=灰。
-// RGB 取自参考截图的真实像素采样（亮绿 rgb(56,204,92)、亮红 rgb(240,44,60)、灰 rgb(76,68,84)），
-// 红绿两端在 ±3% 处即接近饱和，与截图"大涨大跌铺满亮色"的观感一致。
+// 颜色按参考云图逐块读真实涨跌幅锚点后插值得到（红：+0.33/+1.51/+2.88%、绿：-0.87/-2.04/-3.97%），
+// 渐变在 0% 附近较陡，超过 ±4% 饱和到两端满色（亮绿/亮红）；interpColor 把 change 钳制在 ±4。
 const COLOR_STOPS = [
-  [-10, [34, 214, 74]],
-  [-3, [56, 204, 92]],
-  [-2, [52, 128, 80]],
-  [-1, [61, 88, 81]],
+  [-4, [59, 204, 95]],
+  [-3, [56, 170, 87]],
+  [-2, [53, 136, 80]],
+  [-1, [58, 101, 79]],
   [0, [76, 68, 84]],
-  [1, [98, 68, 82]],
-  [2, [132, 66, 78]],
-  [3, [188, 60, 68]],
-  [10, [240, 44, 60]]
+  [1, [122, 68, 81]],
+  [2, [165, 64, 75]],
+  [3, [202, 58, 69]],
+  [4, [243, 47, 61]]
 ]
 
 function interpColor(change) {
-  const c = Math.max(-10, Math.min(10, change))
+  const c = Math.max(-4, Math.min(4, change)) // 超过 ±4% 饱和到两端满色
   for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
     const [p1, col1] = COLOR_STOPS[i]
     const [p2, col2] = COLOR_STOPS[i + 1]
@@ -178,6 +181,7 @@ export default {
       loading: false,
       cacheLoading: false,
       refreshing: false,
+      changesLoading: false,
       tree: [],
       totalSectors: 0,
       totalStocks: 0,
@@ -228,20 +232,32 @@ export default {
       this.refreshing = true
       this.loading = showLoading
       try {
-        const res = await getMarketMap()
-        if (res.success) {
-          this.tree = res.data.tree
-          this.totalSectors = res.data.total_sectors
-          this.totalStocks = res.data.total_stocks
-          this.cacheTime = res.data.cache_time || ''
-          this.$nextTick(() => { this.buildLayout(); this.render() })
+        // 首屏两阶段：先读行业+市值缓存秒开灰色(0%)云图，再请求实时涨跌幅二次上色
+        if (showLoading && !this.hasData) {
+          try {
+            const skel = await getMarketMapStructure()
+            if (skel.success) {
+              this.applyData(skel.data)
+              this.changesLoading = true // 灰图已出，实时涨跌幅加载中
+            }
+          } catch (e) { /* 骨架失败则忽略，继续走全量 */ }
         }
+        const res = await getMarketMap()
+        if (res.success) this.applyData(res.data)
       } catch (e) {
         console.error('获取大盘云图失败', e)
       } finally {
         this.loading = false
+        this.changesLoading = false
         this.refreshing = false
       }
+    },
+    applyData(data) {
+      this.tree = data.tree
+      this.totalSectors = data.total_sectors
+      this.totalStocks = data.total_stocks
+      this.cacheTime = data.cache_time || ''
+      this.$nextTick(() => { this.buildLayout(); this.render() })
     },
     async refreshCache() {
       this.cacheLoading = true
@@ -627,6 +643,24 @@ export default {
   border-radius: 4px;
   pointer-events: none;
 }
+
+.mm-changes-loading {
+  position: absolute;
+  top: 8px; left: 12px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #b0c4e0;
+  background: rgba(13, 19, 32, 0.72);
+  border: 1px solid rgba(58, 74, 107, 0.5);
+  padding: 3px 10px;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.mm-cl-dot { width: 6px; height: 6px; border-radius: 50%; background: #1890ff; animation: mm-cl-pulse 1s ease-in-out infinite; }
+@keyframes mm-cl-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 .mm-legend {
   flex-shrink: 0;

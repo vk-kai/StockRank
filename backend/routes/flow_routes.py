@@ -64,6 +64,20 @@ def market_map():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@flow_bp.route('/market-map-structure', methods=['GET'])
+def market_map_structure():
+    """大盘云图首屏骨架：只读行业+市值本地缓存，涨跌幅全部0%（不请求新浪），秒开。
+    前端拿到后先渲染灰色云图，再调 /market-map 取实时涨跌幅二次上色。"""
+    try:
+        data = get_market_map_tree(include_changes=False)
+        if data:
+            return jsonify({'success': True, 'data': data})
+        return jsonify({'success': False, 'error': '暂无行业缓存，请先点击「行业库」更新'})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-map-structure]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @flow_bp.route('/market-map-refresh-cache', methods=['POST'])
 def market_map_refresh():
     """手动刷新大盘云图行业+市值缓存（东方财富，低频调用）"""

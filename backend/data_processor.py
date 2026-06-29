@@ -1556,10 +1556,11 @@ def _sina_batch_changes(sina_codes):
     return result
 
 
-def get_market_map_tree():
+def get_market_map_tree(include_changes=True):
     """构建三级大盘云图树：申万一级→二级→个股。
     行业+市值来自本地缓存（低频更新），涨跌幅来自新浪实时行情（高频）。
-    若缓存不存在则自动抓取一次。"""
+    若缓存不存在则自动抓取一次。
+    include_changes=False 时跳过新浪实时请求、涨跌幅全部按0%，用于首屏秒开骨架。"""
     cache = _load_market_map_cache()
     if not cache or not cache.get('stocks'):
         error_logger.info("大盘云图缓存不存在，自动抓取中...")
@@ -1570,9 +1571,9 @@ def get_market_map_tree():
     stocks_cache = cache['stocks']
     cache_time = cache.get('update_time', '')
 
-    # 新浪批量获取实时涨跌幅
+    # 新浪批量获取实时涨跌幅（首屏骨架模式跳过，涨跌幅全部为0，瞬时返回）
     sina_codes = list(stocks_cache.keys())
-    changes = _sina_batch_changes(sina_codes)
+    changes = _sina_batch_changes(sina_codes) if include_changes else {}
 
     # 构建三级树
     tree_map = {}  # {l1: {l2: [stocks]}}

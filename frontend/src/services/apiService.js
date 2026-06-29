@@ -67,7 +67,20 @@ export async function getMarketMap() {
     const response = await apiClient.get('/flow/market-map')
     return response.data
   } catch (error) {
-    console.error('获取大盘云图失败:', error)
+    console.error('获取大盘云图失败', error)
+    throw error
+  }
+}
+
+/**
+ * 获取大盘云图首屏骨架（只读行业+市值缓存，涨跌幅全0%，秒开）
+ */
+export async function getMarketMapStructure() {
+  try {
+    const response = await apiClient.get('/flow/market-map-structure')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图骨架失败', error)
     throw error
   }
 }
