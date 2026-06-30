@@ -16,6 +16,7 @@
                 <span class="step-text">{{ aiAnalysisStep }}</span>
                 <span class="progress-text">{{ Math.round(aiAnalysisProgress) }}%</span>
               </template>
+              <template v-else-if="aiAnalysisError">⚠️ 上次失败，点击重试</template>
               <template v-else>🤖 AI分析</template>
             </span>
             <div class="water-fill" v-if="aiAnalyzing" :style="{ width: aiAnalysisProgress + '%' }">

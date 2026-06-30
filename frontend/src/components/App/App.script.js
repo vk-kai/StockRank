@@ -1721,6 +1721,9 @@ export default {
             this.aiAnalysisResult = statusResponse.analysis
             this.aiAnalysisDate = statusResponse.date
           }
+        } else if (statusResponse.status === 'failed') {
+          // 上次任务失败：在按钮上提示"上次失败"，允许重新点击重试
+          this.aiAnalysisError = statusResponse.message || '上次AI分析失败'
         }
       } catch (error) {
         // 检查失败，忽略

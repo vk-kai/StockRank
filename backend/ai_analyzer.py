@@ -307,7 +307,9 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 2000)
     timeout = min(config.get('timeout', 180), 180)
-    retry_count = config.get('retry_count', 3)
+    # 大盘日报为用户手动触发的交互式任务：AI超时/失败时尽快返回，由前端提示并允许手动重试，
+    # 避免默认3次重试×180s≈9分钟一直卡在50%进度、按钮无法操作。
+    retry_count = 1
     retry_interval = min(config.get('retry_interval', 10), 10)
     
     if not api_url or not api_key:

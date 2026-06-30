@@ -611,7 +611,12 @@ def _run_ai_analysis_background():
         # 步骤5: 调用AI分析
         _update_ai_status('running', '正在调用AI', 50, '发送数据给AI')
         result = analyze_daily_flow(minute_data, top_sectors, market_summary)
-        
+
+        # AI返回失败（超时/限流/异常等）：抛异常走下面的失败分支，写 failed 状态。
+        # 这样前端能立即看到"请求失败"并支持重新点击，而不是被误当成 completed。
+        if not result.get('success'):
+            raise RuntimeError(result.get('message') or 'AI分析失败')
+
         # 步骤6: 保存结果
         _update_ai_status('running', '正在保存结果', 80, '保存分析结果')
         if result.get('success') and result.get('analysis'):
