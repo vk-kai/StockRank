@@ -354,7 +354,9 @@ export default {
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
             ctx.fillStyle = st.color
             ctx.fillRect(x, y, w, h)
-            if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+            // 个股间隙：描边贴边(内缩0)，相邻个股共用1条1px细缝（原内缩0.5时各画各的、拼成2px）。
+            // 行业L1(2.5px)/二级L2(1.5px)板块边框在下方单独描边，缝隙不受影响。
+            if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x, y, w, h)
             if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
             else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
           }
