@@ -376,7 +376,7 @@ def get_news_score_trend():
         else:
             tendency = '多空均衡'
         
-        # 记录详细分桶日志，便于排查统计准确性
+        # 构建详细分桶数据（随响应返回，不再写日志）
         bucket_details = {}
         for label in x_axis:
             stats = bucket_stats.get(label, {})
@@ -385,9 +385,7 @@ def get_news_score_trend():
                 'negative': stats.get('negative', 0),
                 'neutral': stats.get('neutral', 0)
             }
-        system_logger.info(f"评分趋势统计 - 总计: 利好{total_positive} 利空{total_negative} 中性{total_neutral}, 倾向: {tendency}")
-        system_logger.info(f"分桶详情: {bucket_details}")
-        
+
         return jsonify({
             'success': True,
             'data': {
