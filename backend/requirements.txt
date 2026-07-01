@@ -6,3 +6,4 @@ pandas
 numpy
 beautifulsoup4
 websocket-client
+akshare>=1.14.0
