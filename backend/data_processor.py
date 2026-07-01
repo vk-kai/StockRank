@@ -1496,7 +1496,7 @@ def refresh_market_map_cache():
             'pn': page, 'pz': 100, 'po': 1, 'np': 1, 'fltt': 2, 'invt': 2,
             'fid': 'f12',  # 按股票代码排序(稳定)。勿用f3涨跌幅——交易时段实时变动会让分页间股票漂移，导致漏抓/重抓(银行等就这样丢了)
             'fs': EM_A_SHARE_FS,
-            'fields': 'f12,f14,f100,f20'
+            'fields': 'f12,f14,f100,f20,f9'
         }
         # 单页重试3次(断连后0.5s退避)；仍失败则跳过该页继续，不再中止整批
         diff = None
@@ -1531,7 +1531,8 @@ def refresh_market_map_cache():
                 'name': item.get('f14', ''),
                 'l1': l1,
                 'l2': l2,
-                'value': market_cap  # 总市值(元)，作为面积基准
+                'value': market_cap,  # 总市值(元)，作为面积基准
+                'pe': _safe_float(item.get('f9'), None)  # 市盈率(动态)；亏损为负、无数据为None
             }
         if len(diff) < 100:
             break
@@ -1661,7 +1662,8 @@ def get_market_map_tree(include_changes=True):
             'name': info['name'],
             'code': code,
             'change': change,
-            'value': info['value']
+            'value': info['value'],
+            'pe': info.get('pe')
         })
 
     # 转为列表并排序，统计层级市值

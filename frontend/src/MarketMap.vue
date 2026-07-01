@@ -54,6 +54,14 @@
           <span class="mm-tooltip-label">涨跌幅</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
+        <div class="mm-tooltip-row">
+          <span class="mm-tooltip-label">市值</span>
+          <span class="mm-tooltip-val">{{ tooltip.marketCap }}</span>
+        </div>
+        <div class="mm-tooltip-row">
+          <span class="mm-tooltip-label">市盈率</span>
+          <span class="mm-tooltip-val">{{ tooltip.pe }}</span>
+        </div>
       </div>
       <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
       <div class="mm-changes-loading" v-show="changesLoading && hasData">
@@ -110,6 +118,21 @@ function interpColor(change) {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 const fmtPct = c => (c >= 0 ? '+' : '') + c + '%'
+// 市值格式化：元 → 万亿/亿/万
+const fmtCap = v => {
+  if (!v || v <= 0) return '-'
+  const yi = v / 1e8
+  if (yi >= 10000) return (yi / 10000).toFixed(2) + '万亿'
+  if (yi >= 100) return yi.toFixed(0) + '亿'
+  if (yi >= 1) return yi.toFixed(1) + '亿'
+  return (v / 1e4).toFixed(0) + '万'
+}
+// 市盈率格式化：负值=亏损，无数据=-
+const fmtPE = pe => {
+  if (pe == null || pe === '' || isNaN(pe)) return '-'
+  if (pe < 0) return '亏损'
+  return Number(pe).toFixed(1)
+}
 
 // 股票代码 → 雪球个股页：https://xueqiu.com/S/SH601288 （交易所前缀大写 + 6 位代码）
 function xueqiuUrl(code) {
@@ -193,7 +216,7 @@ export default {
       totalSectors: 0,
       totalStocks: 0,
       cacheTime: '',
-      tooltip: { visible: false, name: '', code: '', change: '', cls: '', x: 0, y: 0 },
+      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0
     }
@@ -350,7 +373,7 @@ export default {
           name: l2.name, change: l2.change, value: l2.value || 0,
           headerH: 0,
           children: (l2.children || []).map(s => ({
-            name: s.name, code: s.code, change: s.change, value: s.value || 0,
+            name: s.name, code: s.code, change: s.change, value: s.value || 0, pe: s.pe,
             color: interpColor(s.change)
           }))
         }))
@@ -589,6 +612,8 @@ export default {
           code: n.code || '',
           change: fmtPct(n.change),
           cls: n.change >= 0 ? 'up' : 'down',
+          marketCap: fmtCap(n.value),
+          pe: fmtPE(n.pe),
           x: mx + 14,
           y: my + 14
         }
