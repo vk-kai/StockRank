@@ -1247,6 +1247,9 @@ GLOBAL_INDICES_CONFIG = [
     ('俄罗斯RTS', '100.RTS', None, 55.75, 37.62, '俄罗斯'),
 ]
 
+GLOBAL_INDICES_CACHE_FILE = os.path.join(REALTIME_DIR, 'global_indices_cache.json')
+
+
 def get_global_market_indices():
     """获取全球主要股市指数（双源：东方财富为主，新浪兜底）"""
     secids = ','.join(cfg[1] for cfg in GLOBAL_INDICES_CONFIG)
@@ -1330,6 +1333,27 @@ def get_global_market_indices():
                         break
         except Exception as e:
             error_logger.warning(f"新浪全球指数兜底获取失败: {e}")
+
+    # 兜底缓存：东方财富/新浪偶发缺失某指数时(如韩国KOSPI非其交易时段返回'-')，
+    # 用本地"上次成功值"补齐，保证全球地图所有国家始终显示。本次实时值同步刷新缓存。
+    try:
+        cache = {}
+        if os.path.exists(GLOBAL_INDICES_CACHE_FILE):
+            with open(GLOBAL_INDICES_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+        for cfg in GLOBAL_INDICES_CONFIG:
+            secid = cfg[1]
+            if secid not in result and secid in cache:
+                v = dict(cache[secid])
+                v['stale'] = True      # 标记为兜底旧值（非本次实时）
+                result[secid] = v
+        fresh = {secid: v for secid, v in result.items() if not v.get('stale')}
+        if fresh:
+            cache.update(fresh)
+            with open(GLOBAL_INDICES_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache, f, ensure_ascii=False)
+    except Exception as e:
+        error_logger.warning(f"全球指数缓存读写失败: {e}")
 
     if not result:
         error_logger.error("全球指数数据获取失败：东方财富与新浪均不可用")
@@ -1439,10 +1463,13 @@ def _em_code_to_sina(em_code):
 def refresh_market_map_cache():
     """分页抓取东方财富全部A股的行业分类+市值，缓存到本地文件。
     股票行业分类变化极少，建议低频更新（每周/手动触发）。"""
-    headers = {
+    # 用Session复用HTTP连接(keep-alive)+页间小延时+断连退避重试，降低东财反爬断连概率
+    session = requests.Session()
+    session.headers.update({
         'User-Agent': get_random_user_agent(),
-        'Referer': 'https://quote.eastmoney.com/'
-    }
+        'Referer': 'https://quote.eastmoney.com/',
+        'Accept': '*/*'
+    })
     all_stocks = {}
     page = 1
     while page <= 80:
@@ -1452,17 +1479,18 @@ def refresh_market_map_cache():
             'fs': EM_A_SHARE_FS,
             'fields': 'f12,f14,f100,f20'
         }
-        # 单页重试3次，应对代理/网络偶发失败；仍失败则跳过该页继续，不再中止整批抓取
+        # 单页重试3次(断连后0.5s退避)；仍失败则跳过该页继续，不再中止整批
         diff = None
         last_err = None
         for _attempt in range(3):
             try:
-                response = requests.get(EM_ALL_STOCK_URL, params=params, headers=headers, timeout=10)
-                diff = response.json().get('data', {}).get('diff', [])
+                response = session.get(EM_ALL_STOCK_URL, params=params, timeout=12)
+                diff = (response.json().get('data') or {}).get('diff', []) or []
                 break
             except Exception as e:
                 last_err = e
                 diff = None
+                time.sleep(0.5)
         if diff is None:
             error_logger.warning(f"大盘云图缓存抓取第{page}页失败(重试3次): {last_err}")
             page += 1
@@ -1489,20 +1517,36 @@ def refresh_market_map_cache():
         if len(diff) < 100:
             break
         page += 1
+        time.sleep(0.2)   # 页间小延时，避免突发请求被东财反爬断连
 
     if not all_stocks:
         error_logger.warning("大盘云图缓存抓取失败：无数据")
         return None
 
+    # 与上次缓存合并：本次因断连漏抓的页，用上次缓存里对应个股补齐，
+    # 多刷新几次会累加到接近全量；银行等早期页面始终能抓到、永不丢。
+    merged = dict(all_stocks)
+    filled = 0
+    try:
+        if os.path.exists(MARKET_MAP_CACHE_FILE):
+            with open(MARKET_MAP_CACHE_FILE, 'r', encoding='utf-8') as f:
+                old = json.load(f)
+            for code, info in (old.get('stocks') or {}).items():
+                if code not in merged:
+                    merged[code] = info
+                    filled += 1
+    except Exception:
+        pass
+
     cache_data = {
-        'stocks': all_stocks,
-        'count': len(all_stocks),
+        'stocks': merged,
+        'count': len(merged),
         'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     try:
         with open(MARKET_MAP_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, ensure_ascii=False)
-        error_logger.info(f"大盘云图行业缓存已更新: {len(all_stocks)} 只股票")
+        error_logger.info(f"大盘云图行业缓存已更新: 本次新抓{len(all_stocks)}只，缓存补齐{filled}只，合计{len(merged)}只")
     except Exception as e:
         error_logger.warning(f"大盘云图缓存写入失败: {e}")
     return cache_data
