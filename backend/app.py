@@ -10,6 +10,7 @@ from config import DATA_DIR, DAILY_DIR, REALTIME_DIR, LOG_DIR
 from data_processor import error_logger, system_logger
 from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
+from margin_collector import margin_collection_thread as margin_collection_func
 from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
 from thread_monitor import get_all_status, register_thread
@@ -20,6 +21,7 @@ from Jarvis.config import get_config as get_jarvis_config
 
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
+margin_collection_thread = threading.Thread(target=margin_collection_func, daemon=True)
 
 def create_app():
     app = Flask(__name__)
@@ -98,7 +100,7 @@ def create_app():
         if not thread_name:
             return jsonify({'success': False, 'message': '缺少 thread 参数'}), 400
         
-        global data_collection_thread, news_collection_thread
+        global data_collection_thread, news_collection_thread, margin_collection_thread
         
         if thread_name == 'data_collector':
             if data_collection_thread.is_alive():
@@ -119,7 +121,17 @@ def create_app():
             news_collection_thread.start()
             system_logger.info(f"[重启] news_collector 线程已重新启动")
             return jsonify({'success': True, 'message': 'news_collector 线程已重启'})
-        
+
+        elif thread_name == 'margin_collector':
+            if margin_collection_thread.is_alive():
+                system_logger.info(f"[重启] margin_collector 线程仍在运行，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            margin_collection_thread = threading.Thread(target=margin_collection_func, daemon=True)
+            margin_collection_thread.start()
+            system_logger.info(f"[重启] margin_collector 线程已重新启动")
+            return jsonify({'success': True, 'message': 'margin_collector 线程已重启'})
+
         else:
             return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
     
@@ -158,6 +170,9 @@ if __name__ == '__main__':
         
         if not news_collection_thread.is_alive():
             news_collection_thread.start()
+
+        if not margin_collection_thread.is_alive():
+            margin_collection_thread.start()
         
         # 启动时自动执行健康检测（获取可用请求头 + 启动定时检测）
         start_health_checker()

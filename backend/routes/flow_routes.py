@@ -14,6 +14,7 @@ from data_processor import (
     get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
+from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from logger import get_logger
 
@@ -107,6 +108,29 @@ def market_map_stocks():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/market-map-stocks]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/stock-financing', methods=['GET'])
+def stock_financing():
+    """获取个股近期融资净买入额时间序列（云图单击弹窗柱状图用）。
+    数据来自上交所/深交所官方（akshare），每日 09:05 缓存。
+    若请求时该股票无数据，则后台触发一次当日按需更新（每天最多一次），
+    前端据 updating 字段决定是否提示"更新中"并稍后重试。"""
+    code = request.args.get('code', '').strip()
+    if not code:
+        return jsonify({'success': False, 'error': '缺少参数 code'}), 400
+    try:
+        data = get_stock_margin_series(code)
+        updating = False
+        if not data.get('series'):
+            updating = trigger_ondemand_update_async()
+        return jsonify({'success': True, 'data': data, 'updating': bool(updating)})
+    except Exception as e:
+        error_msg = f"个股融资数据接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/stock-financing]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

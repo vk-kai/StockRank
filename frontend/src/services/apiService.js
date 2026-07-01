@@ -114,6 +114,23 @@ export async function getMarketMapStocks(sectorCode) {
 }
 
 /**
+ * 获取个股近期融资净买入额时间序列（云图单击弹窗柱状图用）
+ * 返回 { success, data:{ name, latest_date, series:[{d,j,b}] }, updating }
+ * updating=true 表示后端正按需更新（每天一次），前端应提示并稍后重试
+ */
+export async function getStockFinancing(code) {
+  try {
+    const response = await apiClient.get('/flow/stock-financing', {
+      params: { code }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取个股融资数据失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取历史资金流入数据
  * @param {number} days - 天数
  * @returns {Promise<Object>} 历史数据

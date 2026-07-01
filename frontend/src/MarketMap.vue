@@ -63,7 +63,7 @@
           <span class="mm-tooltip-val">{{ tooltip.pe }}</span>
         </div>
       </div>
-      <div class="mm-hint">滚轮缩放 · 拖动平移 · 双击个股看雪球</div>
+      <div class="mm-hint">单击看融资趋势 · 双击看雪球 · 滚轮缩放 · 拖动平移</div>
       <div class="mm-changes-loading" v-show="changesLoading && hasData">
         <span class="mm-cl-dot"></span> 实时涨跌加载中…
       </div>
@@ -101,13 +101,47 @@
         </div>
       </div>
     </div>
+    <!-- 单击个股：融资净买入额趋势弹窗 -->
+    <div class="mm-modal-overlay" v-if="finModal.visible" @click="closeFinancing">
+      <div class="mm-modal" @click.stop>
+        <div class="mm-modal-header">
+          <div class="mm-modal-title">
+            <span class="mm-modal-name">{{ finModal.name }}</span>
+            <span class="mm-modal-code">{{ finModal.code }}</span>
+          </div>
+          <button class="mm-modal-close" @click="closeFinancing">✕</button>
+        </div>
+        <div class="mm-modal-sub">融资净买入额（数据截至 {{ latestFinDate || '—' }}）</div>
+        <div class="mm-fin-periods">
+          <button
+            v-for="p in finPeriods"
+            :key="p"
+            class="mm-fin-period"
+            :class="{ active: finModal.period === p }"
+            @click="switchFinPeriod(p)"
+          >
+            <span class="mm-fin-period-label">{{ p }}日</span>
+            <span class="mm-fin-period-val" :class="finValClass(finModal.totals[p])">{{ finFmt(finModal.totals[p]) }}</span>
+          </button>
+        </div>
+        <div class="mm-fin-chart-wrap">
+          <div v-if="finModal.loading" class="mm-fin-status">加载中…</div>
+          <div v-else-if="finModal.error" class="mm-fin-status">{{ finModal.error }}</div>
+          <div v-else-if="finModal.updating" class="mm-fin-status">融资数据更新中，请稍候…</div>
+          <div v-else-if="!finModal.series.length" class="mm-fin-status">暂无融资数据（该股票可能非融资融券标的）</div>
+          <div ref="finChartEl" class="mm-fin-chart" v-show="!finModal.loading && !finModal.error && !finModal.updating && finModal.series.length"></div>
+        </div>
+      </div>
+    </div>
+
     <SecurityAlert />
   </div>
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
+import * as echarts from 'echarts'
 
 // 配色色阶：涨跌幅(%) → [R,G,B]。跌=绿、涨=红、0%=灰。
 // 颜色按参考云图逐块读真实涨跌幅锚点后插值得到（红：+0.33/+1.51/+2.88%、绿：-0.87/-2.04/-3.97%），
@@ -270,12 +304,31 @@ export default {
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
-      activeLegend: null  // null=无筛选 | 数值-4..4(色块) | 'limit_up' | 'limit_down'
+      activeLegend: null,  // null=无筛选 | 数值-4..4(色块) | 'limit_up' | 'limit_down'
+      finPeriods: [3, 5, 10, 20, 60],
+      finModal: {
+        visible: false,
+        code: '',
+        name: '',
+        loading: false,
+        error: '',
+        updating: false,
+        period: 60,
+        series: [],   // [{d,j,b}]，d=YYYYMMDD，j=融资净买入额(元)，b=融资余额(元)
+        totals: {}    // {3:val,5:val,...} 各区间净买入额之和
+      }
     }
   },
   computed: {
     hasData() {
       return this.tree.length > 0
+    },
+    // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
+    latestFinDate() {
+      const s = this.finModal.series
+      if (!s || !s.length) return ''
+      const d = String(s[s.length - 1].d)
+      return d.length === 8 ? d.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') : d
     },
     // 图例：与 COLOR_STOPS 一一对应，每块标注涨跌幅阈值（左=跌/绿 → 中=0/灰 → 右=涨/红）
     legendSteps() {
@@ -323,6 +376,11 @@ export default {
     this._hlUntil = 0      // 搜索高亮截止时间戳(ms)
     this._hlTimer = null   // 高亮5秒后自动清除的定时器
     this._matches = null   // { stocks:Set(code), l1s:Set(name), l2s:Set(name) }
+    this.clickTimer = null // 单击防抖定时器（用于区分"单击弹窗"与"双击跳雪球"）
+    this.finChart = null   // 融资弹窗 ECharts 实例
+    this._downX = 0        // mousedown 落点（判定单击/拖拽用）
+    this._downY = 0
+    this._finRetry = 0     // 按需更新无数据时的自动重试计数
 
     this.syncSize()
     this.ro = new ResizeObserver(() => this.onResize())
@@ -335,6 +393,8 @@ export default {
     clearInterval(this.timer)
     if (this._raf) cancelAnimationFrame(this._raf)
     if (this._hlTimer) clearTimeout(this._hlTimer)
+    if (this.clickTimer) clearTimeout(this.clickTimer)
+    if (this.finChart) { this.finChart.dispose(); this.finChart = null }
     if (this.ro) this.ro.disconnect()
   },
   methods: {
@@ -655,6 +715,8 @@ export default {
       const r = this.$refs.canvasEl.getBoundingClientRect()
       this.lastX = e.clientX - r.left
       this.lastY = e.clientY - r.top
+      this._downX = this.lastX
+      this._downY = this.lastY
       this.$refs.canvasEl.style.cursor = 'grabbing'
     },
     onMouseMove(e) {
@@ -671,9 +733,29 @@ export default {
       }
       this.updateHover(mx, my)
     },
-    onMouseUp() {
+    onMouseUp(e) {
+      const wasDragging = this.dragging
       this.dragging = false
-      this.$refs.canvasEl.style.cursor = 'grab'
+      if (this.$refs.canvasEl) this.$refs.canvasEl.style.cursor = 'grab'
+      // 单击判定：未发生拖拽（落点↔抬起点距离<5px）且命中个股 → 防抖280ms后弹融资窗。
+      // 双击会在280ms内触发 onDblClick 并取消该定时器，从而跳雪球而不弹窗。
+      if (wasDragging && e && this.layout) {
+        const r = this.$refs.canvasEl.getBoundingClientRect()
+        const ux = e.clientX - r.left, uy = e.clientY - r.top
+        if (Math.hypot(ux - this._downX, uy - this._downY) < 5) {
+          const Lx = (ux - this.view.tx) / this.view.k
+          const Ly = (uy - this.view.ty) / this.view.k
+          const hit = this.hitTest(Lx, Ly)
+          if (hit && hit.node && hit.node.code) {
+            if (this.clickTimer) clearTimeout(this.clickTimer)
+            const node = hit.node
+            this.clickTimer = setTimeout(() => {
+              this.clickTimer = null
+              this.openFinancing(node)
+            }, 280)
+          }
+        }
+      }
     },
     onMouseLeave() {
       this.dragging = false
@@ -684,8 +766,138 @@ export default {
       this.view = { k: 1, tx: 0, ty: 0 }
       this.render()
     },
+
+    // ===== 融资趋势弹窗（单击个股触发）=====
+    async openFinancing(node) {
+      this.finModal.code = node.code || ''
+      this.finModal.name = node.name || ''
+      this.finModal.period = 60
+      this.finModal.series = []
+      this.finModal.totals = {}
+      this.finModal.error = ''
+      this.finModal.updating = false
+      this.finModal.visible = true
+      this._finRetry = 0
+      await this.loadFinancing()
+    },
+    async loadFinancing() {
+      this.finModal.loading = true
+      this.finModal.error = ''
+      try {
+        const res = await getStockFinancing(this.finModal.code)
+        if (res && res.success) {
+          const series = (res.data && res.data.series) || []
+          this.finModal.series = series
+          if (res.data && res.data.name) this.finModal.name = res.data.name
+          this.computeFinTotals()
+          // 后台正按需更新（每天一次）且当前仍无数据 → 提示并稍后自动重试
+          if (res.updating && !series.length) {
+            this.finModal.updating = true
+            if (this._finRetry < 6) {
+              this._finRetry++
+              setTimeout(() => { if (this.finModal.visible) this.loadFinancing() }, 6000)
+            }
+          } else {
+            this.finModal.updating = false
+            this._finRetry = 0
+          }
+          this.$nextTick(() => this.renderFinChart())
+        } else {
+          this.finModal.error = (res && res.error) || '获取融资数据失败'
+        }
+      } catch (err) {
+        this.finModal.error = '获取融资数据失败'
+      } finally {
+        this.finModal.loading = false
+      }
+    },
+    closeFinancing() {
+      this.finModal.visible = false
+      this._finRetry = 0
+      if (this.clickTimer) { clearTimeout(this.clickTimer); this.clickTimer = null }
+    },
+    switchFinPeriod(p) {
+      this.finModal.period = p
+      this.renderFinChart()
+    },
+    // 各区间（3/5/10/20/60日）融资净买入额之和
+    computeFinTotals() {
+      const s = this.finModal.series
+      const totals = {}
+      for (const p of this.finPeriods) {
+        let sum = 0, has = false
+        const slice = s.slice(Math.max(0, s.length - p))
+        for (const x of slice) {
+          if (x.j != null && !isNaN(x.j)) { sum += x.j; has = true }
+        }
+        totals[p] = has ? sum : null
+      }
+      this.finModal.totals = totals
+    },
+    // 元 → 亿/万 文本（axis=true 用于坐标轴，正数不带 + 号）
+    finFmt(v, axis) {
+      if (v == null || isNaN(v)) return '--'
+      const abs = Math.abs(v)
+      const sign = v < 0 ? '-' : (axis ? '' : '+')
+      if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2) + '亿'
+      if (abs >= 1e4) return sign + (abs / 1e4).toFixed(2) + '万'
+      return sign + abs.toFixed(0)
+    },
+    finValClass(v) {
+      return v == null ? '' : (v >= 0 ? 'up' : 'down')
+    },
+    renderFinChart() {
+      if (!this.finModal.visible || !this.finModal.series.length) return
+      const el = this.$refs.finChartEl
+      if (!el || el.offsetWidth === 0) return  // 容器隐藏（更新中态）→ 跳过，待重试时再画
+      if (!this.finChart) this.finChart = echarts.init(el)
+      const all = this.finModal.series
+      const data = all.slice(Math.max(0, all.length - this.finModal.period))
+      const xData = data.map(x => {
+        const d = String(x.d)
+        return d.length === 8 ? d.slice(4, 6) + '/' + d.slice(6, 8) : d
+      })
+      this.finChart.setOption({
+        animation: false,
+        grid: { left: 60, right: 16, top: 20, bottom: 30 },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'rgba(20,25,45,0.95)',
+          borderColor: '#3a4a6b',
+          textStyle: { color: '#fff', fontSize: 12 },
+          formatter: (params) => {
+            const x = data[params[0].dataIndex]
+            if (!x) return ''
+            const d = String(x.d).replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3')
+            const cls = x.j == null ? '#8ba4c7' : (x.j >= 0 ? '#ff4d4f' : '#52c41a')
+            return `${d}<br/>融资净买入额: <b style="color:${cls}">${this.finFmt(x.j)}</b>`
+          }
+        },
+        xAxis: {
+          type: 'category', data: xData,
+          axisLabel: { color: '#8ba4c7', fontSize: 10 },
+          axisLine: { lineStyle: { color: '#3a4a6b' } },
+          axisTick: { show: false }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { color: '#8ba4c7', fontSize: 10, formatter: (v) => this.finFmt(v, true) },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        series: [{
+          type: 'bar',
+          barWidth: '60%',
+          data: data.map(x => ({
+            value: x.j,
+            itemStyle: { color: (x.j == null) ? '#4a5670' : (x.j >= 0 ? '#ef4444' : '#22c55e') }
+          }))
+        }]
+      }, true)
+    },
     // 双击：落在个股上 → 新标签页打开雪球；落在行业/空白 → 复位缩放
     onDblClick(e) {
+      // 取消待弹的融资窗定时器，确保双击只跳雪球、不弹窗
+      if (this.clickTimer) { clearTimeout(this.clickTimer); this.clickTimer = null }
       if (!this.layout) return
       const r = this.$refs.canvasEl.getBoundingClientRect()
       const mx = e.clientX - r.left, my = e.clientY - r.top
@@ -956,6 +1168,60 @@ export default {
 
 .mm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
 .mm-footer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 融资趋势弹窗（单击个股触发） */
+.mm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mm-modal {
+  width: 720px;
+  max-width: 94vw;
+  background: linear-gradient(135deg, #1a2138, #0f1626);
+  border: 1px solid #3a4a6b;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  padding: 16px 18px 18px;
+  color: #e0e6f0;
+}
+.mm-modal-header { display: flex; align-items: center; justify-content: space-between; }
+.mm-modal-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.mm-modal-name { font-size: 18px; font-weight: bold; color: #fff; }
+.mm-modal-code { font-size: 13px; color: #8ba4c7; }
+.mm-modal-close {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: 50%; border: none;
+  background: rgba(255, 255, 255, 0.08); color: #b0c4e0;
+  font-size: 15px; cursor: pointer;
+}
+.mm-modal-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.mm-modal-sub { font-size: 13px; color: #8ba4c7; margin: 10px 0 8px; }
+.mm-fin-periods { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.mm-fin-period {
+  flex: 1; min-width: 78px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 4px; border-radius: 8px;
+  border: 1px solid #2a3550; background: rgba(255, 255, 255, 0.04);
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.mm-fin-period:hover { border-color: #1890ff; }
+.mm-fin-period.active { border-color: #1890ff; background: rgba(24, 144, 255, 0.14); }
+.mm-fin-period-label { font-size: 12px; color: #8ba4c7; }
+.mm-fin-period-val { font-size: 14px; font-weight: bold; color: #fff; white-space: nowrap; }
+.mm-fin-period-val.up { color: #ff4d4f; }
+.mm-fin-period-val.down { color: #52c41a; }
+.mm-fin-chart-wrap { position: relative; width: 100%; height: 320px; }
+.mm-fin-chart { width: 100%; height: 100%; }
+.mm-fin-status {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #8ba4c7; font-size: 14px;
+}
 
 @media (max-width: 768px) {
   .market-map-page { padding: 6px; }
