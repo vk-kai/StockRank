@@ -1238,7 +1238,7 @@ GLOBAL_INDICES_CONFIG = [
     ('道琼斯', '100.DJIA', 'int_dji', 38.90, -77.04, '美国'),
     ('纳斯达克', '100.NDX', 'int_nasdaq', 40.71, -74.01, '美国'),
     ('标普500', '100.SPX', 'int_sp500', 41.80, -87.65, '美国'),
-    ('巴西BOVESPA', '100.BVSP', None, -23.55, -46.63, '巴西'),
+    ('巴西BOVESPA', '100.BVSP', 'int_bovespa', -23.55, -46.63, '巴西'),
     ('英国富时100', '100.FTSE', 'int_ftse', 51.51, -0.13, '英国'),
     ('德国DAX30', '100.GDAXI', None, 50.11, 8.68, '德国'),
     ('法国CAC40', '100.FCHI', None, 48.86, 2.35, '法国'),
@@ -1310,11 +1310,30 @@ def get_global_market_indices():
                 key = part.split('hq_str_', 1)[1].split('=', 1)[0]
                 values_text = part.split('="', 1)[1].rstrip('"')
                 values = values_text.split(',')
-                if len(values) < 4 or not values[1]:
+                if len(values) < 4:
                     continue
-                price = _safe_float(values[1], None)
-                change_pct = _safe_float(values[3], None)
-                if price is None or change_pct is None:
+                price = None
+                change = None
+                change_amount = None
+                if key.startswith(('sh', 'sz')):
+                    # 国内指数(34字段格式)：[2]=昨收 [3]=现价
+                    prev_close = _safe_float(values[2], None)
+                    p = _safe_float(values[3], None)
+                    if p is not None and prev_close not in (None, 0):
+                        price = p
+                        change_amount = p - prev_close
+                        change = change_amount / prev_close
+                else:
+                    # 国际指数(int_/b_，4字段格式)：[1]=现价 [2]=涨跌额 [3]=涨跌幅%
+                    if not values[1]:
+                        continue
+                    p = _safe_float(values[1], None)
+                    cp = _safe_float(values[3], None)
+                    if p is not None and cp is not None:
+                        price = p
+                        change = cp / 100
+                        change_amount = p * cp / 100
+                if price is None:
                     continue
                 for cfg in sina_needed:
                     if cfg[2] == key and cfg[1] not in result:
@@ -1323,8 +1342,8 @@ def get_global_market_indices():
                             'name': name,
                             'code': secid,
                             'price': round(price, 2),
-                            'change': change_pct / 100,
-                            'change_amount': round(price * change_pct / 100, 2),
+                            'change': change,
+                            'change_amount': round(change_amount or 0, 2),
                             'lat': lat,
                             'lng': lng,
                             'region': region,
