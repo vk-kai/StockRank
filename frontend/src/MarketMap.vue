@@ -815,6 +815,9 @@ export default {
       this.finModal.visible = false
       this._finRetry = 0
       if (this.clickTimer) { clearTimeout(this.clickTimer); this.clickTimer = null }
+      // 弹窗是 v-if，关闭即销毁图表容器 DOM；保留实例会指向已分离的旧 canvas，
+      // 下次打开画到旧容器 → 第二只股票柱状图不显示。故关闭即销毁实例。
+      if (this.finChart) { this.finChart.dispose(); this.finChart = null }
     },
     switchFinPeriod(p) {
       this.finModal.period = p
@@ -850,6 +853,11 @@ export default {
       if (!this.finModal.visible || !this.finModal.series.length) return
       const el = this.$refs.finChartEl
       if (!el || el.offsetWidth === 0) return  // 容器隐藏（更新中态）→ 跳过，待重试时再画
+      // 防御：弹窗 v-if 重建过容器时，旧实例已脱离 DOM → 销毁后重新绑定当前容器
+      if (this.finChart && this.finChart.getDom && this.finChart.getDom() !== el) {
+        try { this.finChart.dispose() } catch (e) { /* noop */ }
+        this.finChart = null
+      }
       if (!this.finChart) this.finChart = echarts.init(el)
       const all = this.finModal.series
       const data = all.slice(Math.max(0, all.length - this.finModal.period))
@@ -870,7 +878,12 @@ export default {
             if (!x) return ''
             const d = String(x.d).replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3')
             const cls = x.j == null ? '#8ba4c7' : (x.j >= 0 ? '#ff4d4f' : '#52c41a')
-            return `${d}<br/>融资净买入额: <b style="color:${cls}">${this.finFmt(x.j)}</b>`
+            return '<div style="font-size:12px;line-height:1.8">'
+              + `<div style="color:#8ba4c7">${d}</div>`
+              + `<div>融资净买入额：<b style="color:${cls}">${this.finFmt(x.j)}</b></div>`
+              + `<div>融资买入额：<b style="color:#ff4d4f">${this.finFmt(x.buy, true)}</b></div>`
+              + `<div>融资偿还额：<b style="color:#52c41a">${this.finFmt(x.repay, true)}</b></div>`
+              + '</div>'
           }
         },
         xAxis: {

@@ -35,7 +35,7 @@ DAILY_TRIGGER_MINUTE = 5
 _SSE_CODE, _SSE_NAME = '标的证券代码', '标的证券简称'
 _SSE_RZYE, _SSE_RZMRE, _SSE_RCHE = '融资余额', '融资买入额', '融资偿还额'
 _SZ_CODE, _SZ_NAME = '证券代码', '证券简称'
-_SZ_RZYE = '融资余额'
+_SZ_RZYE, _SZ_RZMRE = '融资余额', '融资买入额'
 
 # 模块级内存缓存（请求时惰性加载，按 mtime 失效重载）
 _MEM = {'mtime': -1, 'data': None, 'lock': threading.Lock()}
@@ -86,11 +86,11 @@ def _atomic_write_json(path, obj):
 
 
 def fetch_margin_for_date(date_str):
-    """抓取某日（YYYYMMDD）两市融资融券明细，仅取融资余额。
+    """抓取某日（YYYYMMDD）两市融资融券明细，取融资余额 + 融资买入额。
 
-    返回 {code: {'n': name, 'b': 融资余额}}。
+    返回 {code: {'n': name, 'b': 融资余额, 'm': 融资买入额}}。
     融资净买入额统一用 Δ融资余额（当日余额 − 上一交易日余额）在读取时计算，
-    对两市均成立（余额今 = 余额昨 + 净买入），无需区分数据源、也不受抓取顺序影响。
+    对两市均成立（余额今 = 余额昨 + 净买入）；融资偿还额 = 融资买入额 − 净买入。
     """
     import akshare as ak
     result = {}
@@ -102,11 +102,12 @@ def fetch_margin_for_date(date_str):
             codes = df[_SSE_CODE].astype(str).str.strip().tolist()
             names = df[_SSE_NAME].astype(str).tolist()
             rzye = df[_SSE_RZYE].apply(_to_float).tolist()
+            rzmre = df[_SSE_RZMRE].apply(_to_float).tolist()
             for i, raw in enumerate(codes):
                 code = _normalize_code(raw)
                 if not code:
                     continue
-                result[code] = {'n': names[i], 'b': rzye[i]}
+                result[code] = {'n': names[i], 'b': rzye[i], 'm': rzmre[i]}
     except Exception as e:
         system_logger.info(f"融资融券[SSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
 
@@ -117,11 +118,12 @@ def fetch_margin_for_date(date_str):
             codes = df[_SZ_CODE].astype(str).str.strip().tolist()
             names = df[_SZ_NAME].astype(str).tolist()
             rzye = df[_SZ_RZYE].apply(_to_float).tolist()
+            rzmre = df[_SZ_RZMRE].apply(_to_float).tolist()
             for i, raw in enumerate(codes):
                 code = _normalize_code(raw)
                 if not code:
                     continue
-                result[code] = {'n': names[i], 'b': rzye[i]}
+                result[code] = {'n': names[i], 'b': rzye[i], 'm': rzmre[i]}
     except Exception as e:
         system_logger.info(f"融资融券[SZSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
     return result
@@ -184,8 +186,8 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name):
                 stocks[code] = rec
             if info.get('n'):
                 rec['n'] = info['n']
-            # 仅存 [日期, 融资余额]；净买入额在 get_stock_margin_series 按 Δ余额算
-            rec['s'].append([ds, info['b']])
+            # 仅存 [日期, 融资余额, 融资买入额]；净买入/偿还额在 get_stock_margin_series 读取时算
+            rec['s'].append([ds, info['b'], info['m']])
         new_latest = max(new_latest, ds)
         system_logger.info(f"融资融券 {ds} 已合并（{len(day)} 只）")
 
@@ -237,13 +239,15 @@ def get_stock_margin_series(code):
     latest = data.get('latest_date', '')
     if not rec:
         return {'name': '', 'latest_date': latest, 'series': []}
-    raw = rec.get('s', [])  # [[date, 融资余额], ...] 已升序
+    raw = rec.get('s', [])  # [[date, 融资余额, 融资买入额], ...] 已升序（兼容旧2元组）
     series = []
     prev_b = None
     for r in raw:
         d, b = r[0], r[1]
-        j = (b - prev_b) if prev_b is not None else None  # Δ融资余额 = 融资净买入额；首日无前值→null
-        series.append({'d': d, 'j': j, 'b': b})
+        buy = r[2] if len(r) > 2 else None        # 融资买入额（旧缓存无此列→None）
+        j = (b - prev_b) if prev_b is not None else None   # Δ融资余额 = 融资净买入额；首日→None
+        repay = (buy - j) if (buy is not None and j is not None) else None  # 融资偿还额 = 买入额 − 净买入
+        series.append({'d': d, 'j': j, 'buy': buy, 'repay': repay, 'b': b})
         prev_b = b
     return {'name': rec.get('n', ''), 'latest_date': latest, 'series': series}
 
