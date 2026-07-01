@@ -67,13 +67,37 @@
       <div class="mm-changes-loading" v-show="changesLoading && hasData">
         <span class="mm-cl-dot"></span> 实时涨跌加载中…
       </div>
+      <div class="mm-filter-badge" v-if="filterBadge" @click="clearFilter" title="点击清除筛选">
+        <span>已筛选：{{ filterBadge.desc }}（{{ filterBadge.count }} 只）</span>
+        <span class="mm-filter-clear">✕</span>
+      </div>
     </div>
 
     <div class="mm-footer">
       <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
       <div class="mm-legend">
+        <button
+          class="mm-limit-btn up"
+          :class="{ active: activeLegend === 'limit_up' }"
+          @click="toggleFilter('limit_up')"
+          title="只看涨停，再点复原"
+        >涨停</button>
+        <button
+          class="mm-limit-btn down"
+          :class="{ active: activeLegend === 'limit_down' }"
+          @click="toggleFilter('limit_down')"
+          title="只看跌停，再点复原"
+        >跌停</button>
         <div class="mm-legend-bar">
-          <div v-for="(s, i) in legendSteps" :key="i" class="mm-legend-step" :style="{ background: s.color }">{{ s.label }}</div>
+          <div
+            v-for="(s, i) in legendSteps"
+            :key="i"
+            class="mm-legend-step"
+            :class="{ active: activeLegend === s.value }"
+            :style="{ background: s.color }"
+            :title="s.title"
+            @click="toggleFilter(s.value)"
+          >{{ s.label }}</div>
         </div>
       </div>
     </div>
@@ -114,6 +138,33 @@ function interpColor(change) {
     }
   }
   return 'rgb(66,68,83)'
+}
+
+// 筛选灰显色（未命中个股）与整板块变暗面纱（某行业一只都没命中时叠加）
+const DIM_COLOR = '#1b2330'
+const VEIL_COLOR = 'rgba(8,14,24,0.78)'
+
+// 按股票代码前缀判断涨跌停限幅(%)：主板 10 / 创业板·科创板 20 / 北交所 30
+function limitThreshold(code) {
+  const m = String(code || '').match(/(\d{6})/)
+  const d = m ? m[1] : ''
+  if (!d) return 10
+  if (d.startsWith('688') || d.startsWith('300') || d.startsWith('301')) return 20
+  if (d[0] === '8' || d[0] === '4') return 30
+  return 10
+}
+
+// 个股是否命中当前筛选。active 取值：null(无) / 数值 -4..4(色块区间) / 'limit_up' / 'limit_down'
+// 区间为半开 (L-1, L]，两极延伸：-4 → change≤-4；+4 → change>3
+function inFilter(change, code, active) {
+  if (active == null) return true
+  if (typeof change !== 'number' || isNaN(change)) return false
+  if (active === 'limit_up') return change >= limitThreshold(code) - 0.1
+  if (active === 'limit_down') return change <= -(limitThreshold(code) - 0.1)
+  const L = active
+  if (L <= -4) return change <= -4
+  if (L >= 4) return change > 3
+  return change > (L - 1) && change <= L
 }
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -218,7 +269,8 @@ export default {
       cacheTime: '',
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0 },
       searchQuery: '',
-      matchCount: 0
+      matchCount: 0,
+      activeLegend: null  // null=无筛选 | 数值-4..4(色块) | 'limit_up' | 'limit_down'
     }
   },
   computed: {
@@ -228,7 +280,33 @@ export default {
     // 图例：与 COLOR_STOPS 一一对应，每块标注涨跌幅阈值（左=跌/绿 → 中=0/灰 → 右=涨/红）
     legendSteps() {
       const labels = ['-4%', '-3%', '-2%', '-1%', '0%', '1%', '2%', '3%', '4%']
-      return COLOR_STOPS.map(([, rgb], i) => ({ label: labels[i], color: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` }))
+      const titles = ['跌幅 ≤ -4%', '-4% ~ -3%', '-3% ~ -2%', '-2% ~ -1%', '-1% ~ 0%', '0% ~ 1%', '1% ~ 2%', '2% ~ 3%', '涨幅 > 3%']
+      return COLOR_STOPS.map(([v, rgb], i) => ({
+        value: v,
+        label: labels[i],
+        title: '点击只看 ' + titles[i] + '，再点复原',
+        color: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
+      }))
+    },
+    // 当前筛选状态条：activeLegend 非空时返回 {desc, count}，供顶部徽标展示
+    filterBadge() {
+      const a = this.activeLegend
+      if (a == null) return null
+      let count = 0
+      for (const s of this.tree) {
+        for (const l2 of (s.children || [])) {
+          for (const st of (l2.children || [])) {
+            if (inFilter(st.change, st.code, a)) count++
+          }
+        }
+      }
+      let desc
+      if (a === 'limit_up') desc = '涨停'
+      else if (a === 'limit_down') desc = '跌停'
+      else if (a <= -4) desc = '跌幅 ≤ -4%'
+      else if (a >= 4) desc = '涨幅 > 3%'
+      else desc = `${a - 1}% ~ ${a}%`
+      return { desc, count }
     }
   },
   async mounted() {
@@ -262,6 +340,17 @@ export default {
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+
+    // 图例筛选：点击同一项复原，点击不同项切换；同一时刻仅一个生效
+    toggleFilter(v) {
+      this.activeLegend = (this.activeLegend === v) ? null : v
+      this.render()
+    },
+    clearFilter() {
+      if (this.activeLegend == null) return
+      this.activeLegend = null
+      this.render()
     },
 
     // 搜索：模糊匹配个股(名称/代码)与行业(一/二级)，命中项在云图上高亮5秒(醒目黄框)
@@ -407,6 +496,7 @@ export default {
       ctx.fillRect(0, 0, this.cssW, this.cssH)
       if (!this.layout) return
 
+      const active = this.activeLegend
       const { k, tx, ty } = this.view
       const cw = this.cssW, ch = this.cssH
       ctx.lineWidth = 1
@@ -416,6 +506,7 @@ export default {
         // 一级 sector 视口剔除：整个板块在视口外则跳过其全部子级
         const sx = s.x * k + tx, sy = s.y * k + ty, sw = s.w * k, sh = s.h * k
         if (sx >= cw || sx + sw <= 0 || sy >= ch || sy + sh <= 0) continue
+        let sectorHasMatch = false  // 本板块是否有命中个股（无则整块变暗）
         for (const l2 of s.children) {
           const lx = l2.x * k + tx, ly = l2.y * k + ty, lw = l2.w * k, lh = l2.h * k
           if (lx >= cw || lx + lw <= 0 || ly >= ch || ly + lh <= 0) continue
@@ -424,13 +515,18 @@ export default {
             const x = st.x * k + tx, y = st.y * k + ty, w = st.w * k, h = st.h * k
             if (w < 0.5 || h < 0.5) continue
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
-            ctx.fillStyle = st.color
+            const matched = (active == null) || inFilter(st.change, st.code, active)
+            if (matched) sectorHasMatch = true
+            ctx.fillStyle = matched ? st.color : DIM_COLOR
             ctx.fillRect(x, y, w, h)
             // 个股间隙：描边贴边(内缩0)，相邻个股共用1条1px细缝（原内缩0.5时各画各的、拼成2px）。
             // 行业L1(2.5px)/二级L2(1.5px)板块边框在下方单独描边，缝隙不受影响。
             if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x, y, w, h)
-            if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
-            else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
+            // 未命中(灰显)的个股不画文字标签，突出命中的
+            if (matched) {
+              if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
+              else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
+            }
           }
           // 二级标题条
           if (l2.headerH > 0) {
@@ -457,6 +553,11 @@ export default {
         ctx.strokeRect(sx + 1.25, sy + 1.25, sw - 2.5, sh - 2.5)
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
+        // 该板块一只都没命中：叠加暗色面纱，整块（含标题条/二级/边框）统一变暗
+        if (active != null && !sectorHasMatch) {
+          ctx.fillStyle = VEIL_COLOR
+          ctx.fillRect(sx, sy, sw, sh)
+        }
       }
 
       // 搜索高亮：在所有元素之上叠加醒目黄色边框（5秒内有效）
@@ -778,7 +879,9 @@ export default {
 
 .mm-legend {
   flex-shrink: 0;
-  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .mm-legend-bar {
   display: flex;
@@ -786,7 +889,7 @@ export default {
   width: 252px;
   height: 18px;
   border-radius: 2px;
-  overflow: hidden;
+  overflow: visible; /* 让激活/悬停色块能上抬放大，不被裁切 */
 }
 .mm-legend-step {
   flex: 1;
@@ -798,7 +901,58 @@ export default {
   color: #fff;
   height: 100%;
   white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
+.mm-legend-step:hover { transform: translateY(-2px) scaleY(1.2); z-index: 1; }
+.mm-legend-step.active {
+  transform: translateY(-3px) scaleY(1.35);
+  box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.7);
+  z-index: 2;
+}
+
+/* 涨停/跌停按钮：红涨绿跌，与图例配色一致 */
+.mm-limit-btn {
+  height: 20px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.mm-limit-btn.up { background: linear-gradient(135deg, #f32f3d, #c91a26); }
+.mm-limit-btn.down { background: linear-gradient(135deg, #3bcc5f, #1ea645); }
+.mm-limit-btn:hover { transform: translateY(-1px); }
+.mm-limit-btn.active {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.7);
+}
+
+/* 筛选状态条：画布顶部居中，点击清除 */
+.mm-filter-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13, 19, 32, 0.88);
+  border: 1px solid #3a4a6b;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #e0e6f0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.mm-filter-badge:hover { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.18); }
+.mm-filter-clear { color: #8ba4c7; font-weight: bold; }
 
 .mm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
 .mm-footer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
