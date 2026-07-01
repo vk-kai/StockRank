@@ -1448,38 +1448,47 @@ def refresh_market_map_cache():
     while page <= 80:
         params = {
             'pn': page, 'pz': 100, 'po': 1, 'np': 1, 'fltt': 2, 'invt': 2,
-            'fid': 'f3', 'fs': EM_A_SHARE_FS,
+            'fid': 'f12',  # 按股票代码排序(稳定)。勿用f3涨跌幅——交易时段实时变动会让分页间股票漂移，导致漏抓/重抓(银行等就这样丢了)
+            'fs': EM_A_SHARE_FS,
             'fields': 'f12,f14,f100,f20'
         }
-        try:
-            response = requests.get(EM_ALL_STOCK_URL, params=params, headers=headers, timeout=10)
-            data = response.json().get('data', {})
-            diff = data.get('diff', [])
-            if not diff:
+        # 单页重试3次，应对代理/网络偶发失败；仍失败则跳过该页继续，不再中止整批抓取
+        diff = None
+        last_err = None
+        for _attempt in range(3):
+            try:
+                response = requests.get(EM_ALL_STOCK_URL, params=params, headers=headers, timeout=10)
+                diff = response.json().get('data', {}).get('diff', [])
                 break
-            for item in diff:
-                code = str(item.get('f12', ''))
-                if not code:
-                    continue
-                l2 = item.get('f100', '') or ''
-                l2 = l2.strip()
-                l1 = SW_L2_TO_L1.get(l2, '综合')
-                if not l2 or l2 == '-':
-                    l2 = '其他'
-                    l1 = '综合'
-                market_cap = _safe_float(item.get('f20'), 0)
-                all_stocks[_em_code_to_sina(code)] = {
-                    'name': item.get('f14', ''),
-                    'l1': l1,
-                    'l2': l2,
-                    'value': market_cap  # 总市值(元)，作为面积基准
-                }
-            if len(diff) < 100:
-                break
+            except Exception as e:
+                last_err = e
+                diff = None
+        if diff is None:
+            error_logger.warning(f"大盘云图缓存抓取第{page}页失败(重试3次): {last_err}")
             page += 1
-        except Exception as e:
-            error_logger.warning(f"大盘云图缓存抓取第{page}页失败: {e}")
+            continue
+        if not diff:
             break
+        for item in diff:
+            code = str(item.get('f12', ''))
+            if not code:
+                continue
+            l2 = item.get('f100', '') or ''
+            l2 = l2.strip()
+            l1 = SW_L2_TO_L1.get(l2, '综合')
+            if not l2 or l2 == '-':
+                l2 = '其他'
+                l1 = '综合'
+            market_cap = _safe_float(item.get('f20'), 0)
+            all_stocks[_em_code_to_sina(code)] = {
+                'name': item.get('f14', ''),
+                'l1': l1,
+                'l2': l2,
+                'value': market_cap  # 总市值(元)，作为面积基准
+            }
+        if len(diff) < 100:
+            break
+        page += 1
 
     if not all_stocks:
         error_logger.warning("大盘云图缓存抓取失败：无数据")

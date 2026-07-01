@@ -1,8 +1,20 @@
 <template>
   <div class="market-map-page">
     <header class="mm-header">
-      <button @click="goBack" class="mm-back-button">← 返回</button>
-      <h1>🗺️ A股大盘云图</h1>
+      <div class="mm-header-left">
+        <button @click="goBack" class="mm-back-button">← 返回</button>
+        <h1>🗺️ A股大盘云图</h1>
+        <div class="mm-search-wrap">
+          <input
+            class="mm-search"
+            v-model="searchQuery"
+            @input="onSearchInput"
+            @keyup.enter="onSearchInput"
+            placeholder="🔍 搜索个股 / 行业，高亮定位"
+          />
+          <span class="mm-search-count" v-show="searchQuery">{{ matchCount ? matchCount + ' 项' : '无匹配' }}</span>
+        </div>
+      </div>
       <div class="mm-header-right">
         <span class="mm-stats" v-if="totalSectors">
           {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
@@ -181,7 +193,9 @@ export default {
       totalSectors: 0,
       totalStocks: 0,
       cacheTime: '',
-      tooltip: { visible: false, name: '', code: '', change: '', cls: '', x: 0, y: 0 }
+      tooltip: { visible: false, name: '', code: '', change: '', cls: '', x: 0, y: 0 },
+      searchQuery: '',
+      matchCount: 0
     }
   },
   computed: {
@@ -205,6 +219,9 @@ export default {
     this.lastX = 0
     this.lastY = 0
     this._raf = 0
+    this._hlUntil = 0      // 搜索高亮截止时间戳(ms)
+    this._hlTimer = null   // 高亮5秒后自动清除的定时器
+    this._matches = null   // { stocks:Set(code), l1s:Set(name), l2s:Set(name) }
 
     this.syncSize()
     this.ro = new ResizeObserver(() => this.onResize())
@@ -216,11 +233,46 @@ export default {
   beforeUnmount() {
     clearInterval(this.timer)
     if (this._raf) cancelAnimationFrame(this._raf)
+    if (this._hlTimer) clearTimeout(this._hlTimer)
     if (this.ro) this.ro.disconnect()
   },
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+
+    // 搜索：模糊匹配个股(名称/代码)与行业(一/二级)，命中项在云图上高亮5秒(醒目黄框)
+    onSearchInput() {
+      if (!this.layout) { this.matchCount = 0; return }
+      const m = this.computeMatches(this.searchQuery)
+      this._matches = m
+      this.matchCount = m ? (m.stocks.size + m.l1s.size + m.l2s.size) : 0
+      if (m) {
+        this._hlUntil = Date.now() + 5000
+        this.view = { k: 1, tx: 0, ty: 0 }   // 复位到全图，确保高亮落在视野内
+        if (this._hlTimer) clearTimeout(this._hlTimer)
+        this._hlTimer = setTimeout(() => { this._hlUntil = 0; this.render() }, 5000)
+      } else {
+        this._hlUntil = 0
+        if (this._hlTimer) clearTimeout(this._hlTimer)
+      }
+      this.render()
+    },
+    computeMatches(q) {
+      const ql = (q || '').trim().toLowerCase()
+      if (!ql) return null
+      const stocks = new Set(), l1s = new Set(), l2s = new Set()
+      for (const s of this.layout) {
+        if (s.name.toLowerCase().includes(ql)) l1s.add(s.name)
+        for (const l2 of s.children) {
+          if (l2.name.toLowerCase().includes(ql)) l2s.add(l2.name)
+          for (const st of l2.children) {
+            if (st.name.toLowerCase().includes(ql) || (st.code || '').toLowerCase().includes(ql)) stocks.add(st.code)
+          }
+        }
+      }
+      if (!stocks.size && !l1s.size && !l2s.size) return null
+      return { stocks, l1s, l2s }
     },
     async fetchData(showLoading) {
       if (this.refreshing) return
@@ -382,6 +434,35 @@ export default {
         ctx.strokeRect(sx + 1.25, sy + 1.25, sw - 2.5, sh - 2.5)
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
+      }
+
+      // 搜索高亮：在所有元素之上叠加醒目黄色边框（5秒内有效）
+      if (this._matches && Date.now() < (this._hlUntil || 0)) {
+        const { stocks, l1s, l2s } = this._matches
+        ctx.save()
+        ctx.strokeStyle = '#FFE100'
+        ctx.lineWidth = 4
+        for (const s of this.layout) {              // 一级行业（最显眼）
+          if (l1s.has(s.name)) {
+            const SX = s.x * k + tx, SY = s.y * k + ty, SW = s.w * k, SH = s.h * k
+            ctx.strokeRect(SX + 2, SY + 2, Math.max(1, SW - 4), Math.max(1, SH - 4))
+          }
+        }
+        ctx.lineWidth = 3
+        for (const s of this.layout) for (const l2 of s.children) {   // 二级行业
+          if (l2s.has(l2.name)) {
+            const LX = l2.x * k + tx, LY = l2.y * k + ty, LW = l2.w * k, LH = l2.h * k
+            ctx.strokeRect(LX + 1.5, LY + 1.5, Math.max(1, LW - 3), Math.max(1, LH - 3))
+          }
+        }
+        ctx.lineWidth = 2.5
+        for (const s of this.layout) for (const l2 of s.children) for (const st of l2.children) {  // 个股
+          if (stocks.has(st.code)) {
+            const X = st.x * k + tx, Y = st.y * k + ty, W = st.w * k, H = st.h * k
+            if (W >= 1 && H >= 1) ctx.strokeRect(X + 1, Y + 1, Math.max(1, W - 2), Math.max(1, H - 2))
+          }
+        }
+        ctx.restore()
       }
     },
 
@@ -573,6 +654,22 @@ export default {
   flex-shrink: 0;
 }
 .mm-header h1 { font-size: 1.05rem; color: #fff; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3); white-space: nowrap; }
+.mm-header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mm-search-wrap { position: relative; display: flex; align-items: center; }
+.mm-search {
+  width: 200px;
+  padding: 6px 44px 6px 10px;
+  background: rgba(13, 19, 32, 0.8);
+  border: 1px solid #3a4a6b;
+  border-radius: 6px;
+  color: #e0e6f0;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.mm-search:focus { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15); }
+.mm-search::placeholder { color: #5a6b8c; }
+.mm-search-count { position: absolute; right: 8px; font-size: 11px; color: #8ba4c7; pointer-events: none; white-space: nowrap; }
 .mm-header-right { display: flex; align-items: center; gap: 10px; }
 .mm-stats { font-size: 12px; color: #8ba4c7; white-space: nowrap; }
 .mm-update { font-size: 11px; color: #8ba4c7; white-space: nowrap; }
