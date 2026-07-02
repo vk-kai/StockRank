@@ -81,13 +81,13 @@
           :class="{ active: activeLegend === 'limit_up' }"
           @click="toggleFilter('limit_up')"
           title="只看涨停，再点复原"
-        >涨停</button>
+        >涨停 {{ legendCounts.limit_up }}</button>
         <button
           class="mm-limit-btn down"
           :class="{ active: activeLegend === 'limit_down' }"
           @click="toggleFilter('limit_down')"
           title="只看跌停，再点复原"
-        >跌停</button>
+        >跌停 {{ legendCounts.limit_down }}</button>
         <div class="mm-legend-bar">
           <div
             v-for="(s, i) in legendSteps"
@@ -97,7 +97,7 @@
             :style="{ background: s.color }"
             :title="s.title"
             @click="toggleFilter(s.value)"
-          >{{ s.label }}</div>
+          >{{ s.label }} {{ legendCounts[String(s.value)] }}</div>
         </div>
       </div>
     </div>
@@ -360,6 +360,45 @@ export default {
       else if (a >= 4) desc = '涨幅 > 3%'
       else desc = `${a - 1}% ~ ${a}%`
       return { desc, count }
+    },
+    // 统计各个涨跌幅区间的股票数量
+    legendCounts() {
+      const counts = {
+        limit_up: 0,
+        limit_down: 0,
+        '-4': 0,
+        '-3': 0,
+        '-2': 0,
+        '-1': 0,
+        '0': 0,
+        '1': 0,
+        '2': 0,
+        '3': 0,
+        '4': 0
+      }
+
+      for (const s of this.tree) {
+        for (const l2 of (s.children || [])) {
+          for (const st of (l2.children || [])) {
+            // 统计涨停
+            if (inFilter(st.change, st.code, 'limit_up')) counts.limit_up++
+            // 统计跌停
+            if (inFilter(st.change, st.code, 'limit_down')) counts.limit_down++
+            // 统计各色块区间
+            if (inFilter(st.change, st.code, -4)) counts['-4']++
+            if (inFilter(st.change, st.code, -3)) counts['-3']++
+            if (inFilter(st.change, st.code, -2)) counts['-2']++
+            if (inFilter(st.change, st.code, -1)) counts['-1']++
+            if (inFilter(st.change, st.code, 0)) counts['0']++
+            if (inFilter(st.change, st.code, 1)) counts['1']++
+            if (inFilter(st.change, st.code, 2)) counts['2']++
+            if (inFilter(st.change, st.code, 3)) counts['3']++
+            if (inFilter(st.change, st.code, 4)) counts['4']++
+          }
+        }
+      }
+
+      return counts
     }
   },
   async mounted() {
