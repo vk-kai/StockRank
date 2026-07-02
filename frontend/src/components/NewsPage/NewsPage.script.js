@@ -462,8 +462,8 @@ export default {
 
       // 综合评分（从后端summary获取，无数据时默认50）
       const overallScore = this.scoreTrendData.summary?.overall_score ?? 50
-      const scoreColor = overallScore > 50 ? '#ef4444' : (overallScore < 50 ? '#22c55e' : '#eab308')
-      const scoreLabel = overallScore > 60 ? '偏利好' : (overallScore < 40 ? '偏利空' : '多空均衡')
+      const scoreColor = overallScore >= 55 ? '#ef4444' : (overallScore <= 45 ? '#22c55e' : '#eab308')
+      const scoreLabel = overallScore >= 55 ? '偏利好' : (overallScore <= 45 ? '偏利空' : '多空均衡')
 
       const option = {
         tooltip: {
@@ -1023,7 +1023,7 @@ export default {
               const scoreMatch = response.analysis.match(/(\d+)\/100/)
               if (scoreMatch) {
                 newsItem.ai_score = parseInt(scoreMatch[1])
-                newsItem.ai_label = newsItem.ai_score > 50 ? '利好' : (newsItem.ai_score < 50 ? '利空' : '中性')
+                newsItem.ai_label = this.getScoreLabel(newsItem.ai_score)
               }
             }
             // 更新评分统计和趋势图
@@ -1050,9 +1050,16 @@ export default {
 
     getScoreClass(score) {
       if (score == null) return ''
-      if (score > 50) return 'score-positive'
-      if (score < 50) return 'score-negative'
+      if (score >= 55) return 'score-positive'
+      if (score <= 45) return 'score-negative'
       return 'score-neutral'
+    },
+
+    getScoreLabel(score) {
+      if (score == null) return '未分析'
+      if (score >= 55) return '利好'
+      if (score <= 45) return '利空'
+      return '中性'
     }
   }
 }

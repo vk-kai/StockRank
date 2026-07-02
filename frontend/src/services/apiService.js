@@ -115,7 +115,7 @@ export async function getMarketMapStocks(sectorCode) {
 
 /**
  * 获取个股近期融资净买入额时间序列（云图单击弹窗柱状图用）
- * 返回 { success, data:{ name, latest_date, series:[{d,j,b}] }, updating }
+ * 返回 { success, data:{ name, latest_date, latest_balance, latest_balance_date, series:[{d,j,b}] }, updating }
  * updating=true 表示后端正按需更新（每天一次），前端应提示并稍后重试
  */
 export async function getStockFinancing(code) {

@@ -142,6 +142,10 @@
             <span class="mm-modal-name">{{ finModal.name }}</span>
             <span class="mm-modal-code">{{ finModal.code }}</span>
           </div>
+          <div class="mm-fin-balance">
+            <span class="mm-fin-balance-label">融资总余额</span>
+            <span class="mm-fin-balance-value">{{ latestFinBalance }}</span>
+          </div>
           <button class="mm-modal-close" @click="closeFinancing">✕</button>
         </div>
         <div class="mm-modal-sub">融资净买入额（数据截至 {{ latestFinDate || '—' }}）</div>
@@ -348,6 +352,8 @@ export default {
         error: '',
         updating: false,
         period: 60,
+        latestBalance: null,
+        latestBalanceDate: '',
         series: [],   // [{d,j,b}]，d=YYYYMMDD，j=融资净买入额(元)，b=融资余额(元)
         totals: {}    // {3:val,5:val,...} 各区间净买入额之和
       }
@@ -363,6 +369,18 @@ export default {
       if (!s || !s.length) return ''
       const d = String(s[s.length - 1].d)
       return d.length === 8 ? d.replace(/(\d{4})(\d{2})(\d{2})/, '$1/$2/$3') : d
+    },
+    latestFinBalance() {
+      if (this.finModal.latestBalance != null && !isNaN(this.finModal.latestBalance)) {
+        return this.finFmt(this.finModal.latestBalance, true)
+      }
+      const s = this.finModal.series
+      if (!s || !s.length) return '--'
+      for (let i = s.length - 1; i >= 0; i--) {
+        const x = s[i]
+        if (x && x.b != null && !isNaN(x.b)) return this.finFmt(x.b, true)
+      }
+      return '--'
     },
     // 图例：与 COLOR_STOPS 一一对应，每块标注涨跌幅阈值（左=跌/绿 → 中=0/灰 → 右=涨/红）
     legendSteps() {
@@ -858,6 +876,8 @@ export default {
       this.finModal.code = node.code || ''
       this.finModal.name = node.name || ''
       this.finModal.period = 60
+      this.finModal.latestBalance = null
+      this.finModal.latestBalanceDate = ''
       this.finModal.series = []
       this.finModal.totals = {}
       this.finModal.error = ''
@@ -874,6 +894,8 @@ export default {
         if (res && res.success) {
           const series = (res.data && res.data.series) || []
           this.finModal.series = series
+          this.finModal.latestBalance = res.data.latest_balance
+          this.finModal.latestBalanceDate = res.data.latest_balance_date || ''
           if (res.data && res.data.name) this.finModal.name = res.data.name
           this.computeFinTotals()
           // 后台正按需更新（每天一次）且当前仍无数据 → 提示并稍后自动重试
@@ -1339,10 +1361,32 @@ export default {
   padding: 16px 18px 18px;
   color: #e0e6f0;
 }
-.mm-modal-header { display: flex; align-items: center; justify-content: space-between; }
-.mm-modal-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.mm-modal-header { display: flex; align-items: center; gap: 12px; }
+.mm-modal-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1; }
 .mm-modal-name { font-size: 18px; font-weight: bold; color: #fff; }
 .mm-modal-code { font-size: 13px; color: #8ba4c7; }
+.mm-fin-balance {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(24, 144, 255, 0.1);
+  border: 1px solid rgba(24, 144, 255, 0.34);
+}
+.mm-fin-balance-label {
+  color: #8ba4c7;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mm-fin-balance-value {
+  color: #e0e6f0;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .mm-modal-close {
   width: 30px; height: 30px; flex-shrink: 0;
   border-radius: 50%; border: none;

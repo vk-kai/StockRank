@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import traceback
 from news_processor import get_recent_news, search_news, NEWS_DIR
 from ai_analyzer import load_news_analysis_cache
+from news_score_thresholds import classify_score, is_directional_score
 from data_processor import error_logger
 from logger import get_logger
 import os
@@ -181,9 +182,10 @@ def get_news_score_summary():
             
             if score is not None:
                 date_stats[date_key]['total_analyzed'] += 1
-                if score > 50:
+                direction = classify_score(score)
+                if direction == 'positive':
                     date_stats[date_key]['positive'] += 1
-                elif score < 50:
+                elif direction == 'negative':
                     date_stats[date_key]['negative'] += 1
                 else:
                     date_stats[date_key]['neutral'] += 1
@@ -311,17 +313,18 @@ def get_news_score_trend():
             score = cached.get('score')
             
             if score is not None:
-                # 中性新闻（评分恰好=50）只计入中性计数，不参与综合总分计算
-                if score != 50:
+                direction = classify_score(score)
+                # 中性新闻（46-54）只计入中性计数，不参与综合总分计算
+                if is_directional_score(score):
                     all_scores.append(score)
                     # 同时记录每个桶的评分
                     if 'scores' not in bucket_stats[bucket]:
                         bucket_stats[bucket]['scores'] = []
                     bucket_stats[bucket]['scores'].append(score)
                 
-                if score > 50:
+                if direction == 'positive':
                     bucket_stats[bucket]['positive'] += 1
-                elif score < 50:
+                elif direction == 'negative':
                     bucket_stats[bucket]['negative'] += 1
                 else:
                     bucket_stats[bucket]['neutral'] += 1
@@ -369,9 +372,9 @@ def get_news_score_trend():
         # 倾向判断（基于综合评分）
         if total_analyzed == 0:
             tendency = '暂无数据'
-        elif overall_score >= 60:
+        elif overall_score >= 55:
             tendency = '偏利好'
-        elif overall_score <= 40:
+        elif overall_score <= 45:
             tendency = '偏利空'
         else:
             tendency = '多空均衡'

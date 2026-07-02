@@ -233,23 +233,34 @@ def get_stock_margin_series(code):
     """返回单只股票的融资净买入额时间序列（供弹窗柱状图）。"""
     code = _normalize_code(code)
     if not code:
-        return {'name': '', 'latest_date': '', 'series': []}
+        return {'name': '', 'latest_date': '', 'latest_balance': None, 'latest_balance_date': '', 'series': []}
     data = _ensure_mem()
     rec = data.get('stocks', {}).get(code)
     latest = data.get('latest_date', '')
     if not rec:
-        return {'name': '', 'latest_date': latest, 'series': []}
+        return {'name': '', 'latest_date': latest, 'latest_balance': None, 'latest_balance_date': '', 'series': []}
     raw = rec.get('s', [])  # [[date, 融资余额, 融资买入额], ...] 已升序（兼容旧2元组）
     series = []
     prev_b = None
+    latest_balance = None
+    latest_balance_date = ''
     for r in raw:
         d, b = r[0], r[1]
         buy = r[2] if len(r) > 2 else None        # 融资买入额（旧缓存无此列→None）
         j = (b - prev_b) if prev_b is not None else None   # Δ融资余额 = 融资净买入额；首日→None
         repay = (buy - j) if (buy is not None and j is not None) else None  # 融资偿还额 = 买入额 − 净买入
         series.append({'d': d, 'j': j, 'buy': buy, 'repay': repay, 'b': b})
+        if b is not None:
+            latest_balance = b
+            latest_balance_date = d
         prev_b = b
-    return {'name': rec.get('n', ''), 'latest_date': latest, 'series': series}
+    return {
+        'name': rec.get('n', ''),
+        'latest_date': latest,
+        'latest_balance': latest_balance,
+        'latest_balance_date': latest_balance_date,
+        'series': series,
+    }
 
 
 def trigger_ondemand_update_async():

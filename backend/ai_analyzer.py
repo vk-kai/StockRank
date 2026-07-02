@@ -6,6 +6,7 @@ import re
 import threading
 from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, NEWS_ANALYSIS_CACHE_FILE
 from logger import get_logger
+from news_score_thresholds import get_score_label as classify_score_label
 
 error_logger = get_logger('error')
 info_logger = get_logger('ai')
@@ -610,14 +611,7 @@ def extract_score_from_analysis(analysis):
 
 def get_score_label(score):
     """根据评分获取标签"""
-    if score is None:
-        return '未分析'
-    if score > 50:
-        return '利好'
-    elif score == 50:
-        return '中性'
-    else:
-        return '利空'
+    return classify_score_label(score)
 
 def format_amount(value, show_sign=False):
     """格式化金额显示"""
@@ -646,20 +640,20 @@ NEWS_ANALYSIS_PROMPT = """你是一名顶级产业分析师。
 
 【重要规则】
 - 评分对象是新闻主体本身，不是A股其他的股票
-- 例：黄金下跌3% → 主体是黄金 → 利空（评分<50）
+- 例：黄金下跌3% → 主体是黄金 → 利空（评分<=45）
 - 例：黄金下跌3% → 不能因为利好黄金股就评为利好
 - 例：某公司被罚 → 主体是该公司 → 利空
 
 【评分标准 - 严格评级】
-评分范围0-100，50为中性。只有真实、实质性的利好才评>50，叙事性/讲故事/概念炒作只能算中性50。
+评分范围0-100，50为中性；46-54都按中性处理。只有真实、实质性的利好才评>=55，只有真实、实质性的利空才评<=45。
 
 利好等级（必须落到真金白银的实质影响）：
 - 90-100：超级利好（巨额订单/并购重组/重大政策落地/业绩暴增）
 - 75-89：强利好（大额合同/技术重大突破/业绩超预期/核心产品获批）
 - 60-74：中利好（业绩增长/新品发布/股东增持/行业景气度提升）
-- 51-59：弱利好（小幅改善/一般利好消息）
+- 55-59：弱利好（小幅改善/一般利好消息）
 
-中性（50）：
+中性（46-54）：
 - 纯叙事性内容（讲故事、画大饼、未来愿景）
 - 概念炒作但无实质（蹭热点、喊口号）
 - 单纯的事件描述、资讯播报、行情回顾
@@ -668,7 +662,7 @@ NEWS_ANALYSIS_PROMPT = """你是一名顶级产业分析师。
 - 人事变动、例行公告
 
 利空等级：
-- 41-49：弱利空（小幅下滑/一般负面消息）
+- 41-45：弱利空（小幅下滑/一般负面消息）
 - 25-40：中利空（业绩下降/产品问题/监管问询）
 - 10-24：强利空（业绩暴雷/重大违规/安全事故/产品下架）
 - 0-9：超级利空（破产/退市/重大违法/欺诈）
