@@ -80,14 +80,30 @@
           class="mm-limit-btn up"
           :class="{ active: activeLegend === 'limit_up' }"
           @click="toggleFilter('limit_up')"
-          :title="'涨停：' + legendCounts.limit_up + ' 只，点击只看涨停，再点复原'"
-        >涨停</button>
+          :data-tooltip="'涨停：' + legendCounts.limit_up + ' 只'"
+          :aria-label="'涨停：' + legendCounts.limit_up + ' 只，点击只看涨停，再点复原'"
+          @mouseenter="showLegendTooltip($event, '涨停：' + legendCounts.limit_up + ' 只')"
+          @focus="showLegendTooltip($event, '涨停：' + legendCounts.limit_up + ' 只')"
+          @mouseleave="hideLegendTooltip"
+          @blur="hideLegendTooltip"
+        >
+          <span class="mm-legend-label">涨停</span>
+          <span class="mm-legend-count">{{ legendCounts.limit_up }}只</span>
+        </button>
         <button
           class="mm-limit-btn down"
           :class="{ active: activeLegend === 'limit_down' }"
           @click="toggleFilter('limit_down')"
-          :title="'跌停：' + legendCounts.limit_down + ' 只，点击只看跌停，再点复原'"
-        >跌停</button>
+          :data-tooltip="'跌停：' + legendCounts.limit_down + ' 只'"
+          :aria-label="'跌停：' + legendCounts.limit_down + ' 只，点击只看跌停，再点复原'"
+          @mouseenter="showLegendTooltip($event, '跌停：' + legendCounts.limit_down + ' 只')"
+          @focus="showLegendTooltip($event, '跌停：' + legendCounts.limit_down + ' 只')"
+          @mouseleave="hideLegendTooltip"
+          @blur="hideLegendTooltip"
+        >
+          <span class="mm-legend-label">跌停</span>
+          <span class="mm-legend-count">{{ legendCounts.limit_down }}只</span>
+        </button>
         <div class="mm-legend-bar">
           <div
             v-for="(s, i) in legendSteps"
@@ -95,10 +111,27 @@
             class="mm-legend-step"
             :class="{ active: activeLegend === s.value }"
             :style="{ background: s.color }"
-            :title="s.title + '，当前 ' + legendCounts[String(s.value)] + ' 只'"
+            :data-tooltip="s.countTitle + '：' + legendCounts[String(s.value)] + ' 只'"
+            :aria-label="s.title + '，当前 ' + legendCounts[String(s.value)] + ' 只'"
+            role="button"
+            tabindex="0"
             @click="toggleFilter(s.value)"
-          >{{ s.label }}</div>
+            @keyup.enter="toggleFilter(s.value)"
+            @keyup.space.prevent="toggleFilter(s.value)"
+            @mouseenter="showLegendTooltip($event, s.countTitle + '：' + legendCounts[String(s.value)] + ' 只')"
+            @focus="showLegendTooltip($event, s.countTitle + '：' + legendCounts[String(s.value)] + ' 只')"
+            @mouseleave="hideLegendTooltip"
+            @blur="hideLegendTooltip"
+          >
+            <span class="mm-legend-step-label">{{ s.label }}</span>
+            <span class="mm-legend-step-count">{{ legendCounts[String(s.value)] }}只</span>
+          </div>
         </div>
+        <div
+          class="mm-legend-tooltip"
+          v-show="legendTooltip.visible"
+          :style="{ left: legendTooltip.x + 'px', top: legendTooltip.y + 'px' }"
+        >{{ legendTooltip.text }}</div>
       </div>
     </div>
     <!-- 单击个股：融资净买入额趋势弹窗 -->
@@ -302,6 +335,7 @@ export default {
       totalStocks: 0,
       cacheTime: '',
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0 },
+      legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
       activeLegend: null,  // null=无筛选 | 数值-4..4(色块) | 'limit_up' | 'limit_down'
@@ -337,6 +371,7 @@ export default {
       return COLOR_STOPS.map(([v, rgb], i) => ({
         value: v,
         label: labels[i],
+        countTitle: titles[i],
         title: '点击只看 ' + titles[i] + '，再点复原',
         color: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
       }))
@@ -450,6 +485,18 @@ export default {
       if (this.activeLegend == null) return
       this.activeLegend = null
       this.render()
+    },
+    showLegendTooltip(e, text) {
+      const r = e.currentTarget.getBoundingClientRect()
+      this.legendTooltip = {
+        visible: true,
+        text,
+        x: Math.min(window.innerWidth - 10, r.right),
+        y: Math.max(10, r.top - 8)
+      }
+    },
+    hideLegendTooltip() {
+      this.legendTooltip.visible = false
     },
 
     // 搜索：模糊匹配个股(名称/代码)与行业(一/二级)，命中项在云图上高亮5秒(醒目黄框)
@@ -1147,40 +1194,75 @@ export default {
   align-items: center;
   gap: 6px;
 }
+.mm-legend-tooltip {
+  position: fixed;
+  z-index: 60;
+  transform: translate(-100%, -100%);
+  padding: 5px 8px;
+  background: rgba(13, 19, 32, 0.96);
+  border: 1px solid rgba(139, 164, 199, 0.36);
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.36);
+  color: #e0e6f0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .mm-legend-bar {
   display: flex;
   gap: 1px;
-  width: 252px;
-  height: 18px;
+  width: 360px;
+  height: 28px;
   border-radius: 2px;
   overflow: visible; /* 让激活/悬停色块能上抬放大，不被裁切 */
 }
 .mm-legend-step {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  font-weight: bold;
+  gap: 2px;
   color: #fff;
   height: 100%;
   white-space: nowrap;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.mm-legend-step:hover { transform: translateY(-2px) scaleY(1.2); z-index: 1; }
+.mm-legend-step-label {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: bold;
+}
+.mm-legend-step-count {
+  padding: 1px 4px;
+  border-radius: 7px;
+  background: rgba(9, 13, 22, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.mm-legend-step:hover { transform: translateY(-2px); z-index: 1; }
 .mm-legend-step.active {
-  transform: translateY(-3px) scaleY(1.35);
+  transform: translateY(-3px);
   box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.7);
   z-index: 2;
 }
 
 /* 涨停/跌停按钮：红涨绿跌，与图例配色一致 */
 .mm-limit-btn {
-  height: 20px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: bold;
   color: #fff;
@@ -1189,6 +1271,22 @@ export default {
 }
 .mm-limit-btn.up { background: linear-gradient(135deg, #f32f3d, #c91a26); }
 .mm-limit-btn.down { background: linear-gradient(135deg, #3bcc5f, #1ea645); }
+.mm-legend-label {
+  line-height: 1;
+}
+.mm-legend-count {
+  min-width: 28px;
+  padding: 2px 5px;
+  border-radius: 8px;
+  background: rgba(9, 13, 22, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .mm-limit-btn:hover { transform: translateY(-1px); }
 .mm-limit-btn.active {
   transform: translateY(-2px);
