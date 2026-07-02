@@ -76,39 +76,28 @@
     <div class="mm-footer">
       <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
       <div class="mm-legend">
-        <div class="mm-limit-group">
-          <button
-            class="mm-limit-btn up"
-            :class="{ active: activeLegend === 'limit_up' }"
-            @click="toggleFilter('limit_up')"
-            title="只看涨停，再点复原"
-          >涨停</button>
-          <span class="mm-count-badge up">{{ legendCounts.limit_up }}</span>
-        </div>
-        <div class="mm-limit-group">
-          <button
-            class="mm-limit-btn down"
-            :class="{ active: activeLegend === 'limit_down' }"
-            @click="toggleFilter('limit_down')"
-            title="只看跌停，再点复原"
-          >跌停</button>
-          <span class="mm-count-badge down">{{ legendCounts.limit_down }}</span>
-        </div>
+        <button
+          class="mm-limit-btn up"
+          :class="{ active: activeLegend === 'limit_up' }"
+          @click="toggleFilter('limit_up')"
+          :title="'涨停：' + legendCounts.limit_up + ' 只，点击只看涨停，再点复原'"
+        >涨停</button>
+        <button
+          class="mm-limit-btn down"
+          :class="{ active: activeLegend === 'limit_down' }"
+          @click="toggleFilter('limit_down')"
+          :title="'跌停：' + legendCounts.limit_down + ' 只，点击只看跌停，再点复原'"
+        >跌停</button>
         <div class="mm-legend-bar">
           <div
             v-for="(s, i) in legendSteps"
             :key="i"
-            class="mm-legend-item"
-          >
-            <div
-              class="mm-legend-step"
-              :class="{ active: activeLegend === s.value }"
-              :style="{ background: s.color }"
-              :title="s.title"
-              @click="toggleFilter(s.value)"
-            >{{ s.label }}</div>
-            <span class="mm-count-badge">{{ legendCounts[String(s.value)] }}</span>
-          </div>
+            class="mm-legend-step"
+            :class="{ active: activeLegend === s.value }"
+            :style="{ background: s.color }"
+            :title="s.title + '，当前 ' + legendCounts[String(s.value)] + ' 只'"
+            @click="toggleFilter(s.value)"
+          >{{ s.label }}</div>
         </div>
       </div>
     </div>
@@ -1158,56 +1147,25 @@ export default {
   align-items: center;
   gap: 6px;
 }
-.mm-limit-group {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.mm-count-badge {
-  min-width: 22px;
-  height: 16px;
-  padding: 0 4px;
-  background: rgba(13, 19, 32, 0.85);
-  border: 1px solid rgba(58, 74, 107, 0.6);
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: bold;
-  color: #e0e6f0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-}
-.mm-count-badge.up {
-  color: #ff4d4f;
-  border-color: rgba(255, 77, 79, 0.5);
-}
-.mm-count-badge.down {
-  color: #52c41a;
-  border-color: rgba(82, 196, 26, 0.5);
-}
 .mm-legend-bar {
   display: flex;
-  gap: 2px;
-  overflow: visible;
-}
-.mm-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+  gap: 1px;
+  width: 252px;
+  height: 18px;
+  border-radius: 2px;
+  overflow: visible; /* 让激活/悬停色块能上抬放大，不被裁切 */
 }
 .mm-legend-step {
-  width: 28px;
-  height: 18px;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 9px;
   font-weight: bold;
   color: #fff;
+  height: 100%;
   white-space: nowrap;
   cursor: pointer;
-  border-radius: 2px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .mm-legend-step:hover { transform: translateY(-2px) scaleY(1.2); z-index: 1; }
