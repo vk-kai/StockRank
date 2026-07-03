@@ -159,6 +159,20 @@
             </select>
           </div>
 
+          <div class="form-group">
+            <label>新闻推送策略</label>
+            <select v-model="feishuConfig.news_push_mode">
+              <option
+                v-for="option in newsPushModeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <span class="hint">控制新闻采集时哪些消息会进入飞书推送</span>
+          </div>
+
           <div class="form-actions">
             <button @click="saveFeishuConfig" class="btn-primary">保存配置</button>
             <button @click="testFeishuConfig" class="btn-secondary">测试推送</button>
@@ -203,6 +217,20 @@
               <option value="markdown">Markdown消息(推荐)</option>
               <option value="text">文本消息</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <label>新闻推送策略</label>
+            <select v-model="wechatConfig.news_push_mode">
+              <option
+                v-for="option in newsPushModeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <span class="hint">控制新闻采集时哪些消息会进入企业微信推送</span>
           </div>
 
           <div class="form-actions">

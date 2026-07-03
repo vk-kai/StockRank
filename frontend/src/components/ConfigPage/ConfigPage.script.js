@@ -51,14 +51,22 @@ export default {
         webhook_url: '',
         secret: '',
         msg_type: 'interactive',
-        base_url: 'http://localhost:5000'
+        base_url: 'http://localhost:5000',
+        news_push_mode: 'important_ai_filter'
       },
       wechatConfig: {
         enabled: false,
         webhook_url: '',
         msg_type: 'markdown',
-        base_url: 'http://localhost:5000'
+        base_url: 'http://localhost:5000',
+        news_push_mode: 'important_ai_filter'
       },
+      newsPushModeOptions: [
+        { value: 'important_ai_filter', label: '重要新闻AI筛选后推送' },
+        { value: 'important_direct', label: '重要新闻直接推送' },
+        { value: 'all_direct', label: '全部新闻直接推送' },
+        { value: 'all_ai_filter', label: '全部新闻AI筛选后推送' }
+      ],
       stockConfig: {
         enabled: false,
         stocks: []

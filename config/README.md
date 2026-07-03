@@ -66,7 +66,8 @@
   "enabled": false,
   "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxx",
   "secret": "xxxxxxxxxx",
-  "msg_type": "interactive"
+  "msg_type": "interactive",
+  "news_push_mode": "important_ai_filter"
 }
 ```
 
@@ -81,6 +82,11 @@
 - `msg_type`: 消息类型
   - `interactive`: 卡片消息（推荐）
   - `text`: 文本消息
+- `news_push_mode`: 新闻推送策略
+  - `important_ai_filter`: 重要新闻交给 AI 筛选后再推送（默认）
+  - `important_direct`: 重要新闻直接推送，不经过 AI
+  - `all_direct`: 所有新闻都直接推送
+  - `all_ai_filter`: 所有新闻都交给 AI 筛选后再推送
 
 **示例配置：**
 
@@ -89,7 +95,8 @@
   "enabled": true,
   "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/12345678-1234-1234-1234-1234567890ab",
   "secret": "your-secret-key-here",
-  "msg_type": "interactive"
+  "msg_type": "interactive",
+  "news_push_mode": "important_ai_filter"
 }
 ```
 
@@ -104,7 +111,8 @@
   "enabled": false,
   "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx",
   "msg_type": "markdown",
-  "base_url": "http://localhost:5000"
+  "base_url": "http://localhost:5000",
+  "news_push_mode": "important_ai_filter"
 }
 ```
 
@@ -117,6 +125,7 @@
   - `markdown`: Markdown 消息（推荐）
   - `text`: 文本消息
 - `base_url`: 消息中日报详情链接的站点域名
+- `news_push_mode`: 新闻推送策略，同飞书配置
 
 飞书和企业微信是独立开关，可以只启用其中一个，也可以同时启用。
 

@@ -4,7 +4,15 @@ import traceback
 from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache
-from notification_pusher import is_push_enabled, push_important_news, send_news_message
+from notification_pusher import (
+    ALL_AI_FILTER,
+    ALL_DIRECT,
+    IMPORTANT_AI_FILTER,
+    IMPORTANT_DIRECT,
+    get_enabled_news_channels,
+    is_push_enabled,
+    send_news_item_to_channels,
+)
 from stock_monitor import should_push_news
 from logger import get_logger, cleanup_old_logs
 from thread_monitor import heartbeat, register_thread, set_busy
@@ -18,6 +26,34 @@ ai_logger = get_logger('ai')
 cleanup_logger = get_logger('cleanup_news')
 
 _last_cleanup_date = None
+
+
+def _get_pushed_channels(news_item):
+    pushed_channels = news_item.get('pushed_channels')
+    if isinstance(pushed_channels, list):
+        return set(pushed_channels)
+    return set()
+
+
+def _has_channel_pushed(news_item, channel_key):
+    pushed_channels = news_item.get('pushed_channels')
+    if isinstance(pushed_channels, list):
+        return channel_key in pushed_channels
+    return bool(news_item.get('pushed'))
+
+
+def _mark_channel_pushed(news_item, channel_key):
+    pushed_channels = _get_pushed_channels(news_item)
+    pushed_channels.add(channel_key)
+    news_item['pushed_channels'] = sorted(pushed_channels)
+    news_item['pushed'] = True
+
+
+def _record_push_results(news_item, results):
+    for channel_key, _channel_name, success in results:
+        if success:
+            _mark_channel_pushed(news_item, channel_key)
+    return any(success for _, _, success in results)
 
 def ai_heartbeat():
     heartbeat('news_collector')
@@ -46,13 +82,19 @@ def load_all_news_status():
                                     if key not in all_status:
                                         all_status[key] = {
                                             'pushed': item.get('pushed', False),
-                                            'ai_analyzed': item.get('ai_analyzed', False)
+                                            'ai_analyzed': item.get('ai_analyzed', False),
+                                            'pushed_channels': item.get('pushed_channels', [])
                                         }
                                     else:
                                         if item.get('pushed', False):
                                             all_status[key]['pushed'] = True
                                         if item.get('ai_analyzed', False):
                                             all_status[key]['ai_analyzed'] = True
+                                        pushed_channels = item.get('pushed_channels', [])
+                                        if isinstance(pushed_channels, list):
+                                            merged_channels = set(all_status[key].get('pushed_channels', []))
+                                            merged_channels.update(pushed_channels)
+                                            all_status[key]['pushed_channels'] = sorted(merged_channels)
                 except (json.JSONDecodeError, Exception) as e:
                     continue
     except Exception as e:
@@ -93,12 +135,14 @@ def process_news_with_ai_and_push(news_list):
                 status = all_news_status[news_key]
                 news_item['ai_analyzed'] = status.get('ai_analyzed', False)
                 news_item['pushed'] = status.get('pushed', False)
+                news_item['pushed_channels'] = status.get('pushed_channels', [])
                 news_item['core_event'] = ''
                 normal_items.append(news_item)
                 continue
             
             news_item['ai_analyzed'] = False
             news_item['pushed'] = False
+            news_item['pushed_channels'] = []
             news_item['core_event'] = ''
             
             if news_item.get('importance') == '3':
@@ -117,6 +161,30 @@ def process_news_with_ai_and_push(news_list):
         
         pushed_items = []
         ignored_items = []
+        pushed_recorded_ids = set()
+        ignored_recorded_keys = set()
+
+        def record_pushed(news_item, reason, core_event=''):
+            news_id = news_item.get('id') or news_item.get('title', '')
+            if news_id in pushed_recorded_ids:
+                return
+            pushed_recorded_ids.add(news_id)
+            pushed_items.append({
+                'title': news_item.get('title', ''),
+                'reason': reason,
+                'core_event': core_event
+            })
+
+        def record_ignored(news_item, reason, level=''):
+            key = (news_item.get('id') or news_item.get('title', ''), reason, level)
+            if key in ignored_recorded_keys:
+                return
+            ignored_recorded_keys.add(key)
+            ignored_items.append({
+                'title': news_item.get('title', ''),
+                'reason': reason,
+                'level': level
+            })
         
         # 如果消息推送未启用，跳过所有推送逻辑
         if not push_enabled:
@@ -142,115 +210,111 @@ def process_news_with_ai_and_push(news_list):
                         news_item['ai_analysis'] = analysis
                         news_item['core_event'] = analysis.get('core_event', '')
                         # 不推送，只记录分析结果
-                        ignored_items.append({
-                            'title': news_item.get('title', ''),
-                            'reason': f'{analysis.get("reason", "")}（消息推送已关闭）',
-                            'level': analysis.get('level', '')
-                        })
+                        record_ignored(news_item, f'{analysis.get("reason", "")}（消息推送已关闭）', analysis.get('level', ''))
                     else:
-                        ignored_items.append({
-                            'title': news_item.get('title', ''),
-                            'reason': 'AI分析失败（消息推送已关闭）',
-                            'level': '未知'
-                        })
+                        record_ignored(news_item, 'AI分析失败（消息推送已关闭）', '未知')
                 
                 for news_item in important_items[5:]:
                     news_item['ai_analyzed'] = False
                     news_item['core_event'] = ''
-        elif important_items:
+        else:
+            channels = get_enabled_news_channels()
+            analysis_target_map = {}
             if ai_enabled:
-                items_to_analyze = important_items[:5]
-                if len(important_items) > 5:
-                    ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
-                
+                for channel in channels:
+                    if channel['mode'] == ALL_AI_FILTER:
+                        for item in new_items:
+                            news_id = item.get('id')
+                            if news_id:
+                                analysis_target_map[news_id] = item
+                    elif channel['mode'] == IMPORTANT_AI_FILTER:
+                        for item in important_items:
+                            news_id = item.get('id')
+                            if news_id:
+                                analysis_target_map[news_id] = item
+            elif any(channel['mode'] == ALL_AI_FILTER for channel in channels):
+                ai_logger.warning("存在“全部新闻AI筛选”推送模式，但AI未开启，相关渠道将跳过新闻推送")
+
+            analysis_results = {}
+            items_to_analyze = list(analysis_target_map.values())
+            if items_to_analyze:
                 set_busy('news_collector', True)
                 try:
                     analysis_results = batch_analyze_news(items_to_analyze)
                 finally:
                     set_busy('news_collector', False)
                 
-                for news_item in items_to_analyze:
-                    news_id = news_item.get('id')
-                    analysis = analysis_results.get(news_id)
-                    news_item['ai_analyzed'] = True
-                    
-                    if analysis:
-                        news_item['ai_analysis'] = analysis
-                        news_item['core_event'] = analysis.get('core_event', '')
-                        
-                        if is_important_news(analysis):
-                            if not news_item.get('pushed', False):
-                                push_result = push_important_news(news_item, analysis)
-                                if push_result:
-                                    news_item['pushed'] = True
-                                    pushed_items.append({
-                                        'title': news_item.get('title', ''),
-                                        'reason': analysis.get('reason', ''),
-                                        'core_event': analysis.get('core_event', '')
-                                    })
-                            else:
-                                ai_logger.info(f"新闻已推送过，跳过重复推送: {news_item.get('title', '')}")
+            for news_item in items_to_analyze:
+                news_id = news_item.get('id')
+                analysis = analysis_results.get(news_id)
+                news_item['ai_analyzed'] = True
+                if analysis:
+                    news_item['ai_analysis'] = analysis
+                    news_item['core_event'] = analysis.get('core_event', '')
+
+            for news_item in new_items:
+                source_important = news_item.get('importance') == '3'
+                analysis = analysis_results.get(news_item.get('id'))
+                direct_channels = []
+                ai_channels = []
+
+                for channel in channels:
+                    if _has_channel_pushed(news_item, channel['key']):
+                        continue
+
+                    mode = channel['mode']
+                    if mode == ALL_DIRECT:
+                        direct_channels.append(channel)
+                    elif mode == IMPORTANT_DIRECT and source_important:
+                        direct_channels.append(channel)
+                    elif mode == IMPORTANT_AI_FILTER and source_important:
+                        if ai_enabled:
+                            ai_channels.append(channel)
                         else:
-                            ignored_items.append({
-                                'title': news_item.get('title', ''),
-                                'reason': analysis.get('reason', ''),
-                                'level': analysis.get('level', '')
-                            })
+                            direct_channels.append(channel)
+                    elif mode == ALL_AI_FILTER:
+                        if ai_enabled:
+                            ai_channels.append(channel)
+                        else:
+                            record_ignored(news_item, 'AI未开启，无法执行全部新闻AI筛选', '未分析')
+
+                if direct_channels:
+                    reason = '全部新闻直接推送' if any(channel['mode'] == ALL_DIRECT for channel in direct_channels) else '重要新闻直接推送'
+                    results = send_news_item_to_channels(news_item, None, direct_channels)
+                    if _record_push_results(news_item, results):
+                        record_pushed(news_item, reason, news_item.get('core_event', ''))
+
+                if ai_channels:
+                    news_item['ai_analyzed'] = True
+                    if analysis:
+                        if is_important_news(analysis):
+                            results = send_news_item_to_channels(news_item, analysis, ai_channels)
+                            if _record_push_results(news_item, results):
+                                record_pushed(news_item, analysis.get('reason', ''), analysis.get('core_event', ''))
+                        else:
+                            record_ignored(news_item, analysis.get('reason', ''), analysis.get('level', ''))
                     else:
-                        ignored_items.append({
-                            'title': news_item.get('title', ''),
-                            'reason': 'AI分析失败',
-                            'level': '未知'
-                        })
-                
-                for news_item in important_items[5:]:
-                    news_item['ai_analyzed'] = False
-                    news_item['core_event'] = ''
-            elif push_enabled:
-                ai_logger.info(f"AI未开启但消息推送已开启，直接推送{len(important_items)}条重要新闻")
-                for news_item in important_items:
-                    if not news_item.get('pushed', False):
-                        push_result = push_important_news(news_item, None)
-                        if push_result:
-                            news_item['pushed'] = True
-                            pushed_items.append({
-                                'title': news_item.get('title', ''),
-                                'reason': '重要新闻（未配置AI）',
-                                'core_event': ''
-                            })
-                        news_item['ai_analyzed'] = False
-                        news_item['core_event'] = ''
+                        record_ignored(news_item, 'AI分析失败', '未知')
         
         # 股票匹配推送（仅在消息推送启用时执行）
         if push_enabled:
+            channels = get_enabled_news_channels()
             for news_item in new_items:
                 should_push, matched_stocks = should_push_news(news_item)
-                if should_push and not news_item.get('pushed'):
-                    from datetime import datetime as dt
-                    
+                target_channels = [
+                    channel for channel in channels
+                    if not _has_channel_pushed(news_item, channel['key'])
+                ]
+                if should_push and target_channels:
                     stock_names = "、".join([s['name'] for s in matched_stocks])
-                    news_title = news_item.get('title', '')
-                    news_content = news_item.get('content', '')
-                    news_time = news_item.get('time', '')
-                    
-                    if news_time:
-                        try:
-                            ts = int(news_time)
-                            news_time = dt.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-                        except (ValueError, TypeError, OSError):
-                            pass
-                    
                     parts = [f"匹配股票：{stock_names}"]
-                    if news_time:
-                        parts.append(news_time)
-                    parts.append(f"<font color='red'>{news_content}</font>")
-                    content = "\n\n".join(parts)
-                    url = news_item.get('url')
-                    if send_news_message(news_title, content, url=url):
-                        news_item['pushed'] = True
+                    results = send_news_item_to_channels(news_item, news_item.get('ai_analysis'), target_channels, prefix_lines=parts)
+                    if _record_push_results(news_item, results):
+                        record_pushed(news_item, f"匹配股票：{stock_names}", news_item.get('core_event', ''))
         else:
             ai_logger.info(f"消息推送已关闭，跳过股票匹配推送逻辑")
         
+        normal_items = [item for item in normal_items if not item.get('pushed')]
         return list(existing_dict.values()), normal_items, pushed_items, ignored_items, new_items
                 
     except Exception as e:

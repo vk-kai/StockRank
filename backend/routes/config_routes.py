@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+﻿from flask import Blueprint, jsonify, request
 import json
 import os
 import requests
@@ -245,7 +245,7 @@ def update_feishu_config():
         else:
             config = {}
         
-        for key in ['enabled', 'msg_type', 'base_url']:
+        for key in ['enabled', 'msg_type', 'base_url', 'news_push_mode']:
             if key in data:
                 config[key] = data[key]
         
@@ -383,7 +383,7 @@ def update_wechat_config():
         else:
             config = {}
 
-        for key in ['enabled', 'msg_type', 'base_url']:
+        for key in ['enabled', 'msg_type', 'base_url', 'news_push_mode']:
             if key in data:
                 config[key] = data[key]
 
@@ -556,3 +556,4 @@ def update_ai_daily_prompt():
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/config/daily-prompt POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新首页AI分析提示词失败'}), 500
+
