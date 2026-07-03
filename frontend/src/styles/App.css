@@ -734,6 +734,55 @@
   }
 }
 
+/* 未登录时图表/数据区遮罩 */
+.chart-auth-mask {
+  position: absolute;
+  inset: 14px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.92);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.chart-auth-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #cbd5e1;
+}
+
+.chart-auth-icon {
+  font-size: 40px;
+  opacity: 0.85;
+}
+
+.chart-auth-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #9db0ca;
+}
+
+.chart-auth-btn {
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 22px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.chart-auth-btn:hover {
+  background: #4096ff;
+}
+
 .sector-list {
   background: rgba(20, 25, 45, 0.6);
   border-radius: 8px;

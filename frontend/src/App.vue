@@ -24,10 +24,9 @@
               <div class="wave wave2"></div>
             </div>
           </button>
-          <button class="timeline-button" @click="goToIntradayTimeline">盘中事件轴</button>
-          <button class="yuntu-button" @click="goToMarketMap">📊 大盘云图</button>
-          <button class="global-button" @click="goToGlobalMarket">🌍 全球股市地图</button>
-          <button class="quant-button" @click="openQuantSystem">📈 量化交易系统</button>
+          <button class="yuntu-button" @click="guardedGotoMarketMap">📊 大盘云图</button>
+          <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
+          <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
           <div class="more-menu-wrapper">
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
@@ -69,13 +68,13 @@
           </span>
         </div>
 
-        <button class="config-button" @click="goToConfig">
+        <button class="config-button" @click="guardedGoToConfig">
           AI配置
         </button>
-        <button class="log-button" @click="goToLogs">
+        <button class="log-button" @click="guardedGoToLogs">
           日志
         </button>
-        <button class="house-button" @click="goToHouseKline">
+        <button class="house-button" @click="guardedGoToHouseKline">
           房价K线
         </button>
       </div>
@@ -107,7 +106,7 @@
       </div>
     </div>
 
-    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth">
+    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth" v-if="!needsAuth">
       <div class="monitor-card-header">
         <span class="monitor-card-label">服务监控</span>
         <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
@@ -136,7 +135,7 @@
       </div>
     </div>
 
-    <div class="news-ticker-container" v-if="latestNews.length > 0">
+    <div class="news-ticker-container" v-if="!needsAuth && latestNews.length > 0">
       <div class="news-ticker-header">
         <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
         <div class="header-controls">
@@ -187,6 +186,13 @@
         <div class="chart-loading-content">
           <div class="chart-loading-spinner"></div>
           <div class="chart-loading-text">正在检测服务并加载图表...</div>
+        </div>
+      </div>
+      <div v-if="needsAuth" class="chart-auth-mask">
+        <div class="chart-auth-content">
+          <div class="chart-auth-icon">🔒</div>
+          <div class="chart-auth-text">登录后查看资金流向图表</div>
+          <button class="chart-auth-btn" @click="promptLogin">去登录</button>
         </div>
       </div>
     </div>

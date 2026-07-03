@@ -16,7 +16,7 @@ from data_processor import (
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
-from intraday_timeline import get_intraday_timeline, get_stock_hover_summary
+from intraday_timeline import get_stock_hover_summary
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')

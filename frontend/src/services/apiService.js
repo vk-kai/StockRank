@@ -136,23 +136,6 @@ export async function getStockFinancing(code) {
   }
 }
 
-/**
- * 获取历史资金流入数据
- * @param {number} days - 天数
- * @returns {Promise<Object>} 历史数据
- */
-export async function getIntradayTimeline(date) {
-  try {
-    const response = await apiClient.get('/flow/intraday-timeline', {
-      params: date ? { date } : {}
-    })
-    return response.data
-  } catch (error) {
-    console.error('获取盘中事件时间轴失败:', error)
-    throw error
-  }
-}
-
 export async function login(username, password) {
   const response = await apiClient.post('/auth/login', { username, password })
   return response.data

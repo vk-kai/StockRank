@@ -96,7 +96,8 @@ export default {
       aiAnalysisDate: null,
       aiAnalysisProgress: 0,
       aiAnalysisStep: '',
-      aiAnalysisPollTimer: null
+      aiAnalysisPollTimer: null,
+      needsAuth: false
     }
   },
   computed: {
@@ -280,26 +281,37 @@ export default {
       return marked.parse(this.aiAnalysisResult)
     }
   },
-  mounted() {
+  async mounted() {
+    window.addEventListener('auth-required', this.onAuthRequired)
+    window.addEventListener('auth-login-success', this.onAuthLogin)
+    window.addEventListener('auth-logout', this.onAuthLogout)
+
     this.loadNotificationState()
     this.loadSoundMode()
     this.initChart()
-    this.fetchDataByTimeRange()
-    this.startCountdown()
-    this.fetchLatestNews()
-    this.startNewsRotation()
-    this.fetchHealthStatus()
-    this.fetchMarketSummary()
-    this.startMarketSummaryRefresh()
-    // 检查上次AI分析任务状态
-    this.checkAIAnalysisStatus()
     window.addEventListener('resize', this.handleResize)
     this.$nextTick(() => {
       this.updateLayoutHeight()
     })
+
+    // 先检查登录态：未登录则不发起数据请求（避免一进首页就触发 401 弹框）
+    try {
+      const session = await getAuthSession()
+      if (session && session.authenticated) {
+        this.needsAuth = false
+        this.bootstrapData()
+      } else {
+        this.needsAuth = true
+      }
+    } catch (e) {
+      this.needsAuth = true
+    }
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
+    window.removeEventListener('auth-required', this.onAuthRequired)
+    window.removeEventListener('auth-login-success', this.onAuthLogin)
+    window.removeEventListener('auth-logout', this.onAuthLogout)
     if (this.chartInstance) {
       this.chartInstance.dispose()
       this.chartInstance = null
@@ -330,6 +342,51 @@ export default {
     }
   },
   methods: {
+    // 登录态变化回调
+    onAuthRequired() {
+      this.needsAuth = true
+      this.loading = false
+    },
+    onAuthLogin() {
+      if (this.needsAuth) {
+        this.needsAuth = false
+        this.error = null
+        this.bootstrapData()
+      }
+    },
+    onAuthLogout() {
+      this.needsAuth = true
+      // 清空已有数据，回到登录提示态
+      this.currentData = []
+      this.accumulatedData = []
+      this.historyData = {}
+      this.minuteData = {}
+      this.latestNews = []
+      this.marketSummary = null
+      this.marketSummaryError = null
+      if (this.chartInstance) {
+        this.chartInstance.clear()
+      }
+    },
+    // 已登录后拉取首页全部数据（从原 mounted 拆出）
+    bootstrapData() {
+      this.fetchDataByTimeRange()
+      this.startCountdown()
+      this.fetchLatestNews()
+      this.startNewsRotation()
+      this.fetchHealthStatus()
+      this.fetchMarketSummary()
+      this.startMarketSummaryRefresh()
+      this.checkAIAnalysisStatus()
+    },
+    // 点击数据相关按钮时，如未登录则唤起登录框
+    requireAuthOrPrompt() {
+      if (this.needsAuth) {
+        window.dispatchEvent(new CustomEvent('auth-request-login'))
+        return true
+      }
+      return false
+    },
     formatMarketAmount(value, showSign = true) {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
       const amount = Number(value)
@@ -1187,13 +1244,24 @@ export default {
       this.$router.push('/market-map')
     },
 
-    goToIntradayTimeline() {
-      this.$router.push('/intraday-timeline')
-    },
-
     goToGlobalMarket() {
       this.$router.push('/global-market')
     },
+
+    // 唤起登录框（Root.vue 监听 auth-request-login）
+    promptLogin() {
+      window.dispatchEvent(new CustomEvent('auth-request-login'))
+    },
+
+    // 未登录时拦截的数据相关操作包装：未登录则弹登录框，已登录透传到原方法
+    guardedGoToConfig() { if (this.requireAuthOrPrompt()) return; this.goToConfig() },
+    guardedGoToLogs() { if (this.requireAuthOrPrompt()) return; this.goToLogs() },
+    guardedGoToHouseKline() { if (this.requireAuthOrPrompt()) return; this.goToHouseKline() },
+    guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
+    guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
+    guardedGotoIntradayTimeline() { if (this.requireAuthOrPrompt()) return; this.goToIntradayTimeline() },
+    guardedOpenQuantSystem() { if (this.requireAuthOrPrompt()) return; this.openQuantSystem() },
+    async guardedAnalyzeDailyFlow() { if (this.requireAuthOrPrompt()) return; this.analyzeDailyFlow() },
 
     loadNotificationState() {
       if (!('Notification' in window)) {

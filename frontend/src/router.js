@@ -8,7 +8,6 @@ const DailyReport = () => import('./DailyReport.vue')
 const HouseKline = () => import('./HouseKline.vue')
 const GlobalMarket = () => import('./GlobalMarket.vue')
 const MarketMap = () => import('./MarketMap.vue')
-const IntradayTimeline = () => import('./IntradayTimeline.vue')
 
 const routes = [
   {
@@ -50,11 +49,6 @@ const routes = [
     path: '/market-map',
     name: 'MarketMap',
     component: MarketMap
-  },
-  {
-    path: '/intraday-timeline',
-    name: 'IntradayTimeline',
-    component: IntradayTimeline
   }
 ]
 
