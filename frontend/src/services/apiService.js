@@ -5,7 +5,8 @@ import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  timeout: 10000,
+  withCredentials: true
 })
 
 apiClient.interceptors.response.use(
@@ -13,7 +14,12 @@ apiClient.interceptors.response.use(
   (error) => {
     const response = error.response?.data
     
-    if (response && (response.error === 'security_violation' || response.error === 'access_denied')) {
+    if (response && response.error === 'auth_required') {
+      const event = new CustomEvent('auth-required', {
+        detail: { error, response }
+      })
+      window.dispatchEvent(event)
+    } else if (response && (response.error === 'security_violation' || response.error === 'access_denied')) {
       const event = new CustomEvent('security-error', {
         detail: { error, response }
       })
@@ -135,6 +141,45 @@ export async function getStockFinancing(code) {
  * @param {number} days - 天数
  * @returns {Promise<Object>} 历史数据
  */
+export async function getIntradayTimeline(date) {
+  try {
+    const response = await apiClient.get('/flow/intraday-timeline', {
+      params: date ? { date } : {}
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取盘中事件时间轴失败:', error)
+    throw error
+  }
+}
+
+export async function login(username, password) {
+  const response = await apiClient.post('/auth/login', { username, password })
+  return response.data
+}
+
+export async function logout() {
+  const response = await apiClient.post('/auth/logout')
+  return response.data
+}
+
+export async function getAuthSession() {
+  const response = await apiClient.get('/auth/session')
+  return response.data
+}
+
+export async function getStockHoverSummary(code, sector, name, sectorName) {
+  try {
+    const response = await apiClient.get('/flow/stock-hover-summary', {
+      params: { code, sector, name, sector_name: sectorName }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取个股 hover 摘要失败:', error)
+    throw error
+  }
+}
+
 export async function getHistoryData(days) {
   try {
     const response = await apiClient.get('/flow/history', {

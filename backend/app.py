@@ -2,7 +2,6 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 import threading
-import multiprocessing
 import os
 import traceback
 
@@ -12,7 +11,8 @@ from data_collector import data_collection_thread as data_collection_func
 from news_collector import news_collection_thread as news_collection_func, init_news_data
 from margin_collector import margin_collection_thread as margin_collection_func
 from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
-from routes import flow_bp, news_bp, config_bp, log_bp, house_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp
+from routes.auth_routes import install_auth_guard
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
 from Jarvis import SecurityMiddleware
@@ -25,6 +25,12 @@ margin_collection_thread = threading.Thread(target=margin_collection_func, daemo
 
 def create_app():
     app = Flask(__name__)
+    app.secret_key = os.environ.get('STOCKRANK_SECRET_KEY', 'stockrank-vk-local-session')
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
+        PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 7,
+    )
     
     CORS(app, resources={
         r"/api/*": {
@@ -51,11 +57,13 @@ def create_app():
     jarvis_bp = create_security_blueprint(security)
     app.register_blueprint(jarvis_bp)
     
+    app.register_blueprint(auth_bp)
     app.register_blueprint(flow_bp)
     app.register_blueprint(news_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(log_bp)
     app.register_blueprint(house_bp)
+    install_auth_guard(app)
     
     @app.route('/health', methods=['GET', 'POST', 'OPTIONS'])
     def health():
@@ -178,9 +186,9 @@ if __name__ == '__main__':
         start_health_checker()
         system_logger.info("健康检测已启动")
         
-        monitor_process = multiprocessing.Process(target=monitor_loop, daemon=True)
-        monitor_process.start()
-        system_logger.info("监控进程已启动")
+        monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        monitor_thread.start()
+        system_logger.info("监控线程已启动")
         
         system_logger.info("Flask服务器启动")
         app.run(host='0.0.0.0', port=5000, debug=False)

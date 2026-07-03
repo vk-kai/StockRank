@@ -1187,6 +1187,10 @@ export default {
       this.$router.push('/market-map')
     },
 
+    goToIntradayTimeline() {
+      this.$router.push('/intraday-timeline')
+    },
+
     goToGlobalMarket() {
       this.$router.push('/global-market')
     },

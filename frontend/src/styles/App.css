@@ -1429,6 +1429,26 @@
   box-shadow: 0 6px 16px rgba(114, 46, 209, 0.4);
 }
 
+.timeline-button {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+  border: 1px solid #22c55e;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);
+}
+
+.timeline-button:hover {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.36);
+}
+
 .global-button {
   background: linear-gradient(135deg, #0e7490, #0c4a6e);
   color: #fff;

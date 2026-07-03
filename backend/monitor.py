@@ -1,5 +1,6 @@
 import time
 import requests
+import os
 from datetime import datetime
 from logger import get_logger
 from config import load_monitor_config
@@ -13,15 +14,50 @@ CONFIG_RELOAD_INTERVAL = 300
 _restart_fail_count = {}
 MAX_RESTART_FAILS = 3
 _fail_reset_time = {}
+_auth_session = None
+_auth_session_base_url = None
+MONITOR_USERNAME = os.environ.get('STOCKRANK_MONITOR_USERNAME', 'vk')
+MONITOR_PASSWORD = os.environ.get('STOCKRANK_MONITOR_PASSWORD', 'vk666')
 
 def get_current_config():
     global _last_config_reload
     return load_monitor_config()
 
+def reset_auth_session():
+    global _auth_session, _auth_session_base_url
+    _auth_session = None
+    _auth_session_base_url = None
+
+def get_auth_session(api_base_url):
+    global _auth_session, _auth_session_base_url
+    if _auth_session is not None and _auth_session_base_url == api_base_url:
+        return _auth_session
+
+    session = requests.Session()
+    try:
+        response = session.post(
+            f"{api_base_url}/api/auth/login",
+            json={"username": MONITOR_USERNAME, "password": MONITOR_PASSWORD},
+            timeout=5,
+        )
+        if response.status_code != 200:
+            error_logger.error(f"[monitor] auth failed: HTTP {response.status_code}, {response.text[:200]}")
+    except Exception as e:
+        error_logger.error(f"[monitor] auth request failed: {e}")
+
+    _auth_session = session
+    _auth_session_base_url = api_base_url
+    return _auth_session
+
 def check_health(api_base_url):
     try:
         health_check_url = f"{api_base_url}/health"
-        response = requests.get(health_check_url, timeout=5)
+        session = get_auth_session(api_base_url)
+        response = session.get(health_check_url, timeout=5)
+        if response.status_code == 401:
+            reset_auth_session()
+            session = get_auth_session(api_base_url)
+            response = session.get(health_check_url, timeout=5)
         if response.status_code == 200:
             try:
                 return response.json()
@@ -60,12 +96,23 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
     
     try:
         system_logger.info(f"[监控] 尝试重启线程: {thread_name}, URL: {restart_url}")
-        response = requests.post(
+        api_base_url = restart_url.rsplit('/api/system/restart', 1)[0]
+        session = get_auth_session(api_base_url)
+        response = session.post(
             restart_url, 
             json={"thread": thread_name}, 
             timeout=10,
             headers={'Content-Type': 'application/json'}
         )
+        if response.status_code == 401:
+            reset_auth_session()
+            session = get_auth_session(api_base_url)
+            response = session.post(
+                restart_url,
+                json={"thread": thread_name},
+                timeout=10,
+                headers={'Content-Type': 'application/json'}
+            )
         if response.status_code == 200:
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
             _restart_fail_count[thread_name] = 0
@@ -93,7 +140,8 @@ def wait_for_backend(api_base_url, max_wait=60):
     
     while time.time() - start_time < max_wait:
         try:
-            response = requests.get(health_check_url, timeout=5)
+            session = get_auth_session(api_base_url)
+            response = session.get(health_check_url, timeout=5)
             if response.status_code == 200:
                 system_logger.info("后端服务已就绪")
                 return True

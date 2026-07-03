@@ -1,12 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import App from './App.vue'
-import NewsPage from './NewsPage.vue'
-import ConfigPage from './ConfigPage.vue'
-import LogPage from './LogPage.vue'
-import DailyReport from './DailyReport.vue'
-import HouseKline from './HouseKline.vue'
-import GlobalMarket from './GlobalMarket.vue'
-import MarketMap from './MarketMap.vue'
+
+const App = () => import('./App.vue')
+const NewsPage = () => import('./NewsPage.vue')
+const ConfigPage = () => import('./ConfigPage.vue')
+const LogPage = () => import('./LogPage.vue')
+const DailyReport = () => import('./DailyReport.vue')
+const HouseKline = () => import('./HouseKline.vue')
+const GlobalMarket = () => import('./GlobalMarket.vue')
+const MarketMap = () => import('./MarketMap.vue')
+const IntradayTimeline = () => import('./IntradayTimeline.vue')
 
 const routes = [
   {
@@ -48,6 +50,11 @@ const routes = [
     path: '/market-map',
     name: 'MarketMap',
     component: MarketMap
+  },
+  {
+    path: '/intraday-timeline',
+    name: 'IntradayTimeline',
+    component: IntradayTimeline
   }
 ]
 

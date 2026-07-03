@@ -16,6 +16,7 @@ from data_processor import (
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
+from intraday_timeline import get_intraday_timeline, get_stock_hover_summary
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -131,6 +132,39 @@ def stock_financing():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/stock-financing]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/intraday-timeline', methods=['GET'])
+def intraday_timeline():
+    """盘中事件时间轴：基于资金流快照、新闻缓存生成结构化事件。"""
+    date_str = request.args.get('date', '').strip() or None
+    try:
+        return jsonify(get_intraday_timeline(date_str))
+    except Exception as e:
+        error_msg = f"盘中事件轴接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/intraday-timeline]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/stock-hover-summary', methods=['GET'])
+def stock_hover_summary():
+    """大盘云图/板块个股 hover 摘要。"""
+    code = request.args.get('code', '').strip()
+    sector = request.args.get('sector', '').strip()
+    name = request.args.get('name', '').strip()
+    sector_name = request.args.get('sector_name', '').strip()
+    if not code:
+        return jsonify({'success': False, 'error': '缺少参数 code'}), 400
+    try:
+        return jsonify(get_stock_hover_summary(code, sector, name, sector_name))
+    except Exception as e:
+        error_msg = f"个股 hover 摘要接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/stock-hover-summary]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

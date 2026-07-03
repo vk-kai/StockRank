@@ -62,6 +62,40 @@
           <span class="mm-tooltip-label">市盈率</span>
           <span class="mm-tooltip-val">{{ tooltip.pe }}</span>
         </div>
+        <div v-if="tooltip.loading" class="mm-tooltip-extra">摘要加载中...</div>
+        <template v-else-if="tooltip.summary">
+          <div class="mm-tooltip-divider"></div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">所属板块</span>
+            <span class="mm-tooltip-val small">{{ tooltip.summary.sector_name || '--' }}</span>
+          </div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">板块排名</span>
+            <span class="mm-tooltip-val small">
+              {{ tooltip.summary.sector_rank ? '第' + tooltip.summary.sector_rank : '--' }}
+            </span>
+          </div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">融资净流入</span>
+            <span class="mm-tooltip-val small" :class="valueClass(tooltip.summary.margin?.latest_net_inflow)">
+              {{ formatMoney(tooltip.summary.margin?.latest_net_inflow) }}
+            </span>
+          </div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">融资余额</span>
+            <span class="mm-tooltip-val small">{{ formatMoney(tooltip.summary.margin?.latest_balance, true) }}</span>
+          </div>
+          <div v-if="tooltip.summary.recent_news && tooltip.summary.recent_news.length" class="mm-tooltip-news">
+            <div class="mm-tooltip-news-title">相关新闻</div>
+            <div
+              v-for="item in tooltip.summary.recent_news"
+              :key="item.title"
+              class="mm-tooltip-news-item"
+            >
+              {{ item.title }}
+            </div>
+          </div>
+        </template>
       </div>
       <div class="mm-hint">单击看融资趋势 · 双击看雪球 · 滚轮缩放 · 拖动平移</div>
       <div class="mm-changes-loading" v-show="changesLoading && hasData">
@@ -176,7 +210,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -338,7 +372,7 @@ export default {
       totalSectors: 0,
       totalStocks: 0,
       cacheTime: '',
-      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0 },
+      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
@@ -469,6 +503,9 @@ export default {
     this._hlTimer = null   // 高亮5秒后自动清除的定时器
     this._matches = null   // { stocks:Set(code), l1s:Set(name), l2s:Set(name) }
     this.clickTimer = null // 单击防抖定时器（用于区分"单击弹窗"与"双击跳雪球"）
+    this.hoverSummaryCache = new Map()
+    this.hoverSummaryTimer = null
+    this.hoverSummarySeq = 0
     this.finChart = null   // 融资弹窗 ECharts 实例
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
     this._downY = 0
@@ -627,6 +664,7 @@ export default {
           headerH: 0,
           children: (l2.children || []).map(s => ({
             name: s.name, code: s.code, change: s.change, value: s.value || 0, pe: s.pe,
+            l1Name: l1.name, l2Name: l2.name, sectorCode: l2.code || l1.code || '',
             color: interpColor(s.change)
           }))
         }))
@@ -957,6 +995,18 @@ export default {
     finValClass(v) {
       return v == null ? '' : (v >= 0 ? 'up' : 'down')
     },
+    valueClass(v) {
+      if (v == null || isNaN(v)) return ''
+      return v >= 0 ? 'up' : 'down'
+    },
+    formatMoney(v, noSign) {
+      if (v == null || isNaN(v)) return '--'
+      const abs = Math.abs(Number(v))
+      const sign = Number(v) < 0 ? '-' : (noSign ? '' : '+')
+      if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2) + '亿'
+      if (abs >= 1e4) return sign + (abs / 1e4).toFixed(2) + '万'
+      return sign + abs.toFixed(0)
+    },
     renderFinChart() {
       if (!this.finModal.visible || !this.finModal.series.length) return
       const el = this.$refs.finChartEl
@@ -1040,6 +1090,8 @@ export default {
       const hit = this.hitTest(Lx, Ly)
       if (hit) {
         const n = hit.node
+        const summaryKey = n.code ? `${n.code}|${n.sectorCode || ''}|${n.l2Name || n.l1Name || ''}` : ''
+        const keepSummary = summaryKey && this.tooltip.summaryKey === summaryKey
         this.tooltip = {
           visible: true,
           name: n.name,
@@ -1049,13 +1101,57 @@ export default {
           marketCap: fmtCap(n.value),
           pe: fmtPE(n.pe),
           x: mx + 14,
-          y: my + 14
+          y: my + 14,
+          loading: keepSummary ? this.tooltip.loading : false,
+          summary: keepSummary ? this.tooltip.summary : null,
+          summaryKey: keepSummary ? this.tooltip.summaryKey : ''
         }
+        if (n.code) this.queueHoverSummary(n)
         this.$refs.canvasEl.style.cursor = 'pointer'
       } else {
         this.tooltip.visible = false
+        this.tooltip.summary = null
+        this.tooltip.loading = false
+        if (this.hoverSummaryTimer) clearTimeout(this.hoverSummaryTimer)
         this.$refs.canvasEl.style.cursor = 'grab'
       }
+    },
+    queueHoverSummary(node) {
+      const key = `${node.code}|${node.sectorCode || ''}|${node.l2Name || node.l1Name || ''}`
+      if (this.tooltip.summaryKey === key && (this.tooltip.summary || this.tooltip.loading)) return
+      this.tooltip.summaryKey = key
+      const cached = this.hoverSummaryCache.get(key)
+      if (cached) {
+        this.tooltip.summary = cached
+        this.tooltip.loading = false
+        return
+      }
+      this.tooltip.loading = true
+      this.tooltip.summary = null
+      if (this.hoverSummaryTimer) clearTimeout(this.hoverSummaryTimer)
+      const seq = ++this.hoverSummarySeq
+      this.hoverSummaryTimer = setTimeout(async () => {
+        try {
+          const res = await getStockHoverSummary(
+            node.code,
+            node.sectorCode || '',
+            node.name || '',
+            node.l2Name || node.l1Name || ''
+          )
+          if (seq !== this.hoverSummarySeq || !this.tooltip.visible || this.tooltip.summaryKey !== key) return
+          const summary = res && res.success ? res.data : null
+          if (summary) this.hoverSummaryCache.set(key, summary)
+          this.tooltip.summary = summary
+        } catch (err) {
+          if (seq === this.hoverSummarySeq && this.tooltip.summaryKey === key) {
+            this.tooltip.summary = null
+          }
+        } finally {
+          if (seq === this.hoverSummarySeq && this.tooltip.summaryKey === key) {
+            this.tooltip.loading = false
+          }
+        }
+      }, 180)
     },
     hitTest(Lx, Ly) {
       for (const s of this.layout) {
@@ -1165,7 +1261,8 @@ export default {
   position: absolute;
   pointer-events: none;
   z-index: 20;
-  min-width: 150px;
+  min-width: 190px;
+  max-width: 320px;
   background: rgba(20, 25, 45, 0.96);
   border: 1px solid #3a4a6b;
   border-radius: 6px;
@@ -1177,8 +1274,36 @@ export default {
 .mm-tooltip-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .mm-tooltip-label { font-size: 12px; color: #8ba4c7; }
 .mm-tooltip-val { font-size: 15px; font-weight: bold; }
+.mm-tooltip-val.small { font-size: 12px; max-width: 170px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-tooltip-val.up { color: #ff4d4f; }
 .mm-tooltip-val.down { color: #52c41a; }
+.mm-tooltip-extra {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(139, 164, 199, 0.22);
+  color: #8ba4c7;
+  font-size: 12px;
+}
+.mm-tooltip-divider {
+  margin: 7px 0;
+  border-top: 1px solid rgba(139, 164, 199, 0.22);
+}
+.mm-tooltip-news {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(139, 164, 199, 0.22);
+}
+.mm-tooltip-news-title {
+  color: #8ba4c7;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.mm-tooltip-news-item {
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
 
 .mm-hint {
   position: absolute;
