@@ -23,7 +23,9 @@ def install_auth_guard(app):
         if path.startswith('/api/auth/'):
             return None
 
-        protected = path.startswith('/api/') or path == '/health'
+        # /health 必须放行：docker healthcheck 用 curl 打它判定容器存活，
+        # 否则 backend 永不健康 → nginx(service_healthy) 永不启动
+        protected = path.startswith('/api/')
         if protected and not is_authenticated():
             return jsonify({
                 'success': False,
