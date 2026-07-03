@@ -15,6 +15,7 @@ from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp
 from routes.auth_routes import install_auth_guard
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
+from market_map_snapshot import market_map_snapshot_thread
 from Jarvis import SecurityMiddleware
 from Jarvis.middleware import create_security_blueprint
 from Jarvis.config import get_config as get_jarvis_config
@@ -22,6 +23,7 @@ from Jarvis.config import get_config as get_jarvis_config
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
 margin_collection_thread = threading.Thread(target=margin_collection_func, daemon=True)
+mm_snapshot_thread = threading.Thread(target=market_map_snapshot_thread, daemon=True)
 
 def create_app():
     app = Flask(__name__)
@@ -183,6 +185,10 @@ if __name__ == '__main__':
 
         if not margin_collection_thread.is_alive():
             margin_collection_thread.start()
+
+        if not mm_snapshot_thread.is_alive():
+            mm_snapshot_thread.start()
+        system_logger.info("大盘云图快照线程已注册启动")
         
         # 启动时自动执行健康检测（获取可用请求头 + 启动定时检测）
         start_health_checker()

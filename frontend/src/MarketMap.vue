@@ -105,10 +105,33 @@
         <span>已筛选：{{ filterBadge.desc }}（{{ filterBadge.count }} 只）</span>
         <span class="mm-filter-clear">✕</span>
       </div>
+      <div class="mm-replay-watermark" v-if="replayMode">🕐 复盘 {{ replayTime }}</div>
     </div>
 
     <div class="mm-footer">
       <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
+      <div class="mm-replay-bar" v-if="replayPoints.length">
+        <button
+          v-for="p in replayPoints"
+          :key="p.time"
+          class="mm-replay-time"
+          :class="{ active: replayMode && replayTime === p.time }"
+          :disabled="!p.available"
+          @click="enterReplay(p.time)"
+          :title="p.available ? '复盘 ' + p.time : '尚未抓取'"
+        >{{ p.time }}</button>
+        <span class="mm-replay-sep"></span>
+        <button class="mm-replay-play" @click="togglePlay" :disabled="!hasReplayAvailable">
+          {{ replayPlaying ? '⏸' : '▶' }}{{ replayPlaying ? ' 暂停' : ' 播放' }}
+        </button>
+        <button
+          class="mm-replay-live"
+          :class="{ active: replayMode }"
+          @click="exitReplay"
+          :disabled="!replayMode"
+          :title="replayMode ? '返回实时行情' : '当前为实时行情'"
+        >🔴 {{ replayMode ? '返回实时' : '实时' }}</button>
+      </div>
       <div class="mm-legend">
         <button
           class="mm-limit-btn up"
@@ -210,7 +233,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -372,6 +395,11 @@ export default {
       totalSectors: 0,
       totalStocks: 0,
       cacheTime: '',
+      // 复盘/回放
+      replayMode: false,        // true=复盘态（暂停实时轮询，显示历史快照）
+      replayTime: '',           // 当前复盘的时间点，如 '10:00'
+      replayPlaying: false,     // 是否正在自动播放
+      replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
@@ -396,6 +424,10 @@ export default {
   computed: {
     hasData() {
       return this.tree.length > 0
+    },
+    // 是否有可播放的复盘快照（至少一个时间点已抓取）
+    hasReplayAvailable() {
+      return this.replayPoints.some(p => p.available)
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
     latestFinDate() {
@@ -510,16 +542,24 @@ export default {
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
     this._downY = 0
     this._finRetry = 0     // 按需更新无数据时的自动重试计数
+    this.replayTimer = null        // 复盘自动播放定时器
+    this.replayPointsTimer = null  // 复盘时间点状态刷新定时器
 
     this.syncSize()
     this.ro = new ResizeObserver(() => this.onResize())
     if (this.$refs.wrapperEl) this.ro.observe(this.$refs.wrapperEl)
 
     await this.fetchData(true)
-    this.timer = setInterval(() => this.fetchData(false), 30000)
+    // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
+    this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 30000)
+    // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
+    this.refreshReplayPoints()
+    this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
   },
   beforeUnmount() {
     clearInterval(this.timer)
+    clearInterval(this.replayPointsTimer)
+    if (this.replayTimer) clearTimeout(this.replayTimer)
     if (this._raf) cancelAnimationFrame(this._raf)
     if (this._hlTimer) clearTimeout(this._hlTimer)
     if (this.clickTimer) clearTimeout(this.clickTimer)
@@ -627,6 +667,77 @@ export default {
       } finally {
         this.cacheLoading = false
       }
+    },
+
+    // ===== 复盘 / 回放 =====
+    // 拉取今天各时间点快照的抓取状态（决定时间按钮亮/灰）
+    async refreshReplayPoints() {
+      try {
+        const res = await getMarketMapSnapshots()
+        if (res && res.success && Array.isArray(res.points)) {
+          this.replayPoints = res.points
+        }
+      } catch (e) {
+        // 静默：复盘状态拉取失败不影响主图实时行情
+      }
+    },
+    // 点时间按钮：进入复盘态，加载该时刻快照（复用 applyData 渲染）
+    async enterReplay(time) {
+      if (!time) return
+      this.stopPlay()
+      try {
+        const res = await getMarketMapSnapshot(time)
+        if (res && res.success) {
+          this.replayMode = true
+          this.replayTime = time
+          this.applyData(res.data)
+        }
+      } catch (e) {
+        console.error('加载复盘快照失败', e)
+      }
+    },
+    // 退出复盘，恢复实时
+    exitReplay() {
+      if (!this.replayMode) return
+      this.replayMode = false
+      this.replayTime = ''
+      this.stopPlay()
+      this.fetchData(true)
+    },
+    // 一键播放：顺序播放全部已抓快照，每 1.5 秒一帧，到最后一帧停止（不循环）
+    togglePlay() {
+      if (this.replayPlaying) { this.stopPlay(); return }
+      const available = this.replayPoints.filter(p => p.available).map(p => p.time)
+      if (!available.length) return
+      let idx = available.indexOf(this.replayTime)
+      // 当前不在列表里、或已是最后一帧 → 从第一帧开始
+      if (idx < 0 || idx >= available.length - 1) idx = 0
+      this.replayMode = true
+      this.replayPlaying = true
+      const playFrame = async () => {
+        if (!this.replayPlaying) return
+        const time = available[idx]
+        if (!time) { this.stopPlay(); return }
+        try {
+          const res = await getMarketMapSnapshot(time)
+          if (!this.replayPlaying) return   // 播放途中被停止/手动切帧
+          if (res && res.success) {
+            this.replayTime = time
+            this.applyData(res.data)
+          }
+        } catch (e) { /* 单帧失败不中断整体播放 */ }
+        idx++
+        if (idx >= available.length) {
+          this.stopPlay()   // 播完最后一帧，停止并停留在该帧
+          return
+        }
+        this.replayTimer = setTimeout(playFrame, 1500)
+      }
+      playFrame()
+    },
+    stopPlay() {
+      this.replayPlaying = false
+      if (this.replayTimer) { clearTimeout(this.replayTimer); this.replayTimer = null }
     },
 
     onResize() {
@@ -1463,8 +1574,45 @@ export default {
 .mm-filter-badge:hover { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.18); }
 .mm-filter-clear { color: #8ba4c7; font-weight: bold; }
 
-.mm-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
-.mm-footer-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
+.mm-footer-text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 复盘工具条：页脚说明文字右边 */
+.mm-replay-bar { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
+.mm-replay-time {
+  min-width: 40px; height: 22px; padding: 0 5px;
+  border: 1px solid rgba(139,164,199,0.3); border-radius: 4px;
+  background: rgba(13,19,32,0.6); color: #b0c4e0;
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s ease; font-variant-numeric: tabular-nums;
+}
+.mm-replay-time:hover:not(:disabled) { border-color: #1890ff; color: #fff; background: rgba(24,144,255,0.15); }
+.mm-replay-time:disabled { opacity: 0.3; cursor: not-allowed; }
+.mm-replay-time.active { border-color: #1890ff; background: #1890ff; color: #fff; box-shadow: 0 0 0 2px rgba(24,144,255,0.3); }
+.mm-replay-sep { width: 1px; height: 16px; background: rgba(139,164,199,0.25); margin: 0 3px; }
+.mm-replay-play, .mm-replay-live {
+  height: 22px; padding: 0 10px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: all 0.15s ease; white-space: nowrap;
+}
+.mm-replay-play { border: 1px solid #1890ff; background: rgba(24,144,255,0.15); color: #69c0ff; }
+.mm-replay-play:hover:not(:disabled) { background: #1890ff; color: #fff; }
+.mm-replay-play:disabled { opacity: 0.4; cursor: not-allowed; }
+.mm-replay-live { border: 1px solid rgba(255,120,117,0.4); background: rgba(255,120,117,0.1); color: #ff7875; opacity: 0.45; }
+.mm-replay-live:disabled { opacity: 0.35; cursor: not-allowed; }
+.mm-replay-live.active { opacity: 1; border-color: #ff4d4f; background: rgba(255,77,79,0.2); color: #ffd8d8; box-shadow: 0 0 0 2px rgba(255,77,79,0.25); }
+.mm-replay-live.active:hover { background: rgba(255,77,79,0.3); }
+
+/* 复盘水印（画布左上角，复盘态显示，区别于实时） */
+.mm-replay-watermark {
+  position: absolute; top: 8px; left: 12px; z-index: 15;
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 12px;
+  background: rgba(24,144,255,0.18); border: 1px solid rgba(24,144,255,0.5);
+  border-radius: 12px; color: #69c0ff;
+  font-size: 12px; font-weight: 700;
+  pointer-events: none; font-variant-numeric: tabular-nums;
+}
 
 /* 融资趋势弹窗（单击个股触发） */
 .mm-modal-overlay {

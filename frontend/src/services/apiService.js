@@ -136,6 +136,33 @@ export async function getStockFinancing(code) {
   }
 }
 
+/**
+ * 大盘云图复盘：获取今天 10 个半小时整点的抓取状态（时间按钮亮/灰用）
+ * 返回 { success, date, points:[{time, available}] }
+ */
+export async function getMarketMapSnapshots() {
+  try {
+    const response = await apiClient.get('/flow/market-map-snapshots')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图复盘快照状态失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 大盘云图复盘：获取某时间点(如 '10:00')的完整快照，data 结构同 getMarketMap
+ */
+export async function getMarketMapSnapshot(time) {
+  try {
+    const response = await apiClient.get('/flow/market-map-snapshot', { params: { time } })
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图复盘快照失败:', error)
+    throw error
+  }
+}
+
 export async function login(username, password) {
   const response = await apiClient.post('/auth/login', { username, password })
   return response.data

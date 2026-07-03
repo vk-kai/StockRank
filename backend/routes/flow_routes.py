@@ -17,6 +17,7 @@ from data_collector import is_trading_day, is_trading_time, is_morning_close, is
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from intraday_timeline import get_stock_hover_summary
+from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -109,6 +110,33 @@ def market_map_stocks():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/market-map-stocks]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-snapshots', methods=['GET'])
+def market_map_snapshots_list():
+    """大盘云图复盘：返回今天 10 个半小时整点的抓取状态（前端时间按钮亮/灰用）。"""
+    try:
+        date_str, points = get_points_status()
+        return jsonify({'success': True, 'date': date_str, 'points': points})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-map-snapshots]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-snapshot', methods=['GET'])
+def market_map_snapshot_by_time():
+    """大盘云图复盘：返回某时间点(如 10:00)的完整快照 data，结构同 /market-map。"""
+    t = (request.args.get('time') or '').strip()
+    if t not in SNAPSHOT_TIMES:
+        return jsonify({'success': False, 'error': '缺少或非法的 time 参数'}), 400
+    try:
+        data = get_market_map_snapshot(t)
+        if data:
+            return jsonify({'success': True, 'data': data, 'time': t})
+        return jsonify({'success': False, 'message': '该时间点暂无快照'}), 404
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-map-snapshot]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
