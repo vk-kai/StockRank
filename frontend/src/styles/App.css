@@ -291,6 +291,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* 兜底最小高度：未登录时图表区显示登录遮罩，避免容器塌陷导致页脚上浮/布局错乱 */
+  min-height: 420px;
 }
 
 @media (max-width: 1200px) {

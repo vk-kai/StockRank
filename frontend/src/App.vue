@@ -10,7 +10,7 @@
           <span>GitHub</span>
         </a>
         <div class="title-actions">
-          <button class="ai-analyze-button" @click="analyzeDailyFlow" :disabled="aiAnalyzing">
+          <button class="ai-analyze-button" @click="guardedAnalyzeDailyFlow" :disabled="aiAnalyzing">
             <span class="button-text">
               <template v-if="aiAnalyzing">
                 <span class="step-text">{{ aiAnalysisStep }}</span>
@@ -31,9 +31,9 @@
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
             <div class="more-dropdown" v-if="showMoreMenu">
-              <div class="more-dropdown-item" @click="goToConfig(); showMoreMenu = false">AI配置</div>
-              <div class="more-dropdown-item" @click="goToLogs(); showMoreMenu = false">日志</div>
-              <div class="more-dropdown-item" @click="goToHouseKline(); showMoreMenu = false">房价K线</div>
+              <div class="more-dropdown-item" @click="guardedGoToConfig(); showMoreMenu = false">AI配置</div>
+              <div class="more-dropdown-item" @click="guardedGoToLogs(); showMoreMenu = false">日志</div>
+              <div class="more-dropdown-item" @click="guardedGoToHouseKline(); showMoreMenu = false">房价K线</div>
             </div>
           </div>
         </div>
@@ -169,7 +169,7 @@
     </div>
 
     <div class="chart-container" ref="chartContainer">
-      <div class="chart-controls">
+      <div class="chart-controls" v-if="!needsAuth">
         <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
           <label>回放日期：</label>
           <input 

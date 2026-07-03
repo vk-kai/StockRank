@@ -29,7 +29,9 @@ def create_app():
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
-        PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 7,
+        # 登录态永不过期：设为 100 年。浏览器实际会按自身上限保留
+        # （Chrome 约 400 天），效果上等同永久登录，关闭浏览器/重开仍保持登录。
+        PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 365 * 100,
     )
     
     CORS(app, resources={

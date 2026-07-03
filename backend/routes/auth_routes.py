@@ -13,6 +13,13 @@ def is_authenticated():
     return session.get('stockrank_user') == USERNAME
 
 
+# 健康检查必须放行：docker healthcheck 用 curl 打 /health 判定容器存活，
+# 若要求登录 → backend 永不健康 → nginx(service_healthy) 永不启动
+PUBLIC_EXACT_PATHS = {'/health'}
+# 登录/登出/会话查询本身必须放行，否则无法完成登录
+PUBLIC_PATH_PREFIXES = ('/api/auth/',)
+
+
 def install_auth_guard(app):
     @app.before_request
     def require_login():
@@ -20,13 +27,13 @@ def install_auth_guard(app):
             return None
 
         path = request.path or ''
-        if path.startswith('/api/auth/'):
+
+        # 放行：健康检查 + 登录认证接口
+        if path in PUBLIC_EXACT_PATHS or path.startswith(PUBLIC_PATH_PREFIXES):
             return None
 
-        # /health 必须放行：docker healthcheck 用 curl 打它判定容器存活，
-        # 否则 backend 永不健康 → nginx(service_healthy) 永不启动
-        protected = path.startswith('/api/')
-        if protected and not is_authenticated():
+        # 仅 /api/ 开头的业务接口需要登录；静态资源、前端路由等一律不拦截
+        if path.startswith('/api/') and not is_authenticated():
             return jsonify({
                 'success': False,
                 'error': 'auth_required',

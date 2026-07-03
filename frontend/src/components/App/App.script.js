@@ -353,6 +353,8 @@ export default {
         this.error = null
         this.bootstrapData()
       }
+      // 登录后监控卡/新闻条会出现，需重新计算图表高度，避免布局错乱
+      this.$nextTick(() => this.updateLayoutHeight())
     },
     onAuthLogout() {
       this.needsAuth = true
@@ -367,6 +369,8 @@ export default {
       if (this.chartInstance) {
         this.chartInstance.clear()
       }
+      // 登出后监控卡/新闻条会消失，重新计算图表高度
+      this.$nextTick(() => this.updateLayoutHeight())
     },
     // 已登录后拉取首页全部数据（从原 mounted 拆出）
     bootstrapData() {
@@ -724,6 +728,8 @@ export default {
     },
 
     async fetchDataByTimeRange() {
+      // 未登录时不发起数据请求，直接唤起登录框（满足"所有按钮未登录都先登录"）
+      if (this.requireAuthOrPrompt()) return
       await this.fetchHealthStatus()
       
       this.loading = true
@@ -1045,6 +1051,8 @@ export default {
     },
 
     onReplayDateChange() {
+      // 未登录时不加载回放数据，唤起登录框
+      if (this.requireAuthOrPrompt()) return
       // 如果选择的是非交易日（周末），自动跳转到对应的周五
       if (!isTradingDay(this.replayDate)) {
         this.replayDate = getLatestWeekday(this.replayDate)
