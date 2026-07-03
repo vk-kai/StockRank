@@ -22,6 +22,7 @@ data/
 logs/
 config/ai_config.json
 config/feishu_config.json
+config/wechat_config.json
 config/stock_monitor.json
 
 # IDE

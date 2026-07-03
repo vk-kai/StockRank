@@ -5,6 +5,9 @@ import {
   getFeishuConfig,
   saveFeishuConfig,
   testFeishuConnection,
+  getWechatConfig,
+  saveWechatConfig,
+  testWechatConnection,
   getStockMonitorConfig,
   saveStockMonitorConfig,
   getAIPrompt,
@@ -27,6 +30,7 @@ export default {
       tabs: [
         { id: 'ai', name: 'AI配置', icon: '🤖' },
         { id: 'feishu', name: '飞书推送', icon: '📢' },
+        { id: 'wechat', name: '企业微信推送', icon: '💬' },
         { id: 'stock', name: '股票监控', icon: '📈' },
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
         { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
@@ -47,6 +51,12 @@ export default {
         webhook_url: '',
         secret: '',
         msg_type: 'interactive',
+        base_url: 'http://localhost:5000'
+      },
+      wechatConfig: {
+        enabled: false,
+        webhook_url: '',
+        msg_type: 'markdown',
         base_url: 'http://localhost:5000'
       },
       stockConfig: {
@@ -78,9 +88,10 @@ export default {
 
     async loadConfigs() {
       try {
-        const [aiRes, feishuRes, stockRes, promptRes, dailyPromptRes] = await Promise.all([
+        const [aiRes, feishuRes, wechatRes, stockRes, promptRes, dailyPromptRes] = await Promise.all([
           getAIConfig(),
           getFeishuConfig(),
+          getWechatConfig(),
           getStockMonitorConfig(),
           getAIPrompt(),
           getAIDailyPrompt()
@@ -91,6 +102,9 @@ export default {
         }
         if (feishuRes.success) {
           this.feishuConfig = { ...this.feishuConfig, ...feishuRes.data }
+        }
+        if (wechatRes.success) {
+          this.wechatConfig = { ...this.wechatConfig, ...wechatRes.data }
         }
         if (stockRes.success) {
           this.stockConfig = { ...this.stockConfig, ...stockRes.data }
@@ -252,6 +266,48 @@ export default {
           this.showToast('✅ 飞书连接测试成功', 'success')
         } else {
           const errorInfo = response.data?.msg || JSON.stringify(response.data)
+          this.showToast(`❌ HTTP ${response.status_code}: ${errorInfo}`, 'error')
+        }
+      } catch (error) {
+        const message = error.response?.data?.error || error.response?.data?.message || '测试失败，请检查网络连接'
+        this.showToast('❌ ' + message, 'error')
+      }
+    },
+
+    async saveWechatConfig() {
+      this.showPasswordModal(async (password) => {
+        try {
+          const response = await saveWechatConfig({
+            ...this.wechatConfig,
+            password: password
+          })
+          if (response.success) {
+            this.showToast('企业微信配置保存成功', 'success')
+            await this.loadConfigs()
+          } else {
+            this.showToast(response.message || '保存失败', 'error')
+          }
+        } catch (error) {
+          if (error.response?.status === 401) {
+            this.showToast('密码错误', 'error')
+          } else {
+            const message = error.response?.data?.message || '保存失败'
+            this.showToast(message, 'error')
+          }
+        }
+      })
+    },
+
+    async testWechatConfig() {
+      this.showToast('正在测试企业微信连接...', 'info')
+
+      try {
+        const response = await testWechatConnection()
+
+        if (response.success) {
+          this.showToast('✅ 企业微信连接测试成功', 'success')
+        } else {
+          const errorInfo = response.data?.errmsg || JSON.stringify(response.data)
           this.showToast(`❌ HTTP ${response.status_code}: ${errorInfo}`, 'error')
         }
       } catch (error) {

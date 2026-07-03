@@ -121,19 +121,19 @@ def data_collection_thread():
                     
                     if not is_pushed(today, '上午'):
                         try:
-                            from feishu_pusher import push_daily_summary_feishu
+                            from notification_pusher import push_daily_summary
                             comparison_data = get_top5_comparison_data(today)
                             if comparison_data:
-                                push_result = push_daily_summary_feishu(comparison_data, period='上午')
+                                push_result = push_daily_summary(comparison_data, period='上午')
                                 if push_result:
-                                    data_logger.info(f"上午汇总飞书推送成功")
+                                    data_logger.info(f"上午汇总消息推送成功")
                                     update_push_status(today, '上午')
                                 else:
-                                    data_logger.error(f"上午汇总飞书推送失败")
+                                    data_logger.error(f"上午汇总消息推送失败")
                             else:
                                 data_logger.error(f"获取TOP5对比数据失败")
                         except Exception as e:
-                            error_logger.error(f"上午汇总飞书推送异常: {e}")
+                            error_logger.error(f"上午汇总消息推送异常: {e}")
                     else:
                         data_logger.info(f"今日上午汇总已推送过，跳过重复推送")
                 else:
@@ -148,19 +148,19 @@ def data_collection_thread():
                     
                     if not is_pushed(today, '下午'):
                         try:
-                            from feishu_pusher import push_daily_summary_feishu
+                            from notification_pusher import push_daily_summary
                             comparison_data = get_top5_comparison_data(today)
                             if comparison_data:
-                                push_result = push_daily_summary_feishu(comparison_data, period='下午')
+                                push_result = push_daily_summary(comparison_data, period='下午')
                                 if push_result:
-                                    data_logger.info(f"下午汇总飞书推送成功")
+                                    data_logger.info(f"下午汇总消息推送成功")
                                     update_push_status(today, '下午')
                                 else:
-                                    data_logger.error(f"下午汇总飞书推送失败")
+                                    data_logger.error(f"下午汇总消息推送失败")
                             else:
                                 data_logger.error(f"获取TOP5对比数据失败")
                         except Exception as e:
-                            error_logger.error(f"下午汇总飞书推送异常: {e}")
+                            error_logger.error(f"下午汇总消息推送异常: {e}")
                     else:
                         data_logger.info(f"今日下午汇总已推送过，跳过重复推送")
                 else:

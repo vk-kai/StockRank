@@ -404,6 +404,36 @@ export async function testFeishuConnection() {
   }
 }
 
+export async function getWechatConfig() {
+  try {
+    const response = await apiClient.get('/config/wechat')
+    return response.data
+  } catch (error) {
+    console.error('获取企业微信配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveWechatConfig(config) {
+  try {
+    const response = await apiClient.post('/config/wechat', config)
+    return response.data
+  } catch (error) {
+    console.error('保存企业微信配置失败:', error)
+    throw error
+  }
+}
+
+export async function testWechatConnection() {
+  try {
+    const response = await apiClient.post('/config/wechat/test', {})
+    return response.data
+  } catch (error) {
+    console.error('测试企业微信连接失败:', error)
+    throw error
+  }
+}
+
 export async function getStockMonitorConfig() {
   try {
     const response = await apiClient.get('/config/stock-monitor')
