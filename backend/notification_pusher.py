@@ -10,7 +10,7 @@ from wechat_pusher import (
     send_wechat_message,
 )
 
-info_logger = get_logger('system')
+info_logger = get_logger('data_push')
 
 IMPORTANT_AI_FILTER = 'important_ai_filter'
 IMPORTANT_DIRECT = 'important_direct'
