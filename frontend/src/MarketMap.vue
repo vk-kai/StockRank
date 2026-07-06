@@ -681,12 +681,13 @@ export default {
         this.$nextTick(() => { this.buildLayout(); this.render() })
         return
       }
-      const codeSet = new Set(this.pushedCodes)
+      const extractDigits = c => { const m = String(c || '').match(/(\d{6})/); return m ? m[1] : String(c || '') }
+      const codeSet = new Set(this.pushedCodes.map(extractDigits))
       const filteredTree = rawTree
         .map((l1) => {
           const l1Children = (l1.children || [])
             .map((l2) => {
-              const stocks = (l2.children || []).filter((stock) => codeSet.has(String(stock.code || '').padStart(6, '0')))
+              const stocks = (l2.children || []).filter((stock) => codeSet.has(extractDigits(stock.code)))
               if (!stocks.length) return null
               const value = stocks.reduce((sum, stock) => sum + Number(stock.value || 0), 0)
               return {
@@ -718,7 +719,7 @@ export default {
       try {
         const res = await getMarketMapPush()
         const stocks = (res && res.success && res.data && Array.isArray(res.data.stocks)) ? res.data.stocks : []
-        this.pushedCodes = stocks.map(item => String(item.code || '').padStart(6, '0')).filter(Boolean)
+        this.pushedCodes = stocks.map(item => { const m = String(item.code || '').match(/(\d{6})/); return m ? m[1] : String(item.code || '') }).filter(Boolean)
         this.pushedCount = this.pushedCodes.length
         this.pushedUpdatedAt = (res && res.success && res.data && res.data.updated_at) || ''
         this.pushedOnly = this.pushedCount > 0
