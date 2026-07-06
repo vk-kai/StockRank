@@ -288,6 +288,11 @@ function limitThreshold(code) {
 
 // 个股是否命中当前筛选。active 取值：null(无) / 数值 -4..4(色块区间) / 'limit_up' / 'limit_down'
 // 区间为半开 (L-1, L]，两极延伸：-4 → change≤-4；+4 → change>3
+function extractDigits(c) {
+  const m = String(c || '').match(/(\d{6})/)
+  return m ? m[1] : String(c || '')
+}
+
 function inFilter(change, code, active) {
   if (active == null) return true
   if (typeof change !== 'number' || isNaN(change)) return false
@@ -474,7 +479,10 @@ export default {
     // 当前筛选状态条：activeLegend 非空时返回 {desc, count}，供顶部徽标展示
     filterBadge() {
       const a = this.activeLegend
-      if (a == null) return null
+      if (a == null && !this.pushedOnly) return null
+      if (this.pushedOnly && a == null) {
+        return { desc: '推送股票', count: this.pushedCount }
+      }
       let count = 0
       for (const s of this.tree) {
         for (const l2 of (s.children || [])) {
@@ -551,6 +559,7 @@ export default {
     this.hoverSummarySeq = 0
     this.finChart = null   // 融资弹窗 ECharts 实例
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
+    this._pushedCodeSet = null  // 推送股票代码Set，用于高亮筛选
     this._downY = 0
     this._finRetry = 0     // 按需更新无数据时的自动重试计数
     this.replayTimer = null        // 复盘自动播放定时器
@@ -589,9 +598,10 @@ export default {
       this.render()
     },
     clearFilter() {
-      if (this.activeLegend == null) return
+      if (this.activeLegend == null && !this.pushedOnly) return
       this.activeLegend = null
-      this.render()
+      if (this.pushedOnly) this.handleClearPushed()
+      else this.render()
     },
     showLegendTooltip(e, text) {
       const r = e.currentTarget.getBoundingClientRect()
@@ -672,43 +682,9 @@ export default {
       this.rebuildTreeFromSource()
     },
     rebuildTreeFromSource() {
-      const rawTree = Array.isArray(this.sourceTree) ? this.sourceTree : []
-      if (!this.pushedOnly || !this.pushedCodes.length) {
-        this.tree = rawTree
-        this.totalSectors = this.sourceTotals.totalSectors || 0
-        this.totalStocks = this.sourceTotals.totalStocks || 0
-        this.cacheTime = this.sourceTotals.cacheTime || ''
-        this.$nextTick(() => { this.buildLayout(); this.render() })
-        return
-      }
-      const extractDigits = c => { const m = String(c || '').match(/(\d{6})/); return m ? m[1] : String(c || '') }
-      const codeSet = new Set(this.pushedCodes.map(extractDigits))
-      const filteredTree = rawTree
-        .map((l1) => {
-          const l1Children = (l1.children || [])
-            .map((l2) => {
-              const stocks = (l2.children || []).filter((stock) => codeSet.has(extractDigits(stock.code)))
-              if (!stocks.length) return null
-              const value = stocks.reduce((sum, stock) => sum + Number(stock.value || 0), 0)
-              return {
-                ...l2,
-                children: stocks,
-                value,
-              }
-            })
-            .filter(Boolean)
-          if (!l1Children.length) return null
-          const value = l1Children.reduce((sum, child) => sum + Number(child.value || 0), 0)
-          return {
-            ...l1,
-            children: l1Children,
-            value,
-          }
-        })
-        .filter(Boolean)
-      this.tree = filteredTree
-      this.totalSectors = filteredTree.length
-      this.totalStocks = filteredTree.reduce((sum, l1) => sum + (l1.children || []).reduce((childSum, l2) => childSum + ((l2.children || []).length), 0), 0)
+      this.tree = Array.isArray(this.sourceTree) ? this.sourceTree : []
+      this.totalSectors = this.sourceTotals.totalSectors || 0
+      this.totalStocks = this.sourceTotals.totalStocks || 0
       this.cacheTime = this.sourceTotals.cacheTime || ''
       this.$nextTick(() => { this.buildLayout(); this.render() })
     },
@@ -719,10 +695,11 @@ export default {
       try {
         const res = await getMarketMapPush()
         const stocks = (res && res.success && res.data && Array.isArray(res.data.stocks)) ? res.data.stocks : []
-        this.pushedCodes = stocks.map(item => { const m = String(item.code || '').match(/(\d{6})/); return m ? m[1] : String(item.code || '') }).filter(Boolean)
+        this.pushedCodes = stocks.map(item => extractDigits(item.code)).filter(Boolean)
         this.pushedCount = this.pushedCodes.length
         this.pushedUpdatedAt = (res && res.success && res.data && res.data.updated_at) || ''
         this.pushedOnly = this.pushedCount > 0
+        this._pushedCodeSet = this.pushedOnly ? new Set(this.pushedCodes) : null
         // 不在此处调用 rebuildTreeFromSource，等 fetchData 完成后由 applyData 触发
       } catch (e) {
         console.error('加载推送股票失败', e)
@@ -739,7 +716,8 @@ export default {
           this.pushedCodes = []
           this.pushedCount = 0
           this.pushedUpdatedAt = ''
-          this.rebuildTreeFromSource()
+          this._pushedCodeSet = null
+          this.render()
           if (this.$route?.query?.pushed) {
             const nextQuery = { ...(this.$route.query || {}) }
             delete nextQuery.pushed
@@ -905,6 +883,7 @@ export default {
       if (!this.layout) return
 
       const active = this.activeLegend
+      const pushedSet = this.pushedOnly ? this._pushedCodeSet : null
       const { k, tx, ty } = this.view
       const cw = this.cssW, ch = this.cssH
       ctx.lineWidth = 1
@@ -923,7 +902,8 @@ export default {
             const x = st.x * k + tx, y = st.y * k + ty, w = st.w * k, h = st.h * k
             if (w < 0.5 || h < 0.5) continue
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
-            const matched = (active == null) || inFilter(st.change, st.code, active)
+            let matched = (active == null) || inFilter(st.change, st.code, active)
+            if (matched && pushedSet) matched = pushedSet.has(extractDigits(st.code))
             if (matched) sectorHasMatch = true
             ctx.fillStyle = matched ? st.color : DIM_COLOR
             ctx.fillRect(x, y, w, h)
@@ -962,7 +942,7 @@ export default {
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
         // 该板块一只都没命中：叠加暗色面纱，整块（含标题条/二级/边框）统一变暗
-        if (active != null && !sectorHasMatch) {
+        if ((active != null || pushedSet) && !sectorHasMatch) {
           ctx.fillStyle = VEIL_COLOR
           ctx.fillRect(sx, sy, sw, sh)
         }
