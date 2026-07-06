@@ -722,7 +722,7 @@ export default {
         this.pushedCount = this.pushedCodes.length
         this.pushedUpdatedAt = (res && res.success && res.data && res.data.updated_at) || ''
         this.pushedOnly = this.pushedCount > 0
-        this.rebuildTreeFromSource()
+        // 不在此处调用 rebuildTreeFromSource，等 fetchData 完成后由 applyData 触发
       } catch (e) {
         console.error('加载推送股票失败', e)
       } finally {
