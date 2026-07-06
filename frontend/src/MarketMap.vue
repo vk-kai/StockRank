@@ -21,14 +21,14 @@
         </span>
         <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
-        <button @click="handleClearPushed" class="mm-clear-push-btn" :disabled="pushedLoading" v-if="pushedOnly || pushedCount">
-          {{ pushedLoading ? '清空中...' : '清空推送' }}
-        </button>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
         </button>
         <button @click="fetchData(true)" class="mm-refresh-btn" :disabled="refreshing">
           <span class="mm-refresh-spin" :class="{ on: refreshing }">↻</span> 刷新行情
+        </button>
+        <button @click="handleClearPushed" class="mm-clear-push-btn" :disabled="pushedLoading" v-if="pushedOnly || pushedCount">
+          {{ pushedLoading ? '清空中...' : '清空推送' }}
         </button>
       </div>
     </header>
@@ -1405,7 +1405,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 14px;
+  padding: 6px 90px 6px 14px;
   background: rgba(26, 35, 53, 0.8);
   border-radius: 8px;
   border: 1px solid rgba(58, 74, 107, 0.5);
@@ -1430,9 +1430,9 @@ export default {
 .mm-search:focus { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15); }
 .mm-search::placeholder { color: #5a6b8c; }
 .mm-search-count { position: absolute; right: 8px; font-size: 11px; color: #8ba4c7; pointer-events: none; white-space: nowrap; }
-.mm-header-right { display: flex; align-items: center; gap: 10px; }
+.mm-header-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .mm-push-tag { font-size: 11px; color: #9bdaf0; padding: 4px 8px; border-radius: 999px; background: rgba(69, 183, 209, 0.12); border: 1px solid rgba(69, 183, 209, 0.28); white-space: nowrap; }
-.mm-clear-push-btn { padding: 6px 10px; background: rgba(239, 83, 80, 0.14); border: 1px solid rgba(239, 83, 80, 0.38); border-radius: 6px; color: #ffb4b2; cursor: pointer; font-size: 11px; white-space: nowrap; }
+.mm-clear-push-btn { order: 10; padding: 6px 10px; background: rgba(239, 83, 80, 0.14); border: 1px solid rgba(239, 83, 80, 0.38); border-radius: 6px; color: #ffb4b2; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .mm-clear-push-btn:hover:not(:disabled) { background: rgba(239, 83, 80, 0.2); }
 .mm-clear-push-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .mm-stats { font-size: 12px; color: #8ba4c7; white-space: nowrap; }

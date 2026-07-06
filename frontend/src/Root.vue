@@ -3,8 +3,8 @@
   <router-view></router-view>
 
   <!-- 右上角登录态入口 -->
-  <button v-if="authenticated" class="auth-entry auth-logout" @click="submitLogout">退出登录</button>
-  <button v-else class="auth-entry auth-login-btn" @click="openLogin">登录</button>
+  <button v-if="authenticated" :class="authEntryClass" @click="submitLogout">退出登录</button>
+  <button v-else :class="authEntryClass" @click="openLogin">登录</button>
 
   <!-- 登录弹窗（未登录访问受保护数据时由 auth-required 事件触发，或点击按钮主动唤起） -->
   <Teleport to="body">
@@ -53,6 +53,18 @@ export default {
       password: '',
       loading: false,
       message: ''
+    }
+  },
+  computed: {
+    isMarketMapRoute() {
+      return this.$route?.name === 'MarketMap'
+    },
+    authEntryClass() {
+      return [
+        'auth-entry',
+        this.authenticated ? 'auth-logout' : 'auth-login-btn',
+        this.isMarketMapRoute ? 'market-map-entry' : ''
+      ]
     }
   },
   async mounted() {
@@ -133,6 +145,12 @@ export default {
   padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
+}
+
+.auth-entry.market-map-entry {
+  top: 18px;
+  right: 18px;
+  padding: 6px 12px;
 }
 
 .auth-login-btn {
@@ -257,15 +275,5 @@ export default {
 .auth-modal-enter-from,
 .auth-modal-leave-to {
   opacity: 0;
-}
-
-.auth-modal-enter-active .auth-card,
-.auth-modal-leave-active .auth-card {
-  transition: transform 0.25s ease;
-}
-
-.auth-modal-enter-from .auth-card,
-.auth-modal-leave-to .auth-card {
-  transform: scale(0.94);
 }
 </style>
