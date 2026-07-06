@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+﻿from flask import Blueprint, jsonify, request
 import json
 import os
 import requests
@@ -9,7 +9,7 @@ import base64
 import traceback
 
 from config import (
-    AI_CONFIG_FILE, FEISHU_CONFIG_FILE, 
+    AI_CONFIG_FILE, FEISHU_CONFIG_FILE, WECHAT_CONFIG_FILE,
     STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE
 )
 from data_processor import error_logger
@@ -245,7 +245,7 @@ def update_feishu_config():
         else:
             config = {}
         
-        for key in ['enabled', 'msg_type', 'base_url']:
+        for key in ['enabled', 'msg_type', 'base_url', 'news_push_mode']:
             if key in data:
                 config[key] = data[key]
         
@@ -353,6 +353,111 @@ def test_feishu_push():
         system_logger.error(f"API错误 [/api/config/feishu/test]: {str(e)}")
         return jsonify({'success': False, 'status_code': None, 'error': str(e)}), 500
 
+# ==================== 企业微信配置 ====================
+@config_bp.route('/wechat', methods=['GET'])
+def get_wechat_config():
+    try:
+        if os.path.exists(WECHAT_CONFIG_FILE):
+            with open(WECHAT_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                config = mask_sensitive_data(config, ['webhook_url'])
+                return jsonify({'success': True, 'data': config})
+        return jsonify({'success': True, 'data': {}})
+    except Exception as e:
+        error_logger.error(f"获取企业微信配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/wechat GET]: {str(e)}")
+        return jsonify({'success': False, 'message': '获取企业微信配置失败'}), 500
+
+@config_bp.route('/wechat', methods=['POST'])
+def update_wechat_config():
+    try:
+        data = request.json
+
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+
+        if os.path.exists(WECHAT_CONFIG_FILE):
+            with open(WECHAT_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        else:
+            config = {}
+
+        for key in ['enabled', 'msg_type', 'base_url', 'news_push_mode']:
+            if key in data:
+                config[key] = data[key]
+
+        if 'webhook_url' in data and data['webhook_url'] != '******':
+            config['webhook_url'] = data['webhook_url']
+
+        with open(WECHAT_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+        return jsonify({'success': True, 'message': '企业微信配置更新成功'})
+    except Exception as e:
+        error_logger.error(f"更新企业微信配置失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/wechat POST]: {str(e)}")
+        return jsonify({'success': False, 'message': '更新企业微信配置失败'}), 500
+
+@config_bp.route('/wechat/test', methods=['POST'])
+def test_wechat_push():
+    try:
+        data = request.json or {}
+
+        if os.path.exists(WECHAT_CONFIG_FILE):
+            with open(WECHAT_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                saved_config = json.load(f)
+        else:
+            saved_config = {}
+
+        webhook_url = data.get('webhook_url')
+        if not webhook_url or webhook_url == '******':
+            webhook_url = saved_config.get('webhook_url')
+
+        msg_type = data.get('msg_type') or saved_config.get('msg_type', 'markdown')
+
+        if not webhook_url:
+            return jsonify({'success': False, 'status_code': None, 'error': 'Webhook地址不能为空'}), 400
+
+        if msg_type == 'text':
+            message = {
+                "msgtype": "text",
+                "text": {
+                    "content": "🔔 企业微信机器人测试消息\n\n这是一条测试消息，用于验证企业微信推送功能是否正常工作。"
+                }
+            }
+        else:
+            message = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "content": "**🔔 企业微信机器人测试消息**\n\n这是一条测试消息，用于验证企业微信推送功能是否正常工作。"
+                }
+            }
+
+        response = requests.post(webhook_url, json=message, timeout=10)
+
+        try:
+            response_data = response.json()
+        except:
+            response_data = response.text
+
+        return jsonify({
+            'success': response.status_code == 200 and response_data.get('errcode') == 0,
+            'status_code': response.status_code,
+            'data': response_data
+        })
+
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'status_code': None, 'error': '连接超时'}), 400
+    except requests.exceptions.ConnectionError as e:
+        return jsonify({'success': False, 'status_code': None, 'error': f'连接失败: {str(e)}'}), 400
+    except Exception as e:
+        error_logger.error(f"测试企业微信推送失败: {e}")
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/config/wechat/test]: {str(e)}")
+        return jsonify({'success': False, 'status_code': None, 'error': str(e)}), 500
+
 # ==================== 股票监控配置 ====================
 @config_bp.route('/stock-monitor', methods=['GET'])
 def get_stock_monitor_config():
@@ -451,3 +556,4 @@ def update_ai_daily_prompt():
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/config/daily-prompt POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新首页AI分析提示词失败'}), 500
+

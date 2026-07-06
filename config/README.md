@@ -66,7 +66,8 @@
   "enabled": false,
   "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxx",
   "secret": "xxxxxxxxxx",
-  "msg_type": "interactive"
+  "msg_type": "interactive",
+  "news_push_mode": "important_ai_filter"
 }
 ```
 
@@ -81,6 +82,11 @@
 - `msg_type`: 消息类型
   - `interactive`: 卡片消息（推荐）
   - `text`: 文本消息
+- `news_push_mode`: 新闻推送策略
+  - `important_ai_filter`: 重要新闻交给 AI 筛选后再推送（默认）
+  - `important_direct`: 重要新闻直接推送，不经过 AI
+  - `all_direct`: 所有新闻都直接推送
+  - `all_ai_filter`: 所有新闻都交给 AI 筛选后再推送
 
 **示例配置：**
 
@@ -89,13 +95,43 @@
   "enabled": true,
   "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/12345678-1234-1234-1234-1234567890ab",
   "secret": "your-secret-key-here",
-  "msg_type": "interactive"
+  "msg_type": "interactive",
+  "news_push_mode": "important_ai_filter"
 }
 ```
 
 ---
 
-### 3. 股票监控配置 (`stock_monitor.json`)
+### 3. 企业微信机器人配置 (`wechat_config.json`)
+
+用于配置企业微信群机器人，实现重要新闻和每日汇总推送。
+
+```json
+{
+  "enabled": false,
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx",
+  "msg_type": "markdown",
+  "base_url": "http://localhost:5000",
+  "news_push_mode": "important_ai_filter"
+}
+```
+
+**字段说明：**
+- `enabled`: 是否启用企业微信推送（true/false）
+- `webhook_url`: 企业微信群机器人 Webhook 地址
+  - 获取方式: 企业微信群 → 群设置 → 群机器人 → 添加机器人
+  - 格式: `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx`
+- `msg_type`: 消息类型
+  - `markdown`: Markdown 消息（推荐）
+  - `text`: 文本消息
+- `base_url`: 消息中日报详情链接的站点域名
+- `news_push_mode`: 新闻推送策略，同飞书配置
+
+飞书和企业微信是独立开关，可以只启用其中一个，也可以同时启用。
+
+---
+
+### 4. 股票监控配置 (`stock_monitor.json`)
 
 用于配置需要监控的股票，当新闻中出现相关关键词时自动推送。
 
@@ -151,7 +187,7 @@
 
 ---
 
-### 4. AI提示词配置 (`ai_prompt.txt`)
+### 5. AI提示词配置 (`ai_prompt.txt`)
 
 用于配置AI分析新闻时使用的提示词。
 
@@ -190,7 +226,16 @@
 5. 填写Webhook地址和密钥
 6. 保存文件
 
-### 3. 配置股票监控
+### 3. 启用企业微信推送
+
+1. 在企业微信群中添加群机器人
+2. 复制Webhook地址
+3. 打开 `wechat_config.json`
+4. 设置 `enabled` 为 `true`
+5. 填写Webhook地址
+6. 保存文件
+
+### 4. 配置股票监控
 
 1. 打开 `stock_monitor.json`
 2. 设置 `enabled` 为 `true`
@@ -198,7 +243,7 @@
 4. 为每个股票设置关键词
 5. 保存文件
 
-### 4. 自定义AI提示词（可选）
+### 5. 自定义AI提示词（可选）
 
 1. 打开 `ai_prompt.txt`
 2. 根据需要修改提示词

@@ -183,6 +183,14 @@ def save_news_data(news_list):
                                 existing_item['ai_analyzed'] = True
                             if item.get('pushed', False):
                                 existing_item['pushed'] = True
+                            item_pushed_channels = item.get('pushed_channels', [])
+                            if isinstance(item_pushed_channels, list):
+                                existing_pushed_channels = existing_item.get('pushed_channels', [])
+                                if not isinstance(existing_pushed_channels, list):
+                                    existing_pushed_channels = []
+                                existing_pushed_channels = set(existing_pushed_channels)
+                                existing_pushed_channels.update(item_pushed_channels)
+                                existing_item['pushed_channels'] = sorted(existing_pushed_channels)
                             if item.get('core_event'):
                                 existing_item['core_event'] = item.get('core_event')
                             if item.get('ai_analysis'):

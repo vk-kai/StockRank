@@ -69,6 +69,7 @@ DEV_NEWS_URL = "http://127.0.0.1:8899/tapp/news/push/stock/"
 
 AI_CONFIG_FILE = os.path.join(CONFIG_DIR, 'ai_config.json')
 FEISHU_CONFIG_FILE = os.path.join(CONFIG_DIR, 'feishu_config.json')
+WECHAT_CONFIG_FILE = os.path.join(CONFIG_DIR, 'wechat_config.json')
 STOCK_MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'stock_monitor.json')
 AI_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_prompt.txt')
 AI_DAILY_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_prompt.txt')
