@@ -20,6 +20,10 @@
           {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
         </span>
         <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
+        <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
+        <button @click="handleClearPushed" class="mm-clear-push-btn" :disabled="pushedLoading" v-if="pushedOnly || pushedCount">
+          {{ pushedLoading ? '清空中...' : '清空推送' }}
+        </button>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
         </button>
@@ -233,7 +237,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -395,6 +399,13 @@ export default {
       totalSectors: 0,
       totalStocks: 0,
       cacheTime: '',
+      pushedOnly: false,
+      pushedCodes: [],
+      pushedCount: 0,
+      pushedUpdatedAt: '',
+      pushedLoading: false,
+      sourceTree: [],
+      sourceTotals: { totalSectors: 0, totalStocks: 0, cacheTime: '' },
       // 复盘/回放
       replayMode: false,        // true=复盘态（暂停实时轮询，显示历史快照）
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
@@ -549,6 +560,7 @@ export default {
     this.ro = new ResizeObserver(() => this.onResize())
     if (this.$refs.wrapperEl) this.ro.observe(this.$refs.wrapperEl)
 
+    await this.loadPushedStateFromQuery()
     await this.fetchData(true)
     // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
     this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 30000)
@@ -651,11 +663,93 @@ export default {
       }
     },
     applyData(data) {
-      this.tree = data.tree
-      this.totalSectors = data.total_sectors
-      this.totalStocks = data.total_stocks
-      this.cacheTime = data.cache_time || ''
+      this.sourceTree = data.tree || []
+      this.sourceTotals = {
+        totalSectors: data.total_sectors || 0,
+        totalStocks: data.total_stocks || 0,
+        cacheTime: data.cache_time || ''
+      }
+      this.rebuildTreeFromSource()
+    },
+    rebuildTreeFromSource() {
+      const rawTree = Array.isArray(this.sourceTree) ? this.sourceTree : []
+      if (!this.pushedOnly || !this.pushedCodes.length) {
+        this.tree = rawTree
+        this.totalSectors = this.sourceTotals.totalSectors || 0
+        this.totalStocks = this.sourceTotals.totalStocks || 0
+        this.cacheTime = this.sourceTotals.cacheTime || ''
+        this.$nextTick(() => { this.buildLayout(); this.render() })
+        return
+      }
+      const codeSet = new Set(this.pushedCodes)
+      const filteredTree = rawTree
+        .map((l1) => {
+          const l1Children = (l1.children || [])
+            .map((l2) => {
+              const stocks = (l2.children || []).filter((stock) => codeSet.has(String(stock.code || '').padStart(6, '0')))
+              if (!stocks.length) return null
+              const value = stocks.reduce((sum, stock) => sum + Number(stock.value || 0), 0)
+              return {
+                ...l2,
+                children: stocks,
+                value,
+              }
+            })
+            .filter(Boolean)
+          if (!l1Children.length) return null
+          const value = l1Children.reduce((sum, child) => sum + Number(child.value || 0), 0)
+          return {
+            ...l1,
+            children: l1Children,
+            value,
+          }
+        })
+        .filter(Boolean)
+      this.tree = filteredTree
+      this.totalSectors = filteredTree.length
+      this.totalStocks = filteredTree.reduce((sum, l1) => sum + (l1.children || []).reduce((childSum, l2) => childSum + ((l2.children || []).length), 0), 0)
+      this.cacheTime = this.sourceTotals.cacheTime || ''
       this.$nextTick(() => { this.buildLayout(); this.render() })
+    },
+    async loadPushedStateFromQuery() {
+      const pushedFlag = this.$route?.query?.pushed
+      if (String(pushedFlag || '') !== '1') return
+      this.pushedLoading = true
+      try {
+        const res = await getMarketMapPush()
+        const stocks = (res && res.success && res.data && Array.isArray(res.data.stocks)) ? res.data.stocks : []
+        this.pushedCodes = stocks.map(item => String(item.code || '').padStart(6, '0')).filter(Boolean)
+        this.pushedCount = this.pushedCodes.length
+        this.pushedUpdatedAt = (res && res.success && res.data && res.data.updated_at) || ''
+        this.pushedOnly = this.pushedCount > 0
+        this.rebuildTreeFromSource()
+      } catch (e) {
+        console.error('加载推送股票失败', e)
+      } finally {
+        this.pushedLoading = false
+      }
+    },
+    async handleClearPushed() {
+      this.pushedLoading = true
+      try {
+        const res = await clearMarketMapPush()
+        if (res && res.success) {
+          this.pushedOnly = false
+          this.pushedCodes = []
+          this.pushedCount = 0
+          this.pushedUpdatedAt = ''
+          this.rebuildTreeFromSource()
+          if (this.$route?.query?.pushed) {
+            const nextQuery = { ...(this.$route.query || {}) }
+            delete nextQuery.pushed
+            this.$router.replace({ path: this.$route.path, query: nextQuery })
+          }
+        }
+      } catch (e) {
+        console.error('清空推送股票失败', e)
+      } finally {
+        this.pushedLoading = false
+      }
     },
     async refreshCache() {
       this.cacheLoading = true
@@ -1337,6 +1431,10 @@ export default {
 .mm-search::placeholder { color: #5a6b8c; }
 .mm-search-count { position: absolute; right: 8px; font-size: 11px; color: #8ba4c7; pointer-events: none; white-space: nowrap; }
 .mm-header-right { display: flex; align-items: center; gap: 10px; }
+.mm-push-tag { font-size: 11px; color: #9bdaf0; padding: 4px 8px; border-radius: 999px; background: rgba(69, 183, 209, 0.12); border: 1px solid rgba(69, 183, 209, 0.28); white-space: nowrap; }
+.mm-clear-push-btn { padding: 6px 10px; background: rgba(239, 83, 80, 0.14); border: 1px solid rgba(239, 83, 80, 0.38); border-radius: 6px; color: #ffb4b2; cursor: pointer; font-size: 11px; white-space: nowrap; }
+.mm-clear-push-btn:hover:not(:disabled) { background: rgba(239, 83, 80, 0.2); }
+.mm-clear-push-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .mm-stats { font-size: 12px; color: #8ba4c7; white-space: nowrap; }
 .mm-update { font-size: 11px; color: #8ba4c7; white-space: nowrap; }
 .mm-back-button { padding: 6px 14px; background: linear-gradient(135deg, #3a4a6b, #2a3a5b); border: 1px solid #4a5a7b; border-radius: 6px; color: #e0e6f0; cursor: pointer; transition: all 0.3s ease; font-size: 13px; white-space: nowrap; }

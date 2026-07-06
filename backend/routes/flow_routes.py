@@ -18,6 +18,7 @@ from margin_collector import get_stock_margin_series, trigger_ondemand_update_as
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from intraday_timeline import get_stock_hover_summary
 from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
+from market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -92,6 +93,47 @@ def market_map_refresh():
     except Exception as e:
         error_logger.error(f"大盘云图缓存刷新错误: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-push', methods=['GET'])
+def market_map_push_get():
+    doc = load_market_map_push()
+    return jsonify({
+        'success': True,
+        'data': {
+            'source': doc.get('source') or '',
+            'run_id': int(doc.get('run_id') or 0),
+            'updated_at': doc.get('updated_at'),
+            'count': len(doc.get('stocks') or []),
+            'stocks': doc.get('stocks') or [],
+        }
+    })
+
+
+@flow_bp.route('/market-map-push', methods=['POST'])
+def market_map_push_save():
+    try:
+        payload = request.get_json() or {}
+        doc = save_market_map_push(payload)
+        return jsonify({
+            'success': True,
+            'message': '已保存最新推送股票',
+            'data': {
+                'source': doc.get('source') or '',
+                'run_id': int(doc.get('run_id') or 0),
+                'updated_at': doc.get('updated_at'),
+                'count': len(doc.get('stocks') or []),
+            }
+        })
+    except Exception as e:
+        error_logger.error(f"大盘云图推送保存失败: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-push', methods=['DELETE'])
+def market_map_push_clear():
+    clear_market_map_push()
+    return jsonify({'success': True, 'message': '已清空推送股票'})
 
 
 @flow_bp.route('/market-map-stocks', methods=['GET'])

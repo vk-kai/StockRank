@@ -151,7 +151,7 @@ export async function getMarketMapSnapshots() {
 }
 
 /**
- * 大盘云图复盘：获取某时间点(如 '10:00')的完整快照，data 结构同 getMarketMap
+ * 获取大盘云图复盘：获取某时间点(如 '10:00')的完整快照，data 结构同 getMarketMap
  */
 export async function getMarketMapSnapshot(time) {
   try {
@@ -159,6 +159,26 @@ export async function getMarketMapSnapshot(time) {
     return response.data
   } catch (error) {
     console.error('获取大盘云图复盘快照失败:', error)
+    throw error
+  }
+}
+
+export async function getMarketMapPush() {
+  try {
+    const response = await apiClient.get('/flow/market-map-push')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图推送股票失败:', error)
+    throw error
+  }
+}
+
+export async function clearMarketMapPush() {
+  try {
+    const response = await apiClient.delete('/flow/market-map-push')
+    return response.data
+  } catch (error) {
+    console.error('清空大盘云图推送股票失败:', error)
     throw error
   }
 }
