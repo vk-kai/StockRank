@@ -18,6 +18,7 @@ error_logger = get_logger('error')
 data_logger = get_logger('data')
 system_logger = get_logger('system')
 cleanup_logger = get_logger('cleanup_flow')
+data_summary_logger = get_logger('data_summary')
 
 PROXY_POOL = []
 PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
@@ -736,7 +737,7 @@ def generate_daily_summary():
     realtime_data = load_realtime_data(today)
     
     if not realtime_data:
-        system_logger.info(f"当天({today})没有实时数据，无法生成每日汇总")
+        data_summary_logger.info(f"当天({today})没有实时数据，无法生成每日汇总")
         return False
     
     try:
@@ -762,13 +763,13 @@ def generate_daily_summary():
         if representative_data:
             success = save_daily_data(today, representative_data)
             if success:
-                system_logger.info(f"已生成并保存当天({today})的每日汇总数据，共{len(representative_data)}个板块")
+                data_summary_logger.info(f"已生成并保存当天({today})的每日汇总数据，共{len(representative_data)}个板块")
                 return True
             else:
-                system_logger.error(f"保存当天({today})的每日汇总数据失败")
+                data_summary_logger.error(f"保存当天({today})的每日汇总数据失败")
                 return False
         else:
-            system_logger.error(f"无法构建当天({today})的每日汇总数据")
+            data_summary_logger.error(f"无法构建当天({today})的每日汇总数据")
             return False
     except Exception as e:
         error_logger.error(f"生成每日汇总数据失败 ({today}): {e}")
@@ -779,7 +780,7 @@ def generate_daily_summary_for_date(date_str):
     realtime_data = load_realtime_data(date_str)
     
     if not realtime_data:
-        system_logger.info(f"日期({date_str})没有实时数据")
+        data_summary_logger.info(f"日期({date_str})没有实时数据")
         return False
     
     try:
@@ -805,13 +806,13 @@ def generate_daily_summary_for_date(date_str):
         if representative_data:
             success = save_daily_data(date_str, representative_data)
             if success:
-                system_logger.info(f"已生成并保存日期({date_str})的每日汇总数据，共{len(representative_data)}个板块")
+                data_summary_logger.info(f"已生成并保存日期({date_str})的每日汇总数据，共{len(representative_data)}个板块")
                 return True
             else:
-                system_logger.error(f"保存日期({date_str})的每日汇总数据失败")
+                data_summary_logger.error(f"保存日期({date_str})的每日汇总数据失败")
                 return False
         else:
-            system_logger.error(f"无法构建日期({date_str})的每日汇总数据")
+            data_summary_logger.error(f"无法构建日期({date_str})的每日汇总数据")
             return False
     except Exception as e:
         error_logger.error(f"生成日期({date_str})的每日汇总失败: {e}")

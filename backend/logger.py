@@ -9,6 +9,7 @@ _loggers = {}
 MODULE_DISPLAY_NAMES = {
     'data': '数据采集',
     'data_collect': '数据采集—数据获取',
+    'data_summary': '数据采集—汇总推送',
     'news': '新闻采集',
     'news_collect': '新闻采集—数据获取',
     'news_add': '新闻采集—新增新闻',

@@ -10,6 +10,7 @@ _last_morning_summary_date = None
 _last_afternoon_summary_date = None
 _last_sector_collect_key = None
 cleanup_logger = get_logger('cleanup_flow')
+data_summary_logger = get_logger('data_summary')
 
 def is_trading_day(date):
     if date.weekday() >= 5:
@@ -96,13 +97,13 @@ def data_collection_thread():
                 if _last_afternoon_summary_date != yesterday:
                     realtime_data = load_realtime_data(yesterday)
                     if realtime_data:
-                        system_logger.info(f"生成昨天({yesterday})的每日汇总...")
+                        data_summary_logger.info(f"生成昨天({yesterday})的每日汇总...")
                         success = generate_daily_summary_for_date(yesterday)
                         if success:
-                            system_logger.info(f"成功生成昨天({yesterday})的每日汇总")
+                            data_summary_logger.info(f"成功生成昨天({yesterday})的每日汇总")
                             _last_afternoon_summary_date = yesterday
                         else:
-                            system_logger.error(f"生成昨天({yesterday})的每日汇总失败")
+                            data_summary_logger.error(f"生成昨天({yesterday})的每日汇总失败")
                     
                     cleanup_result = cleanup_old_data()
                     if cleanup_result['cleaned']:
@@ -113,10 +114,10 @@ def data_collection_thread():
                         cleanup_logger.info(f"资金流向数据无需清理: {cleanup_result['reason']}")
             
             if should_generate_morning_summary(now):
-                system_logger.info(f"上午收盘后生成今日({today})的上午汇总...")
+                data_summary_logger.info(f"上午收盘后生成今日({today})的上午汇总...")
                 success = generate_daily_summary_for_date(today)
                 if success:
-                    system_logger.info(f"成功生成今日({today})的上午汇总")
+                    data_summary_logger.info(f"成功生成今日({today})的上午汇总")
                     _last_morning_summary_date = today
                     
                     if not is_pushed(today, '上午'):
@@ -126,24 +127,24 @@ def data_collection_thread():
                             if comparison_data:
                                 push_result = push_daily_summary_feishu(comparison_data, period='上午')
                                 if push_result:
-                                    data_logger.info(f"上午汇总飞书推送成功")
+                                    data_summary_logger.info(f"上午汇总飞书推送成功")
                                     update_push_status(today, '上午')
                                 else:
-                                    data_logger.error(f"上午汇总飞书推送失败")
+                                    data_summary_logger.error(f"上午汇总飞书推送失败")
                             else:
-                                data_logger.error(f"获取TOP5对比数据失败")
+                                data_summary_logger.error(f"获取TOP5对比数据失败")
                         except Exception as e:
                             error_logger.error(f"上午汇总飞书推送异常: {e}")
                     else:
-                        data_logger.info(f"今日上午汇总已推送过，跳过重复推送")
+                        data_summary_logger.info(f"今日上午汇总已推送过，跳过重复推送")
                 else:
-                    system_logger.error(f"生成今日({today})的上午汇总失败")
+                    data_summary_logger.error(f"生成今日({today})的上午汇总失败")
             
             if should_generate_afternoon_summary(now):
-                system_logger.info(f"下午收盘后生成今日({today})的每日汇总...")
+                data_summary_logger.info(f"下午收盘后生成今日({today})的每日汇总...")
                 success = generate_daily_summary_for_date(today)
                 if success:
-                    system_logger.info(f"成功生成今日({today})的每日汇总")
+                    data_summary_logger.info(f"成功生成今日({today})的每日汇总")
                     _last_afternoon_summary_date = today
                     
                     if not is_pushed(today, '下午'):
@@ -153,18 +154,18 @@ def data_collection_thread():
                             if comparison_data:
                                 push_result = push_daily_summary_feishu(comparison_data, period='下午')
                                 if push_result:
-                                    data_logger.info(f"下午汇总飞书推送成功")
+                                    data_summary_logger.info(f"下午汇总飞书推送成功")
                                     update_push_status(today, '下午')
                                 else:
-                                    data_logger.error(f"下午汇总飞书推送失败")
+                                    data_summary_logger.error(f"下午汇总飞书推送失败")
                             else:
-                                data_logger.error(f"获取TOP5对比数据失败")
+                                data_summary_logger.error(f"获取TOP5对比数据失败")
                         except Exception as e:
                             error_logger.error(f"下午汇总飞书推送异常: {e}")
                     else:
-                        data_logger.info(f"今日下午汇总已推送过，跳过重复推送")
+                        data_summary_logger.info(f"今日下午汇总已推送过，跳过重复推送")
                 else:
-                    system_logger.error(f"生成今日({today})的每日汇总失败")
+                    data_summary_logger.error(f"生成今日({today})的每日汇总失败")
             
             sector_collect_key = now.strftime('%Y-%m-%d %H:%M')
             if current_minute % 5 == 0 and _last_sector_collect_key != sector_collect_key:
