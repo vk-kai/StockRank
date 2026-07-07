@@ -193,7 +193,17 @@ if __name__ == '__main__':
         # 启动时自动执行健康检测（获取可用请求头 + 启动定时检测）
         start_health_checker()
         system_logger.info("健康检测已启动")
-        
+
+        # 后台预热异动检测基线（扫历史数据较慢，提前构建避免首次 anomaly 接口卡顿）
+        def _preload_anomaly_baseline():
+            try:
+                from anomaly_detector import build_baseline
+                build_baseline()
+                system_logger.info("异动检测基线预热完成")
+            except Exception as _e:
+                system_logger.warning(f"异动基线预热失败: {_e}")
+        threading.Thread(target=_preload_anomaly_baseline, daemon=True).start()
+
         monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         monitor_thread.start()
         system_logger.info("监控线程已启动")

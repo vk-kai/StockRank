@@ -180,9 +180,17 @@ def get_baseline(force_rebuild=False):
                     _baseline_cache = json.load(f)
             except Exception:
                 _baseline_cache = None
-        # 缓存过期（不是今天构建的）→ 重建
+        # 基线跨天复用：板块资金分布不会一天突变，3 天内不重建（避免每天首次接口卡顿）
         built_at = (_baseline_cache or {}).get('built_at', '')
-        if not built_at or not built_at.startswith(datetime.now().strftime('%Y-%m-%d')):
+        need_rebuild = True
+        if built_at:
+            try:
+                built_date = datetime.fromisoformat(built_at)
+                if (datetime.now() - built_date).days < 3:
+                    need_rebuild = False
+            except Exception:
+                pass
+        if need_rebuild:
             _baseline_cache = build_baseline()
         return _baseline_cache
 
