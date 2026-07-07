@@ -485,7 +485,7 @@ export default {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 20px;
-  padding: 15px 20px;
+  padding: 15px 130px 15px 20px;
   background: rgba(26, 35, 53, 0.8);
   border-radius: 12px;
   border: 1px solid rgba(58, 74, 107, 0.5);

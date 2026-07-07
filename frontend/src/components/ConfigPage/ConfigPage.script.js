@@ -15,7 +15,11 @@ import {
   getAIDailyPrompt,
   saveAIDailyPrompt,
   getBannedIPs,
-  unbanIP
+  unbanIP,
+  getAnomalyConfig,
+  saveAnomalyConfig,
+  getAnomalyBaseline,
+  rebuildAnomalyBaseline
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -34,7 +38,8 @@ export default {
         { id: 'stock', name: '股票监控', icon: '📈' },
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
         { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
-        { id: 'security', name: 'IP黑名单', icon: '🛡️' }
+        { id: 'security', name: 'IP黑名单', icon: '🛡️' },
+        { id: 'anomaly', name: '异动检测', icon: '🚨' }
       ],
       aiConfig: {
         enabled: false,
@@ -83,11 +88,29 @@ export default {
         show: false,
         message: '',
         type: 'success'
-      }
+      },
+      anomalyConfig: {
+        enabled: true,
+        z_threshold: 2.0,
+        min_samples: 8,
+        abs_threshold: 50,
+        divergence_change: 0.002,
+        min_net_for_divergence: 2,
+        spike_threshold: 20,
+        streak_min: 4,
+        min_net_for_streak: 3,
+        cooldown_minutes: 30,
+        baseline_days: 20,
+        rank_top_net: 30
+      },
+      anomalyBaseline: { sector_count: 0, built_at: '', baseline_days: 0 },
+      anomalySaving: false,
+      anomalyRebuilding: false
     }
   },
   mounted() {
     this.loadConfigs()
+    this.loadAnomalyConfig()
   },
   methods: {
     goBack() {
@@ -189,6 +212,37 @@ export default {
         'ssrf': 'SSRF攻击'
       }
       return names[type] || type || '未知'
+    },
+
+    async loadAnomalyConfig() {
+      try {
+        const [cfgRes, blRes] = await Promise.all([getAnomalyConfig(), getAnomalyBaseline()])
+        if (cfgRes.success && cfgRes.data) Object.assign(this.anomalyConfig, cfgRes.data)
+        if (blRes.success && blRes.data) this.anomalyBaseline = blRes.data
+      } catch (e) { /* 401 已由拦截器处理 */ }
+    },
+    async saveAnomalyConfigCfg() {
+      this.anomalySaving = true
+      try {
+        const res = await saveAnomalyConfig(this.anomalyConfig)
+        if (res.success) this.showToast('异动检测配置已保存', 'success')
+        else this.showToast(res.message || '保存失败', 'error')
+      } catch (e) {
+        this.showToast(e.response?.data?.message || '保存失败', 'error')
+      } finally { this.anomalySaving = false }
+    },
+    async rebuildAnomalyBaselineCfg() {
+      this.anomalyRebuilding = true
+      this.showToast('正在重建基线，需扫描历史数据...', 'info')
+      try {
+        const res = await rebuildAnomalyBaseline(this.anomalyConfig.baseline_days)
+        if (res.success && res.data) {
+          this.anomalyBaseline = { ...this.anomalyBaseline, ...res.data }
+          this.showToast(`基线重建完成：${res.data.sector_count} 个板块`, 'success')
+        } else this.showToast(res.message || '重建失败', 'error')
+      } catch (e) {
+        this.showToast('重建失败', 'error')
+      } finally { this.anomalyRebuilding = false }
     },
 
     async saveAIConfig() {

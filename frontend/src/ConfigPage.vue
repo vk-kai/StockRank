@@ -379,6 +379,87 @@
           </div>
         </div>
       </div>
+
+      <div v-if="activeTab === 'anomaly'" class="config-section">
+        <h2>🚨 资金异动检测</h2>
+        <div class="config-form">
+          <div class="form-group">
+            <label>启用实时异动推送</label>
+            <div class="toggle-switch">
+              <input type="checkbox" v-model="anomalyConfig.enabled" id="anomaly-enabled">
+              <label for="anomaly-enabled"></label>
+            </div>
+            <span class="hint">交易时段每5分钟采集后自动检测命中并推送（飞书/企业微信）</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>巨量 z-score 阈值</label>
+              <input type="number" v-model.number="anomalyConfig.z_threshold" min="1" max="5" step="0.1">
+              <span class="hint">默认2.0≈历史前5%，越大越严格</span>
+            </div>
+            <div class="form-group">
+              <label>基线最小样本</label>
+              <input type="number" v-model.number="anomalyConfig.min_samples" min="3" max="50">
+              <span class="hint">不足则降级为绝对阈值</span>
+            </div>
+            <div class="form-group">
+              <label>绝对量级阈值(亿)</label>
+              <input type="number" v-model.number="anomalyConfig.abs_threshold" min="1" step="1">
+              <span class="hint">样本不足时按此判定巨量</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>背离涨跌幅门槛</label>
+              <input type="number" v-model.number="anomalyConfig.divergence_change" min="0.001" max="0.05" step="0.001">
+              <span class="hint">5分钟价量背离门槛，0.002=0.2%</span>
+            </div>
+            <div class="form-group">
+              <label>突变 Δnet(亿)</label>
+              <input type="number" v-model.number="anomalyConfig.spike_threshold" min="1" step="1">
+              <span class="hint">相邻时点净流入变化超此值</span>
+            </div>
+            <div class="form-group">
+              <label>连续同向时点</label>
+              <input type="number" v-model.number="anomalyConfig.streak_min" min="2" max="10">
+              <span class="hint">4=约20分钟持续流入/流出</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>去重冷却(分钟)</label>
+              <input type="number" v-model.number="anomalyConfig.cooldown_minutes" min="5" max="120">
+              <span class="hint">同板块同类型重复推送间隔</span>
+            </div>
+            <div class="form-group">
+              <label>基线扫描天数</label>
+              <input type="number" v-model.number="anomalyConfig.baseline_days" min="5" max="30">
+              <span class="hint">重建基线时扫描的历史天数</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>基线状态</label>
+            <span class="hint">
+              覆盖 <b>{{ anomalyBaseline.sector_count }}</b> 个板块 ·
+              {{ anomalyBaseline.baseline_days }} 天历史 ·
+              构建于 {{ anomalyBaseline.built_at ? anomalyBaseline.built_at.slice(0,19) : '—' }}
+            </span>
+          </div>
+
+          <div class="form-actions">
+            <button @click="saveAnomalyConfigCfg" class="btn-primary" :disabled="anomalySaving">
+              {{ anomalySaving ? '保存中...' : '保存配置' }}
+            </button>
+            <button @click="rebuildAnomalyBaselineCfg" class="btn-secondary" :disabled="anomalyRebuilding">
+              {{ anomalyRebuilding ? '重建中...' : '🔁 重建基线' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="password-modal" v-if="passwordModal.show" @click.self="closePasswordModal">

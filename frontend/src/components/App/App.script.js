@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -65,6 +65,8 @@ export default {
       enableNotification: true,
       soundMode: 'all',
       lastNewsId: null,
+      anomalyWatchInterval: null,
+      lastAnomalyKeys: [],
       showStockModal: false,
       selectedSector: null,
       sectorStocks: [],
@@ -253,15 +255,16 @@ export default {
       const maxInflow = Math.max(...inflowItems.map(item => Math.abs(netValue(item))), 1)
       const maxOutflow = Math.max(...outflowItems.map(item => Math.abs(netValue(item))), 1)
       const rankGroup = (list, direction, maxValue) => list.map((item, index) => {
-        const strength = Math.max(0.18, Math.min(1, Math.abs(netValue(item)) / maxValue))
+        const strength = Math.max(0.2, Math.min(1, Math.abs(netValue(item)) / maxValue))
         return {
           ...item,
           rank: index + 1,
           flow_direction: direction,
           flow_strength: strength,
-          flow_alpha: (0.16 + strength * 0.34).toFixed(3),
-          flow_deep_alpha: (0.18 + strength * 0.38).toFixed(3),
-          flow_border_alpha: (0.22 + strength * 0.5).toFixed(3)
+          // 流入/流出越大越浓：抬高上限拉开梯度（TOP1 明显比 TOP5 红/绿）
+          flow_alpha: (0.18 + strength * 0.5).toFixed(3),
+          flow_deep_alpha: (0.22 + strength * 0.55).toFixed(3),
+          flow_border_alpha: (0.28 + strength * 0.6).toFixed(3)
         }
       })
 
@@ -325,6 +328,9 @@ export default {
     if (this.newsScrollInterval) {
       clearInterval(this.newsScrollInterval)
     }
+    if (this.anomalyWatchInterval) {
+      clearInterval(this.anomalyWatchInterval)
+    }
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval)
     }
@@ -378,6 +384,7 @@ export default {
       this.startCountdown()
       this.fetchLatestNews()
       this.startNewsRotation()
+      this.startAnomalyWatch()
       this.fetchHealthStatus()
       this.fetchMarketSummary()
       this.startMarketSummaryRefresh()
@@ -1266,6 +1273,7 @@ export default {
     guardedGoToLogs() { if (this.requireAuthOrPrompt()) return; this.goToLogs() },
     guardedGoToHouseKline() { if (this.requireAuthOrPrompt()) return; this.goToHouseKline() },
     guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
+    guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
     guardedGotoIntradayTimeline() { if (this.requireAuthOrPrompt()) return; this.goToIntradayTimeline() },
     guardedOpenQuantSystem() { if (this.requireAuthOrPrompt()) return; this.openQuantSystem() },
@@ -1403,13 +1411,25 @@ export default {
       this.loadingStocks = true
       this.stocksError = null
       this.sectorStocks = []
-      
+
+      // 前端缓存：同一板块 5 分钟内秒开（配合后端缓存，重复点击即时响应）
+      if (!this._sectorStocksCache) this._sectorStocksCache = {}
+      const _cachedStocks = this._sectorStocksCache[sectorUrl]
+      if (_cachedStocks && Date.now() - _cachedStocks.t < 300000) {
+        this.sectorStocks = _cachedStocks.data
+        this.sortStocks()
+        this.loadingStocks = false
+        return
+      }
+
       try {
         const response = await getSectorStocks(sectorUrl)
         
         if (response.success) {
           this.sectorStocks = response.data
           this.sortStocks()
+          if (!this._sectorStocksCache) this._sectorStocksCache = {}
+          this._sectorStocksCache[sectorUrl] = { t: Date.now(), data: response.data }
         } else {
           this.stocksError = response.message || '获取个股数据失败'
         }
@@ -1502,6 +1522,63 @@ export default {
         }
       } catch (e) {
         console.log('发送通知失败:', e)
+      }
+    },
+
+    // ===== 资金异动桌面通知（与新闻通知并行，复用 enableNotification 开关与 soundMode 音效）=====
+    startAnomalyWatch() {
+      this.fetchAnomalyForNotify(true)   // 首次只记录基线，不弹窗
+      this.anomalyWatchInterval = setInterval(() => {
+        this.fetchAnomalyForNotify(false)
+      }, 60000)
+    },
+
+    async fetchAnomalyForNotify(isInitial) {
+      try {
+        const res = await getAnomalyAlerts()
+        if (!res.success || !res.data) return
+        const alerts = res.data                 // 已按时间倒序
+        const keys = alerts.map(a => `${a.date}|${a.time}|${a.sector}`)
+        if (isInitial) {
+          this.lastAnomalyKeys = keys.slice(0, 50)
+          return
+        }
+        const fresh = []
+        for (let i = 0; i < alerts.length; i++) {
+          if (!this.lastAnomalyKeys.includes(keys[i])) {
+            fresh.push(alerts[i])
+            this.lastAnomalyKeys.push(keys[i])
+          }
+        }
+        if (this.lastAnomalyKeys.length > 100) {
+          this.lastAnomalyKeys = this.lastAnomalyKeys.slice(-100)
+        }
+        if (!fresh.length || !this.enableNotification) return
+        if (!('Notification' in window) || Notification.permission !== 'granted') return
+        fresh.slice(0, 5).forEach(a => this.sendAnomalyNotification(a))
+      } catch (e) {
+        console.log('异动通知轮询失败:', e)
+      }
+    },
+
+    sendAnomalyNotification(alert) {
+      try {
+        const labels = (alert.labels && alert.labels.length) ? alert.labels.join('、') : '资金异动'
+        const nf = alert.net_flow != null ? `净流入${alert.net_flow >= 0 ? '+' : ''}${Number(alert.net_flow).toFixed(2)}亿` : ''
+        const chg = alert.change_pct != null ? ` ${alert.change_pct >= 0 ? '+' : ''}${Number(alert.change_pct).toFixed(2)}%` : ''
+        const lead = alert.lead_stock ? ` 龙头${alert.lead_stock}` : ''
+        const n = new Notification(`🚨 资金异动 · ${alert.sector}`, {
+          body: `${labels}｜${nf}${chg}${lead}`,
+          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
+          tag: `${alert.date}-${alert.time}-${alert.sector}`,
+          requireInteraction: true
+        })
+        n.onclick = () => { window.focus(); this.$router.push('/flow-alert'); n.close() }
+        if (this.soundMode === 'all' || this.soundMode === 'important') {
+          this.playSound('important')
+        }
+      } catch (e) {
+        console.log('异动通知失败:', e)
       }
     },
 

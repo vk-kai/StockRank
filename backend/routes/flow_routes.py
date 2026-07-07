@@ -4,6 +4,7 @@ import traceback
 import threading
 import json
 import os
+import re
 from config import DAILY_DIR, REALTIME_DIR, AI_DAILY_RESULT_FILE, AI_DAILY_STATUS_FILE
 from data_processor import (
     load_recent_daily_data, load_recent_realtime_data,
@@ -14,6 +15,11 @@ from data_processor import (
     get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
+from anomaly_detector import (
+    detect_for_snapshot, detect_full_day, list_alerts,
+    load_config as load_anomaly_config, save_config as save_anomaly_config,
+    get_baseline, build_baseline
+)
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from intraday_timeline import get_stock_hover_summary
@@ -934,3 +940,102 @@ def analyze_single_news():
             'success': False,
             'message': f'分析失败: {str(e)[:100]}'
         }), 500
+
+
+# ============================================================
+# 通用：有数据的交易日列表（异动预警等页面用）
+# ============================================================
+@flow_bp.route('/dates', methods=['GET'])
+def flow_dates():
+    """列出有实时数据的交易日（降序），给前端日期选择器。"""
+    try:
+        files = sorted({f.replace('.json', '') for f in os.listdir(REALTIME_DIR)
+                        if re.match(r'^\d{4}-\d{2}-\d{2}\.json$', f)}, reverse=True)
+        return jsonify({'success': True, 'data': files})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/dates 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+# ============================================================
+# 资金异动预警
+# ============================================================
+@flow_bp.route('/anomaly/run', methods=['GET'])
+def anomaly_run():
+    """手动试跑异动检测（不入库、不推送）。date 必填；time 给则单时点，不给则全天。"""
+    try:
+        date_str = request.args.get('date')
+        if not date_str:
+            return jsonify({'success': False, 'message': '缺少 date 参数'}), 400
+        time_key = request.args.get('time')
+        findings = detect_for_snapshot(date_str, time_key, push=False) if time_key \
+            else detect_full_day(date_str, push=False)
+        return jsonify({'success': True, 'data': findings, 'count': len(findings)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/anomaly/run 异常: {e}")
+        error_logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'检测失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/anomaly/alerts', methods=['GET'])
+def anomaly_alerts():
+    """已推送的异动记录（可选按日期过滤）。"""
+    try:
+        date_str = request.args.get('date')
+        alerts = list_alerts(date_str=date_str)
+        return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/anomaly/alerts 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/anomaly/config', methods=['GET'])
+def anomaly_config_get():
+    """读取异动检测阈值配置。"""
+    return jsonify({'success': True, 'data': load_anomaly_config()})
+
+
+@flow_bp.route('/anomaly/config', methods=['POST'])
+def anomaly_config_set():
+    """更新异动检测阈值配置。"""
+    try:
+        data = request.get_json() or {}
+        cfg = save_anomaly_config(data)
+        system_logger.info("异动检测配置已更新")
+        return jsonify({'success': True, 'data': cfg})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/anomaly/config POST 异常: {e}")
+        return jsonify({'success': False, 'message': f'保存失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/anomaly/baseline', methods=['GET'])
+def anomaly_baseline_get():
+    """读取 z-score 基线状态。"""
+    try:
+        bl = get_baseline()
+        sectors = (bl or {}).get('sectors', {})
+        return jsonify({'success': True, 'data': {
+            'built_at': (bl or {}).get('built_at'),
+            'baseline_days': (bl or {}).get('baseline_days'),
+            'sector_count': len(sectors),
+            'sectors': sectors,
+        }})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/anomaly/baseline 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/anomaly/baseline/rebuild', methods=['POST'])
+def anomaly_baseline_rebuild():
+    """手动重建 z-score 基线。"""
+    try:
+        days = request.args.get('days', type=int)
+        bl = build_baseline(days=days) if days else build_baseline()
+        return jsonify({'success': True, 'data': {
+            'built_at': bl.get('built_at'),
+            'baseline_days': bl.get('baseline_days'),
+            'sector_count': len(bl.get('sectors', {})),
+        }})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/anomaly/baseline/rebuild 异常: {e}")
+        return jsonify({'success': False, 'message': f'重建失败: {str(e)[:100]}'}), 500

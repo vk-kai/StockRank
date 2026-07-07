@@ -469,8 +469,16 @@ def parse_ths_stock_html(html_content, request_url=''):
     return stocks
 
 def get_sector_stocks(sector_url):
+    # 内存缓存：同板块 5 分钟内复用，避免反复爬同花顺（个股列表日内变化小）
+    import time as _time
+    if not hasattr(get_sector_stocks, '_cache'):
+        get_sector_stocks._cache = {}
+    _cached = get_sector_stocks._cache.get(sector_url)
+    if _cached and _time.time() - _cached[0] < 300:
+        return _cached[1]
+
     from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
-    
+
     if not sector_url:
         error_logger.error("板块URL为空")
         return []
@@ -486,7 +494,7 @@ def get_sector_stocks(sector_url):
     # 个股详情请求现场生成 Cookie，不复用健康检测结果。
     headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
     
-    max_retries = 3
+    max_retries = 2
     for retry in range(max_retries):
         try:
             proxies = None
@@ -523,6 +531,7 @@ def get_sector_stocks(sector_url):
             stocks = parse_ths_stock_html(response.text, sector_url)
             
             if stocks:
+                get_sector_stocks._cache[sector_url] = (_time.time(), stocks)
                 set_crawler_idle('stocks')
                 return stocks
             else:
@@ -537,7 +546,7 @@ def get_sector_stocks(sector_url):
                 if USE_PROXY:
                     load_proxy_pool()
                 import time
-                time.sleep(2)
+                time.sleep(1)
     
     error_logger.error(f"个股数据获取最终失败，已尝试 {max_retries} 次，URL: {sector_url}")
     set_crawler_idle('stocks')

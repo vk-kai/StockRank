@@ -177,6 +177,12 @@ def data_collection_thread():
                         success = save_realtime_data(today, minute_key, data)
                         if success:
                             data_logger.info(f"数据采集成功，获取{len(data)}个板块")
+                            # 资金异动检测（独立模块，异常绝不影响采集主循环）
+                            try:
+                                from anomaly_detector import detect_and_push
+                                detect_and_push(today, minute_key, data)
+                            except Exception as _ae:
+                                error_logger.error(f"异动检测调用失败（不影响采集）: {_ae}")
                         else:
                             data_logger.error(f"保存实时数据失败")
                     else:

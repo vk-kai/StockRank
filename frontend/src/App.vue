@@ -27,6 +27,7 @@
           <button class="yuntu-button" @click="guardedGotoMarketMap">📊 大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
+          <button class="flow-alert-button" @click="guardedGotoFlowAlert">🚨 异动预警</button>
           <div class="more-menu-wrapper">
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
@@ -97,10 +98,10 @@
 
       <div class="market-turnover-row">
         <span class="market-turnover-label">今日实时成交额</span>
-        <span class="market-turnover-value">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
+        <span class="market-turnover-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
         <span class="market-turnover-spacer"></span>
         <span class="market-turnover-label">较上一日此时</span>
-        <span class="market-turnover-value" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)">
+        <span class="market-turnover-value num-flash" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">
           {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
         </span>
       </div>
@@ -212,7 +213,8 @@
           :style="{
             '--flow-alpha': sector.flow_alpha || 0.22,
             '--flow-deep-alpha': sector.flow_deep_alpha || 0.25,
-            '--flow-border-alpha': sector.flow_border_alpha || 0.31
+            '--flow-border-alpha': sector.flow_border_alpha || 0.31,
+            '--flow-strength': sector.flow_strength || 0.5
           }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"

@@ -27,6 +27,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-right: 110px;
 }
 
 .header h1 {
@@ -153,10 +154,10 @@
     "limit turnover limit2";
   align-items: center;
   gap: 3px 8px;
-  background: linear-gradient(135deg, rgba(18, 27, 49, 0.94) 0%, rgba(24, 30, 53, 0.94) 100%);
-  border: 1px solid rgba(79, 195, 247, 0.22);
-  border-radius: 8px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, rgba(22, 32, 56, 0.55) 0%, rgba(28, 36, 60, 0.55) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
 .market-index-strip {
@@ -224,12 +225,49 @@
   height: 6px;
   display: flex;
   overflow: hidden;
-  border-radius: 4px;
-  background: #e5e7eb;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .market-breadth-fill {
   height: 100%;
+  transition: width 0.6s ease;
+}
+
+/* ===== 全局动画基础 ===== */
+/* 按钮：hover 上浮，active 下压，统一按下反馈 */
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+/* 数字变化高亮（配合 Vue :key 变化触发重建） */
+.num-flash {
+  animation: num-flash 0.7s ease;
+  border-radius: 3px;
+}
+@keyframes num-flash {
+  0% { background: rgba(100, 181, 246, 0.28); }
+  100% { background: transparent; }
+}
+/* 路由切换过渡（Root.vue 的 <transition name="route">） */
+.route-enter-active,
+.route-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.route-leave-to {
+  opacity: 0;
+}
+/* 列表 stagger 进入动画（给容器加 .stagger-in，子项用 --i 设置延迟） */
+.stagger-in > * {
+  animation: stagger-fade-in 0.4s ease both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+@keyframes stagger-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .market-breadth-fill-down {
@@ -241,10 +279,10 @@
 }
 
 .market-breadth-divider {
-  width: 14px;
+  width: 2px;
   height: 100%;
-  flex: 0 0 14px;
-  background: linear-gradient(120deg, transparent 0 32%, #111827 34% 47%, rgba(148, 163, 184, 0.7) 49% 55%, #111827 57% 70%, transparent 72%);
+  flex: 0 0 2px;
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .market-turnover-row {
@@ -834,6 +872,7 @@
       rgba(120, 24, 36, var(--flow-deep-alpha, 0.25)) 100%),
     linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
   border-color: rgba(239, 83, 80, var(--flow-border-alpha, 0.31));
+  box-shadow: 0 2px 10px rgba(239, 83, 80, calc(var(--flow-strength, 0.5) * 0.5));
 }
 
 .sector-card.net-out-card {
@@ -843,6 +882,7 @@
       rgba(18, 97, 72, var(--flow-deep-alpha, 0.25)) 100%),
     linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
   border-color: rgba(103, 194, 58, var(--flow-border-alpha, 0.31));
+  box-shadow: 0 2px 10px rgba(103, 194, 58, calc(var(--flow-strength, 0.5) * 0.5));
 }
 
 .sector-card::before {
@@ -1458,6 +1498,25 @@
   background: linear-gradient(135deg, #40a9ff, #1890ff);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+}
+
+.flow-alert-button {
+  background: linear-gradient(135deg, #ff4d4f, #cf1322);
+  color: #fff;
+  border: 1px solid #ff7875;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+.flow-alert-button:hover {
+  background: linear-gradient(135deg, #ff7875, #ff4d4f);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
 }
 
 .yuntu-button {

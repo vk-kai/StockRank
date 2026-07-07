@@ -615,7 +615,7 @@ export async function getSectorStocks(sectorUrl) {
   try {
     const response = await apiClient.get('/flow/sector-stocks', {
       params: { url: sectorUrl },
-      timeout: 45000
+      timeout: 20000
     })
     return response.data
   } catch (error) {
@@ -738,6 +738,85 @@ export async function getNewsScoreTrend() {
     return response.data
   } catch (error) {
     console.error('获取评分趋势数据失败:', error)
+    throw error
+  }
+}
+
+// ============================================================
+// 资金异动预警
+// ============================================================
+/** 有数据的交易日列表（异动预警等页面用） */
+export async function getFlowDates() {
+  try {
+    const response = await apiClient.get('/flow/dates')
+    return response.data
+  } catch (error) {
+    console.error('获取交易日列表失败:', error)
+    throw error
+  }
+}
+/** 异动检测手动试跑（不入库、不推送）。time 省略则全天 */
+export async function runAnomalyDetection(date, time) {
+  try {
+    const params = { date }
+    if (time) params.time = time
+    const response = await apiClient.get('/flow/anomaly/run', { params, timeout: 30000 })
+    return response.data
+  } catch (error) {
+    console.error('异动检测试跑失败:', error)
+    throw error
+  }
+}
+
+/** 已推送的异动记录 */
+export async function getAnomalyAlerts(date) {
+  try {
+    const response = await apiClient.get('/flow/anomaly/alerts', { params: { date } })
+    return response.data
+  } catch (error) {
+    console.error('获取异动记录失败:', error)
+    throw error
+  }
+}
+
+export async function getAnomalyConfig() {
+  try {
+    const response = await apiClient.get('/flow/anomaly/config')
+    return response.data
+  } catch (error) {
+    console.error('获取异动配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveAnomalyConfig(config) {
+  try {
+    const response = await apiClient.post('/flow/anomaly/config', config)
+    return response.data
+  } catch (error) {
+    console.error('保存异动配置失败:', error)
+    throw error
+  }
+}
+
+export async function getAnomalyBaseline() {
+  try {
+    const response = await apiClient.get('/flow/anomaly/baseline')
+    return response.data
+  } catch (error) {
+    console.error('获取异动基线失败:', error)
+    throw error
+  }
+}
+
+export async function rebuildAnomalyBaseline(days) {
+  try {
+    const params = {}
+    if (days) params.days = days
+    const response = await apiClient.post('/flow/anomaly/baseline/rebuild', null, { params, timeout: 30000 })
+    return response.data
+  } catch (error) {
+    console.error('重建异动基线失败:', error)
     throw error
   }
 }

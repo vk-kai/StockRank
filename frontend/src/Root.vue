@@ -1,6 +1,10 @@
 <template>
   <!-- 始终渲染页面：未登录也能看到首页骨架/按钮，数据区由各页面自行提示 -->
-  <router-view></router-view>
+  <router-view v-slot="{ Component }">
+    <transition name="route" mode="out-in">
+      <component :is="Component" />
+    </transition>
+  </router-view>
 
   <!-- 右上角登录态入口 -->
   <button v-if="authenticated" :class="authEntryClass" @click="submitLogout">退出登录</button>
