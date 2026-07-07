@@ -10,6 +10,8 @@ services:
       - "5000:5000"
     environment:
       - THS_BROWSER_PATH=/usr/bin/chromium
+      - MALLOC_ARENA_MAX=2          # 限制 glibc 内存 arena 数，减少多线程内存碎片（6个采集线程的 Python 进程预计降 200-400MB）
+    mem_limit: 1200m                # 安全网：限制 backend 内存上限，防止失控拖垮系统（正常 600-816M，不会触及）
     shm_size: "512mb"
     volumes:
       - ../backend:/app/backend
