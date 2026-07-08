@@ -889,13 +889,18 @@ export default {
       // 必须先按净流入大小排序再赋深度：否则对象 key(整型字符串)按数字升序遍历，
       // depth≈1 的深色全落到 000xxx/600xxx(大盘股=treemap 左上角)，300xxx/688xxx(小盘)depth≈0 暗成灰色 → "只有左上角亮"
       const pos = [], neg = []
+      const firstKey = Object.keys(this.marginMap)[0]
+      const isFlatNumber = typeof this.marginMap[firstKey] === 'number'   // 旧结构 {code:number}
       for (const code in this.marginMap) {
-        // 按 净流入/昨日融资余额(相对增速) 排名：消除大市值股绝对额对深色的统治(否则亮的永远是左上角大盘)
-        const entry = this.marginMap[code]
-        const r = entry && typeof entry.rate === 'number' ? entry.rate : null
-        if (r == null || isNaN(r) || r === 0) continue
+        const raw = this.marginMap[code]
+        // 兼容两种结构：新 {net,rate} 按 rate(相对增速) 排名；旧 {code:number} 退化为按绝对额
+        const entry = isFlatNumber ? { net: raw, rate: raw } : raw
+        const r = entry && typeof entry.rate === 'number' && isFinite(entry.rate) ? entry.rate : null
+        if (r == null || r === 0) continue
         if (r > 0) pos.push([code, r]); else neg.push([code, r])
       }
+      console.log('[云图融资] 结构=' + (isFlatNumber ? 'number(旧,按绝对额)' : '{net,rate}(新,按增速)'),
+        '总条目=' + Object.keys(this.marginMap).length, '正/负=' + pos.length + '/' + neg.length)
       pos.sort((a, b) => b[1] - a[1])                       // 净流入多 → 前 → 深
       neg.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))  // 净流出多 → 前 → 深
       const assign = (arr, light, deep) => {
@@ -983,6 +988,14 @@ export default {
         }
       }
       this.layout = sectors
+      if (this.colorMode === 'margin') {
+        let total = 0, hit = 0
+        for (const s of sectors) for (const l2 of s.children) for (const st of l2.children) {
+          total++
+          if (this._marginColor[extractDigits(st.code)]) hit++
+        }
+        console.log('[云图融资] 布局命中融资色的个股:', hit, '/', total, '| _marginColor条目:', Object.keys(this._marginColor).length)
+      }
     },
 
     render() {
