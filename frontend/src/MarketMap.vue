@@ -292,9 +292,9 @@ const VEIL_COLOR = 'rgba(8,14,24,0.78)'
 // 融资净流入着色：非融资标的（无数据）的中性色，区别于"被筛选灰显"
 const NO_MARGIN_COLOR = '#3a4458'
 // 净流入排名→深浅色锚：正流入红、净流出绿，排名越靠前(绝对值越大)越深
-const MARGIN_RED_LIGHT = [86, 48, 52]
+const MARGIN_RED_LIGHT = [122, 64, 66]
 const MARGIN_RED_DEEP = [240, 45, 55]
-const MARGIN_GREEN_LIGHT = [38, 66, 58]
+const MARGIN_GREEN_LIGHT = [48, 110, 80]
 const MARGIN_GREEN_DEEP = [44, 188, 88]
 function marginDepthColor(depth, light, deep) {
   const t = Math.max(0, Math.min(1, depth))
@@ -890,9 +890,11 @@ export default {
       // depth≈1 的深色全落到 000xxx/600xxx(大盘股=treemap 左上角)，300xxx/688xxx(小盘)depth≈0 暗成灰色 → "只有左上角亮"
       const pos = [], neg = []
       for (const code in this.marginMap) {
-        const v = this.marginMap[code]
-        if (typeof v !== 'number' || isNaN(v) || v === 0) continue
-        if (v > 0) pos.push([code, v]); else neg.push([code, v])
+        // 按 净流入/昨日融资余额(相对增速) 排名：消除大市值股绝对额对深色的统治(否则亮的永远是左上角大盘)
+        const entry = this.marginMap[code]
+        const r = entry && typeof entry.rate === 'number' ? entry.rate : null
+        if (r == null || isNaN(r) || r === 0) continue
+        if (r > 0) pos.push([code, r]); else neg.push([code, r])
       }
       pos.sort((a, b) => b[1] - a[1])                       // 净流入多 → 前 → 深
       neg.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))  // 净流出多 → 前 → 深
@@ -948,7 +950,7 @@ export default {
             let sum = 0, has = false
             for (const st of stocks) {
               const v = this.marginMap[extractDigits(st.code)]
-              if (typeof v === 'number' && !isNaN(v)) { sum += v; has = true }
+              if (v && typeof v.net === 'number' && !isNaN(v.net)) { sum += v.net; has = true }
             }
             marginAgg = has ? sum : null
           }
