@@ -20,6 +20,19 @@
           {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
         </span>
         <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
+        <div class="mm-color-mode" :class="{ loading: marginLoading }">
+          <span class="mm-color-mode-icon">🎨</span>
+          <select
+            class="mm-color-select"
+            :value="colorMode"
+            @change="onColorModeChange($event.target.value)"
+            title="切换云图着色维度"
+          >
+            <option value="change">着色：涨跌幅</option>
+            <option value="margin">着色：融资净流入</option>
+          </select>
+          <span class="mm-color-date" v-if="colorMode === 'margin' && marginDate">{{ marginDate }}</span>
+        </div>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
@@ -54,7 +67,21 @@
           {{ tooltip.name }}
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
-        <div class="mm-tooltip-row">
+        <template v-if="tooltip.compare">
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">起点涨跌</span>
+            <span class="mm-tooltip-val" :class="tooltip.startCls">{{ tooltip.startChange }}</span>
+          </div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">终点涨跌</span>
+            <span class="mm-tooltip-val" :class="tooltip.endCls">{{ tooltip.endChange }}</span>
+          </div>
+          <div class="mm-tooltip-row">
+            <span class="mm-tooltip-label">区间变化</span>
+            <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
+          </div>
+        </template>
+        <div class="mm-tooltip-row" v-else>
           <span class="mm-tooltip-label">涨跌幅</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
@@ -109,31 +136,44 @@
         <span>已筛选：{{ filterBadge.desc }}（{{ filterBadge.count }} 只）</span>
         <span class="mm-filter-clear">✕</span>
       </div>
+      <div class="mm-compare-badge" v-if="compareMode" :class="compareStep">
+        <span class="mm-compare-ico">⚖</span>
+        <span class="mm-compare-txt">{{ compareBadgeText }}</span>
+        <span class="mm-compare-exit" @click="toggleCompare" title="退出时段对比">✕</span>
+      </div>
       <div class="mm-replay-watermark" v-if="replayMode">🕐 复盘 {{ replayTime }}</div>
+      <div class="mm-replay-watermark cmp" v-if="compareMode && compareStep === 'done'">⚖ {{ compareStart }} → {{ compareEnd }} 区间涨跌变化</div>
     </div>
 
     <div class="mm-footer">
-      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
+      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值 · {{ footerColorDesc }}· 仅供投资参考</span>
       <div class="mm-replay-bar" v-if="replayPoints.length">
         <button
           v-for="p in replayPoints"
           :key="p.time"
           class="mm-replay-time"
-          :class="{ active: replayMode && replayTime === p.time }"
+          :class="{ active: replayMode && replayTime === p.time, 'cmp-start': compareMode && compareStart === p.time, 'cmp-end': compareMode && compareEnd === p.time }"
           :disabled="!p.available"
-          @click="enterReplay(p.time)"
-          :title="p.available ? '复盘 ' + p.time : '尚未抓取'"
+          @click="onTimeButtonClick(p.time)"
+          :title="p.available ? (compareMode ? '对比点选 ' + p.time : '复盘 ' + p.time) : '尚未抓取'"
         >{{ p.time }}</button>
         <span class="mm-replay-sep"></span>
         <button class="mm-replay-play" @click="togglePlay" :disabled="!hasReplayAvailable">
           {{ replayPlaying ? '⏸' : '▶' }}{{ replayPlaying ? ' 暂停' : ' 播放' }}
         </button>
         <button
+          class="mm-replay-compare"
+          :class="{ active: compareMode }"
+          @click="toggleCompare"
+          :disabled="!hasReplayAvailable"
+          :title="compareMode ? '退出时段对比' : '时段对比：选两个时间点，看区间涨跌变化'"
+        >⚖{{ compareMode ? ' 退出' : ' 对比' }}</button>
+        <button
           class="mm-replay-live"
           :class="{ active: replayMode }"
           @click="exitReplay"
-          :disabled="!replayMode"
-          :title="replayMode ? '返回实时行情' : '当前为实时行情'"
+          :disabled="!replayMode && !compareMode"
+          :title="(replayMode || compareMode) ? '返回实时行情' : '当前为实时行情'"
         >🔴 {{ replayMode ? '返回实时' : '实时' }}</button>
       </div>
       <div class="mm-legend">
@@ -237,7 +277,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -275,6 +315,21 @@ function interpColor(change) {
 // 筛选灰显色（未命中个股）与整板块变暗面纱（某行业一只都没命中时叠加）
 const DIM_COLOR = '#1b2330'
 const VEIL_COLOR = 'rgba(8,14,24,0.78)'
+
+// 融资净流入着色：非融资标的（无数据）的中性色，区别于"被筛选灰显"
+const NO_MARGIN_COLOR = '#3a4458'
+// 净流入排名→深浅色锚：正流入红、净流出绿，排名越靠前(绝对值越大)越深
+const MARGIN_RED_LIGHT = [86, 48, 52]
+const MARGIN_RED_DEEP = [240, 45, 55]
+const MARGIN_GREEN_LIGHT = [38, 66, 58]
+const MARGIN_GREEN_DEEP = [44, 188, 88]
+function marginDepthColor(depth, light, deep) {
+  const t = Math.max(0, Math.min(1, depth))
+  const r = Math.round(light[0] + (deep[0] - light[0]) * t)
+  const g = Math.round(light[1] + (deep[1] - light[1]) * t)
+  const b = Math.round(light[2] + (deep[2] - light[2]) * t)
+  return `rgb(${r},${g},${b})`
+}
 
 // 按股票代码前缀判断涨跌停限幅(%)：主板 10 / 创业板·科创板 20 / 北交所 30
 function limitThreshold(code) {
@@ -416,7 +471,18 @@ export default {
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
       replayPlaying: false,     // 是否正在自动播放
       replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
-      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
+      // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入)
+      colorMode: 'change',
+      marginMap: {},            // {裸6位code: 最新一日融资净流入额}
+      marginDate: '',
+      marginLoading: false,
+      marginLoaded: false,
+      // 复盘时段对比
+      compareMode: false,
+      compareStart: '',
+      compareEnd: '',
+      compareStep: 'start',     // 'start'(待选起点) | 'end'(待选终点) | 'done'(已出图)
+      tooltip: { visible: false, name: '', code: '', change: '', cls: '', compare: false, startChange: '', endChange: '', startCls: '', endCls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
@@ -444,6 +510,18 @@ export default {
     // 是否有可播放的复盘快照（至少一个时间点已抓取）
     hasReplayAvailable() {
       return this.replayPoints.some(p => p.available)
+    },
+    // 时段对比状态徽标文案
+    compareBadgeText() {
+      if (this.compareStep === 'start') return '对比 · 点选起点时间'
+      if (this.compareStep === 'end') return `${this.compareStart} → 点选终点`
+      return `${this.compareStart} → ${this.compareEnd}`
+    },
+    // 页脚颜色说明（随当前着色维度/对比态切换）
+    footerColorDesc() {
+      if (this.compareMode) return '颜色=区间涨跌变化（红涨绿跌）'
+      if (this.colorMode === 'margin') return '颜色=融资净流入排名（红=净流入多 / 绿=净流出多）'
+      return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
     latestFinDate() {
@@ -560,6 +638,7 @@ export default {
     this.finChart = null   // 融资弹窗 ECharts 实例
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
     this._pushedCodeSet = null  // 推送股票代码Set，用于高亮筛选
+    this._marginColor = {}      // {裸6位code: 融资净流入排名色}（colorMode=margin 时由 computeMarginColors 填充）
     this._downY = 0
     this._finRetry = 0     // 按需更新无数据时的自动重试计数
     this.replayTimer = null        // 复盘自动播放定时器
@@ -572,7 +651,7 @@ export default {
     await this.loadPushedStateFromQuery()
     await this.fetchData(true)
     // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
-    this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 30000)
+    this.timer = setInterval(() => { if (!this.replayMode && !this.compareMode) this.fetchData(false) }, 30000)
     // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
     this.refreshReplayPoints()
     this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
@@ -771,6 +850,7 @@ export default {
     },
     // 退出复盘，恢复实时
     exitReplay() {
+      if (this.compareMode) { this.exitCompare(); return }
       if (!this.replayMode) return
       this.replayMode = false
       this.replayTime = ''
@@ -779,6 +859,7 @@ export default {
     },
     // 一键播放：顺序播放全部已抓快照，每 1.5 秒一帧，到最后一帧停止（不循环）
     togglePlay() {
+      if (this.compareMode) { this.exitCompare(); return }
       if (this.replayPlaying) { this.stopPlay(); return }
       const available = this.replayPoints.filter(p => p.available).map(p => p.time)
       if (!available.length) return
@@ -813,6 +894,160 @@ export default {
       if (this.replayTimer) { clearTimeout(this.replayTimer); this.replayTimer = null }
     },
 
+    // ===== 着色维度（涨跌幅 / 融资净流入）=====
+    // 个股取色：对比态用 Δ、融资态用排名色、默认用涨跌幅
+    stockColor(s) {
+      if (this.compareMode) return interpColor(s.change)   // 对比态 change 已被替换为区间 Δ
+      if (this.colorMode === 'margin') {
+        return this._marginColor[extractDigits(s.code)] || NO_MARGIN_COLOR
+      }
+      return interpColor(s.change)
+    },
+    async onColorModeChange(mode) {
+      this.colorMode = mode
+      if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
+      this.buildLayout()
+      this.render()
+    },
+    async loadMarginData() {
+      this.marginLoading = true
+      try {
+        const res = await getMarketMapMargin()
+        if (res && res.success) {
+          this.marginMap = res.map || {}
+          this.marginDate = res.latest_date || ''
+          this.marginLoaded = true
+          this.computeMarginColors()
+        }
+      } catch (e) {
+        console.error('融资净流入加载失败', e)
+      } finally {
+        this.marginLoading = false
+      }
+    },
+    // 按净流入大小排名映射深浅：正流入→红、净流出→绿，排名越靠前(绝对值越大)越深
+    computeMarginColors() {
+      const map = {}
+      const pos = [], neg = []
+      for (const code in this.marginMap) {
+        const v = this.marginMap[code]
+        if (typeof v !== 'number' || isNaN(v) || v === 0) continue
+        if (v > 0) pos.push(code); else neg.push(code)
+      }
+      const assign = (arr, light, deep) => {
+        const n = arr.length
+        arr.forEach((code, i) => {
+          const depth = n > 1 ? 1 - i / (n - 1) : 1   // i=0(绝对值最大)→depth=1(最深)
+          map[code] = marginDepthColor(depth, light, deep)
+        })
+      }
+      assign(pos, MARGIN_RED_LIGHT, MARGIN_RED_DEEP)
+      assign(neg, MARGIN_GREEN_LIGHT, MARGIN_GREEN_DEEP)
+      this._marginColor = map
+    },
+
+    // ===== 复盘时段对比 =====
+    toggleCompare() {
+      if (this.compareMode) { this.exitCompare(); return }
+      if (!this.hasReplayAvailable) return
+      this.stopPlay()
+      // 退出单点复盘态（若在），进入对比选点态
+      if (this.replayMode) { this.replayMode = false; this.replayTime = '' }
+      this.compareMode = true
+      this.compareStep = 'start'
+      this.compareStart = ''
+      this.compareEnd = ''
+    },
+    // 时间按钮：对比态下用于选点，否则进入单点复盘
+    onTimeButtonClick(time) {
+      if (this.compareMode) this.pickCompareTime(time)
+      else this.enterReplay(time)
+    },
+    async pickCompareTime(time) {
+      const p = this.replayPoints.find(x => x.time === time)
+      if (!p || !p.available) return
+      if (this.compareStep === 'start') {
+        this.compareStart = time
+        this.compareEnd = ''
+        this.compareStep = 'end'
+        return
+      }
+      // end / done：选终点（不能与起点相同）
+      if (time === this.compareStart) return
+      this.compareEnd = time
+      this.compareStep = 'done'
+      await this.loadAndApplyCompare()
+    },
+    async loadAndApplyCompare() {
+      // 保证 起点早于 终点（按复盘时间顺序）；反选则交换
+      const order = this.replayPoints.map(p => p.time)
+      let a = this.compareStart, b = this.compareEnd
+      if (order.indexOf(a) > order.indexOf(b)) {
+        ;[a, b] = [b, a]
+        this.compareStart = a
+        this.compareEnd = b
+      }
+      try {
+        const [r1, r2] = await Promise.all([getMarketMapSnapshot(a), getMarketMapSnapshot(b)])
+        if (r1 && r1.success && r2 && r2.success) {
+          this.applyCompare(r1.data, r2.data)
+        }
+      } catch (e) {
+        console.error('加载对比快照失败', e)
+      }
+    },
+    // 把 tree 扁平成 {l1:{name:change}, l2:{name:change}, stock:{裸6位code:change}}
+    flattenChange(tree) {
+      const l1 = {}, l2 = {}, stock = {}
+      for (const s of (tree || [])) {
+        l1[s.name] = s.change
+        for (const b of (s.children || [])) {
+          l2[b.name] = b.change
+          for (const st of (b.children || [])) {
+            stock[extractDigits(st.code)] = (typeof st.change === 'number') ? st.change : 0
+          }
+        }
+      }
+      return { l1, l2, stock }
+    },
+    // 以 终点快照结构为底，把每个个股/板块的 change 替换为「终点 − 起点」的 Δ
+    applyCompare(startData, endData) {
+      const start = this.flattenChange(startData.tree)
+      const endTree = endData.tree || []
+      for (const l1 of endTree) {
+        const sc = (typeof start.l1[l1.name] === 'number') ? start.l1[l1.name] : null
+        l1.change = (sc != null && typeof l1.change === 'number') ? (l1.change - sc) : 0
+        for (const l2 of (l1.children || [])) {
+          const sc2 = (typeof start.l2[l2.name] === 'number') ? start.l2[l2.name] : null
+          l2.change = (sc2 != null && typeof l2.change === 'number') ? (l2.change - sc2) : 0
+          for (const st of (l2.children || [])) {
+            const sCh = start.stock[extractDigits(st.code)]   // 起点缺失→undefined
+            const eCh = (typeof st.change === 'number') ? st.change : 0
+            st.startChange = (sCh != null) ? sCh : null
+            st.endChange = eCh
+            st.change = (sCh != null) ? (eCh - sCh) : 0
+          }
+        }
+      }
+      this.sourceTotals = {
+        totalSectors: endData.total_sectors || 0,
+        totalStocks: endData.total_stocks || 0,
+        cacheTime: endData.cache_time || ''
+      }
+      this.tree = endTree
+      this.totalSectors = this.sourceTotals.totalSectors
+      this.totalStocks = this.sourceTotals.totalStocks
+      this.cacheTime = this.sourceTotals.cacheTime
+      this.$nextTick(() => { this.buildLayout(); this.render() })
+    },
+    exitCompare() {
+      this.compareMode = false
+      this.compareStep = 'start'
+      this.compareStart = ''
+      this.compareEnd = ''
+      this.fetchData(true)
+    },
+
     onResize() {
       this.syncSize()
       this.buildLayout()
@@ -840,19 +1075,36 @@ export default {
     // 三级嵌套布局：申万一级 → 申万二级 → 个股，每级顶部留一条标题条
     buildLayout() {
       if (!this.tree.length || this.cssW <= 0) { this.layout = null; return }
-      const sectors = this.tree.map(l1 => ({
-        name: l1.name, change: l1.change, value: l1.value || 0,
-        headerH: 0,
-        children: (l1.children || []).map(l2 => ({
-          name: l2.name, change: l2.change, value: l2.value || 0,
-          headerH: 0,
-          children: (l2.children || []).map(s => ({
+      const useMargin = (this.colorMode === 'margin' && !this.compareMode)
+      const sectors = this.tree.map(l1 => {
+        const children = (l1.children || []).map(l2 => {
+          const stocks = (l2.children || []).map(s => ({
             name: s.name, code: s.code, change: s.change, value: s.value || 0, pe: s.pe,
+            startChange: s.startChange, endChange: s.endChange,
             l1Name: l1.name, l2Name: l2.name, sectorCode: l2.code || l1.code || '',
-            color: interpColor(s.change)
+            color: this.stockColor(s)
           }))
-        }))
-      }))
+          let marginAgg = null
+          if (useMargin) {
+            let sum = 0, has = false
+            for (const st of stocks) {
+              const v = this.marginMap[extractDigits(st.code)]
+              if (typeof v === 'number' && !isNaN(v)) { sum += v; has = true }
+            }
+            marginAgg = has ? sum : null
+          }
+          return { name: l2.name, change: l2.change, value: l2.value || 0, headerH: 0, marginAgg, children: stocks }
+        })
+        let marginAgg = null
+        if (useMargin) {
+          let sum = 0, has = false
+          for (const l2 of children) {
+            if (l2.marginAgg != null) { sum += l2.marginAgg; has = true }
+          }
+          marginAgg = has ? sum : null
+        }
+        return { name: l1.name, change: l1.change, value: l1.value || 0, headerH: 0, marginAgg, children }
+      })
       sectors.sort((a, b) => b.value - a.value)
       for (const s of sectors) {
         s.children.sort((a, b) => b.value - a.value)
@@ -921,7 +1173,8 @@ export default {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
             ctx.fillRect(lx, ly, lw, hh)
-            this.drawHeaderText(ctx, `${l2.name}  ${fmtPct(l2.change)}`, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
+            const l2Txt = (l2.marginAgg != null) ? `${l2.name}  ${fmtMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
+            this.drawHeaderText(ctx, l2Txt, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
           }
           ctx.lineWidth = 1.5
           ctx.strokeStyle = '#05080f'
@@ -934,7 +1187,8 @@ export default {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
           ctx.fillRect(sx, sy, sw, hh)
-          this.drawHeaderText(ctx, `${s.name}    ${fmtPct(s.change)}`, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
+          const sTxt = (s.marginAgg != null) ? `${s.name}    ${fmtMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
+          this.drawHeaderText(ctx, sTxt, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2.5
         ctx.strokeStyle = '#3a4a6b'
@@ -1278,12 +1532,20 @@ export default {
         const n = hit.node
         const summaryKey = n.code ? `${n.code}|${n.sectorCode || ''}|${n.l2Name || n.l1Name || ''}` : ''
         const keepSummary = summaryKey && this.tooltip.summaryKey === summaryKey
+        const cmp = this.compareMode
+        const startCh = cmp ? n.startChange : null
+        const endCh = cmp ? n.endChange : null
         this.tooltip = {
           visible: true,
           name: n.name,
           code: n.code || '',
           change: fmtPct(n.change),
           cls: n.change >= 0 ? 'up' : 'down',
+          compare: cmp,
+          startChange: (startCh != null && !isNaN(startCh)) ? fmtPct(startCh) : '--',
+          endChange: (endCh != null && !isNaN(endCh)) ? fmtPct(endCh) : '--',
+          startCls: (startCh != null && startCh >= 0) ? 'up' : 'down',
+          endCls: (endCh != null && endCh >= 0) ? 'up' : 'down',
           marketCap: fmtCap(n.value),
           pe: fmtPE(n.pe),
           x: mx + 14,
@@ -1692,6 +1954,65 @@ export default {
   font-size: 12px; font-weight: 700;
   pointer-events: none; font-variant-numeric: tabular-nums;
 }
+
+/* 对比水印（区别于复盘蓝，用青色） */
+.mm-replay-watermark.cmp {
+  background: rgba(54,207,201,0.18);
+  border-color: rgba(54,207,201,0.5);
+  color: #87e8de;
+}
+
+/* 着色维度下拉 */
+.mm-color-mode { display: flex; align-items: center; gap: 4px; }
+.mm-color-mode-icon { font-size: 13px; }
+.mm-color-select {
+  height: 26px; padding: 0 6px;
+  background: rgba(13,19,32,0.8); border: 1px solid #3a4a6b; border-radius: 6px;
+  color: #e0e6f0; font-size: 12px; outline: none; cursor: pointer;
+  transition: border-color 0.2s;
+}
+.mm-color-select:focus { border-color: #1890ff; }
+.mm-color-select option { background: #0f1626; color: #e0e6f0; }
+.mm-color-date { font-size: 10px; color: #8ba4c7; white-space: nowrap; }
+.mm-color-mode.loading .mm-color-select { opacity: 0.6; }
+
+/* 时段对比按钮 */
+.mm-replay-compare {
+  height: 22px; padding: 0 10px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: all 0.15s ease; white-space: nowrap;
+  border: 1px solid rgba(255,169,64,0.4);
+  background: rgba(255,169,64,0.1); color: #ffd591;
+}
+.mm-replay-compare:hover:not(:disabled) { background: rgba(255,169,64,0.2); color: #fff; }
+.mm-replay-compare:disabled { opacity: 0.4; cursor: not-allowed; }
+.mm-replay-compare.active {
+  border-color: #ffa940; background: rgba(255,169,64,0.25);
+  box-shadow: 0 0 0 2px rgba(255,169,64,0.3); color: #fff;
+}
+
+/* 时间按钮对比选中态：起点琥珀、终点青 */
+.mm-replay-time.cmp-start {
+  border-color: #ffa940; background: rgba(255,169,64,0.25); color: #ffd591;
+  box-shadow: 0 0 0 2px rgba(255,169,64,0.4);
+}
+.mm-replay-time.cmp-end {
+  border-color: #36cfc9; background: rgba(54,207,201,0.25); color: #87e8de;
+  box-shadow: 0 0 0 2px rgba(54,207,201,0.4);
+}
+
+/* 时段对比状态徽标 */
+.mm-compare-badge {
+  position: absolute; top: 38px; left: 50%; transform: translateX(-50%); z-index: 15;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; border-radius: 12px;
+  font-size: 12px; font-weight: 600; color: #ffd591;
+  background: rgba(255,169,64,0.14); border: 1px solid rgba(255,169,64,0.5);
+  white-space: nowrap;
+}
+.mm-compare-badge.done { color: #87e8de; background: rgba(54,207,201,0.14); border-color: rgba(54,207,201,0.5); }
+.mm-compare-exit { cursor: pointer; font-weight: bold; color: #8ba4c7; padding: 0 2px; }
+.mm-compare-exit:hover { color: #fff; }
 
 /* 融资趋势弹窗（单击个股触发） */
 .mm-modal-overlay {

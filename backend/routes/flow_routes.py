@@ -20,7 +20,7 @@ from anomaly_detector import (
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
-from margin_collector import get_stock_margin_series, trigger_ondemand_update_async
+from margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from intraday_timeline import get_stock_hover_summary
 from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
@@ -208,6 +208,18 @@ def stock_financing():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/stock-financing]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-margin', methods=['GET'])
+def market_map_margin():
+    """大盘云图融资净流入着色：全市场每只标的最新一日融资净买入额(Δ融资余额)。
+    只读融资融券每日缓存，不触发抓取。返回 {success, latest_date, map:{裸6位code: 净流入额}}。"""
+    try:
+        res = get_all_latest_margin_net_inflow()
+        return jsonify({'success': True, 'latest_date': res['latest_date'], 'map': res['map']})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-map-margin]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
