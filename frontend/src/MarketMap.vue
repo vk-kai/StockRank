@@ -1034,7 +1034,7 @@ export default {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
             ctx.fillRect(lx, ly, lw, hh)
-            const l2Txt = (l2.marginAgg != null) ? `${l2.name}  ${formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
+            const l2Txt = (l2.marginAgg != null) ? `${l2.name}  ${this.formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
             this.drawHeaderText(ctx, l2Txt, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
           }
           ctx.lineWidth = 1.5
@@ -1048,7 +1048,7 @@ export default {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
           ctx.fillRect(sx, sy, sw, hh)
-          const sTxt = (s.marginAgg != null) ? `${s.name}    ${formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
+          const sTxt = (s.marginAgg != null) ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
           this.drawHeaderText(ctx, sTxt, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2.5
