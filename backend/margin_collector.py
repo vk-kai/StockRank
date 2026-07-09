@@ -263,6 +263,34 @@ def get_stock_margin_series(code):
     }
 
 
+def get_all_latest_margin_net_inflow():
+    """全市场每只融资融券标的的「最新一日融资净买入额」(= Δ融资余额)。
+
+    只读现有 stock_margin.json 缓存，不发起任何抓取（缓存由每日 09:05 线程维护）。
+    返回 {'latest_date': 'YYYYMMDD', 'map': {裸6位code: {'net':净流入额(元), 'rate':净流入/昨日余额}}}。
+    仅 1 个交易日记录的标的无法算 Δ，不计入；净流入=0 的也计入（用于区分"无数据"）。"""
+    data = _ensure_mem()
+    stocks = data.get('stocks', {})
+    latest_date = data.get('latest_date', '')
+    result = {}
+    for code, rec in stocks.items():
+        raw = rec.get('s') if isinstance(rec, dict) else None
+        if not raw or len(raw) < 2:
+            continue
+        try:
+            prev_b = raw[-2][1]
+            cur_b = raw[-1][1]
+        except (IndexError, TypeError):
+            continue
+        if prev_b is None or cur_b is None:
+            continue
+        net = cur_b - prev_b
+        # rate = 净流入/昨日余额(相对增速)：前端按它排名，避免大市值股绝对额垄断深色(亮的永远是左上角大盘)
+        rate = (net / prev_b) if prev_b else 0.0
+        result[code] = {'net': net, 'rate': rate}
+    return {'latest_date': latest_date, 'map': result}
+
+
 def trigger_ondemand_update_async():
     """弹窗检测到无数据时调用：后台触发一次当日更新（每天最多一次）。
 

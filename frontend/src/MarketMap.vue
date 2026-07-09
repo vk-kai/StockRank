@@ -20,6 +20,19 @@
           {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
         </span>
         <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
+        <div class="mm-color-mode" :class="{ loading: marginLoading }">
+          <span class="mm-color-mode-icon">🎨</span>
+          <select
+            class="mm-color-select"
+            :value="colorMode"
+            @change="onColorModeChange($event.target.value)"
+            title="切换云图着色维度"
+          >
+            <option value="change">着色：涨跌幅</option>
+            <option value="margin">着色：融资净流入</option>
+          </select>
+          <span class="mm-color-date" v-if="colorMode === 'margin' && marginDate">{{ marginDate }}</span>
+        </div>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
@@ -113,7 +126,7 @@
     </div>
 
     <div class="mm-footer">
-      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值，颜色=涨跌幅（红涨绿跌）· 仅供投资参考</span>
+      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值 · {{ footerColorDesc }}· 仅供投资参考</span>
       <div class="mm-replay-bar" v-if="replayPoints.length">
         <button
           v-for="p in replayPoints"
@@ -237,7 +250,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -275,6 +288,21 @@ function interpColor(change) {
 // 筛选灰显色（未命中个股）与整板块变暗面纱（某行业一只都没命中时叠加）
 const DIM_COLOR = '#1b2330'
 const VEIL_COLOR = 'rgba(8,14,24,0.78)'
+
+// 融资净流入着色：非融资标的（无数据）的中性色，区别于"被筛选灰显"
+const NO_MARGIN_COLOR = '#3a4458'
+// 净流入排名→深浅色锚：正流入红、净流出绿，排名越靠前(绝对值越大)越深
+const MARGIN_RED_LIGHT = [122, 64, 66]
+const MARGIN_RED_DEEP = [240, 45, 55]
+const MARGIN_GREEN_LIGHT = [48, 110, 80]
+const MARGIN_GREEN_DEEP = [44, 188, 88]
+function marginDepthColor(depth, light, deep) {
+  const t = Math.max(0, Math.min(1, depth))
+  const r = Math.round(light[0] + (deep[0] - light[0]) * t)
+  const g = Math.round(light[1] + (deep[1] - light[1]) * t)
+  const b = Math.round(light[2] + (deep[2] - light[2]) * t)
+  return `rgb(${r},${g},${b})`
+}
 
 // 按股票代码前缀判断涨跌停限幅(%)：主板 10 / 创业板·科创板 20 / 北交所 30
 function limitThreshold(code) {
@@ -416,6 +444,12 @@ export default {
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
       replayPlaying: false,     // 是否正在自动播放
       replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
+      // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入)
+      colorMode: 'change',
+      marginMap: {},            // {裸6位code: 最新一日融资净流入额}
+      marginDate: '',
+      marginLoading: false,
+      marginLoaded: false,
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
@@ -444,6 +478,11 @@ export default {
     // 是否有可播放的复盘快照（至少一个时间点已抓取）
     hasReplayAvailable() {
       return this.replayPoints.some(p => p.available)
+    },
+    // 页脚颜色说明（随当前着色维度切换）
+    footerColorDesc() {
+      if (this.colorMode === 'margin') return '颜色=融资净流入排名（红=净流入多 / 绿=净流出多）'
+      return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
     latestFinDate() {
@@ -560,6 +599,7 @@ export default {
     this.finChart = null   // 融资弹窗 ECharts 实例
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
     this._pushedCodeSet = null  // 推送股票代码Set，用于高亮筛选
+    this._marginColor = {}      // {裸6位code: 融资净流入排名色}（colorMode=margin 时由 computeMarginColors 填充）
     this._downY = 0
     this._finRetry = 0     // 按需更新无数据时的自动重试计数
     this.replayTimer = null        // 复盘自动播放定时器
@@ -813,6 +853,63 @@ export default {
       if (this.replayTimer) { clearTimeout(this.replayTimer); this.replayTimer = null }
     },
 
+    // ===== 着色维度（涨跌幅 / 融资净流入）=====
+    // 个股取色：融资态用排名色、默认用涨跌幅
+    stockColor(s) {
+      if (this.colorMode === 'margin') {
+        return this._marginColor[extractDigits(s.code)] || NO_MARGIN_COLOR
+      }
+      return interpColor(s.change)
+    },
+    async onColorModeChange(mode) {
+      this.colorMode = mode
+      if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
+      this.buildLayout()
+      this.render()
+    },
+    async loadMarginData() {
+      this.marginLoading = true
+      try {
+        const res = await getMarketMapMargin()
+        if (res && res.success) {
+          this.marginMap = res.map || {}
+          this.marginDate = res.latest_date || ''
+          this.marginLoaded = true
+          this.computeMarginColors()
+        }
+      } catch (e) {
+        console.error('融资净流入加载失败', e)
+      } finally {
+        this.marginLoading = false
+      }
+    },
+    // 按净流入大小排名映射深浅：正流入→红、净流出→绿，排名越靠前(绝对值越大)越深
+    computeMarginColors() {
+      const map = {}
+      // 必须先按净流入大小排序再赋深度：否则对象 key(整型字符串)按数字升序遍历，
+      // depth≈1 的深色全落到 000xxx/600xxx(大盘股=treemap 左上角)，300xxx/688xxx(小盘)depth≈0 暗成灰色 → "只有左上角亮"
+      const pos = [], neg = []
+      for (const code in this.marginMap) {
+        // 按 净流入/昨日融资余额(相对增速) 排名：消除大市值股绝对额对深色的统治(否则亮的永远是左上角大盘)
+        const entry = this.marginMap[code]
+        const r = entry && typeof entry.rate === 'number' && isFinite(entry.rate) ? entry.rate : null
+        if (r == null || r === 0) continue
+        if (r > 0) pos.push([code, r]); else neg.push([code, r])
+      }
+      pos.sort((a, b) => b[1] - a[1])                       // 净流入多 → 前 → 深
+      neg.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))  // 净流出多 → 前 → 深
+      const assign = (arr, light, deep) => {
+        const n = arr.length
+        arr.forEach((entry, i) => {
+          const depth = n > 1 ? 1 - i / (n - 1) : 1   // i=0(绝对值最大)→depth=1(最深)
+          map[entry[0]] = marginDepthColor(depth, light, deep)
+        })
+      }
+      assign(pos, MARGIN_RED_LIGHT, MARGIN_RED_DEEP)
+      assign(neg, MARGIN_GREEN_LIGHT, MARGIN_GREEN_DEEP)
+      this._marginColor = map
+    },
+
     onResize() {
       this.syncSize()
       this.buildLayout()
@@ -840,19 +937,35 @@ export default {
     // 三级嵌套布局：申万一级 → 申万二级 → 个股，每级顶部留一条标题条
     buildLayout() {
       if (!this.tree.length || this.cssW <= 0) { this.layout = null; return }
-      const sectors = this.tree.map(l1 => ({
-        name: l1.name, change: l1.change, value: l1.value || 0,
-        headerH: 0,
-        children: (l1.children || []).map(l2 => ({
-          name: l2.name, change: l2.change, value: l2.value || 0,
-          headerH: 0,
-          children: (l2.children || []).map(s => ({
+      const useMargin = (this.colorMode === 'margin')
+      const sectors = this.tree.map(l1 => {
+        const children = (l1.children || []).map(l2 => {
+          const stocks = (l2.children || []).map(s => ({
             name: s.name, code: s.code, change: s.change, value: s.value || 0, pe: s.pe,
             l1Name: l1.name, l2Name: l2.name, sectorCode: l2.code || l1.code || '',
-            color: interpColor(s.change)
+            color: this.stockColor(s)
           }))
-        }))
-      }))
+          let marginAgg = null
+          if (useMargin) {
+            let sum = 0, has = false
+            for (const st of stocks) {
+              const v = this.marginMap[extractDigits(st.code)]
+              if (v && typeof v.net === 'number' && !isNaN(v.net)) { sum += v.net; has = true }
+            }
+            marginAgg = has ? sum : null
+          }
+          return { name: l2.name, change: l2.change, value: l2.value || 0, headerH: 0, marginAgg, children: stocks }
+        })
+        let marginAgg = null
+        if (useMargin) {
+          let sum = 0, has = false
+          for (const l2 of children) {
+            if (l2.marginAgg != null) { sum += l2.marginAgg; has = true }
+          }
+          marginAgg = has ? sum : null
+        }
+        return { name: l1.name, change: l1.change, value: l1.value || 0, headerH: 0, marginAgg, children }
+      })
       sectors.sort((a, b) => b.value - a.value)
       for (const s of sectors) {
         s.children.sort((a, b) => b.value - a.value)
@@ -921,7 +1034,8 @@ export default {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
             ctx.fillRect(lx, ly, lw, hh)
-            this.drawHeaderText(ctx, `${l2.name}  ${fmtPct(l2.change)}`, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
+            const l2Txt = (l2.marginAgg != null) ? `${l2.name}  ${this.formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
+            this.drawHeaderText(ctx, l2Txt, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
           }
           ctx.lineWidth = 1.5
           ctx.strokeStyle = '#05080f'
@@ -934,7 +1048,8 @@ export default {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
           ctx.fillRect(sx, sy, sw, hh)
-          this.drawHeaderText(ctx, `${s.name}    ${fmtPct(s.change)}`, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
+          const sTxt = (s.marginAgg != null) ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
+          this.drawHeaderText(ctx, sTxt, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2.5
         ctx.strokeStyle = '#3a4a6b'
@@ -1653,8 +1768,8 @@ export default {
 .mm-filter-badge:hover { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.18); }
 .mm-filter-clear { color: #8ba4c7; font-weight: bold; }
 
-.mm-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
-.mm-footer-text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px 12px; padding: 5px 8px; color: #8ba4c7; font-size: 0.72rem; margin-top: 6px; flex-shrink: 0; }
+.mm-footer-text { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 复盘工具条：页脚说明文字右边 */
 .mm-replay-bar { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
@@ -1692,6 +1807,20 @@ export default {
   font-size: 12px; font-weight: 700;
   pointer-events: none; font-variant-numeric: tabular-nums;
 }
+
+/* 着色维度下拉 */
+.mm-color-mode { display: flex; align-items: center; gap: 4px; }
+.mm-color-mode-icon { font-size: 13px; }
+.mm-color-select {
+  height: 26px; padding: 0 6px;
+  background: rgba(13,19,32,0.8); border: 1px solid #3a4a6b; border-radius: 6px;
+  color: #e0e6f0; font-size: 12px; outline: none; cursor: pointer;
+  transition: border-color 0.2s;
+}
+.mm-color-select:focus { border-color: #1890ff; }
+.mm-color-select option { background: #0f1626; color: #e0e6f0; }
+.mm-color-date { font-size: 10px; color: #8ba4c7; white-space: nowrap; }
+.mm-color-mode.loading .mm-color-select { opacity: 0.6; }
 
 /* 融资趋势弹窗（单击个股触发） */
 .mm-modal-overlay {

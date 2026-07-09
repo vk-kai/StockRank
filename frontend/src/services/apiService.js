@@ -163,6 +163,20 @@ export async function getMarketMapSnapshot(time) {
   }
 }
 
+/**
+ * 大盘云图融资净流入着色：全市场每只标的最新一日融资净买入额(Δ融资余额)。
+ * 返回 { success, latest_date, map:{裸6位code: 净流入额} }。失败返回 { success:false }。
+ */
+export async function getMarketMapMargin() {
+  try {
+    const response = await apiClient.get('/flow/market-map-margin')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图融资净流入失败:', error)
+    return { success: false }
+  }
+}
+
 export async function getMarketMapPush() {
   try {
     const response = await apiClient.get('/flow/market-map-push')
