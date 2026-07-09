@@ -8,6 +8,8 @@ from flask import request, jsonify, g
 import time
 import ipaddress
 
+from daily_password import verify_password as _verify_daily_password
+
 class SecurityMiddleware:
     def __init__(self, app=None, config=None):
         self.app = app
@@ -228,7 +230,7 @@ def create_security_blueprint(middleware):
         if not ip:
             return jsonify({'success': False, 'message': 'IP地址不能为空'}), 400
         
-        if password != 'vk666':
+        if not _verify_daily_password(password):
             return jsonify({'success': False, 'message': '密码错误'}), 403
         
         if middleware.unban_ip(ip):

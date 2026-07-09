@@ -170,11 +170,7 @@ export default {
 
     async handleUnbanIP(ip) {
       this.showPasswordModal(async (password) => {
-        if (password !== 'vk666') {
-          this.showToast('密码错误', 'error')
-          return
-        }
-        
+        // 密码校验交由服务端（今日动态密码 vk666+月日），前端不再硬编码
         try {
           const response = await unbanIP(ip)
           if (response.success) {

@@ -1247,7 +1247,8 @@ export default {
 
     openQuantSystem() {
       const baseUrl = window.location.origin
-      const quantUrl = `${baseUrl}/TrendZen/`
+      // 携带 tz_gate 特征：StockRank nginx 据此放行并下发 cookie，直接复制裸 URL 访问会被踢回首页
+      const quantUrl = `${baseUrl}/TrendZen/?tz_gate=vK-TzGate-9f2c7a1e`
       window.open(quantUrl, '_blank')
     },
 

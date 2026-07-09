@@ -1,6 +1,7 @@
 import unittest
 
 from app import create_app
+from daily_password import get_daily_password
 
 
 class AuthGuardTests(unittest.TestCase):
@@ -17,7 +18,7 @@ class AuthGuardTests(unittest.TestCase):
         bad_login = self.client.post("/api/auth/login", json={"username": "vk", "password": "bad"})
         self.assertEqual(bad_login.status_code, 401)
 
-        good_login = self.client.post("/api/auth/login", json={"username": "vk", "password": "vk666"})
+        good_login = self.client.post("/api/auth/login", json={"username": "vk", "password": get_daily_password()})
         self.assertEqual(good_login.status_code, 200)
         self.assertTrue(good_login.get_json()["authenticated"])
 

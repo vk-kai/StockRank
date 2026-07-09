@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from logger import get_logger
 from config import load_monitor_config
+from daily_password import get_daily_password
 
 error_logger = get_logger('error')
 system_logger = get_logger('monitor')
@@ -17,7 +18,6 @@ _fail_reset_time = {}
 _auth_session = None
 _auth_session_base_url = None
 MONITOR_USERNAME = os.environ.get('STOCKRANK_MONITOR_USERNAME', 'vk')
-MONITOR_PASSWORD = os.environ.get('STOCKRANK_MONITOR_PASSWORD', 'vk666')
 
 def get_current_config():
     global _last_config_reload
@@ -37,7 +37,7 @@ def get_auth_session(api_base_url):
     try:
         response = session.post(
             f"{api_base_url}/api/auth/login",
-            json={"username": MONITOR_USERNAME, "password": MONITOR_PASSWORD},
+            json={"username": MONITOR_USERNAME, "password": get_daily_password()},
             timeout=5,
         )
         if response.status_code != 200:

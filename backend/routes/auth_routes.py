@@ -1,13 +1,15 @@
 from flask import Blueprint, jsonify, request, session
 
+from daily_password import verify_password as _verify_daily_password
+
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
 USERNAME = 'vk'
-PASSWORD = 'vk666'
 
 
 def verify_password(password):
-    return password == PASSWORD
+    """校验是否等于今日动态密码（vk666 + 北京时间月日，如 vk6660710）"""
+    return _verify_daily_password(password)
 
 
 def is_authenticated():
@@ -15,19 +17,10 @@ def is_authenticated():
 
 
 def is_service_push_request():
-    """检查是否是量化系统推送大盘云图的请求（请求体携带账号密码）"""
-    if request.method != 'POST':
-        return False
-    path = request.path or ''
-    if path != '/api/flow/market-map-push':
-        return False
-    try:
-        data = request.get_json(silent=True) or {}
-        auth_username = str(data.get('auth_username') or '').strip()
-        auth_password = str(data.get('auth_password') or '').strip()
-        return auth_username == USERNAME and auth_password == PASSWORD
-    except Exception:
-        return False
+    """量化系统推送大盘云图的 POST 请求无需鉴权，直接放行。
+    仅对 POST /api/flow/market-map-push 生效；同路径的 GET/DELETE 仍需登录态。
+    """
+    return request.method == 'POST' and (request.path or '') == '/api/flow/market-map-push'
 
 
 # 健康检查必须放行：docker healthcheck 用 curl 打 /health 判定容器存活，
