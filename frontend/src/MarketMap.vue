@@ -30,9 +30,15 @@
           >
             <option value="change">着色：涨跌幅</option>
             <option value="margin">着色：融资净流入</option>
+            <option value="score" v-if="hasScores">着色：AI打分</option>
           </select>
           <span class="mm-color-date" v-if="colorMode === 'margin' && marginDate">{{ marginDate }}</span>
+          <span class="mm-color-date" v-if="colorMode === 'score' && scoreDate">打分：{{ scoreDate }}</span>
         </div>
+        <button @click="openScoreDialog" class="mm-score-btn" :class="{ running: scoringRunning }" title="调用 AI 给全市场股票打分（耗时较长，结果可反复使用）">
+          <span class="mm-score-spin" :class="{ on: scoringRunning }">🤖</span>
+          {{ scoringRunning ? '打分中…' : (hasScores ? '重新打分' : 'AI批量打分') }}
+        </button>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
           {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
@@ -68,7 +74,7 @@
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
         <div class="mm-tooltip-row">
-          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : '涨跌幅' }}</span>
+          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : '涨跌幅') }}</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
         <div class="mm-tooltip-row">
@@ -79,6 +85,11 @@
           <span class="mm-tooltip-label">市盈率</span>
           <span class="mm-tooltip-val">{{ tooltip.pe }}</span>
         </div>
+        <div class="mm-tooltip-row" v-if="tooltip.score != null && colorMode !== 'score'">
+          <span class="mm-tooltip-label">AI评分</span>
+          <span class="mm-tooltip-val" :class="tooltip.scoreCls">{{ tooltip.score }} <small>{{ tooltip.scoreLabel }}</small></span>
+        </div>
+        <div class="mm-tooltip-score-reason" v-if="tooltip.scoreReason">{{ tooltip.scoreLabel }} · {{ tooltip.scoreReason }}</div>
         <div v-if="tooltip.loading" class="mm-tooltip-extra">摘要加载中...</div>
         <template v-else-if="tooltip.summary">
           <div class="mm-tooltip-divider"></div>
@@ -247,12 +258,85 @@
       </div>
     </div>
 
+    <!-- AI 批量打分弹窗：确认 → 进度 → 完成/失败 -->
+    <div class="mm-modal-overlay" v-if="scoreDialog.visible" @click="closeScoreDialog">
+      <div class="mm-modal mm-score-modal" @click.stop>
+        <div class="mm-modal-header">
+          <div class="mm-modal-title"><span class="mm-modal-name">🤖 AI 批量股票打分</span></div>
+          <button class="mm-modal-close" @click="closeScoreDialog" v-if="scoreDialog.view !== 'running'">✕</button>
+        </div>
+
+        <!-- 确认 -->
+        <div v-if="scoreDialog.view === 'confirm'" class="mm-score-body">
+          <p class="mm-score-desc">
+            将调用你配置的 AI（🤖 AI大模型配置）对全市场约 <b>{{ scoreEstimate.total || '5000+' }}</b> 只股票逐一打分，
+            生成 0-100 的综合评分（<span class="up">≥50 红=可考虑</span> / <span class="down">&lt;50 绿=谨慎</span>），
+            保存后即可在云图按分数着色、筛选、悬浮查看，<b>一目了然哪些可重仓、哪些需谨慎</b>。
+          </p>
+          <ul class="mm-score-tips">
+            <li>⏱️ 过程漫长，预计 <b>{{ scoreEstimate.eta_minutes || '25-40' }} 分钟</b>（{{ scoreEstimate.batches || 500 }} 批 × {{ scoreEstimate.workers || 4 }} 并发）。</li>
+            <li>💰 会消耗 AI 额度（全量约百万级 token，成本通常仅几元）。</li>
+            <li>💾 每 scored 一只即落盘，中途可随时关闭/停止，已打分结果保留，下次可"仅跑失败项"。</li>
+            <li>🔁 打分不频繁，跑完一次长期复用，建议基本面有大变化时再重跑。</li>
+          </ul>
+          <p class="mm-score-warn" v-if="!aiEnabled">⚠️ 当前 AI 未启用或配置不完整，请先到「🤖 AI大模型配置」中设置并测试通过。</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-cancel" @click="closeScoreDialog">取消</button>
+            <button class="mm-score-btn-ok" :disabled="!aiEnabled || scoreDialog.busy" @click="confirmStartScoring(false)">
+              {{ scoreDialog.busy ? '启动中…' : (hasScores ? '确认重新打分' : '确认开始打分') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 进行中 -->
+        <div v-else-if="scoreDialog.view === 'running'" class="mm-score-body">
+          <div class="mm-score-progress">
+            <div class="mm-score-progress-bar"><div class="mm-score-progress-fill" :style="{ width: (scoringStatus.progress || 0) + '%' }"></div></div>
+            <div class="mm-score-progress-num">{{ scoringStatus.progress || 0 }}%</div>
+          </div>
+          <div class="mm-score-step">{{ scoringStatus.step || '处理中…' }}</div>
+          <div class="mm-score-stat">
+            <span>已评分 <b class="up">{{ scoringStatus.done || 0 }}</b> / {{ scoringStatus.total || scoreEstimate.total || '?' }}</span>
+            <span v-if="scoringStatus.failed">· 失败 <b class="down">{{ scoringStatus.failed }}</b></span>
+          </div>
+          <p class="mm-score-note">过程中云图可实时按分数着色（切到「着色：AI打分」查看）。可放心关闭此窗口，打分在后台继续。</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-cancel" @click="handleStopScoring">停止打分</button>
+            <button class="mm-score-btn-ghost" @click="scoreDialog.visible = false">后台运行，关闭窗口</button>
+          </div>
+        </div>
+
+        <!-- 完成 -->
+        <div v-else-if="scoreDialog.view === 'done'" class="mm-score-body">
+          <p class="mm-score-result" :class="{ warn: scoringStatus.failed }">
+            ✅ {{ scoringStatus.message || '打分完成' }}
+          </p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-ghost" v-if="scoringStatus.failed" @click="confirmStartScoring(true)">仅跑失败项（{{ scoringStatus.failed }} 只）</button>
+            <button class="mm-score-btn-ok" @click="finishAndSwitchToScore">查看打分云图</button>
+            <button class="mm-score-btn-cancel" @click="closeScoreDialog">关闭</button>
+          </div>
+        </div>
+
+        <!-- 失败/中断 -->
+        <div v-else class="mm-score-body">
+          <p class="mm-score-result warn">⚠️ {{ scoringStatus.message || '打分未完成' }}</p>
+          <p class="mm-score-note" v-if="scoringStatus.status === 'interrupted'">进程可能已重启。已评分的结果仍保留，可重新开始或仅跑未完成部分。</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-ok" @click="confirmStartScoring(true)">仅跑未完成项</button>
+            <button class="mm-score-btn-cancel" @click="confirmStartScoring(false)">重新全部打分</button>
+            <button class="mm-score-btn-ghost" @click="closeScoreDialog">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <SecurityAlert />
   </div>
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -319,6 +403,59 @@ const MARGIN_LEGEND_STEPS = [
   { value: 'margin-8', label: '500~1000万', countTitle: '净流入 500万 ~ 1000万', min: 5e6, max: 1e7, color: '#ca3a45' },
   { value: 'margin-9', label: '>1000万', countTitle: '净流入 > 1000万', min: 1e7, color: '#f02d37' }
 ]
+
+// AI 打分着色：0-100 分，50 为红绿分界。<50 绿（谨慎），≥50 红（可考虑），深浅=分值大小。
+// 与后端 stock_scorer.SCORE_BUCKETS 一一对应（图例 9 格 + 点击筛选）；单元格用连续渐变 SCORE_COLOR_STOPS。
+const SCORE_LEGEND_STEPS = [
+  { value: 'score-1', label: '≤10',   countTitle: '极谨慎 0-10',    max: 10,           color: '#2cbc58' },
+  { value: 'score-2', label: '11-25', countTitle: '谨慎 11-25',     min: 10, max: 25,  color: '#2a9a55' },
+  { value: 'score-3', label: '26-40', countTitle: '偏谨慎 26-40',   min: 25, max: 40,  color: '#3d7a55' },
+  { value: 'score-4', label: '41-49', countTitle: '中性偏空 41-49', min: 40, max: 49,  color: '#5a5a4a' },
+  { value: 'score-5', label: '50-59', countTitle: '中性偏多 50-59', min: 49, max: 59,  color: '#6a4050' },
+  { value: 'score-6', label: '60-69', countTitle: '尚可 60-69',     min: 59, max: 69,  color: '#963c48' },
+  { value: 'score-7', label: '70-79', countTitle: '较优 70-79',     min: 69, max: 79,  color: '#c03843' },
+  { value: 'score-8', label: '80-89', countTitle: '优秀 80-89',     min: 79, max: 89,  color: '#e2323d' },
+  { value: 'score-9', label: '≥90',   countTitle: '顶级 90-100',    min: 89,           color: '#f02d37' }
+]
+// 连续色阶：0(深绿/极谨慎) → 50(暗中性，红绿分界) → 100(深红/顶级)
+const SCORE_COLOR_STOPS = [
+  [0,   [44, 188, 88]],
+  [10,  [42, 154, 85]],
+  [25,  [61, 122, 85]],
+  [40,  [90, 90, 74]],
+  [50,  [106, 64, 80]],
+  [60,  [150, 60, 72]],
+  [75,  [192, 56, 67]],
+  [89,  [226, 50, 61]],
+  [100, [243, 47, 61]]
+]
+const NO_SCORE_COLOR = '#3a4458'  // 未评分个股的中性色（区别于"被筛选灰显"）
+function interpScoreColor(score) {
+  if (typeof score !== 'number' || isNaN(score)) return NO_SCORE_COLOR
+  const s = Math.max(0, Math.min(100, score))
+  for (let i = 0; i < SCORE_COLOR_STOPS.length - 1; i++) {
+    const [p1, col1] = SCORE_COLOR_STOPS[i]
+    const [p2, col2] = SCORE_COLOR_STOPS[i + 1]
+    if (s >= p1 && s <= p2) {
+      const t = p2 === p1 ? 0 : (s - p1) / (p2 - p1)
+      const r = Math.round(col1[0] + (col2[0] - col1[0]) * t)
+      const g = Math.round(col1[1] + (col2[1] - col1[1]) * t)
+      const b = Math.round(col1[2] + (col2[2] - col1[2]) * t)
+      return `rgb(${r},${g},${b})`
+    }
+  }
+  return NO_SCORE_COLOR
+}
+// 打分命中筛选区间（与 inMarginFilter 同构的半开区间）
+function inScoreFilter(value, active) {
+  if (active == null) return true
+  if (typeof value !== 'number' || isNaN(value)) return false
+  const step = SCORE_LEGEND_STEPS.find(item => item.value === active)
+  if (!step) return false
+  if (step.min == null) return value <= step.max
+  if (step.max == null) return value > step.min
+  return value > step.min && value <= step.max
+}
 
 // 按股票代码前缀判断涨跌停限幅(%)：主板 10 / 创业板·科创板 20 / 北交所 30
 function limitThreshold(code) {
@@ -470,12 +607,23 @@ export default {
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
       replayPlaying: false,     // 是否正在自动播放
       replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
-      // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入)
+      // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入) | 'score'(AI打分)
       colorMode: 'change',
       marginMap: {},            // {裸6位code: 最新一日融资净流入额}
       marginDate: '',
       marginLoading: false,
       marginLoaded: false,
+      // AI 打分维度
+      scoreMap: {},             // {裸6位code: {score,label,reason}}
+      scoreDate: '',
+      scoreLoading: false,
+      scoreLoaded: false,
+      aiEnabled: true,          // AI 是否已配置启用（控制打分按钮可用性）
+      scoringRunning: false,
+      scoringTimer: null,
+      scoringStatus: { status: 'idle', progress: 0, step: '', total: 0, done: 0, failed: 0, message: '' },
+      scoreEstimate: { total: 0, batches: 0, workers: 4, eta_minutes: '25-40' },
+      scoreDialog: { visible: false, view: 'confirm', busy: false },
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
@@ -501,6 +649,10 @@ export default {
     hasData() {
       return this.tree.length > 0
     },
+    // 是否已有 AI 打分数据（决定下拉框是否出现"着色：AI打分"选项）
+    hasScores() {
+      return this.scoreLoaded && Object.keys(this.scoreMap || {}).length > 0
+    },
     // 是否有可播放的复盘快照（至少一个时间点已抓取）
     hasReplayAvailable() {
       return this.replayPoints.some(p => p.available)
@@ -508,6 +660,7 @@ export default {
     // 页脚颜色说明（随当前着色维度切换）
     footerColorDesc() {
       if (this.colorMode === 'margin') return '颜色=融资净流入金额（红=净流入多 / 绿=净流出多）'
+      if (this.colorMode === 'score') return '颜色=AI打分（红=高分可考虑 / 绿=低分需谨慎，50 为界）'
       return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
@@ -533,6 +686,12 @@ export default {
     legendSteps() {
       if (this.colorMode === 'margin') {
         return MARGIN_LEGEND_STEPS.map(step => ({
+          ...step,
+          title: '点击只看 ' + step.countTitle + '，再次点击复原'
+        }))
+      }
+      if (this.colorMode === 'score') {
+        return SCORE_LEGEND_STEPS.map(step => ({
           ...step,
           title: '点击只看 ' + step.countTitle + '，再次点击复原'
         }))
@@ -565,6 +724,8 @@ export default {
       let desc
       if (this.colorMode === 'margin') {
         desc = (MARGIN_LEGEND_STEPS.find(step => step.value === a) || {}).label || '融资净流入'
+      } else if (this.colorMode === 'score') {
+        desc = ((SCORE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || 'AI打分'
       } else if (a === 'limit_up') desc = '涨停'
       else if (a === 'limit_down') desc = '跌停'
       else if (a <= -4) desc = '跌幅 ≤ -4%'
@@ -580,6 +741,18 @@ export default {
           for (const l2 of (s.children || [])) {
             for (const st of (l2.children || [])) {
               const step = MARGIN_LEGEND_STEPS.find(item => inMarginFilter(this.marginValue(st), item.value))
+              if (step) counts[step.value]++
+            }
+          }
+        }
+        return counts
+      }
+      if (this.colorMode === 'score') {
+        const counts = Object.fromEntries(SCORE_LEGEND_STEPS.map(step => [step.value, 0]))
+        for (const s of this.tree) {
+          for (const l2 of (s.children || [])) {
+            for (const st of (l2.children || [])) {
+              const step = SCORE_LEGEND_STEPS.find(item => inScoreFilter(this.scoreValue(st), item.value))
               if (step) counts[step.value]++
             }
           }
@@ -662,10 +835,15 @@ export default {
     // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
     this.refreshReplayPoints()
     this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
+    // AI 打分：恢复在跑任务轮询 + 预载已评分缓存（决定下拉是否出现"着色：AI打分"）+ 检查 AI 配置
+    this.checkScoringStatus()
+    this.loadScoreData()
+    this.checkAiEnabled()
   },
   beforeUnmount() {
     clearInterval(this.timer)
     clearInterval(this.replayPointsTimer)
+    if (this.scoringTimer) clearInterval(this.scoringTimer)
     if (this.replayTimer) clearTimeout(this.replayTimer)
     if (this._raf) cancelAnimationFrame(this._raf)
     if (this._hlTimer) clearTimeout(this._hlTimer)
@@ -906,16 +1084,32 @@ export default {
       const value = entry && entry.net
       return typeof value === 'number' && isFinite(value) ? value : null
     },
+    // 个股 AI 打分（裸6位code 查 scoreMap）；未评分返回 null
+    scoreValue(stock) {
+      const entry = this.scoreMap[extractDigits(stock && stock.code)]
+      const v = entry && entry.score
+      return typeof v === 'number' && isFinite(v) ? v : null
+    },
     stockMatchesActiveFilter(stock, active = this.activeLegend) {
       if (this.colorMode === 'margin') return inMarginFilter(this.marginValue(stock), active)
+      if (this.colorMode === 'score') return inScoreFilter(this.scoreValue(stock), active)
       return inChangeFilter(stock.change, stock.code, active)
     },
     stockMetricLabel(stock) {
-      return this.colorMode === 'margin' ? this.formatMoney(this.marginValue(stock)) : fmtPct(stock.change)
+      if (this.colorMode === 'margin') return this.formatMoney(this.marginValue(stock))
+      if (this.colorMode === 'score') {
+        const v = this.scoreValue(stock)
+        return v == null ? '--' : String(v)
+      }
+      return fmtPct(stock.change)
     },
     stockColor(s) {
       if (this.colorMode === 'margin') {
         return this._marginColor[extractDigits(s.code)] || NO_MARGIN_COLOR
+      }
+      if (this.colorMode === 'score') {
+        const v = this.scoreValue(s)
+        return v == null ? NO_SCORE_COLOR : interpScoreColor(v)
       }
       return interpColor(s.change)
     },
@@ -924,6 +1118,7 @@ export default {
       this.colorMode = mode
       this.activeLegend = null
       if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
+      if (mode === 'score' && !this.scoreLoaded) await this.loadScoreData()
       this.buildLayout()
       this.render()
     },
@@ -972,6 +1167,142 @@ export default {
       assign(pos, MARGIN_RED_LIGHT, MARGIN_RED_DEEP)
       assign(neg, MARGIN_GREEN_LIGHT, MARGIN_GREEN_DEEP)
       this._marginColor = map
+    },
+
+    // ===== AI 打分维度：拉取已评分缓存（只读，不触发打分）=====
+    async loadScoreData() {
+      this.scoreLoading = true
+      try {
+        const res = await getStockScores()
+        if (res && res.success) {
+          this.scoreMap = res.map || {}
+          this.scoreDate = res.scored_at ? String(res.scored_at).slice(0, 10) : ''
+          this.scoreLoaded = true
+        }
+      } catch (e) {
+        console.error('AI打分加载失败', e)
+      } finally {
+        this.scoreLoading = false
+      }
+    },
+
+    // ===== AI 批量打分：弹窗 / 启动 / 轮询 / 停止（镜像 App.script.js 的 analyze-daily 轮询）=====
+    openScoreDialog() {
+      this.scoreDialog.busy = false
+      // 按当前任务状态决定首屏视图
+      if (this.scoringRunning || this.scoringStatus.status === 'running') {
+        this.scoreDialog.view = 'running'
+      } else if (this.scoringStatus.status === 'completed') {
+        this.scoreDialog.view = 'done'
+      } else if (this.scoringStatus.status === 'failed' || this.scoringStatus.status === 'interrupted') {
+        this.scoreDialog.view = 'error'
+      } else {
+        this.scoreDialog.view = 'confirm'
+      }
+      this.scoreDialog.visible = true
+    },
+    closeScoreDialog() {
+      this.scoreDialog.visible = false
+    },
+    async confirmStartScoring(onlyFailed = false) {
+      this.scoreDialog.busy = true
+      try {
+        const res = await startStockScoring(onlyFailed)
+        if (res && res.success) {
+          if (res.estimate) this.scoreEstimate = { ...this.scoreEstimate, ...res.estimate }
+          this.scoringRunning = true
+          this.scoringStatus = {
+            ...this.scoringStatus,
+            status: 'running',
+            progress: res.progress || 0,
+            total: (res.estimate && res.estimate.total) || this.scoringStatus.total || 0,
+            step: res.message || '已启动'
+          }
+          this.scoreDialog.view = 'running'
+          this.startScoringPolling()
+        } else {
+          // 启动被拒（已在运行）或失败（AI 未配置等）
+          if (res && res.status === 'running') {
+            this.scoringRunning = true
+            this.scoringStatus = { ...this.scoringStatus, status: 'running', progress: res.progress || 0, step: res.step || '' }
+            this.scoreDialog.view = 'running'
+            this.startScoringPolling()
+          } else {
+            if (res && /未启用|配置不完整/.test(res.message || '')) this.aiEnabled = false
+            this.scoringStatus = { ...this.scoringStatus, status: 'failed', message: (res && res.message) || '启动失败' }
+            this.scoreDialog.view = 'error'
+          }
+        }
+      } catch (e) {
+        this.scoringStatus = { ...this.scoringStatus, status: 'failed', message: '启动失败：' + ((e && e.message) || '网络错误') }
+        this.scoreDialog.view = 'error'
+      } finally {
+        this.scoreDialog.busy = false
+      }
+    },
+    startScoringPolling() {
+      if (this.scoringTimer) clearInterval(this.scoringTimer)
+      this.scoringTimer = setInterval(() => { this.pollScoringOnce() }, 5000)
+    },
+    async pollScoringOnce() {
+      try {
+        const res = await getStockScoringStatus()
+        if (!res || !res.success) return
+        const st = res.status
+        this.scoringStatus = { ...this.scoringStatus, ...res }
+        if (st === 'running') {
+          this.scoringRunning = true
+          if (this.scoreDialog.visible) this.scoreDialog.view = 'running'
+          // 进行中：分数实时累加，若处于打分维度则刷新着色
+          if (this.colorMode === 'score') {
+            await this.loadScoreData()
+            this.buildLayout()
+            this.render()
+          }
+        } else if (st === 'completed') {
+          this.scoringRunning = false
+          if (this.scoringTimer) { clearInterval(this.scoringTimer); this.scoringTimer = null }
+          await this.loadScoreData()
+          if (this.colorMode === 'score') { this.buildLayout(); this.render() }
+          if (this.scoreDialog.visible) this.scoreDialog.view = 'done'
+        } else if (st === 'failed' || st === 'interrupted') {
+          this.scoringRunning = false
+          if (this.scoringTimer) { clearInterval(this.scoringTimer); this.scoringTimer = null }
+          await this.loadScoreData()
+          if (this.scoreDialog.visible) this.scoreDialog.view = 'error'
+        }
+      } catch (e) { /* 轮询失败，继续 */ }
+    },
+    async handleStopScoring() {
+      try { await stopStockScoring() } catch (e) { /* noop */ }
+      // 不立即改状态：等下一轮轮询确认 interrupted（当前批次完成后才停）
+    },
+    finishAndSwitchToScore() {
+      this.scoreDialog.visible = false
+      if (!this.hasScores) return
+      this.colorMode = 'score'
+      this.activeLegend = null
+      this.buildLayout()
+      this.render()
+    },
+    // 挂载时检查打分任务状态：running 则恢复轮询（刷新页面不丢失在跑任务）
+    async checkScoringStatus() {
+      try {
+        const res = await getStockScoringStatus()
+        if (!res || !res.success) return
+        this.scoringStatus = { ...this.scoringStatus, ...res }
+        if (res.status === 'running') {
+          this.scoringRunning = true
+          this.startScoringPolling()
+        }
+      } catch (e) { /* noop */ }
+    },
+    async checkAiEnabled() {
+      try {
+        const res = await getAIConfig()
+        const cfg = (res && res.success && res.data) || {}
+        this.aiEnabled = !!(cfg.enabled && cfg.api_url && cfg.api_key)
+      } catch (e) { /* 默认 true，不阻塞 */ }
     },
 
     onResize() {
@@ -1457,14 +1788,24 @@ export default {
         const n = hit.node
         const summaryKey = n.code ? `${n.code}|${n.sectorCode || ''}|${n.l2Name || n.l1Name || ''}` : ''
         const keepSummary = summaryKey && this.tooltip.summaryKey === summaryKey
+        // AI 打分：分数 + 颜色档 + 一句话理由（仅评分维度或已有分数时展示）
+        const sv = this.scoreValue(n)
+        const sEntry = sv != null ? this.scoreMap[extractDigits(n.code)] : null
+        const sBucket = sv != null ? (SCORE_LEGEND_STEPS.find(item => inScoreFilter(sv, item.value)) || {}).countTitle : ''
         this.tooltip = {
           visible: true,
           name: n.name,
           code: n.code || '',
           change: this.stockMetricLabel(n),
-          cls: this.colorMode === 'margin' ? this.valueClass(this.marginValue(n)) : (n.change >= 0 ? 'up' : 'down'),
+          cls: this.colorMode === 'margin' ? this.valueClass(this.marginValue(n))
+            : this.colorMode === 'score' ? (sv == null ? '' : (sv >= 50 ? 'up' : 'down'))
+            : (n.change >= 0 ? 'up' : 'down'),
           marketCap: fmtCap(n.value),
           pe: fmtPE(n.pe),
+          score: sv != null ? sv : null,
+          scoreCls: sv == null ? '' : (sv >= 50 ? 'up' : 'down'),
+          scoreLabel: sBucket,
+          scoreReason: (sEntry && sEntry.reason) || '',
           x: mx + 14,
           y: my + 14,
           loading: keepSummary ? this.tooltip.loading : false,
@@ -1970,6 +2311,56 @@ export default {
   display: flex; align-items: center; justify-content: center;
   color: #8ba4c7; font-size: 14px;
 }
+
+/* AI 批量打分按钮 */
+.mm-score-btn {
+  order: 8; padding: 6px 12px;
+  background: linear-gradient(135deg, #722ed1, #531dab);
+  border: 1px solid #9254de; border-radius: 6px;
+  color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: all 0.3s ease; white-space: nowrap;
+}
+.mm-score-btn:hover:not(.running) { background: linear-gradient(135deg, #9254de, #722ed1); transform: translateY(-1px); }
+.mm-score-btn.running { background: linear-gradient(135deg, #531dab, #391085); opacity: 0.95; }
+.mm-score-spin { display: inline-block; margin-right: 3px; font-size: 13px; line-height: 1; }
+.mm-score-spin.on { animation: mm-score-pulse 1.2s ease-in-out infinite; }
+@keyframes mm-score-pulse { 0%, 100% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.15); } }
+
+/* 打分 tooltip：分数后的档位标签 + 一句话理由 */
+.mm-tooltip-val small { font-size: 11px; font-weight: normal; color: #b0c4e0; margin-left: 4px; }
+.mm-tooltip-score-reason {
+  margin-top: 4px; color: #dbeafe; font-size: 11px; line-height: 1.35;
+  padding-top: 4px; border-top: 1px dashed rgba(139, 164, 199, 0.22);
+}
+
+/* AI 批量打分弹窗 */
+.mm-score-modal { width: 520px; max-width: 94vw; }
+.mm-score-body { padding: 4px 2px 2px; }
+.mm-score-desc { font-size: 13px; line-height: 1.7; color: #c0cee0; margin: 8px 0 12px; }
+.mm-score-desc .up { color: #ff4d4f; font-weight: 700; }
+.mm-score-desc .down { color: #52c41a; font-weight: 700; }
+.mm-score-tips { margin: 0 0 14px; padding-left: 18px; font-size: 12px; line-height: 1.8; color: #8ba4c7; }
+.mm-score-tips li { list-style: disc; }
+.mm-score-warn { color: #ffb4b2; font-size: 12px; background: rgba(239,83,80,0.1); border: 1px solid rgba(239,83,80,0.3); padding: 8px 10px; border-radius: 6px; margin-bottom: 12px; }
+.mm-score-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.mm-score-btn-ok { padding: 7px 16px; background: linear-gradient(135deg, #722ed1, #531dab); border: 1px solid #9254de; border-radius: 6px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.mm-score-btn-ok:hover:not(:disabled) { background: linear-gradient(135deg, #9254de, #722ed1); }
+.mm-score-btn-ok:disabled { opacity: 0.5; cursor: not-allowed; }
+.mm-score-btn-cancel { padding: 7px 16px; background: rgba(255,255,255,0.06); border: 1px solid #3a4a6b; border-radius: 6px; color: #c0cee0; cursor: pointer; font-size: 13px; }
+.mm-score-btn-cancel:hover { background: rgba(255,255,255,0.12); }
+.mm-score-btn-ghost { padding: 7px 14px; background: transparent; border: 1px dashed #3a4a6b; border-radius: 6px; color: #8ba4c7; cursor: pointer; font-size: 12px; }
+.mm-score-btn-ghost:hover { color: #e0e6f0; border-color: #5a6b8c; }
+
+.mm-score-progress { display: flex; align-items: center; gap: 10px; margin: 10px 0 8px; }
+.mm-score-progress-bar { flex: 1; height: 12px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; border: 1px solid rgba(58,74,107,0.5); }
+.mm-score-progress-fill { height: 100%; background: linear-gradient(90deg, #722ed1, #9254de); transition: width 0.4s ease; }
+.mm-score-progress-num { font-size: 16px; font-weight: 800; color: #fff; min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+.mm-score-step { font-size: 13px; color: #e0e6f0; margin-bottom: 6px; font-weight: 600; }
+.mm-score-stat { font-size: 12px; color: #8ba4c7; margin-bottom: 8px; }
+.mm-score-stat .up { color: #ff4d4f; } .mm-score-stat .down { color: #52c41a; }
+.mm-score-note { font-size: 11px; color: #5a6b8c; line-height: 1.6; margin: 8px 0; }
+.mm-score-result { font-size: 15px; font-weight: 700; color: #52c41a; margin: 12px 0; }
+.mm-score-result.warn { color: #ffa39e; }
 
 @media (max-width: 768px) {
   .market-map-page { padding: 6px; }

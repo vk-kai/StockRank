@@ -1593,6 +1593,15 @@ def _load_market_map_cache():
         return None
 
 
+def get_all_market_map_stocks():
+    """大盘云图全量股票清单（裸6位code → {name,l1,l2,value,pe}）。
+    供 AI 批量打分等需要遍历全市场股票的场景使用。无缓存返回空 dict。"""
+    cache = _load_market_map_cache()
+    if not cache or not cache.get('stocks'):
+        return {}
+    return cache['stocks']
+
+
 def _sina_batch_one(batch):
     """新浪批量获取单批涨跌幅（供并行调用）"""
     headers = {

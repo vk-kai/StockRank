@@ -78,6 +78,12 @@ AI_DAILY_STATUS_FILE = os.path.join(CONFIG_DIR, 'ai_daily_status.json')
 NEWS_ANALYSIS_CACHE_FILE = os.path.join(CONFIG_DIR, 'news_analysis_cache.json')
 MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'monitor_config.json')
 
+# AI 批量股票打分（大盘云图）：提示词 + 分数/状态持久化（低频数据，放 data/ 不随每日清理）
+STOCK_SCORE_PROMPT_FILE = os.path.join(CONFIG_DIR, 'stock_score_prompt.txt')
+STOCK_SCORES_DIR = os.path.join(DATA_DIR, 'stock_scores')
+STOCK_SCORES_FILE = os.path.join(STOCK_SCORES_DIR, 'scores.json')
+STOCK_SCORE_STATUS_FILE = os.path.join(STOCK_SCORES_DIR, 'status.json')
+
 def load_monitor_config():
     default_config = {
         'api_base_url': 'http://127.0.0.1:5000',

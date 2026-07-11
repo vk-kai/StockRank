@@ -177,6 +177,74 @@ export async function getMarketMapMargin() {
   }
 }
 
+/**
+ * 大盘云图 AI 打分着色：返回 { success, run_id, scored_at, count, map:{裸6位code:{score,label,reason}}, buckets }。
+ * 只读已评分缓存，不触发打分。无打分数据时 count=0、map={}。
+ */
+export async function getStockScores() {
+  try {
+    const response = await apiClient.get('/flow/stock-scores')
+    return response.data
+  } catch (error) {
+    console.error('获取股票打分失败:', error)
+    return { success: false, count: 0, map: {} }
+  }
+}
+
+/** 启动一轮 AI 批量打分（异步后台）。body { only_failed?:bool } 只补跑未评分项。
+ *  返回 { success, status:'running', run_id, message, estimate:{total,batches,...} }。 */
+export async function startStockScoring(onlyFailed = false) {
+  try {
+    const response = await apiClient.post('/flow/stock-scores/start', { only_failed: onlyFailed })
+    return response.data
+  } catch (error) {
+    console.error('启动股票打分失败:', error)
+    throw error
+  }
+}
+
+/** 查询打分进度：{ success, status: idle|running|completed|failed|interrupted, progress, step, total, done, failed, ... } */
+export async function getStockScoringStatus() {
+  try {
+    const response = await apiClient.get('/flow/stock-scores/status')
+    return response.data
+  } catch (error) {
+    console.error('查询股票打分状态失败:', error)
+    return { success: false, status: 'idle' }
+  }
+}
+
+/** 协作式停止打分：当前批次完成后退出，已评分结果保留。 */
+export async function stopStockScoring() {
+  try {
+    const response = await apiClient.post('/flow/stock-scores/stop')
+    return response.data
+  } catch (error) {
+    console.error('停止股票打分失败:', error)
+    throw error
+  }
+}
+
+export async function getStockScorePrompt() {
+  try {
+    const response = await apiClient.get('/config/stock-score-prompt')
+    return response.data
+  } catch (error) {
+    console.error('获取股票打分提示词失败:', error)
+    throw error
+  }
+}
+
+export async function saveStockScorePrompt(prompt, password) {
+  try {
+    const response = await apiClient.post('/config/stock-score-prompt', { prompt, password })
+    return response.data
+  } catch (error) {
+    console.error('保存股票打分提示词失败:', error)
+    throw error
+  }
+}
+
 export async function getMarketMapPush() {
   try {
     const response = await apiClient.get('/flow/market-map-push')

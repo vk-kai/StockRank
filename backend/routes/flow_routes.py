@@ -25,6 +25,7 @@ from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as g
 from intraday_timeline import get_stock_hover_summary
 from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
+import stock_scorer
 from logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -221,6 +222,53 @@ def market_map_margin():
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-map-margin]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# AI 批量股票打分（大盘云图第三着色维度）
+# ============================================================
+@flow_bp.route('/stock-scores', methods=['GET'])
+def stock_scores_map():
+    """大盘云图 AI 打分着色：返回 {success, run_id, scored_at, count, map:{裸6位code:{score,label,reason}}, buckets}。
+    只读 data/stock_scores/scores.json，不触发打分。前端有打分数据时下拉框可切换'着色：AI打分'。"""
+    try:
+        return jsonify(stock_scorer.get_scores_payload())
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/stock-scores]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/stock-scores/start', methods=['POST'])
+def stock_scores_start():
+    """启动一轮 AI 批量打分（异步后台线程）。可选 body {only_failed:bool} 只补跑未评分项。
+    running 中且线程存活 → 返回当前进度，不重复启动。"""
+    try:
+        payload = request.get_json(silent=True) or {}
+        only_failed = bool(payload.get('only_failed'))
+        return jsonify(stock_scorer.start_scoring(only_failed=only_failed))
+    except Exception as e:
+        error_logger.error(f"启动股票打分失败: {e}")
+        return jsonify({'success': False, 'message': f'启动失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-scores/status', methods=['GET'])
+def stock_scores_status():
+    """查询打分进度：{status: idle|running|completed|failed|interrupted, progress, step, total, done, failed, ...}。
+    interrupted=上次未完成（进程重启）；completed/failed 终态带 ended_at、message。"""
+    try:
+        return jsonify({'success': True, **stock_scorer.get_status()})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/stock-scores/status]: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@flow_bp.route('/stock-scores/stop', methods=['POST'])
+def stock_scores_stop():
+    """协作式停止：set 取消标志，当前批次完成后退出，已评分结果保留。"""
+    try:
+        return jsonify(stock_scorer.stop_scoring())
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @flow_bp.route('/intraday-timeline', methods=['GET'])
