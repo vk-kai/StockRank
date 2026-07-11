@@ -34,11 +34,17 @@ from logger import get_logger
 info_logger = get_logger('ai')
 
 # ============================== 调参常量 ==============================
+# 默认串行（workers=1）+ 批间间隔 + 429 强制冷却，优先"能用"而非"快"，
+# 避免触发智谱/OpenAI 兼容端点的 RPM/TPM 限流（429）。
+# 均可在 ai_config.json 用 score_batch_size / score_max_workers / score_batch_interval /
+# score_429_cooldown 覆盖（付费大额度用户可调高 workers 提速）。
 DEFAULT_BATCH_SIZE = 10        # 每批股票数（AI 一次评分多少只）
-DEFAULT_MAX_WORKERS = 4        # 并发 AI 调用数
-MAX_RETRY_PER_BATCH = 2        # 单批失败重试次数（HTTP/超时/JSON 解析）
+DEFAULT_MAX_WORKERS = 1        # 并发 AI 调用数（默认串行，防限流）
+MAX_RETRY_PER_BATCH = 3        # 单批失败重试次数（HTTP/超时/JSON 解析/限流）
 BATCH_TIMEOUT_SEC = 120        # 单批 AI 请求超时（输出较长，比新闻 60s 宽松）
-GLOBAL_MIN_DISPATCH_INTERVAL = 1.5  # 全局最小批间间隔(秒)，控 RPS 防限流
+DEFAULT_BATCH_INTERVAL = 2.0   # 串行下相邻批次最小间隔(秒)，控 RPM
+DEFAULT_429_COOLDOWN = 30      # 命中 429 后的强制冷却(秒)，Retry-After 缺省/过小时用此值
+RATE_LIMIT_RETRY_CAP = 90      # 单次 429 退避上限(秒)，避免 Retry-After 异常大值
 
 # ============================== 9 档分桶（0-100，50 为红绿分界）==============================
 # 半开区间 (min, max]，两极开区间：score-1 只有 max(≤max)；score-9 只有 min(>min)。
@@ -152,6 +158,10 @@ _cancel_event = threading.Event()
 _worker_thread = None               # 当前后台线程引用（START 判活、崩溃检测用）
 _global_rate_lock = threading.Lock()
 _last_dispatch_ts = 0.0
+_rate_cooldown_until = 0.0          # 命中限流后的"全局放行时间戳"：在此时间前所有 dispatch 都要等待
+# 本轮生效的节流参数（由 _run_scoring_background 从 ai_config 读取后注入；默认值见常量）
+_active_batch_interval = DEFAULT_BATCH_INTERVAL
+_active_429_cooldown = DEFAULT_429_COOLDOWN
 
 
 def _now_iso():
@@ -366,38 +376,66 @@ def _call_ai_batch(batch, config, prompt):
                             out[bare] = v
                     return out
                 last_err = 'AI 返回解析失败'
-            elif resp.status_code == 429:
-                retry_after = resp.headers.get('Retry-After', '5')
+            elif resp.status_code in (429, 503):
+                # 智谱：HTTP 429 / body code 1302 = 账户并发达上限；
+                #       HTTP 503 / body code 1305 = 平台服务过载。
+                # 官方建议：增加重试间隔、避免立即高频重试。→ 指数退避 + 全局冷却。
+                body_code = ''
                 try:
-                    wait = int(retry_after)
+                    rj = resp.json()
+                    err = rj.get('error') if isinstance(rj.get('error'), dict) else rj
+                    code = err.get('code') if isinstance(err, dict) else None
+                    if code:
+                        body_code = f' (code {code})'
                 except Exception:
-                    wait = 5
-                last_err = f'API 限流(429)'
+                    pass
+                retry_after = resp.headers.get('Retry-After')
+                try:
+                    ra = int(retry_after) if retry_after else 0
+                except Exception:
+                    ra = 0
+                base = _active_429_cooldown * (2 ** (attempt - 1))   # 30s → 60s → 90s
+                wait = min(max(base, ra), RATE_LIMIT_RETRY_CAP)
+                last_err = f'API 限流(HTTP {resp.status_code}{body_code})，退避 {wait}s'
+                _apply_rate_cooldown(wait)   # 让后续批次也集体放慢
                 if attempt < MAX_RETRY_PER_BATCH:
-                    time.sleep(min(wait, 15))
+                    time.sleep(wait)
                     continue
             else:
                 last_err = f'HTTP {resp.status_code}'
                 if attempt < MAX_RETRY_PER_BATCH:
-                    time.sleep(3)
+                    time.sleep(5)
                     continue
         except Exception as e:
             last_err = f'异常: {str(e)[:80]}'
             if attempt < MAX_RETRY_PER_BATCH:
-                time.sleep(3)
+                time.sleep(5)   # 超时/连接错误：稍候重试，不触发限流冷却
                 continue
     error_logger.warning(f"[股票打分] 批次失败({len(batch)}只): {last_err}")
     return {}
 
 
+def _apply_rate_cooldown(seconds):
+    """记录一次限流退避：设全局 _rate_cooldown_until，此后所有 dispatch 都等到该时间之后。
+    智谱 1302/1305 命中后用此让后续批次集体放慢，避免"立即高频重试"二次触发限流。"""
+    global _rate_cooldown_until
+    seconds = max(1, min(int(seconds), RATE_LIMIT_RETRY_CAP))
+    with _global_rate_lock:
+        _rate_cooldown_until = max(_rate_cooldown_until, time.time() + seconds)
+
+
 def _global_throttle():
-    """全局节流：保证任意两次 AI dispatch 间隔 ≥ GLOBAL_MIN_DISPATCH_INTERVAL 秒。"""
+    """节流：① 相邻 dispatch 间隔 ≥ _active_batch_interval（平滑、防 TPM 突发）；
+    ② 若处于限流冷却期（_rate_cooldown_until 之后），则等到冷却结束。
+    智谱按"并发请求数"限流——串行(1并发)本身已不会触发 1302，本函数主要做平滑与限流后退避。"""
     global _last_dispatch_ts
     with _global_rate_lock:
         now = time.time()
-        wait = GLOBAL_MIN_DISPATCH_INTERVAL - (now - _last_dispatch_ts)
+        wait_interval = _active_batch_interval - (now - _last_dispatch_ts)
+        wait_cooldown = _rate_cooldown_until - now
+        wait = max(0.0, wait_interval, wait_cooldown)
         if wait > 0:
-            time.sleep(wait)
+            time.sleep(min(wait, RATE_LIMIT_RETRY_CAP))  # 单次 sleep 上限，超长则下次再续
         _last_dispatch_ts = time.time()
 
 
@@ -409,11 +447,12 @@ def _score_worker(batch, config, prompt, run_id, counters, counters_lock):
     if _cancel_event.is_set():
         return 0
     results = _call_ai_batch(batch, config, prompt)
-    # 补漏：AI 漏掉的 code 单独再问一次（最多一次）
+    # 补漏：仅当"部分成功"（AI 漏判部分 code）时，把漏掉的单独再问一次。
+    # 整批失败（429/超时/解析失败）不补——否则会用相同请求二次触发限流，由 only_failed 重跑补齐。
     returned = set(results.keys())
     requested = {c for c, _ in batch}
     missing = requested - returned
-    if missing and not _cancel_event.is_set():
+    if results and missing and not _cancel_event.is_set():
         miss_batch = [(c, info) for c, info in batch if c in missing]
         _global_throttle()
         extra = _call_ai_batch(miss_batch, config, prompt)
@@ -433,8 +472,12 @@ def _run_scoring_background(run_id, only_failed):
                        total=0, done=0, failed=0, started_at=_now_iso(), ended_at=None)
         config = load_ai_config()
         batch_size = int(config.get('score_batch_size') or DEFAULT_BATCH_SIZE)
-        max_workers = int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS)
+        max_workers = max(1, int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS))
         prompt = load_stock_score_prompt()
+        # 注入本轮节流参数（智谱按并发限流，默认串行 workers=1；批间间隔与 429 退避可配置）
+        global _active_batch_interval, _active_429_cooldown
+        _active_batch_interval = float(config.get('score_batch_interval') or DEFAULT_BATCH_INTERVAL)
+        _active_429_cooldown = int(config.get('score_429_cooldown') or DEFAULT_429_COOLDOWN)
 
         stocks = _load_stock_list(only_failed=only_failed)
         if not stocks:
@@ -444,7 +487,8 @@ def _run_scoring_background(run_id, only_failed):
 
         total = len(stocks)
         batches = _chunk(stocks, batch_size)
-        _update_status(step=f'开始打分（{len(batches)}批，每批{batch_size}只，{max_workers}并发）',
+        concurrency = '串行' if max_workers == 1 else f'{max_workers}并发'
+        _update_status(step=f'开始打分（{len(batches)}批 × {batch_size}只，{concurrency}，批间隔{_active_batch_interval:g}s）',
                        progress=2, total=total, done=0, failed=0)
 
         counters = {'done': 0, 'failed': 0}
@@ -521,18 +565,20 @@ def start_scoring(only_failed=False):
         )
         _worker_thread.start()
 
-    # 估算
+    # 估算（时长取决于 AI 端点单次响应速度；串行下约 1-3 小时，可中途停止、可仅跑失败项）
     total = len(get_all_market_map_stocks())
     batch_size = int(config.get('score_batch_size') or DEFAULT_BATCH_SIZE)
-    max_workers = int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS)
+    max_workers = max(1, int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS))
     batches = (total + batch_size - 1) // batch_size if total else 0
     return {
         'success': True, 'status': 'running', 'run_id': run_id,
-        'message': '打分任务已启动，预计 25-40 分钟（可在过程中查看进度，可随时停止）',
+        'message': '打分任务已启动（串行调用，避免触发 AI 限流）' if max_workers == 1
+                   else '打分任务已启动（%d 并发）' % max_workers,
         'estimate': {
             'total': total, 'batches': batches,
             'batch_size': batch_size, 'workers': max_workers,
-            'eta_minutes': '25-40', 'only_failed': bool(only_failed),
+            'eta_minutes': '60-180' if max_workers == 1 else '25-60',
+            'only_failed': bool(only_failed),
         },
     }
 

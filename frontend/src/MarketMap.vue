@@ -274,10 +274,11 @@
             保存后即可在云图按分数着色、筛选、悬浮查看，<b>一目了然哪些可重仓、哪些需谨慎</b>。
           </p>
           <ul class="mm-score-tips">
-            <li>⏱️ 过程漫长，预计 <b>{{ scoreEstimate.eta_minutes || '25-40' }} 分钟</b>（{{ scoreEstimate.batches || 500 }} 批 × {{ scoreEstimate.workers || 4 }} 并发）。</li>
+            <li>⏱️ 过程漫长：约 <b>{{ scoreEstimate.eta_minutes || '60-180' }} 分钟</b>（{{ scoreEstimate.batches || 500 }} 批，<b>串行调用避免触发 AI 限流</b>）。可中途停止、断点续跑。</li>
             <li>💰 会消耗 AI 额度（全量约百万级 token，成本通常仅几元）。</li>
-            <li>💾 每 scored 一只即落盘，中途可随时关闭/停止，已打分结果保留，下次可"仅跑失败项"。</li>
+            <li>💾 每评一只即落盘，中途可随时关闭/停止，已打分结果保留，下次可"仅跑失败项"。</li>
             <li>🔁 打分不频繁，跑完一次长期复用，建议基本面有大变化时再重跑。</li>
+            <li>⚙️ 想提速：在 ai_config.json 加 <code>score_max_workers</code>（付费大额度可调到 2-3）、<code>score_batch_interval</code>、<code>score_429_cooldown</code>。</li>
           </ul>
           <p class="mm-score-warn" v-if="!aiEnabled">⚠️ 当前 AI 未启用或配置不完整，请先到「🤖 AI大模型配置」中设置并测试通过。</p>
           <div class="mm-score-actions">
@@ -622,7 +623,7 @@ export default {
       scoringRunning: false,
       scoringTimer: null,
       scoringStatus: { status: 'idle', progress: 0, step: '', total: 0, done: 0, failed: 0, message: '' },
-      scoreEstimate: { total: 0, batches: 0, workers: 4, eta_minutes: '25-40' },
+      scoreEstimate: { total: 0, batches: 0, workers: 1, eta_minutes: '60-180' },
       scoreDialog: { visible: false, view: 'confirm', busy: false },
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
