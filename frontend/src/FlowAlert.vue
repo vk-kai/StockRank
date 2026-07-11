@@ -5,15 +5,15 @@
       <h1>🚨 资金异动预警</h1>
       <div class="fa-header-right">
         <button @click="runDetect" class="fa-run-btn" :disabled="loading || needsAuth">
-          {{ loading ? '检测中...' : '🔄 刷新最新结果' }}
+          {{ loading ? '检测中...' : '🔄 刷新全天结果' }}
         </button>
         <button @click="testNotification" class="fa-test-btn">🔔 测试通知</button>
       </div>
     </header>
 
     <div class="fa-snapshot">
-      最近一次 5 分钟抓取：<strong>{{ snapshot.date && snapshot.time ? `${snapshot.date} ${snapshot.time}` : '暂无可用快照' }}</strong>
-      <span>页面只显示这一时点的检测结果</span>
+      全天资金异动汇总：<strong>{{ snapshot.date || '--' }}</strong>
+      <span>最新抓取 {{ snapshot.time || '--' }} · 覆盖当日全部 5 分钟时点（共 {{ findings.length }} 条），非单一时刻</span>
     </div>
 
     <div class="fa-controls">

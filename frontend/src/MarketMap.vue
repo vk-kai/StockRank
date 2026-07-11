@@ -180,7 +180,7 @@
           <span class="mm-legend-label">跌停</span>
           <span class="mm-legend-count">{{ legendCounts.limit_down }}只</span>
         </button>
-        <div class="mm-legend-bar">
+        <div class="mm-legend-bar" :class="{ 'is-margin': colorMode === 'margin' }">
           <div
             v-for="(s, i) in legendSteps"
             :key="i"
@@ -1705,7 +1705,8 @@ export default {
 @keyframes mm-cl-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 .mm-legend {
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1730,12 +1731,20 @@ export default {
   display: flex;
   gap: 1px;
   width: 360px;
+  max-width: 100%;
   height: 28px;
   border-radius: 2px;
   overflow: visible; /* 让激活/悬停色块能上抬放大，不被裁切 */
 }
+/* 融资净流入模式：标签更长（"-2000~-1000万"）且无涨/跌停按钮占位，
+   放宽色条宽度容纳文字，避免右侧色块溢出屏幕 */
+.mm-legend-bar.is-margin {
+  width: 500px;
+}
 .mm-legend-step {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;

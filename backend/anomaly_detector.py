@@ -623,12 +623,34 @@ def detect_latest_snapshot(date_str=None, push=False):
     )
 
 
-def detect_full_day(date_str, push=False):
-    """对某天所有时点跑检测（复盘/试跑用）。返回所有命中，按时间序。"""
+def detect_full_day(date_str=None, push=False):
+    """对某天所有时点跑检测（全天展示/复盘用）。
+
+    返回 (所有命中按时间升序, 最新快照{'date','time'})。
+    date_str 缺省时自动取最近一个有数据的交易日。
+    """
+    if not date_str:
+        try:
+            dates = sorted(
+                name[:-5]
+                for name in os.listdir(REALTIME_DIR)
+                if _is_date_file(name)
+            )
+            date_str = dates[-1] if dates else ''
+        except OSError:
+            date_str = ''
+    if not date_str:
+        return [], {'date': '', 'time': ''}
+
     rt = _load_realtime(date_str)
     if not rt:
-        return []
-    keys = sorted([k for k in rt.keys() if isinstance(k, str) and ':' in k])
+        return [], {'date': date_str, 'time': ''}
+    keys = sorted([
+        k for k in rt.keys()
+        if isinstance(k, str) and ':' in k and isinstance(rt.get(k), dict)
+    ])
+    if not keys:
+        return [], {'date': date_str, 'time': ''}
     all_findings = []
     for k in keys:
         try:
@@ -636,4 +658,4 @@ def detect_full_day(date_str, push=False):
             all_findings.extend(fs)
         except Exception as e:
             logger.warning(f"全天检测异常 {k}: {e}")
-    return all_findings
+    return all_findings, {'date': date_str, 'time': keys[-1]}
