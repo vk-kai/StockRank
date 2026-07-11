@@ -66,7 +66,7 @@ export default {
       soundMode: 'all',
       lastNewsId: null,
       anomalyWatchInterval: null,
-      lastAnomalyKeys: [],
+      lastAnomalyTimestamp: '',
       showStockModal: false,
       selectedSector: null,
       sectorStocks: [],
@@ -1538,22 +1538,20 @@ export default {
       try {
         const res = await getAnomalyAlerts()
         if (!res.success || !res.data) return
-        const alerts = res.data                 // 已按时间倒序
-        const keys = alerts.map(a => `${a.date}|${a.time}|${a.sector}`)
+        const alerts = res.data                 // 已按 timestamp 倒序
+        if (!alerts.length) return
+        const newest = alerts[0].timestamp || ''
+        // 首次只记录基线（当前最新一条的 timestamp），不弹窗，避免启动时刷屏
         if (isInitial) {
-          this.lastAnomalyKeys = keys.slice(0, 50)
+          this.lastAnomalyTimestamp = newest
           return
         }
-        const fresh = []
-        for (let i = 0; i < alerts.length; i++) {
-          if (!this.lastAnomalyKeys.includes(keys[i])) {
-            fresh.push(alerts[i])
-            this.lastAnomalyKeys.push(keys[i])
-          }
-        }
-        if (this.lastAnomalyKeys.length > 100) {
-          this.lastAnomalyKeys = this.lastAnomalyKeys.slice(-100)
-        }
+        // 用单调递增的 timestamp 水位判新：后端每 5 分钟一批，同一批记录共用一个
+        // timestamp（now 一次性生成），只有跨批次的新推送 timestamp 才更大。
+        // 这样即便旧记录仍被后端返回（最近 200 条），也不会被重复当成新异动弹窗。
+        if (!newest || newest <= this.lastAnomalyTimestamp) return
+        const fresh = alerts.filter(a => (a.timestamp || '') > this.lastAnomalyTimestamp)
+        this.lastAnomalyTimestamp = newest
         if (!fresh.length || !this.enableNotification) return
         if (!('Notification' in window) || Notification.permission !== 'granted') return
         fresh.slice(0, 5).forEach(a => this.sendAnomalyNotification(a))
