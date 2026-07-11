@@ -996,6 +996,11 @@ export default {
       }
     },
     async refreshCache() {
+      // 行业库更新要从东方财富重抓全市场约5000只股票的行业+市值，耗时较长且低频需要，
+      // 加二次确认防止误触（按钮和"刷新行情"挨得近，容易点错）。
+      if (!window.confirm('确认更新行业库？\n\n将重新抓取全市场约5000只股票的行业分类与市值，耗时约1-2分钟，期间云图继续用旧缓存显示。\n\n行业分类变化极少，通常无需频繁更新；如只是想看最新涨跌，请点「刷新行情」。')) {
+        return
+      }
       this.cacheLoading = true
       try {
         const res = await refreshMarketMapCache()
