@@ -772,7 +772,8 @@ export async function getFlowDates() {
 /** 异动检测手动试跑（不入库、不推送）。time 省略则全天 */
 export async function runAnomalyDetection(date, time) {
   try {
-    const params = { date }
+    const params = {}
+    if (date) params.date = date
     if (time) params.time = time
     const response = await apiClient.get('/flow/anomaly/run', { params, timeout: 30000 })
     return response.data

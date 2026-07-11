@@ -234,7 +234,17 @@ def _load_realtime(date_str):
 # --------------------------------------------------------------------------
 # 维度 1：价量背离
 # --------------------------------------------------------------------------
-def _check_divergence(sec, series, cfg):
+def _is_adjacent_five_minutes(previous_time, current_time):
+    """Only treat records as a five-minute pair when both snapshots are truly adjacent."""
+    try:
+        previous = datetime.strptime(str(previous_time), '%H:%M')
+        current = datetime.strptime(str(current_time), '%H:%M')
+        return (current - previous).total_seconds() == 5 * 60
+    except (TypeError, ValueError):
+        return False
+
+
+def _check_divergence(sec, series, cfg, current_time=None):
     """价量背离：基于「5分钟增量」Δ价格 vs Δ净流入。
 
     用累计值（change、net_flow 都是当日累计）会让"全天吸筹但盘中回调"的板块
@@ -246,6 +256,8 @@ def _check_divergence(sec, series, cfg):
     change = float(sec.get('change', 0) or 0)
     nf = float(sec.get('net_flow', 0) or 0)
     prev = series[-1]
+    if current_time and not _is_adjacent_five_minutes(prev['time'], current_time):
+        return None
     d_change = change - prev['change']       # 这5分钟价格变化（小数）
     d_nf = nf - prev['net_flow']              # 这5分钟资金增量
     if abs(d_change) < cfg['divergence_change'] or abs(d_nf) < cfg['min_net_for_divergence']:
@@ -265,11 +277,13 @@ def _check_divergence(sec, series, cfg):
 # --------------------------------------------------------------------------
 # 维度 2：突变（相邻时点 Δnet_flow）
 # --------------------------------------------------------------------------
-def _check_spike(sec, series, cfg):
+def _check_spike(sec, series, cfg, current_time=None):
     if len(series) < 1:
         return None
     nf = float(sec.get('net_flow', 0) or 0)
     prev = series[-1]
+    if current_time and not _is_adjacent_five_minutes(prev['time'], current_time):
+        return None
     prev_time, prev_nf = prev['time'], prev['net_flow']
     delta = nf - prev_nf
     if abs(delta) < cfg['spike_threshold']:
@@ -283,7 +297,7 @@ def _check_spike(sec, series, cfg):
 # --------------------------------------------------------------------------
 # 维度 3：连续同向（基于「增量 Δnet_flow」，非累计值）
 # --------------------------------------------------------------------------
-def _check_streak(sec, series, cfg):
+def _check_streak(sec, series, cfg, current_time=None):
     """连续同向：基于相邻时点的「增量 Δnet_flow」（每5分钟的实际资金行为）。
 
     注意：net_flow 是当日累计值，直接对累计值判同号会让"全天持续流入的板块"
@@ -294,15 +308,24 @@ def _check_streak(sec, series, cfg):
     if not series:
         return None  # 无历史，无法算增量
     # series = [(time, 累计nf), ...]（不含当前时点），末尾追加当前累计 → 构造增量序列
-    nf_seq = [s['net_flow'] for s in series] + [nf]
-    deltas = [nf_seq[i] - nf_seq[i - 1] for i in range(1, len(nf_seq))]
+    points = list(series) + [{'time': current_time, 'net_flow': nf}]
+    deltas = []
+    for i in range(1, len(points)):
+        if current_time and not _is_adjacent_five_minutes(points[i - 1]['time'], points[i]['time']):
+            deltas.append(None)
+        else:
+            deltas.append(points[i]['net_flow'] - points[i - 1]['net_flow'])
     if not deltas:
         return None
     cur_delta = deltas[-1]
+    if cur_delta is None or cur_delta == 0:
+        return None
     sign = 1 if cur_delta > 0 else -1
     streak = 0
     cum_delta = 0.0
     for d in reversed(deltas):
+        if d is None:
+            break
         d_sign = 1 if d > 0 else -1
         if d_sign == sign and abs(d) >= cfg['min_net_for_streak']:
             streak += 1
@@ -379,7 +402,7 @@ def detect_for_snapshot(date_str, minute_key, push=False, realtime_data=None):
         hits = []
         for checker in (_check_divergence, _check_spike, _check_streak):
             try:
-                r = checker(sec, series, cfg)
+                r = checker(sec, series, cfg, minute_key)
             except Exception as e:
                 logger.warning(f"维度检测异常 {name}: {e}")
                 r = None
@@ -469,7 +492,7 @@ def _push_findings(findings, cfg):
     for f in findings:
         subs = [h['sub'] for h in f['hits']]
         # 同板块+任一类型在冷却期内 → 跳过推送（仍记录为 muted）
-        if _is_in_cooldown(alerts, f['sector'], subs[0], cfg, now_ts):
+        if any(_is_in_cooldown(alerts, f['sector'], sub, cfg, now_ts) for sub in subs):
             continue
         title, content = _format_message(f)
         pushed = False
@@ -504,16 +527,17 @@ def _format_message(f):
     nf = f['net_flow']
     chg = f['change_pct']
     arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
-    lines = [f"{arrow} **资金异动 · {sector}**"]
-    meta = []
-    meta.append(f"净流入 {nf:+.2f}亿")
-    meta.append(f"涨跌 {chg:+.2f}%")
+    flow_color = 'warning' if nf >= 0 else 'info'
+    lines = [f"## {arrow} 资金异动｜{sector}"]
+    lines.append(f"> 时间：**{f['date']} {f['time']}**")
+    lines.append(f"> 净流入：<font color=\"{flow_color}\">{nf:+.2f} 亿</font>")
+    lines.append(f"> 涨跌幅：**{chg:+.2f}%**")
     if f.get('lead_stock'):
         lc = f.get('lead_change')
         lc_str = f" {lc:+.2f}%" if lc is not None else ""
-        meta.append(f"龙头 {f['lead_stock']}{lc_str}")
-    lines.append(" / ".join(meta))
+        lines.append(f"> 龙头：**{f['lead_stock']}**{lc_str}")
     lines.append("")
+    lines.append("**触发条件**")
     for h in f['hits']:
         detail = ""
         if h['type'] == 'surge':
@@ -561,6 +585,36 @@ def list_alerts(date_str=None, limit=200):
         alerts = [a for a in alerts if a.get('date') == date_str]
     alerts = sorted(alerts, key=lambda a: a.get('timestamp', ''), reverse=True)
     return alerts[:limit]
+
+
+def detect_latest_snapshot(date_str=None, push=False):
+    """Run detection for the newest persisted five-minute snapshot only."""
+    if not date_str:
+        try:
+            dates = sorted(
+                name[:-5]
+                for name in os.listdir(REALTIME_DIR)
+                if _is_date_file(name)
+            )
+            date_str = dates[-1] if dates else ''
+        except OSError:
+            date_str = ''
+    if not date_str:
+        return [], {'date': '', 'time': ''}
+
+    realtime_data = _load_realtime(date_str)
+    keys = sorted(
+        key for key in realtime_data
+        if isinstance(key, str) and ':' in key and isinstance(realtime_data.get(key), dict)
+    )
+    if not keys:
+        return [], {'date': date_str, 'time': ''}
+
+    minute_key = keys[-1]
+    return (
+        detect_for_snapshot(date_str, minute_key, push=push, realtime_data=realtime_data),
+        {'date': date_str, 'time': minute_key},
+    )
 
 
 def detect_full_day(date_str, push=False):

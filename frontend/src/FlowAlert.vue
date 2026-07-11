@@ -11,8 +11,13 @@
       </div>
     </header>
 
+    <div class="fa-snapshot">
+      最近一次 5 分钟抓取：<strong>{{ snapshot.date && snapshot.time ? `${snapshot.date} ${snapshot.time}` : '暂无可用快照' }}</strong>
+      <span>页面只显示这一时点的检测结果</span>
+    </div>
+
     <div class="fa-controls">
-      <div class="fa-ctrl-group">
+      <div class="fa-ctrl-group" v-if="false">
         <label>日期</label>
         <select v-model="selectedDate" @change="onDateChange">
           <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
@@ -127,7 +132,7 @@
 </template>
 
 <script>
-import { getFlowDates, runAnomalyDetection, getAnomalyAlerts } from './services/apiService'
+import { runAnomalyDetection, getAnomalyAlerts } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 const DIM_META = {
@@ -145,8 +150,7 @@ export default {
       loading: false,
       loadingPushed: false,
       needsAuth: false,
-      dates: [],
-      selectedDate: '',
+      snapshot: { date: '', time: '' },
       view: 'detect',
       findings: [],
       pushed: [],
@@ -172,14 +176,7 @@ export default {
   async mounted() {
     window.addEventListener('auth-required', this.onAuthRequired)
     window.addEventListener('auth-login-success', this.onAuthLogin)
-    try {
-      const res = await getFlowDates()
-      if (res.success && res.data && res.data.length) {
-        this.dates = res.data
-        this.selectedDate = res.data[0]
-        await this.runDetect()
-      }
-    } catch (e) { /* ignore */ }
+    await this.runDetect()
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.onAuthRequired)
@@ -216,12 +213,14 @@ export default {
       else { this.pushed = []; this.loadPushed() }
     },
     async runDetect() {
-      if (!this.selectedDate) return
       this.loading = true
       this.findings = []
       try {
-        const res = await runAnomalyDetection(this.selectedDate)
-        if (res.success) this.findings = res.data || []
+        const res = await runAnomalyDetection()
+        if (res.success) {
+          this.findings = res.data || []
+          this.snapshot = res.snapshot || { date: '', time: '' }
+        }
       } catch (e) { /* 401 已处理 */ }
       finally { this.loading = false }
     },
@@ -273,6 +272,13 @@ export default {
   border: 1px solid #4a5a7b; border-radius: 4px; padding: 8px 14px; cursor: pointer; font-size: 14px;
 }
 .fa-header h1 { font-size: 22px; font-weight: 600; margin: 0; flex: 1; }
+.fa-snapshot {
+  margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
+  background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5);
+  color: #8ba4c7; font-size: 13px;
+}
+.fa-snapshot strong { margin-left: 6px; color: #fff; font-family: monospace; }
+.fa-snapshot span { margin-left: 14px; font-size: 12px; color: #6a7a99; }
 .fa-run-btn {
   background: linear-gradient(135deg, #ff4d4f, #cf1322); color: #fff;
   border: 1px solid #ff7875; border-radius: 4px; padding: 8px 18px; cursor: pointer; font-size: 13px;
@@ -286,7 +292,7 @@ export default {
 }
 
 .fa-controls {
-  display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end;
+  display: none;
   background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5);
   border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;
 }

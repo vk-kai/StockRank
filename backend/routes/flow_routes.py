@@ -16,7 +16,7 @@ from data_processor import (
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
 from anomaly_detector import (
-    detect_for_snapshot, detect_full_day, list_alerts,
+    detect_for_snapshot, detect_latest_snapshot, list_alerts,
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
@@ -974,15 +974,16 @@ def flow_dates():
 # ============================================================
 @flow_bp.route('/anomaly/run', methods=['GET'])
 def anomaly_run():
-    """手动试跑异动检测（不入库、不推送）。date 必填；time 给则单时点，不给则全天。"""
+    """Manual detection for the newest snapshot, or an explicitly supplied snapshot."""
     try:
         date_str = request.args.get('date')
-        if not date_str:
-            return jsonify({'success': False, 'message': '缺少 date 参数'}), 400
         time_key = request.args.get('time')
-        findings = detect_for_snapshot(date_str, time_key, push=False) if time_key \
-            else detect_full_day(date_str, push=False)
-        return jsonify({'success': True, 'data': findings, 'count': len(findings)})
+        if date_str and time_key:
+            findings = detect_for_snapshot(date_str, time_key, push=False)
+            snapshot = {'date': date_str, 'time': time_key}
+        else:
+            findings, snapshot = detect_latest_snapshot(date_str=date_str, push=False)
+        return jsonify({'success': True, 'data': findings, 'count': len(findings), 'snapshot': snapshot})
     except Exception as e:
         error_logger.error(f"API /api/flow/anomaly/run 异常: {e}")
         error_logger.error(traceback.format_exc())

@@ -68,7 +68,7 @@
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
         <div class="mm-tooltip-row">
-          <span class="mm-tooltip-label">涨跌幅</span>
+          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : '涨跌幅' }}</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
         <div class="mm-tooltip-row">
@@ -151,6 +151,7 @@
       </div>
       <div class="mm-legend">
         <button
+          v-if="colorMode === 'change'"
           class="mm-limit-btn up"
           :class="{ active: activeLegend === 'limit_up' }"
           @click="toggleFilter('limit_up')"
@@ -165,6 +166,7 @@
           <span class="mm-legend-count">{{ legendCounts.limit_up }}只</span>
         </button>
         <button
+          v-if="colorMode === 'change'"
           class="mm-limit-btn down"
           :class="{ active: activeLegend === 'limit_down' }"
           @click="toggleFilter('limit_down')"
@@ -304,6 +306,20 @@ function marginDepthColor(depth, light, deep) {
   return `rgb(${r},${g},${b})`
 }
 
+// 融资净流入金额分档（单位：元）。沿用 9 格图例，边界按当前缓存的分布取整；
+// 两端保留开放区间承接大额异常值，中心区间保留给小额流入和流出。
+const MARGIN_LEGEND_STEPS = [
+  { value: 'margin-1', label: '≤-2000万', countTitle: '净流出 ≥ 2000万', max: -2e7, color: '#2cbc58' },
+  { value: 'margin-2', label: '-2000~-1000万', countTitle: '净流出 1000万 ~ 2000万', min: -2e7, max: -1e7, color: '#278c50' },
+  { value: 'margin-3', label: '-1000~-500万', countTitle: '净流出 500万 ~ 1000万', min: -1e7, max: -5e6, color: '#266f50' },
+  { value: 'margin-4', label: '-500~-200万', countTitle: '净流出 200万 ~ 500万', min: -5e6, max: -2e6, color: '#334d42' },
+  { value: 'margin-5', label: '-200~0万', countTitle: '净流出 0万 ~ 200万', min: -2e6, max: 0, color: '#4c4454' },
+  { value: 'margin-6', label: '0~200万', countTitle: '净流入 0万 ~ 200万', min: 0, max: 2e6, color: '#6d404d' },
+  { value: 'margin-7', label: '200~500万', countTitle: '净流入 200万 ~ 500万', min: 2e6, max: 5e6, color: '#a5404b' },
+  { value: 'margin-8', label: '500~1000万', countTitle: '净流入 500万 ~ 1000万', min: 5e6, max: 1e7, color: '#ca3a45' },
+  { value: 'margin-9', label: '>1000万', countTitle: '净流入 > 1000万', min: 1e7, color: '#f02d37' }
+]
+
 // 按股票代码前缀判断涨跌停限幅(%)：主板 10 / 创业板·科创板 20 / 北交所 30
 function limitThreshold(code) {
   const m = String(code || '').match(/(\d{6})/)
@@ -321,7 +337,7 @@ function extractDigits(c) {
   return m ? m[1] : String(c || '')
 }
 
-function inFilter(change, code, active) {
+function inChangeFilter(change, code, active) {
   if (active == null) return true
   if (typeof change !== 'number' || isNaN(change)) return false
   if (active === 'limit_up') return change >= limitThreshold(code) - 0.1
@@ -330,6 +346,16 @@ function inFilter(change, code, active) {
   if (L <= -4) return change <= -4
   if (L >= 4) return change > 3
   return change > (L - 1) && change <= L
+}
+
+function inMarginFilter(value, active) {
+  if (active == null) return true
+  if (typeof value !== 'number' || isNaN(value)) return false
+  const step = MARGIN_LEGEND_STEPS.find(item => item.value === active)
+  if (!step) return false
+  if (step.min == null) return value <= step.max
+  if (step.max == null) return value > step.min
+  return value > step.min && value <= step.max
 }
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -481,7 +507,7 @@ export default {
     },
     // 页脚颜色说明（随当前着色维度切换）
     footerColorDesc() {
-      if (this.colorMode === 'margin') return '颜色=融资净流入排名（红=净流入多 / 绿=净流出多）'
+      if (this.colorMode === 'margin') return '颜色=融资净流入金额（红=净流入多 / 绿=净流出多）'
       return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
@@ -505,6 +531,12 @@ export default {
     },
     // 图例：与 COLOR_STOPS 一一对应，每块标注涨跌幅阈值（左=跌/绿 → 中=0/灰 → 右=涨/红）
     legendSteps() {
+      if (this.colorMode === 'margin') {
+        return MARGIN_LEGEND_STEPS.map(step => ({
+          ...step,
+          title: '点击只看 ' + step.countTitle + '，再次点击复原'
+        }))
+      }
       const labels = ['-4%', '-3%', '-2%', '-1%', '0%', '1%', '2%', '3%', '4%']
       const titles = ['跌幅 ≤ -4%', '-4% ~ -3%', '-3% ~ -2%', '-2% ~ -1%', '-1% ~ 0%', '0% ~ 1%', '1% ~ 2%', '2% ~ 3%', '涨幅 > 3%']
       return COLOR_STOPS.map(([v, rgb], i) => ({
@@ -526,12 +558,14 @@ export default {
       for (const s of this.tree) {
         for (const l2 of (s.children || [])) {
           for (const st of (l2.children || [])) {
-            if (inFilter(st.change, st.code, a)) count++
+            if (this.stockMatchesActiveFilter(st, a)) count++
           }
         }
       }
       let desc
-      if (a === 'limit_up') desc = '涨停'
+      if (this.colorMode === 'margin') {
+        desc = (MARGIN_LEGEND_STEPS.find(step => step.value === a) || {}).label || '融资净流入'
+      } else if (a === 'limit_up') desc = '涨停'
       else if (a === 'limit_down') desc = '跌停'
       else if (a <= -4) desc = '跌幅 ≤ -4%'
       else if (a >= 4) desc = '涨幅 > 3%'
@@ -540,6 +574,18 @@ export default {
     },
     // 统计各个涨跌幅区间的股票数量
     legendCounts() {
+      if (this.colorMode === 'margin') {
+        const counts = Object.fromEntries(MARGIN_LEGEND_STEPS.map(step => [step.value, 0]))
+        for (const s of this.tree) {
+          for (const l2 of (s.children || [])) {
+            for (const st of (l2.children || [])) {
+              const step = MARGIN_LEGEND_STEPS.find(item => inMarginFilter(this.marginValue(st), item.value))
+              if (step) counts[step.value]++
+            }
+          }
+        }
+        return counts
+      }
       const counts = {
         limit_up: 0,
         limit_down: 0,
@@ -558,19 +604,19 @@ export default {
         for (const l2 of (s.children || [])) {
           for (const st of (l2.children || [])) {
             // 统计涨停
-            if (inFilter(st.change, st.code, 'limit_up')) counts.limit_up++
+            if (inChangeFilter(st.change, st.code, 'limit_up')) counts.limit_up++
             // 统计跌停
-            if (inFilter(st.change, st.code, 'limit_down')) counts.limit_down++
+            if (inChangeFilter(st.change, st.code, 'limit_down')) counts.limit_down++
             // 统计各色块区间
-            if (inFilter(st.change, st.code, -4)) counts['-4']++
-            if (inFilter(st.change, st.code, -3)) counts['-3']++
-            if (inFilter(st.change, st.code, -2)) counts['-2']++
-            if (inFilter(st.change, st.code, -1)) counts['-1']++
-            if (inFilter(st.change, st.code, 0)) counts['0']++
-            if (inFilter(st.change, st.code, 1)) counts['1']++
-            if (inFilter(st.change, st.code, 2)) counts['2']++
-            if (inFilter(st.change, st.code, 3)) counts['3']++
-            if (inFilter(st.change, st.code, 4)) counts['4']++
+            if (inChangeFilter(st.change, st.code, -4)) counts['-4']++
+            if (inChangeFilter(st.change, st.code, -3)) counts['-3']++
+            if (inChangeFilter(st.change, st.code, -2)) counts['-2']++
+            if (inChangeFilter(st.change, st.code, -1)) counts['-1']++
+            if (inChangeFilter(st.change, st.code, 0)) counts['0']++
+            if (inChangeFilter(st.change, st.code, 1)) counts['1']++
+            if (inChangeFilter(st.change, st.code, 2)) counts['2']++
+            if (inChangeFilter(st.change, st.code, 3)) counts['3']++
+            if (inChangeFilter(st.change, st.code, 4)) counts['4']++
           }
         }
       }
@@ -855,6 +901,18 @@ export default {
 
     // ===== 着色维度（涨跌幅 / 融资净流入）=====
     // 个股取色：融资态用排名色、默认用涨跌幅
+    marginValue(stock) {
+      const entry = this.marginMap[extractDigits(stock && stock.code)]
+      const value = entry && entry.net
+      return typeof value === 'number' && isFinite(value) ? value : null
+    },
+    stockMatchesActiveFilter(stock, active = this.activeLegend) {
+      if (this.colorMode === 'margin') return inMarginFilter(this.marginValue(stock), active)
+      return inChangeFilter(stock.change, stock.code, active)
+    },
+    stockMetricLabel(stock) {
+      return this.colorMode === 'margin' ? this.formatMoney(this.marginValue(stock)) : fmtPct(stock.change)
+    },
     stockColor(s) {
       if (this.colorMode === 'margin') {
         return this._marginColor[extractDigits(s.code)] || NO_MARGIN_COLOR
@@ -862,7 +920,9 @@ export default {
       return interpColor(s.change)
     },
     async onColorModeChange(mode) {
+      if (mode === this.colorMode) return
       this.colorMode = mode
+      this.activeLegend = null
       if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
       this.buildLayout()
       this.render()
@@ -892,18 +952,22 @@ export default {
       for (const code in this.marginMap) {
         // 按 净流入/昨日融资余额(相对增速) 排名：消除大市值股绝对额对深色的统治(否则亮的永远是左上角大盘)
         const entry = this.marginMap[code]
-        const r = entry && typeof entry.rate === 'number' && isFinite(entry.rate) ? entry.rate : null
-        if (r == null || r === 0) continue
-        if (r > 0) pos.push([code, r]); else neg.push([code, r])
+        const net = entry && typeof entry.net === 'number' && isFinite(entry.net) ? entry.net : null
+        if (net == null) continue
+        if (net > 0) pos.push([code, net])
+        else if (net < 0) neg.push([code, Math.abs(net)])
+        else map[code] = 'rgb(76,68,84)'
       }
       pos.sort((a, b) => b[1] - a[1])                       // 净流入多 → 前 → 深
       neg.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))  // 净流出多 → 前 → 深
       const assign = (arr, light, deep) => {
-        const n = arr.length
-        arr.forEach((entry, i) => {
-          const depth = n > 1 ? 1 - i / (n - 1) : 1   // i=0(绝对值最大)→depth=1(最深)
-          map[entry[0]] = marginDepthColor(depth, light, deep)
-        })
+        if (!arr.length) return
+        const sorted = arr.map(item => item[1]).sort((a, b) => a - b)
+        const cap = sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] || sorted[sorted.length - 1]
+        for (const [code, amount] of arr) {
+          const depth = cap > 0 ? Math.min(1, Math.log1p(amount) / Math.log1p(cap)) : 0
+          map[code] = marginDepthColor(depth, light, deep)
+        }
       }
       assign(pos, MARGIN_RED_LIGHT, MARGIN_RED_DEEP)
       assign(neg, MARGIN_GREEN_LIGHT, MARGIN_GREEN_DEEP)
@@ -942,6 +1006,7 @@ export default {
         const children = (l1.children || []).map(l2 => {
           const stocks = (l2.children || []).map(s => ({
             name: s.name, code: s.code, change: s.change, value: s.value || 0, pe: s.pe,
+            marginNet: this.marginValue(s),
             l1Name: l1.name, l2Name: l2.name, sectorCode: l2.code || l1.code || '',
             color: this.stockColor(s)
           }))
@@ -949,8 +1014,7 @@ export default {
           if (useMargin) {
             let sum = 0, has = false
             for (const st of stocks) {
-              const v = this.marginMap[extractDigits(st.code)]
-              if (v && typeof v.net === 'number' && !isNaN(v.net)) { sum += v.net; has = true }
+              if (st.marginNet != null) { sum += st.marginNet; has = true }
             }
             marginAgg = has ? sum : null
           }
@@ -1015,7 +1079,7 @@ export default {
             const x = st.x * k + tx, y = st.y * k + ty, w = st.w * k, h = st.h * k
             if (w < 0.5 || h < 0.5) continue
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
-            let matched = (active == null) || inFilter(st.change, st.code, active)
+            let matched = this.stockMatchesActiveFilter(st, active)
             if (matched && pushedSet) matched = pushedSet.has(extractDigits(st.code))
             if (matched) sectorHasMatch = true
             ctx.fillStyle = matched ? st.color : DIM_COLOR
@@ -1025,8 +1089,8 @@ export default {
             if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x, y, w, h)
             // 未命中(灰显)的个股不画文字标签，突出命中的
             if (matched) {
-              if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, true)
-              else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, st.change, x, y, w, h, false)
+              if (w >= 50 && h >= 26) this.drawStockLabel(ctx, st.name, this.stockMetricLabel(st), x, y, w, h, true)
+              else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, st.name, this.stockMetricLabel(st), x, y, w, h, false)
             }
           }
           // 二级标题条
@@ -1034,7 +1098,7 @@ export default {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
             ctx.fillRect(lx, ly, lw, hh)
-            const l2Txt = (l2.marginAgg != null) ? `${l2.name}  ${this.formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
+            const l2Txt = this.colorMode === 'margin' ? `${l2.name}  ${this.formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
             this.drawHeaderText(ctx, l2Txt, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
           }
           ctx.lineWidth = 1.5
@@ -1048,7 +1112,7 @@ export default {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
           ctx.fillRect(sx, sy, sw, hh)
-          const sTxt = (s.marginAgg != null) ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
+          const sTxt = this.colorMode === 'margin' ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
           this.drawHeaderText(ctx, sTxt, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2.5
@@ -1094,20 +1158,20 @@ export default {
     },
 
     // 个股标签（分级）：面积够大→名称+涨跌幅；中等→仅名称；太小→不显示（调用方按阈值过滤）
-    drawStockLabel(ctx, name, change, x, y, w, h, withPct) {
+    drawStockLabel(ctx, name, metric, x, y, w, h, withMetric) {
       const cx = x + w / 2
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillStyle = '#fff'
       const font = s => `bold ${s}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
-      if (withPct) {
+      if (withMetric) {
         const nameSize = clamp(Math.min(w, h) * 0.19, 10, 15)
         const pctSize = nameSize * 0.8
         const cy = y + h / 2
         ctx.font = font(nameSize)
         ctx.fillText(name, cx, cy - nameSize * 0.55)
         ctx.font = font(pctSize)
-        ctx.fillText(fmtPct(change), cx, cy + pctSize * 0.6)
+        ctx.fillText(metric, cx, cy + pctSize * 0.6)
       } else {
         // 仅名称：按宽高自适应字号，保证名称能放进格子
         const n = Math.max(name.length, 2)
@@ -1397,8 +1461,8 @@ export default {
           visible: true,
           name: n.name,
           code: n.code || '',
-          change: fmtPct(n.change),
-          cls: n.change >= 0 ? 'up' : 'down',
+          change: this.stockMetricLabel(n),
+          cls: this.colorMode === 'margin' ? this.valueClass(this.marginValue(n)) : (n.change >= 0 ? 'up' : 'down'),
           marketCap: fmtCap(n.value),
           pe: fmtPE(n.pe),
           x: mx + 14,
