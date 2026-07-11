@@ -27,7 +27,7 @@
           <button class="yuntu-button" @click="guardedGotoMarketMap">📊 大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
-          <button class="flow-alert-button" @click="guardedGotoFlowAlert">🚨 异动预警</button>
+          <button class="flow-alert-button" @click="openFlowAlertModal">🚨 异动预警</button>
           <div class="more-menu-wrapper">
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
@@ -370,6 +370,61 @@
           <button class="reanalyze-btn" @click="reanalyzeDailyFlow" :disabled="aiAnalyzing">
             {{ aiAnalyzing ? '分析中...' : '重新分析' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert） -->
+    <div class="modal-overlay" v-if="showFlowAlertModal" @click="closeFlowAlertModal">
+      <div class="flow-alert-modal" @click.stop>
+        <div class="modal-header">
+          <h3>🚨 资金异动速览</h3>
+          <button class="close-btn" @click="closeFlowAlertModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="fa-quick-stats" v-if="flowAlertSummary.total">
+            <div class="fa-quick-stat">
+              <span class="num">{{ flowAlertSummary.total }}</span>
+              <span class="lbl">今日推送</span>
+            </div>
+            <div class="fa-quick-stat">
+              <span class="num">{{ flowAlertSummary.sectors }}</span>
+              <span class="lbl">涉及板块</span>
+            </div>
+            <div class="fa-quick-stat">
+              <span class="num">{{ flowAlertSummary.latest }}</span>
+              <span class="lbl">最新时点</span>
+            </div>
+          </div>
+          <div class="fa-quick-loading" v-if="flowAlertLoading">
+            <div class="spinner"></div>
+            <p>加载中...</p>
+          </div>
+          <div v-else-if="!flowAlertList.length" class="fa-quick-empty">
+            <p>今日暂无已推送异动</p>
+            <p class="fa-quick-empty-sub">交易时段每 5 分钟采集后自动触发</p>
+          </div>
+          <div v-else class="fa-quick-list">
+            <div class="fa-quick-card" v-for="(a, idx) in flowAlertList" :key="idx">
+              <div class="fa-quick-head">
+                <span class="fa-quick-time">{{ a.date }} {{ a.time }}</span>
+                <span class="fa-quick-sector">{{ a.sector }}</span>
+                <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '✓' : '✗' }}</span>
+              </div>
+              <div class="fa-quick-meta">
+                <span class="fa-quick-net" :class="a.net_flow >= 0 ? 'pos' : 'neg'">净流入 {{ faNet(a.net_flow) }}亿</span>
+                <span class="fa-quick-chg" :class="a.change_pct >= 0 ? 'pos' : 'neg'">{{ faPct(a.change_pct) }}%</span>
+                <span class="fa-quick-labels" v-if="a.labels && a.labels.length">{{ a.labels.join('、') }}</span>
+                <span class="fa-quick-lead" v-if="a.lead_stock">龙头 {{ a.lead_stock }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="reanalyze-btn" @click="refreshFlowAlertModal" :disabled="flowAlertLoading">
+            {{ flowAlertLoading ? '刷新中...' : '🔄 刷新' }}
+          </button>
+          <button class="fa-quick-viewall" @click="gotoFlowAlertPage">查看全天全部 →</button>
         </div>
       </div>
     </div>

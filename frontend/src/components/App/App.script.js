@@ -67,6 +67,11 @@ export default {
       lastNewsId: null,
       anomalyWatchInterval: null,
       lastAnomalyTimestamp: '',
+      // 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）
+      showFlowAlertModal: false,
+      flowAlertLoading: false,
+      flowAlertList: [],
+      flowAlertSummary: { total: 0, sectors: 0, latest: '--' },
       showStockModal: false,
       selectedSector: null,
       sectorStocks: [],
@@ -1580,6 +1585,46 @@ export default {
         console.log('异动通知失败:', e)
       }
     },
+
+    // ===== 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）=====
+    openFlowAlertModal() {
+      if (this.requireAuthOrPrompt()) return
+      this.showFlowAlertModal = true
+      this.refreshFlowAlertModal()
+    },
+    closeFlowAlertModal() {
+      this.showFlowAlertModal = false
+    },
+    async refreshFlowAlertModal() {
+      this.flowAlertLoading = true
+      try {
+        // 只看今日已推送的异动（与桌面通知同源），最新 10 条 + 简要统计
+        const d = new Date()
+        const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const res = await getAnomalyAlerts(todayStr)
+        const alerts = (res && res.success && Array.isArray(res.data)) ? res.data : []
+        this.flowAlertList = alerts.slice(0, 10)
+        const sectors = new Set(alerts.map(a => a.sector).filter(Boolean))
+        const latest = alerts[0]
+        this.flowAlertSummary = {
+          total: alerts.length,
+          sectors: sectors.size,
+          latest: latest ? `${latest.date} ${latest.time}` : '--'
+        }
+      } catch (e) {
+        console.log('异动速览加载失败:', e)
+        this.flowAlertList = []
+        this.flowAlertSummary = { total: 0, sectors: 0, latest: '--' }
+      } finally {
+        this.flowAlertLoading = false
+      }
+    },
+    gotoFlowAlertPage() {
+      this.closeFlowAlertModal()
+      this.$router.push('/flow-alert')
+    },
+    faNet(v) { return (v == null || isNaN(v)) ? '--' : Number(v).toFixed(2) },
+    faPct(v) { return (v == null || isNaN(v)) ? '--' : (v >= 0 ? '+' : '') + Number(v).toFixed(2) },
 
     openNews(url) {
       if (url) {
