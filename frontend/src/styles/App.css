@@ -1501,6 +1501,7 @@ button:active:not(:disabled) {
 }
 
 .flow-alert-button {
+  position: relative;
   background: linear-gradient(135deg, #ff4d4f, #cf1322);
   color: #fff;
   border: 1px solid #ff7875;
@@ -1517,6 +1518,24 @@ button:active:not(:disabled) {
   background: linear-gradient(135deg, #ff7875, #ff4d4f);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
+}
+/* 未读红点：有新异动时点亮，脉冲提示 */
+.flow-alert-button .unread-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  background: #ffeb3b;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(255, 77, 79, 0.9);
+  animation: fa-unread-pulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes fa-unread-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 77, 79, 0.9); }
+  50% { transform: scale(1.35); box-shadow: 0 0 10px rgba(255, 77, 79, 1); }
 }
 
 .yuntu-button {

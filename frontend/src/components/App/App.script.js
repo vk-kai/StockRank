@@ -67,6 +67,7 @@ export default {
       lastNewsId: null,
       anomalyWatchInterval: null,
       lastAnomalyTimestamp: '',
+      hasUnreadAnomaly: false,
       // 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）
       showFlowAlertModal: false,
       flowAlertLoading: false,
@@ -1557,6 +1558,8 @@ export default {
         if (!newest || newest <= this.lastAnomalyTimestamp) return
         const fresh = alerts.filter(a => (a.timestamp || '') > this.lastAnomalyTimestamp)
         this.lastAnomalyTimestamp = newest
+        // 有新异动就亮未读红点，与桌面通知开关/权限无关
+        if (fresh.length) this.hasUnreadAnomaly = true
         if (!fresh.length || !this.enableNotification) return
         if (!('Notification' in window) || Notification.permission !== 'granted') return
         fresh.slice(0, 5).forEach(a => this.sendAnomalyNotification(a))
@@ -1589,6 +1592,7 @@ export default {
     // ===== 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）=====
     openFlowAlertModal() {
       if (this.requireAuthOrPrompt()) return
+      this.hasUnreadAnomaly = false   // 打开速览即视为已读
       this.showFlowAlertModal = true
       this.refreshFlowAlertModal()
     },

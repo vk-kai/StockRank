@@ -27,7 +27,10 @@
           <button class="yuntu-button" @click="guardedGotoMarketMap">📊 大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
-          <button class="flow-alert-button" @click="openFlowAlertModal">🚨 异动预警</button>
+          <button class="flow-alert-button" @click="openFlowAlertModal">
+            🚨 异动预警
+            <span class="unread-dot" v-if="hasUnreadAnomaly" title="有新异动"></span>
+          </button>
           <div class="more-menu-wrapper">
             <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
