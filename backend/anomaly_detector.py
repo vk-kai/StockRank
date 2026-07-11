@@ -528,7 +528,7 @@ def _format_message(f):
     chg = f['change_pct']
     arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
     flow_color = 'warning' if nf >= 0 else 'info'
-    lines = [f"## {arrow} 资金异动｜{sector}"]
+    lines = []
     lines.append(f"> 时间：**{f['date']} {f['time']}**")
     lines.append(f"> 净流入：<font color=\"{flow_color}\">{nf:+.2f} 亿</font>")
     lines.append(f"> 涨跌幅：**{chg:+.2f}%**")
@@ -554,7 +554,7 @@ def _format_message(f):
         lines.append(f"• {h['label']}{detail}")
     lines.append("")
     lines.append(f"⏰ {f['date']} {f['time']}")
-    title = f"资金异动 · {sector}"
+    title = f"{arrow} 资金异动 · {sector}"
     return title, "\n".join(lines)
 
 
