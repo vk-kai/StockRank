@@ -67,7 +67,7 @@ DEFAULT_CONFIG = {
 _config_cache = None
 _config_lock = threading.Lock()
 _baseline_cache = None
-_baseline_lock = threading.Lock()
+_baseline_lock = threading.RLock()
 
 
 # --------------------------------------------------------------------------
@@ -119,7 +119,7 @@ def build_baseline(days=None):
     """
     cfg = load_config()
     days = days or cfg.get('baseline_days', 20)
-    stats = {}  # {sector: [abs_net_flow,...]}
+    stats = {}  # {sector: {minute_key: [abs_net_flow,...]}}
 
     today = datetime.now().strftime('%Y-%m-%d')
     for i in range(1, days + 1):
@@ -139,22 +139,25 @@ def build_baseline(days=None):
                     nf = float(nf)
                 except (TypeError, ValueError):
                     continue
-                stats.setdefault(name, []).append(abs(nf))
+                stats.setdefault(name, {}).setdefault(minute_key, []).append(abs(nf))
 
-    baseline = {'built_at': datetime.now().isoformat(), 'baseline_days': days, 'sectors': {}}
-    for name, vals in stats.items():
-        n = len(vals)
-        if n == 0:
-            continue
-        mean = sum(vals) / n
-        var = sum((v - mean) ** 2 for v in vals) / n if n > 1 else 0.0
-        std = math.sqrt(var)
-        baseline['sectors'][name] = {
-            'count': n,
-            'mean': round(mean, 2),
-            'std': round(std, 2),
-            'max': round(max(vals), 2),
-        }
+    baseline = {'version': 2, 'built_at': datetime.now().isoformat(), 'baseline_days': days, 'sectors': {}}
+    for name, points in stats.items():
+        by_time = {}
+        for minute_key, vals in points.items():
+            n = len(vals)
+            if n == 0:
+                continue
+            mean = sum(vals) / n
+            var = sum((v - mean) ** 2 for v in vals) / n if n > 1 else 0.0
+            by_time[minute_key] = {
+                'count': n,
+                'mean': round(mean, 2),
+                'std': round(math.sqrt(var), 2),
+                'max': round(max(vals), 2),
+            }
+        if by_time:
+            baseline['sectors'][name] = {'by_time': by_time}
 
     with _baseline_lock:
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -183,7 +186,9 @@ def get_baseline(force_rebuild=False):
         # 基线跨天复用：板块资金分布不会一天突变，3 天内不重建（避免每天首次接口卡顿）
         built_at = (_baseline_cache or {}).get('built_at', '')
         need_rebuild = True
-        if built_at:
+        if (_baseline_cache or {}).get('version') != 2:
+            need_rebuild = True
+        elif built_at:
             try:
                 built_date = datetime.fromisoformat(built_at)
                 if (datetime.now() - built_date).days < 3:
@@ -344,10 +349,11 @@ def _check_streak(sec, series, cfg, current_time=None):
 # --------------------------------------------------------------------------
 # 维度 4：巨量 z-score（辅助，标注样本量）
 # --------------------------------------------------------------------------
-def _check_surge(sec, baseline, cfg):
+def _check_surge(sec, baseline, cfg, current_time=None):
     nf = float(sec.get('net_flow', 0) or 0)
     abs_nf = abs(nf)
-    sec_stats = (baseline or {}).get('sectors', {}).get(sec.get('name'), {}) if baseline else {}
+    sector_baseline = (baseline or {}).get('sectors', {}).get(sec.get('name'), {}) if baseline else {}
+    sec_stats = (sector_baseline.get('by_time') or {}).get(current_time, {})
     count = sec_stats.get('count', 0)
     mean = sec_stats.get('mean', 0)
     std = sec_stats.get('std', 0) or 1e-9
@@ -410,7 +416,7 @@ def detect_for_snapshot(date_str, minute_key, push=False, realtime_data=None):
                 hits.append(r)
         # 巨量（辅助）
         try:
-            r = _check_surge(sec, baseline, cfg)
+            r = _check_surge(sec, baseline, cfg, minute_key)
             if r:
                 hits.append(r)
         except Exception as e:
