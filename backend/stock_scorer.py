@@ -84,40 +84,45 @@ def bucketize(score):
 
 
 # ============================== 默认提示词 ==============================
-DEFAULT_STOCK_SCORE_PROMPT = """你是顶级 A 股投资分析师，擅长用世界知识 + 行业认知对股票做快速分档评估。
-你将收到一批 A 股股票（每只含：id=裸6位代码、name、l1=一级行业、l2=二级行业、cap=总市值(元)、pe=市盈率）。
-请对每只股票给出 0-100 的综合评分（50=中性，≥50 偏正面/红，<50 偏负面/绿）。
+DEFAULT_STOCK_SCORE_PROMPT = """你是顶级 A 股投资分析师。你将收到一批 A 股股票（每只含：id=裸6位代码、name、l1=一级行业、l2=二级行业、cap=总市值(元)、pe=市盈率）。
+请对每只给出 0-100 的综合评分（50=中性，≥50 偏正面/红，<50 偏负面/绿）。
 
-【评分维度 8 项，各 0-10 分，中性=5，加权求和=总分】
+【最重要原则：必须给出有区分度的评分，禁止大量给50】
+即使你不熟悉某家具体公司，也必须根据【名称含义 + 所属行业(l1/l2)的周期景气 + 市值规模 + 市盈率 + 代码板块】综合推断，给出能区分好坏的分数。
+"认知确定性"只是 8 个维度之一（不熟悉可给 5 分中性），其余 7 维（宏观/行业/龙头/护城河/资金/业绩/估值）都能从行业和财务推断，不要因为不认识公司就把总分压成50。
+代码板块：688=科创板(硬科技/高端制造)、300/301=创业板(成长)、600/601=沪市主板、000/002=深市主板、8/4开头=北交所。
+
+【8 维评分（各 0-10，5=中性，求和 ×100/80 = 展示分）】
 1. 宏观友好度（利率/政策/流动性对该行业的边际影响）
-2. 行业景气度（行业当前所处的周期位置：复苏/繁荣/顶部/衰退）
-3. 龙头地位（该公司在 l2 细分赛道的市占率与话语权）
-4. 护城河（技术/品牌/规模/牌照/网络效应的可持续性）
-5. 资金面（机构持仓/北向/融资盘的边际倾向，凭行业认知推断）
-6. 业绩质量（增长稳定性、现金流、ROE 水平，结合 pe 合理性）
-7. 估值合理度（pe 是否匹配成长性；pe<0 视为亏损扣分）
-8. 认知确定性（你对这家公司了解多少；不了解也给 5 分中性）
+2. 行业景气度（行业所处的周期：复苏/繁荣/顶部/衰退）
+3. 龙头地位（该公司在 l2 细分赛道的市占率与话语权；大市值通常更靠前）
+4. 护城河（技术/品牌/规模/牌照/网络效应）
+5. 资金面（机构/北向/融资盘对该行业的边际倾向，凭行业认知推断）
+6. 业绩质量（结合 pe 合理性、盈利稳定性）
+7. 估值合理度（pe 是否匹配成长性；pe<0 亏损本维封顶 3 分）
+8. 认知确定性（不熟悉可给 5 分，但不要让它拖垮总分）
 
-总分 = 各维度之和（满分 80）× 100/80，再四舍五入到 0-100 整数。
-注意：8 项各 5 分时总分正好 50（中性）。
+【按行业+估值的快速推断锚点（不熟悉公司时据此打分，不要偷懒给50）】
+- 成长/景气行业(半导体、AI算力、机器人、新能源、创新药、商业航天、军工电子) + 盈利 + 大中市值 → 65-85
+- 科技/高端制造(科创板688/创业板300) + 国产替代/技术壁垒逻辑 → 55-78
+- 成长行业 + 小盘 + 高估值(pe>60) → 48-62
+- 银行/保险/公用事业/高速公路 + 低pe高股息 → 50-62
+- 消费/医药白马 + 合理估值 → 55-70
+- 周期股(化工/有色/钢铁/航运/猪肉) 处于景气下行 + 高估值 → 28-42
+- 地产/传统基建链 → 25-40
+- 亏损(pe<0) 且无反转逻辑 → 18-38
+- ST/退市风险/重大违规 → 0-15
 
-【分数带语义（必须落在对应区间，50 为红绿分界：≥50 偏正面，<50 偏负面）】
-- 90-100：顶级——超级龙头+行业爆发+巨额订单/政策红利
-- 80-89 ：优秀——行业景气+龙头地位+业绩超预期
-- 70-79 ：较优——稳健增长/行业向上/竞争力强
-- 60-69 ：尚可——基本面尚可但无强催化
-- 50-59 ：中性偏多——略有亮点/信息不足时的默认档
-- 41-49 ：中性偏空——略有隐忧/平淡
-- 26-40 ：偏谨慎——周期下行/估值过高/竞争恶化
-- 11-25 ：谨慎——业绩下滑/行业衰退/治理问题
-- 0-10  ：极谨慎——退市风险/重大违规/财务造假
+【分数带语义（必须落在对应区间，50 为红绿分界）】
+90-100 顶级 / 80-89 优秀 / 70-79 较优 / 60-69 尚可 / 50-59 中性偏多 / 41-49 中性偏空 / 26-40 偏谨慎 / 11-25 谨慎 / 0-10 极谨慎
 
 【硬性规则】
-1. 你不了解的公司，一律给总分 50（中性偏多），reason 写"信息不足"。
-2. pe<0（亏损）：估值维度封顶 3 分，其余维度正常评。
+1. 每只都必须给有区分度的分数；一批里给 50 分的比例不得超过 20%。宁可基于行业+估值大胆推断，也不要保守地塞 50。
+2. pe<0（亏损）：估值维度封顶 3 分。
 3. 不得漏掉任何一只；输入 N 只，输出必须 N 条。
-4. score 必须是 0-100 的整数；reason 必须 ≤15 个汉字。
-5. label 从这 9 个里选：顶级/优秀/较优/尚可/中性偏多/中性偏空/偏谨慎/谨慎/极谨慎。
+4. score 为 0-100 整数；reason ≤15 汉字，必须写具体依据（行业景气/估值高低/市值地位/题材逻辑），禁止只写"信息不足"。
+   只有连行业属性都无法判断时（极少），才给 50-55 并写"按行业中性推断"。
+5. label 从 9 个里选：顶级/优秀/较优/尚可/中性偏多/中性偏空/偏谨慎/谨慎/极谨慎。
 
 【输出格式——严格 JSON 数组，不要任何解释、不要 markdown 代码块】
 [
@@ -148,6 +153,7 @@ _score_status = {
     'total': 0,
     'done': 0,
     'failed': 0,
+    'last_error': '',
     'started_at': None,
     'updated_at': None,
     'ended_at': None,
@@ -162,6 +168,7 @@ _rate_cooldown_until = 0.0          # 命中限流后的"全局放行时间戳"�
 # 本轮生效的节流参数（由 _run_scoring_background 从 ai_config 读取后注入；默认值见常量）
 _active_batch_interval = DEFAULT_BATCH_INTERVAL
 _active_429_cooldown = DEFAULT_429_COOLDOWN
+_last_batch_error = ''               # 最近一次批次失败原因（worker 写、runner 读，仅用于诊断展示）
 
 
 def _now_iso():
@@ -185,12 +192,36 @@ def load_scores():
         return {}
 
 
+def _safe_replace(tmp, target):
+    """os.replace 的 Windows 安全版：杀软/索引器/并发读 偶发锁定目标文件，
+    导致 ERROR_ACCESS_DENIED (WinError 5)。重试几次；仍失败则回退为直接覆写
+    目标（牺牲原子性换可用性——对低频的打分文件可接受）。"""
+    last_err = None
+    for i in range(6):
+        try:
+            os.replace(tmp, target)
+            return
+        except (PermissionError, OSError) as e:
+            last_err = e
+            time.sleep(0.15 * (i + 1))   # 约 0.15/0.3/0.45/0.6/0.75/0.9s，累计 ~3s
+    # 回退：读到内存再直接覆写目标，然后删 tmp
+    try:
+        with open(tmp, 'r', encoding='utf-8') as src, open(target, 'w', encoding='utf-8') as dst:
+            dst.write(src.read())
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    except Exception:
+        raise last_err
+
+
 def _write_scores_atomic(scores):
     os.makedirs(STOCK_SCORES_DIR, exist_ok=True)
     tmp = STOCK_SCORES_FILE + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(scores, f, ensure_ascii=False)
-    os.replace(tmp, STOCK_SCORES_FILE)
+    _safe_replace(tmp, STOCK_SCORES_FILE)
 
 
 def merge_batch_scores(batch_results, run_id):
@@ -259,34 +290,41 @@ def _write_status_atomic(status):
     tmp = STOCK_SCORE_STATUS_FILE + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(status, f, ensure_ascii=False)
-    os.replace(tmp, STOCK_SCORE_STATUS_FILE)
+    _safe_replace(tmp, STOCK_SCORE_STATUS_FILE)
 
 
 def _update_status(**fields):
-    """更新内存状态并原子落盘（镜像 flow_routes._update_ai_status）。"""
+    """更新内存状态并尝试落盘。落盘失败只告警不抛——避免偶发的文件写抖动
+    （Windows os.replace 被并发读/杀软短暂锁定）杀掉整个打分后台线程。内存状态始终是最新的。"""
     with _status_lock:
         _score_status.update(fields)
         _score_status['updated_at'] = _now_iso()
         if fields.get('status') in ('completed', 'failed', 'interrupted'):
             _score_status['ended_at'] = _now_iso()
-        _write_status_atomic(dict(_score_status))
+        snapshot = dict(_score_status)
+    try:
+        _write_status_atomic(snapshot)
+    except Exception as e:
+        error_logger.warning(f"[股票打分] 状态落盘失败(已忽略，内存状态仍正确): {e}")
 
 
 def get_status():
-    """查询状态：优先读持久化文件（completed/failed/interrupted 直接返回）；
-    文件显示 running 但后台线程已死（进程重启）→ 返回 interrupted。否则回退内存状态。"""
+    """查询状态。运行中（后台线程存活）直接返回内存状态——更新最及时，且避免与
+    后台线程写 status.json 争用 os.replace（Windows 下并发读+replace 会触发 WinError 5）。
+    无活线程时读持久化文件以恢复状态（进程重启后），内存显示 running 但线程已死 → interrupted。"""
     global _worker_thread
+    alive = _worker_thread is not None and _worker_thread.is_alive()
+    if alive:
+        with _status_lock:
+            return dict(_score_status)
     file_status = _load_status_file()
     if file_status and file_status.get('status') in ('completed', 'failed', 'interrupted'):
         return file_status
-    # 文件/内存显示 running：判线程是否真活着
-    alive = _worker_thread is not None and _worker_thread.is_alive()
     with _status_lock:
         cur = dict(_score_status)
-    if cur.get('status') == 'running' and not alive:
+    if cur.get('status') == 'running':
         cur['status'] = 'interrupted'
         cur['message'] = cur.get('message') or '上次打分未完成（进程已重启），已保留已评分结果'
-        return cur
     return cur
 
 
@@ -297,19 +335,28 @@ def _bare_code(sina_code):
     return digits if len(digits) == 6 else ''
 
 
-def _load_stock_list(only_failed=False):
-    """返回 [(bare_code, {name,l1,l2,value,pe}), ...]。only_failed 时只保留未评分的。"""
+def _load_stock_list(scope='all'):
+    """返回 [(bare_code, {name,l1,l2,value,pe}), ...]。scope：
+       'all'          = 全量；
+       'missing'      = 仅未评分的（score 为 None）；
+       'insufficient' = 仅 reason 含"信息不足"的（针对上一轮被 AI 放弃的，换更强提示词后重评）。"""
     all_stocks = get_all_market_map_stocks()
     if not all_stocks:
         return []
-    existing = load_scores() if only_failed else {}
+    existing = load_scores() if scope != 'all' else {}
     out = []
     for sina_code, info in all_stocks.items():
         code = _bare_code(sina_code)
         if not code:
             continue
-        if only_failed and code in existing and existing[code].get('score') is not None:
-            continue
+        if scope == 'missing':
+            ent = existing.get(code)
+            if ent and ent.get('score') is not None:
+                continue
+        elif scope == 'insufficient':
+            ent = existing.get(code)
+            if not ent or '信息不足' not in (ent.get('reason') or ''):
+                continue
         out.append((code, {
             'name': info.get('name') or code,
             'l1': info.get('l1') or '',
@@ -346,10 +393,12 @@ def _call_ai_batch(batch, config, prompt):
 
     user_lines = []
     for code, info in batch:
-        user_lines.append(
-            f'{{"id":"{code}","name":"{info["name"]}","l1":"{info["l1"]}","l2":"{info["l2"]}","cap":{int(info["value"] or 0)},"pe":{info["pe"] if info["pe"] is not None else "null"}}}'
-        )
-    user_msg = '请评估以下股票（id 为裸6位代码），严格按指定 JSON 数组输出，每只一条：\n[' + ',\n'.join(user_lines) + ']'
+        user_lines.append({
+            'id': code, 'name': info['name'], 'l1': info['l1'], 'l2': info['l2'],
+            'cap': int(info['value'] or 0), 'pe': info['pe'],
+        })
+    # 用 json.dumps 正确转义（股票名可能含引号/特殊字符，手拼 JSON 会让 AI 解析失败）
+    user_msg = '请评估以下股票（id 为裸6位代码），严格按指定 JSON 数组输出，每只一条：\n' + json.dumps(user_lines, ensure_ascii=False)
 
     messages = [
         {'role': 'system', 'content': prompt},
@@ -399,20 +448,36 @@ def _call_ai_batch(batch, config, prompt):
                 last_err = f'API 限流(HTTP {resp.status_code}{body_code})，退避 {wait}s'
                 _apply_rate_cooldown(wait)   # 让后续批次也集体放慢
                 if attempt < MAX_RETRY_PER_BATCH:
-                    time.sleep(wait)
+                    _cancelable_sleep(wait)   # 退避期间点"停止"可立即中断
                     continue
             else:
-                last_err = f'HTTP {resp.status_code}'
+                # 非 200/429/503（如 400/401/403/404/422/500）：带上响应体片段，便于看智谱原始报错
+                body_snippet = ''
+                try:
+                    body_snippet = ' ' + resp.text[:200].replace('\n', ' ')
+                except Exception:
+                    pass
+                last_err = f'HTTP {resp.status_code}{body_snippet}'
                 if attempt < MAX_RETRY_PER_BATCH:
-                    time.sleep(5)
+                    _cancelable_sleep(5)
                     continue
         except Exception as e:
             last_err = f'异常: {str(e)[:80]}'
             if attempt < MAX_RETRY_PER_BATCH:
-                time.sleep(5)   # 超时/连接错误：稍候重试，不触发限流冷却
+                _cancelable_sleep(5)   # 超时/连接错误：稍候重试，不触发限流冷却
                 continue
     error_logger.warning(f"[股票打分] 批次失败({len(batch)}只): {last_err}")
+    global _last_batch_error
+    _last_batch_error = last_err   # 供 runner 写入 status.last_error，前端/脚本可见
     return {}
+
+
+def _cancelable_sleep(seconds):
+    """可被"停止打分"中断的 sleep：用 _cancel_event.wait 替代 time.sleep，
+    取消事件被 set 时立刻返回，让停止尽快生效（不用等完整个退避/节流时长）。"""
+    if not seconds or seconds <= 0:
+        return
+    _cancel_event.wait(timeout=seconds)
 
 
 def _apply_rate_cooldown(seconds):
@@ -435,7 +500,7 @@ def _global_throttle():
         wait_cooldown = _rate_cooldown_until - now
         wait = max(0.0, wait_interval, wait_cooldown)
         if wait > 0:
-            time.sleep(min(wait, RATE_LIMIT_RETRY_CAP))  # 单次 sleep 上限，超长则下次再续
+            _cancelable_sleep(min(wait, RATE_LIMIT_RETRY_CAP))  # 单次 sleep 上限；点"停止"可立即中断
         _last_dispatch_ts = time.time()
 
 
@@ -457,16 +522,20 @@ def _score_worker(batch, config, prompt, run_id, counters, counters_lock):
         _global_throttle()
         extra = _call_ai_batch(miss_batch, config, prompt)
         results.update(extra)
+    # 只保留本批请求的 code——AI 偶尔会臆造/串入非本批的 code，丢弃它们，
+    # 否则 added 会 > len(batch) 导致 failed 计数为负。
+    results = {c: v for c, v in results.items() if c in requested}
     added = merge_batch_scores(results, run_id)
     with counters_lock:
         counters['done'] += added
-        counters['failed'] += (len(batch) - added)
+        counters['failed'] += (len(requested) - added)
     return added
 
 
 # ============================== 后台主线程 ==============================
-def _run_scoring_background(run_id, only_failed):
-    """后台主线程：切批 → 线程池并发 → 实时更新进度。镜像 _run_ai_analysis_background。"""
+def _run_scoring_background(run_id, scope):
+    """后台主线程：切批 → 线程池并发 → 实时更新进度。镜像 _run_ai_analysis_background。
+    scope: 'all' 全量 / 'missing' 仅未评分 / 'insufficient' 仅"信息不足"项重评。"""
     try:
         _update_status(status='running', run_id=run_id, step='加载股票清单', progress=1,
                        total=0, done=0, failed=0, started_at=_now_iso(), ended_at=None)
@@ -479,7 +548,7 @@ def _run_scoring_background(run_id, only_failed):
         _active_batch_interval = float(config.get('score_batch_interval') or DEFAULT_BATCH_INTERVAL)
         _active_429_cooldown = int(config.get('score_429_cooldown') or DEFAULT_429_COOLDOWN)
 
-        stocks = _load_stock_list(only_failed=only_failed)
+        stocks = _load_stock_list(scope=scope)
         if not stocks:
             _update_status(status='failed', progress=0, step='失败',
                            message='无待评分股票（请先在大盘云图更新行业缓存）')
@@ -498,6 +567,9 @@ def _run_scoring_background(run_id, only_failed):
             executor.submit(_score_worker, b, config, prompt, run_id, counters, counters_lock)
             for b in batches
         ]
+        prev_done = 0
+        consecutive_fatal = 0
+        FATAL_CODES = ('HTTP 400', 'HTTP 401', 'HTTP 403', 'HTTP 404', 'HTTP 422')
         try:
             for fut in as_completed(futures):
                 if _cancel_event.is_set():
@@ -509,9 +581,25 @@ def _run_scoring_background(run_id, only_failed):
                 with counters_lock:
                     done = counters['done']
                     failed = counters['failed']
+                batch_added = done - prev_done
+                prev_done = done
                 progress = 2 + int((done + failed) / total * 96) if total else 100
-                _update_status(done=done, failed=failed, progress=progress,
+                last_err = _last_batch_error if failed else ''
+                # 致命错误（认证/权限/余额/参数）连续整批失败 → 提前中止，避免空跑几百批
+                if batch_added == 0 and any(last_err.startswith(c) for c in FATAL_CODES):
+                    consecutive_fatal += 1
+                else:
+                    consecutive_fatal = 0
+                _update_status(done=done, failed=failed, progress=progress, last_error=last_err,
                                step=f'已评分 {done}/{total}' + (f'（失败 {failed}）' if failed else ''))
+                if consecutive_fatal >= 5:
+                    # 连续 5 批致命失败（如 403 余额耗尽 / 401 key 失效）：再跑也是空跑，中止
+                    _cancel_event.set()
+                    _update_status(status='failed', progress=progress,
+                                   message=f'连续 {consecutive_fatal} 批致命失败（{last_err}），已提前中止。'
+                                           f'请检查 AI 配置/余额/key 状态后重试（可 --scope missing 续跑）。')
+                    info_logger.error(f"[股票打分] 连续致命失败中止: {last_err}")
+                    break
         finally:
             # 取消未开始的任务；等待在飞的完成（协作式停止）
             for f in futures:
@@ -536,9 +624,12 @@ def _run_scoring_background(run_id, only_failed):
 
 
 # ============================== 对外入口 ==============================
-def start_scoring(only_failed=False):
-    """启动一轮打分。running 且线程存活 → 拒绝。返回 {success, status, ...}。"""
+def start_scoring(scope='all'):
+    """启动一轮打分。scope: 'all' 全量 / 'missing' 仅未评分 / 'insufficient' 仅"信息不足"重评。
+    running 且线程存活 → 拒绝。返回 {success, status, ...}。"""
     global _worker_thread
+    if scope not in ('all', 'missing', 'insufficient'):
+        scope = 'all'
     config = load_ai_config()
     if not config or not config.get('enabled'):
         return {'success': False, 'message': 'AI 未启用或配置不完整，请先在「AI大模型配置」中设置'}
@@ -561,30 +652,38 @@ def start_scoring(only_failed=False):
         _score_status['started_at'] = _now_iso()
         _write_status_atomic(dict(_score_status))
         _worker_thread = threading.Thread(
-            target=_run_scoring_background, args=(run_id, only_failed), daemon=True
+            target=_run_scoring_background, args=(run_id, scope), daemon=True
         )
         _worker_thread.start()
 
-    # 估算（时长取决于 AI 端点单次响应速度；串行下约 1-3 小时，可中途停止、可仅跑失败项）
-    total = len(get_all_market_map_stocks())
+    # 估算（按 scope 的实际待评数量算；时长取决于 AI 端点单次响应速度）
+    total = len(_load_stock_list(scope=scope))
     batch_size = int(config.get('score_batch_size') or DEFAULT_BATCH_SIZE)
     max_workers = max(1, int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS))
     batches = (total + batch_size - 1) // batch_size if total else 0
+    scope_cn = {'all': '全量', 'missing': '仅未评分', 'insufficient': '仅信息不足'}[scope]
     return {
         'success': True, 'status': 'running', 'run_id': run_id,
-        'message': '打分任务已启动（串行调用，避免触发 AI 限流）' if max_workers == 1
-                   else '打分任务已启动（%d 并发）' % max_workers,
+        'message': f'打分任务已启动（{scope_cn}，共{total}只，'
+                   + ('串行避免限流）' if max_workers == 1 else f'{max_workers}并发）'),
         'estimate': {
             'total': total, 'batches': batches,
             'batch_size': batch_size, 'workers': max_workers,
             'eta_minutes': '60-180' if max_workers == 1 else '25-60',
-            'only_failed': bool(only_failed),
+            'scope': scope,
         },
     }
 
 
 def stop_scoring():
     _cancel_event.set()
+    # 立刻把状态 step 改成"停止中"，让前端马上看到反馈（状态仍为 running，
+    # 直到后台线程把当前在飞的 HTTP 请求做完、真正退出后转 interrupted）。
+    try:
+        _update_status(step='已请求停止，等待当前批次完成（最长约2分钟）…',
+                       message='已请求停止，当前批次完成后退出，已评分结果保留')
+    except Exception:
+        pass
     return {'success': True, 'message': '已请求停止，当前批次完成后退出（已评分结果保留）'}
 
 
@@ -594,6 +693,7 @@ def get_scores_payload():
     last_run = None
     last_at = None
     flat = {}
+    insufficient = 0
     for code, v in scores.items():
         if isinstance(v, dict):
             flat[code] = {
@@ -601,6 +701,8 @@ def get_scores_payload():
                 'label': v.get('label', ''),
                 'reason': v.get('reason', ''),
             }
+            if '信息不足' in (v.get('reason') or ''):
+                insufficient += 1
             if v.get('run_id'):
                 last_run = v.get('run_id')
             if v.get('scored_at') and (last_at is None or v.get('scored_at') > last_at):
@@ -610,6 +712,7 @@ def get_scores_payload():
         'run_id': last_run,
         'scored_at': last_at,
         'count': len(flat),
+        'insufficient_count': insufficient,
         'map': flat,
         'buckets': SCORE_BUCKETS,
     }

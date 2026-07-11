@@ -240,12 +240,15 @@ def stock_scores_map():
 
 @flow_bp.route('/stock-scores/start', methods=['POST'])
 def stock_scores_start():
-    """启动一轮 AI 批量打分（异步后台线程）。可选 body {only_failed:bool} 只补跑未评分项。
+    """启动一轮 AI 批量打分（异步后台线程）。body 可选 {scope:'all'|'missing'|'insufficient'}。
+    scope=missing 只补未评分；insufficient 只重评 reason 含"信息不足"的。兼容旧 {only_failed:bool}。
     running 中且线程存活 → 返回当前进度，不重复启动。"""
     try:
         payload = request.get_json(silent=True) or {}
-        only_failed = bool(payload.get('only_failed'))
-        return jsonify(stock_scorer.start_scoring(only_failed=only_failed))
+        scope = (payload.get('scope') or '').strip()
+        if not scope:
+            scope = 'missing' if payload.get('only_failed') else 'all'
+        return jsonify(stock_scorer.start_scoring(scope=scope))
     except Exception as e:
         error_logger.error(f"启动股票打分失败: {e}")
         return jsonify({'success': False, 'message': f'启动失败: {str(e)[:100]}'}), 500
