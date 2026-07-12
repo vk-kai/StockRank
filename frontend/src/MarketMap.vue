@@ -164,10 +164,10 @@
         <button
           v-if="colorMode === 'change'"
           class="mm-limit-btn up"
-          :class="{ active: activeLegend === 'limit_up' }"
-          @click="toggleFilter('limit_up')"
+          :class="{ active: legendSel.includes('limit_up') }"
+          @click="toggleLegendSel('limit_up')"
           :data-tooltip="'涨停：' + legendCounts.limit_up + ' 只'"
-          :aria-label="'涨停：' + legendCounts.limit_up + ' 只，点击只看涨停，再点复原'"
+          :aria-label="'涨停：' + legendCounts.limit_up + ' 只，勾选后点确定可多选'"
           @mouseenter="showLegendTooltip($event, '涨停：' + legendCounts.limit_up + ' 只')"
           @focus="showLegendTooltip($event, '涨停：' + legendCounts.limit_up + ' 只')"
           @mouseleave="hideLegendTooltip"
@@ -179,10 +179,10 @@
         <button
           v-if="colorMode === 'change'"
           class="mm-limit-btn down"
-          :class="{ active: activeLegend === 'limit_down' }"
-          @click="toggleFilter('limit_down')"
+          :class="{ active: legendSel.includes('limit_down') }"
+          @click="toggleLegendSel('limit_down')"
           :data-tooltip="'跌停：' + legendCounts.limit_down + ' 只'"
-          :aria-label="'跌停：' + legendCounts.limit_down + ' 只，点击只看跌停，再点复原'"
+          :aria-label="'跌停：' + legendCounts.limit_down + ' 只，勾选后点确定可多选'"
           @mouseenter="showLegendTooltip($event, '跌停：' + legendCounts.limit_down + ' 只')"
           @focus="showLegendTooltip($event, '跌停：' + legendCounts.limit_down + ' 只')"
           @mouseleave="hideLegendTooltip"
@@ -196,15 +196,15 @@
             v-for="(s, i) in legendSteps"
             :key="i"
             class="mm-legend-step"
-            :class="{ active: activeLegend === s.value }"
+            :class="{ active: legendSel.includes(s.value), checked: legendSel.includes(s.value) }"
             :style="{ background: s.color }"
             :data-tooltip="s.countTitle + '：' + legendCounts[String(s.value)] + ' 只'"
-            :aria-label="s.title + '，当前 ' + legendCounts[String(s.value)] + ' 只'"
+            :aria-label="s.title + '，当前 ' + legendCounts[String(s.value)] + ' 只，勾选后点确定可多选'"
             role="button"
             tabindex="0"
-            @click="toggleFilter(s.value)"
-            @keyup.enter="toggleFilter(s.value)"
-            @keyup.space.prevent="toggleFilter(s.value)"
+            @click="toggleLegendSel(s.value)"
+            @keyup.enter="toggleLegendSel(s.value)"
+            @keyup.space.prevent="toggleLegendSel(s.value)"
             @mouseenter="showLegendTooltip($event, s.countTitle + '：' + legendCounts[String(s.value)] + ' 只')"
             @focus="showLegendTooltip($event, s.countTitle + '：' + legendCounts[String(s.value)] + ' 只')"
             @mouseleave="hideLegendTooltip"
@@ -214,6 +214,16 @@
             <span class="mm-legend-step-count">{{ legendCounts[String(s.value)] }}只</span>
           </div>
         </div>
+        <button
+          class="mm-legend-apply"
+          :class="{ pending: legendSel.length > 0, hasFilter: legendApplied.length > 0 }"
+          :disabled="legendSel.length === 0 && legendApplied.length === 0"
+          :title="legendSel.length === 0 ? '当前无勾选；勾选区间后点此应用多选筛选' : ('应用勾选的 ' + legendSel.length + ' 个区间（可多选，命中任一即显示）')"
+          @click="applyLegendFilter"
+        >
+          <span class="mm-legend-apply-check" v-if="legendSel.length > 0 || legendApplied.length > 0">✓</span>
+          确定<span class="mm-legend-apply-n" v-if="legendSel.length > 0">{{ legendSel.length }}</span>
+        </button>
         <div
           class="mm-legend-tooltip"
           v-show="legendTooltip.visible"
@@ -629,7 +639,9 @@ export default {
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
-      activeLegend: null,  // null=无筛选 | 数值-4..4(色块) | 'limit_up' | 'limit_down'
+      activeLegend: null,     // 兼容旧引用（已弃用，保留避免外部报错）
+      legendSel: [],          // 多选草稿：已勾选的区间值（涨停/跌停/各色块/score-N/margin-N），点"确定"前只影响勾选高亮
+      legendApplied: [],      // 已应用的筛选集（实际过滤云图）；为空=不过滤(全显示)。命中任一即显示
       finPeriods: [3, 5, 10, 20, 60],
       finModal: {
         visible: false,
@@ -707,31 +719,36 @@ export default {
         color: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
       }))
     },
-    // 当前筛选状态条：activeLegend 非空时返回 {desc, count}，供顶部徽标展示
+    // 当前筛选状态条：legendApplied 非空时返回 {desc, count}，供顶部徽标展示（支持多选）
     filterBadge() {
-      const a = this.activeLegend
-      if (a == null && !this.pushedOnly) return null
-      if (this.pushedOnly && a == null) {
+      const applied = this.legendApplied
+      if ((!applied || applied.length === 0) && !this.pushedOnly) return null
+      if (this.pushedOnly && (!applied || applied.length === 0)) {
         return { desc: '推送股票', count: this.pushedCount }
       }
       let count = 0
       for (const s of this.tree) {
         for (const l2 of (s.children || [])) {
           for (const st of (l2.children || [])) {
-            if (this.stockMatchesActiveFilter(st, a)) count++
+            if (this.stockMatchesActiveFilter(st)) count++
           }
         }
       }
       let desc
-      if (this.colorMode === 'margin') {
-        desc = (MARGIN_LEGEND_STEPS.find(step => step.value === a) || {}).label || '融资净流入'
-      } else if (this.colorMode === 'score') {
-        desc = ((SCORE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || 'AI打分'
-      } else if (a === 'limit_up') desc = '涨停'
-      else if (a === 'limit_down') desc = '跌停'
-      else if (a <= -4) desc = '跌幅 ≤ -4%'
-      else if (a >= 4) desc = '涨幅 > 3%'
-      else desc = `${a - 1}% ~ ${a}%`
+      if (applied.length === 1) {
+        const a = applied[0]
+        if (this.colorMode === 'margin') {
+          desc = (MARGIN_LEGEND_STEPS.find(step => step.value === a) || {}).label || '融资净流入'
+        } else if (this.colorMode === 'score') {
+          desc = ((SCORE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || 'AI打分'
+        } else if (a === 'limit_up') desc = '涨停'
+        else if (a === 'limit_down') desc = '跌停'
+        else if (a <= -4) desc = '跌幅 ≤ -4%'
+        else if (a >= 4) desc = '涨幅 > 3%'
+        else desc = `${a - 1}% ~ ${a}%`
+      } else {
+        desc = `已勾选 ${applied.length} 档`
+      }
       return { desc, count }
     },
     // 统计各个涨跌幅区间的股票数量
@@ -857,14 +874,21 @@ export default {
       this.$router.push('/')
     },
 
-    // 图例筛选：点击同一项复原，点击不同项切换；同一时刻仅一个生效
-    toggleFilter(v) {
-      this.activeLegend = (this.activeLegend === v) ? null : v
+    // 图例多选：点击区间只切换"勾选"状态（不立即过滤），可勾多个；点"确定"才应用到云图
+    toggleLegendSel(v) {
+      const i = this.legendSel.indexOf(v)
+      if (i >= 0) this.legendSel.splice(i, 1)
+      else this.legendSel.push(v)
+    },
+    // 应用当前勾选（多选 OR：命中任一区间即显示）；勾选为空时=清空筛选(全显示)
+    applyLegendFilter() {
+      this.legendApplied = this.legendSel.slice()
       this.render()
     },
     clearFilter() {
-      if (this.activeLegend == null && !this.pushedOnly) return
-      this.activeLegend = null
+      if (this.legendApplied.length === 0 && this.legendSel.length === 0 && !this.pushedOnly) return
+      this.legendSel = []
+      this.legendApplied = []
       if (this.pushedOnly) this.handleClearPushed()
       else this.render()
     },
@@ -1096,10 +1120,13 @@ export default {
       const v = entry && entry.score
       return typeof v === 'number' && isFinite(v) ? v : null
     },
-    stockMatchesActiveFilter(stock, active = this.activeLegend) {
-      if (this.colorMode === 'margin') return inMarginFilter(this.marginValue(stock), active)
-      if (this.colorMode === 'score') return inScoreFilter(this.scoreValue(stock), active)
-      return inChangeFilter(stock.change, stock.code, active)
+    stockMatchesActiveFilter(stock) {
+      const applied = this.legendApplied
+      if (!applied || applied.length === 0) return true   // 无应用筛选 → 全显示
+      // 多选 OR：命中任一已勾选区间即显示
+      if (this.colorMode === 'margin') return applied.some(a => inMarginFilter(this.marginValue(stock), a))
+      if (this.colorMode === 'score') return applied.some(a => inScoreFilter(this.scoreValue(stock), a))
+      return applied.some(a => inChangeFilter(stock.change, stock.code, a))
     },
     stockMetricLabel(stock) {
       if (this.colorMode === 'margin') return this.formatMoney(this.marginValue(stock))
@@ -1122,7 +1149,8 @@ export default {
     async onColorModeChange(mode) {
       if (mode === this.colorMode) return
       this.colorMode = mode
-      this.activeLegend = null
+      this.legendSel = []
+      this.legendApplied = []
       if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
       if (mode === 'score' && !this.scoreLoaded) await this.loadScoreData()
       this.buildLayout()
@@ -1287,7 +1315,8 @@ export default {
       this.scoreDialog.visible = false
       if (!this.hasScores) return
       this.colorMode = 'score'
-      this.activeLegend = null
+      this.legendSel = []
+      this.legendApplied = []
       this.buildLayout()
       this.render()
     },
@@ -1396,7 +1425,6 @@ export default {
       ctx.fillRect(0, 0, this.cssW, this.cssH)
       if (!this.layout) return
 
-      const active = this.activeLegend
       const pushedSet = this.pushedOnly ? this._pushedCodeSet : null
       const { k, tx, ty } = this.view
       const cw = this.cssW, ch = this.cssH
@@ -1416,7 +1444,7 @@ export default {
             const x = st.x * k + tx, y = st.y * k + ty, w = st.w * k, h = st.h * k
             if (w < 0.5 || h < 0.5) continue
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
-            let matched = this.stockMatchesActiveFilter(st, active)
+            let matched = this.stockMatchesActiveFilter(st)
             if (matched && pushedSet) matched = pushedSet.has(extractDigits(st.code))
             if (matched) sectorHasMatch = true
             ctx.fillStyle = matched ? st.color : DIM_COLOR
@@ -1458,7 +1486,7 @@ export default {
         ctx.lineWidth = 1
         ctx.strokeStyle = '#070b13'
         // 该板块一只都没命中：叠加暗色面纱，整块（含标题条/二级/边框）统一变暗
-        if ((active != null || pushedSet) && !sectorHasMatch) {
+        if ((this.legendApplied.length > 0 || pushedSet) && !sectorHasMatch) {
           ctx.fillStyle = VEIL_COLOR
           ctx.fillRect(sx, sy, sw, sh)
         }
@@ -2124,6 +2152,72 @@ export default {
   transform: translateY(-3px);
   box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.7);
   z-index: 2;
+}
+/* 多选勾选标记：右上角小白勾，区分"已勾选(待确定)"和普通悬停 */
+.mm-legend-step.checked::after {
+  content: '✓';
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  color: #0f1626;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 14px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+.mm-legend-step { position: relative; }
+
+/* "确定"按钮：应用多选筛选。有勾选时高亮提示 */
+.mm-legend-apply {
+  height: 28px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border: 1px solid #3a4a6b;
+  border-radius: 6px;
+  background: rgba(13, 19, 32, 0.8);
+  color: #b0c4e0;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.mm-legend-apply:hover:not(:disabled) { border-color: #1890ff; color: #fff; }
+.mm-legend-apply:disabled { opacity: 0.4; cursor: not-allowed; }
+.mm-legend-apply.pending {
+  border-color: #1890ff;
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.25);
+  animation: mm-apply-pulse 1.4s ease-in-out infinite;
+}
+.mm-legend-apply.hasFilter:not(.pending) {
+  border-color: #52c41a;
+  color: #b7eb8f;
+}
+@keyframes mm-apply-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.25); }
+  50% { box-shadow: 0 0 0 4px rgba(24, 144, 255, 0.45); }
+}
+.mm-legend-apply-check { font-size: 13px; line-height: 1; }
+.mm-legend-apply-n {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
 }
 
 /* 涨停/跌停按钮：红涨绿跌，与图例配色一致 */
