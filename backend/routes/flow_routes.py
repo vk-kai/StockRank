@@ -1042,7 +1042,7 @@ def flow_dates():
 @flow_bp.route('/anomaly/run', methods=['GET'])
 def anomaly_run():
     """资金异动检测：默认扫描全天所有 5 分钟时点，返回当日整体异动；
-    传入 date + time 时仅检测该单一时点。"""
+    传入 date + time 时仅检测该单一时点。同时合并自选股价格异动(kind='stock')。"""
     try:
         date_str = request.args.get('date')
         time_key = request.args.get('time')
@@ -1051,6 +1051,30 @@ def anomaly_run():
             snapshot = {'date': date_str, 'time': time_key}
         else:
             findings, snapshot = detect_full_day(date_str=date_str, push=False)
+
+        # 板块异动标注来源
+        for f in findings:
+            f.setdefault('kind', 'sector')
+
+        # 合并自选股价格异动(同一异动流展示)
+        try:
+            from stock_price_monitor import list_alerts as list_stock_alerts
+            stock_date = snapshot.get('date') or date_str
+            stock_alerts = list_stock_alerts(date_str=stock_date, limit=500) if stock_date else []
+        except Exception as _e:
+            error_logger.error(f"合并价格异动失败: {_e}")
+            stock_alerts = []
+        for a in stock_alerts:
+            findings.append({
+                'kind': 'stock',
+                'sector': f"{a.get('name', '')} {a.get('code', '')}",
+                'name': a.get('name', ''), 'code': a.get('code', ''),
+                'time': a.get('time', ''), 'date': a.get('date', ''),
+                'net_flow': None, 'change_pct': a.get('pct'),
+                'price': a.get('price'),
+                'hits': [{'type': a.get('type'), 'label': a.get('label', '')}],
+            })
+
         return jsonify({'success': True, 'data': findings, 'count': len(findings), 'snapshot': snapshot})
     except Exception as e:
         error_logger.error(f"API /api/flow/anomaly/run 异常: {e}")
@@ -1067,6 +1091,33 @@ def anomaly_alerts():
         return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
     except Exception as e:
         error_logger.error(f"API /api/flow/anomaly/alerts 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-price/run', methods=['GET'])
+def stock_price_run():
+    """自选股价格异动当日命中(供异动预警页合并展示)。"""
+    try:
+        from stock_price_monitor import list_alerts as list_stock_alerts
+        from datetime import datetime
+        date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+        alerts = list_stock_alerts(date_str=date_str, limit=500)
+        return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-price/run 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-price/alerts', methods=['GET'])
+def stock_price_alerts():
+    """价格异动已推送记录。"""
+    try:
+        from stock_price_monitor import list_alerts as list_stock_alerts
+        date_str = request.args.get('date')
+        alerts = list_stock_alerts(date_str=date_str)
+        return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-price/alerts 异常: {e}")
         return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
 
 
