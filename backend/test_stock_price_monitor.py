@@ -108,5 +108,41 @@ class CooldownTests(unittest.TestCase):
         self.assertFalse(m.is_in_cooldown('sh600519', 'rapid_rise', alerts, 30, now=later))
 
 
+class ProcessTickTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        m.REALTIME_DIR = self.tmp
+        m.ALERTS_FILE = os.path.join(self.tmp, 'stock_price_alerts.json')
+        m._stock_state.clear()
+
+    def _cfg(self):
+        return {'enabled': True, 'cooldown_minutes': 30,
+                'watchlist': [{'id': '1', 'type': 'code', 'value': '600519',
+                               'resolved_code': 'sh600519', 'resolved_name': '贵州茅台',
+                               'enabled': True, 'price_alerts': m.DEFAULT_ALERTS_CFG}]}
+
+    def _limit_up_quote(self):
+        return {'price': 11.0, 'prev_close': 10.0, 'high': 11.0, 'low': 10.0,
+                'open': 10.0, 'pct': 10.0, 'ts': '2026-07-14 09:30:00'}
+
+    def test_hit_pushes_and_records(self):
+        pushed = []
+        m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(),
+                       limit=10.0, pusher=lambda t, c: pushed.append((t, c)) or True)
+        self.assertTrue(pushed)
+        self.assertTrue(pushed[0][0].startswith('📈'))  # 标题以 📈 开头
+        alerts = m._load_alerts()
+        self.assertEqual(len(alerts), 1)            # 一次推送 = 一条记录
+        self.assertEqual(alerts[0]['type'], 'limit_up')
+        self.assertIn('cum_move', alerts[0]['types'])  # 联动的类型一并记录冷却
+
+    def test_cooldown_skips_push(self):
+        pushed = []
+        push = lambda t, c: pushed.append((t, c)) or True
+        m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(), limit=10.0, pusher=push)
+        m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(), limit=10.0, pusher=push)
+        self.assertEqual(len(pushed), 1)  # 第二次同票同类型 -> 全部冷却 -> 不再推
+
+
 if __name__ == '__main__':
     unittest.main()

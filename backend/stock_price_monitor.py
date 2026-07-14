@@ -6,6 +6,8 @@
 import os
 import json
 import glob
+import time
+import threading
 from datetime import datetime, timedelta
 
 from config import REALTIME_DIR, STOCK_MONITOR_CONFIG_FILE
@@ -245,11 +247,17 @@ def _save_alerts(alerts):
 
 
 def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
-    """同 (股票,类型) 在 cooldown_minutes 内是否已推过。"""
+    """同 (股票,类型) 在 cooldown_minutes 内是否已推过。
+
+    一条推送记录可含多个联动类型(types);命中任一即视为该类型冷却中。
+    """
     now = now or datetime.now()
     threshold = timedelta(minutes=cooldown_minutes)
     for a in reversed(alerts):
-        if a.get('code') == code and a.get('type') == hit_type:
+        if a.get('code') != code:
+            continue
+        types = a.get('types') or [a.get('type')]
+        if hit_type in types:
             try:
                 t = datetime.fromisoformat(a['timestamp'])
             except Exception:
@@ -259,13 +267,16 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
     return False
 
 
-def record_alert(code, name, hit, quote, pushed, now=None):
-    """记录一条已推送(或冷却内未推)的异动。"""
+def record_alert(code, name, primary_hit, all_hits, quote, pushed, now=None):
+    """记录一条异动推送(含本次全部联动类型,供去重冷却用)。"""
     now = now or datetime.now()
     alerts = _load_alerts()
     rec = {
         'code': code, 'name': name, 'kind': 'stock',
-        'type': hit['type'], 'label': hit.get('label', ''),
+        'type': primary_hit['type'],
+        'types': [h['type'] for h in all_hits],
+        'labels': [h.get('label', '') for h in all_hits],
+        'label': primary_hit.get('label', ''),
         'price': quote.get('price'), 'pct': quote.get('pct'),
         'time': quote.get('ts', ''),
         'date': (quote.get('ts', '') or now.strftime('%Y-%m-%d'))[:10],
@@ -347,3 +358,65 @@ def load_config():
         error_logger.error(f'读取股票监控配置失败: {e}')
         return default
     return migrate_legacy_config(raw)
+
+
+# --------------------------------------------------------------------------
+# 主循环:处理一只票的一次报价(存盘→检测→冷却→推送→入库)
+# --------------------------------------------------------------------------
+_state_lock = threading.Lock()
+_stock_state = {}  # {code: {gap_fired, touched_up, touched_down}}
+
+
+def _format_message(name, code, quote, hits):
+    pct = quote.get('pct')
+    pct_s = f'{round(pct, 2):+.2f}%' if pct is not None else '--'
+    lines = [
+        f"> 时间:**{quote.get('ts', '')}**",
+        f"> 现价:**{quote.get('price')}**  涨跌幅:**{pct_s}**",
+        "**触发**",
+    ]
+    for h in hits:
+        lines.append(f"• {h.get('label', h.get('type'))}")
+    return f"📈 价格异动 · {name}", "\n".join(lines)
+
+
+def _default_pusher(title, content):
+    try:
+        from notification_pusher import send_news_message
+        return bool(send_news_message(title, content))
+    except Exception as e:
+        error_logger.error(f'价格异动推送失败: {e}')
+        return False
+
+
+def process_tick(code, name, quote, cfg, limit, pusher=None):
+    """处理一只票的一次报价:存盘→检测→冷却→推送→入库。返回本次命中的 hits。"""
+    pusher = pusher or _default_pusher
+    date = (quote.get('ts', '') or datetime.now().strftime('%Y-%m-%d'))[:10]
+    append_sample(code, quote, date)
+    series = load_quotes(date).get(code, [])
+
+    alerts_cfg = None
+    for item in cfg.get('watchlist', []):
+        if item.get('resolved_code') == code or item.get('value') == code:
+            alerts_cfg = item.get('price_alerts', DEFAULT_ALERTS_CFG)
+            break
+    if not alerts_cfg:
+        return []
+
+    with _state_lock:
+        state = _stock_state.setdefault(code, {})
+    hits = detect_hits(quote, series, state, alerts_cfg, limit, name)
+    if not hits:
+        return []
+
+    alerts = _load_alerts()
+    cooldown = cfg.get('cooldown_minutes', 30)
+    # 本次所有命中类型都还在冷却内 -> 不重复推
+    if all(is_in_cooldown(code, h['type'], alerts, cooldown) for h in hits):
+        return []
+
+    title, content = _format_message(name, code, quote, hits)
+    pushed = pusher(title, content)
+    record_alert(code, name, hits[0], hits, quote, pushed)
+    return hits
