@@ -16,21 +16,6 @@
         </div>
       </div>
       <div class="mm-header-right">
-        <div class="mm-flow-panel" v-if="replayMode">
-          <span class="mfp-group" v-if="replayGainers.length">
-            <span class="mfp-label up">涨幅</span>
-            <span class="mfp-item" v-for="s in replayGainers" :key="'g' + s.name">{{ s.name }}<i class="mfp-up">+{{ s.change.toFixed(2) }}%</i></span>
-          </span>
-          <span class="mfp-group" v-if="replayLosers.length">
-            <span class="mfp-label down">跌幅</span>
-            <span class="mfp-item" v-for="s in replayLosers" :key="'l' + s.name">{{ s.name }}<i class="mfp-down">{{ s.change.toFixed(2) }}%</i></span>
-          </span>
-          <span class="mfp-group" v-if="replayAccel.length">
-            <span class="mfp-label">边际Δ</span>
-            <span class="mfp-item" v-for="s in replayAccel" :key="'a' + s.name">{{ s.name }}<i :class="s.delta > 0 ? 'mfp-up' : 'mfp-down'">{{ s.delta > 0 ? '+' : '' }}{{ s.delta.toFixed(2) }}%</i></span>
-          </span>
-          <span class="mfp-empty" v-if="!replayGainers.length && !replayLosers.length && !replayAccel.length">{{ replayTime }} 本帧无明显异动</span>
-        </div>
         <span class="mm-stats" v-if="totalSectors">
           {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
         </span>
@@ -633,7 +618,6 @@ export default {
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
       replayPlaying: false,     // 是否正在自动播放
       replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
-      prevL1Changes: null,        // 上一复盘帧的 {行业名: 涨跌幅}，用于"边际动量"面板算 Δ
       // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入) | 'score'(AI打分)
       colorMode: 'change',
       marginMap: {},            // {裸6位code: 最新一日融资净流入额}
@@ -685,31 +669,6 @@ export default {
     // 是否有可播放的复盘快照（至少一个时间点已抓取）
     hasReplayAvailable() {
       return this.replayPoints.some(p => p.available)
-    },
-    // ===== 复盘帧解读面板：涨跌幅榜单 + 边际动量（纯前端从当前快照算，零额外请求）=====
-    l1Sectors() {
-      return (this.tree || []).filter(n => n && typeof n.change === 'number' && n.name)
-    },
-    replayGainers() {
-      // 涨幅 TOP3，仅显示明显上涨（>=0.5%）
-      return this.l1Sectors.filter(s => s.change >= 0.5)
-        .sort((a, b) => b.change - a.change).slice(0, 3)
-    },
-    replayLosers() {
-      // 跌幅 TOP3，仅显示明显下跌（<=-0.5%）
-      return this.l1Sectors.filter(s => s.change <= -0.5)
-        .sort((a, b) => a.change - b.change).slice(0, 3)
-    },
-    replayAccel() {
-      // 边际动量：本帧涨跌幅 − 上一帧，仅显示明显变动（|Δ|>=0.3%）
-      const prev = this.prevL1Changes
-      if (!prev) return []
-      return this.l1Sectors.map(s => {
-        const p = prev[s.name]
-        return (typeof p === 'number') ? { name: s.name, delta: s.change - p } : null
-      }).filter(Boolean)
-        .filter(s => Math.abs(s.delta) >= 0.3)
-        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 4)
     },
     // 页脚颜色说明（随当前着色维度切换）
     footerColorDesc() {
@@ -1089,17 +1048,10 @@ export default {
         // 静默：复盘状态拉取失败不影响主图实时行情
       }
     },
-    // 快照当前 L1 行业的涨跌幅映射 {name: change}，供下一帧算"边际动量"
-    buildL1ChangeMap() {
-      const m = {}
-      ;(this.tree || []).forEach(n => { if (n && typeof n.change === 'number' && n.name) m[n.name] = n.change })
-      return m
-    },
     // 点时间按钮：进入复盘态，加载该时刻快照（复用 applyData 渲染）
     async enterReplay(time) {
       if (!time) return
       this.stopPlay()
-      this.prevL1Changes = null   // 手动切帧不计边际动量（非顺序，会失真）
       try {
         const res = await getMarketMapSnapshot(time)
         if (res && res.success) {
@@ -1116,7 +1068,6 @@ export default {
       if (!this.replayMode) return
       this.replayMode = false
       this.replayTime = ''
-      this.prevL1Changes = null
       this.stopPlay()
       this.fetchData(true)
     },
@@ -1138,11 +1089,8 @@ export default {
           const res = await getMarketMapSnapshot(time)
           if (!this.replayPlaying) return   // 播放途中被停止/手动切帧
           if (res && res.success) {
-            // 先缓存"当前帧"为上一帧，再加载新帧，供"边际动量"面板算 Δ
-            const prevMap = (this.replayTime && (this.tree || []).length) ? this.buildL1ChangeMap() : null
             this.replayTime = time
             this.applyData(res.data)
-            this.prevL1Changes = prevMap
           }
         } catch (e) { /* 单帧失败不中断整体播放 */ }
         idx++
@@ -2023,31 +1971,6 @@ export default {
 .mm-clear-push-btn:hover:not(:disabled) { background: rgba(239, 83, 80, 0.2); }
 .mm-clear-push-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .mm-stats { font-size: 12px; color: #8ba4c7; white-space: nowrap; }
-
-/* 复盘帧解读面板：涨幅/跌幅榜 + 边际动量（占据头部右侧的左侧空白区，margin-right:auto 顶到左边） */
-.mm-flow-panel {
-  margin-right: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: #cbd5e1;
-  min-width: 0;
-  padding: 5px 11px;
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 8px;
-  background: rgba(16, 24, 39, 0.5);
-}
-.mfp-group { display: inline-flex; align-items: center; gap: 6px; }
-.mfp-label { color: #8ba4c7; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: rgba(58, 74, 107, 0.35); white-space: nowrap; }
-.mfp-label.up { color: #ff7875; }
-.mfp-label.down { color: #73d13d; }
-.mfp-item { white-space: nowrap; }
-.mfp-item i { font-style: normal; font-weight: 700; margin-left: 3px; }
-.mfp-up { color: #ef5350; }
-.mfp-down { color: #22c55e; }
-.mfp-empty { color: #6b7d99; font-style: italic; white-space: nowrap; }
 .mm-update { font-size: 11px; color: #8ba4c7; white-space: nowrap; }
 .mm-back-button { padding: 6px 14px; background: linear-gradient(135deg, #3a4a6b, #2a3a5b); border: 1px solid #4a5a7b; border-radius: 6px; color: #e0e6f0; cursor: pointer; transition: all 0.3s ease; font-size: 13px; white-space: nowrap; }
 .mm-back-button:hover { background: linear-gradient(135deg, #4a5a7b, #3a4a6b); transform: translateY(-1px); }
