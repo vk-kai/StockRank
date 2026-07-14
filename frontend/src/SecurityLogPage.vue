@@ -3,7 +3,7 @@
     <div class="security-log-header">
       <h1>🔒 安全日志</h1>
       <button class="refresh-btn" @click="refreshLogs">
-        🔄 刷新
+        <IconRefresh />刷新
       </button>
     </div>
     

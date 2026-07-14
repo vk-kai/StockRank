@@ -362,7 +362,7 @@
         <div class="config-form">
           <div class="banned-header">
             <span class="banned-count">当前封禁IP: {{ bannedIPs.length }} 个</span>
-            <button @click="loadBannedIPs" class="btn-refresh">🔄 刷新</button>
+            <button @click="loadBannedIPs" class="btn-refresh"><IconRefresh />刷新</button>
           </div>
           
           <div v-if="bannedIPs.length === 0" class="empty-banned">

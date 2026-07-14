@@ -5,7 +5,8 @@
       <h1>🚨 资金异动预警</h1>
       <div class="fa-header-right">
         <button @click="runDetect" class="fa-run-btn" :disabled="loading || needsAuth">
-          {{ loading ? '检测中...' : '🔄 刷新全天结果' }}
+          <IconRefresh v-if="!loading" />
+          {{ loading ? '检测中...' : '刷新全天结果' }}
         </button>
         <button @click="testNotification" class="fa-test-btn">🔔 测试通知</button>
       </div>

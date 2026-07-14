@@ -9,7 +9,8 @@
         </span>
         <span class="gm-update" v-if="data && data.update_time">更新：{{ data.update_time }}</span>
         <button @click="fetchData(true)" class="gm-refresh-btn" :disabled="loading">
-          {{ loading ? '刷新中...' : '🔄 刷新' }}
+          <IconRefresh v-if="!loading" />
+          {{ loading ? '刷新中...' : '刷新' }}
         </button>
       </div>
     </header>

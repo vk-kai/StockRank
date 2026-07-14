@@ -7,7 +7,8 @@
         <span class="aic-source" v-if="data && data.source">数据源：{{ sourceLabel }}</span>
         <span class="aic-update" v-if="data && data.update_time">更新：{{ data.update_time }}</span>
         <button class="aic-refresh" @click="fetchData(true)" :disabled="loading">
-          {{ loading ? '刷新中...' : '🔄 刷新' }}
+          <IconRefresh v-if="!loading" />
+          {{ loading ? '刷新中...' : '刷新' }}
         </button>
       </div>
     </header>

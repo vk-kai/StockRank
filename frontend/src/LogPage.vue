@@ -5,7 +5,8 @@
       <h1>📋 系统日志</h1>
       <div class="header-actions">
         <button @click="refreshLogs" class="refresh-button" :disabled="loading">
-          {{ loading ? '刷新中...' : '🔄 刷新' }}
+          <IconRefresh v-if="!loading" />
+          {{ loading ? '刷新中...' : '刷新' }}
         </button>
       </div>
     </header>

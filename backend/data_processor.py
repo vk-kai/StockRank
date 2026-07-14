@@ -1239,7 +1239,7 @@ GLOBAL_INDICES_CONFIG = [
     ('恒生指数', '100.HSI', 'int_hangseng', 22.32, 114.17, '香港'),
     ('台湾加权', '100.TWII', None, 25.03, 121.57, '台湾'),
     ('日经225', '100.N225', 'int_nikkei', 35.68, 139.69, '日本'),
-    ('韩国KOSPI', '100.KS11', None, 37.57, 126.98, '韩国'),
+    ('韩国KOSPI', '100.KS11', 'b_KOSPI', 37.57, 126.98, '韩国'),
     ('富时马来西亚', '100.KLSE', None, 3.14, 101.69, '马来西亚'),
     ('印尼综合', '100.JKSE', None, -6.21, 106.85, '印尼'),
     ('越南胡志明', '100.VNINDEX', None, 10.78, 106.70, '越南'),
@@ -1400,8 +1400,8 @@ def get_global_market_indices():
 # ========== AI产业链外部环境温度计 ==========
 # 7个对AI产业链（封测/先进封装/AI硬件，如长电科技）影响显著的领先指标。
 # 上色按"对AI链利好/利空"判定而非单纯涨跌：需求链涨=利好，宏观链涨=利空。
-# 数据源：美股3个 + 美元指数 → 新浪；韩股2个 → 东方财富(单次批量, 避免反爬)；
-#         美债10年 → 美国财政部日线CSV(无key, 国内可访问)。
+# 数据源(有新浪优先用新浪)：美股3 + 美元指数 + 韩国KOSPI → 新浪；韩股2(SK海力士/三星) → 东方财富(批量+重试)；
+#         KOSPI 东财/全球指数缓存兜底；美债10年 → 美国财政部日线CSV(无key, 国内可访问)。
 AI_CHAIN_CONFIG = [
     # (key, 展示名, 链(demand/macro), 新浪代码, 东财secid, 区域)
     ('nvda',    '英伟达',     'demand', 'gb_nvda', None,         '美股'),
@@ -1409,7 +1409,7 @@ AI_CHAIN_CONFIG = [
     ('tsm',     '台积电',     'demand', 'gb_tsm',  None,         '美股'),
     ('skhynix', 'SK海力士',   'demand', None,     '177.000660', '韩股'),
     ('samsung', '三星电子',   'demand', None,     '177.005930', '韩股'),
-    ('kospi',   '韩国综合',   'demand', None,     '100.KS11',   '韩国'),   # KOSPI 指数(东财全球指数)
+    ('kospi',   '韩国综合',   'demand', 'b_KOSPI','100.KS11',   '韩国'),   # KOSPI(新浪优先, 东财兜底)
     ('dxy',     '美元指数',   'macro',  'DINIW',  None,         '外汇'),
     ('us10y',   '美债10年',   'macro',  None,     None,         '美债'),
 ]
@@ -1502,6 +1502,15 @@ def _fetch_ai_chain_sina():
                                         'change_amount': price - prev}
                         else:
                             out[key] = {'price': price, 'change': None, 'change_amount': None}
+                elif code.startswith('b_'):
+                    # 国际指数(如 b_KOSPI 韩国综合): [1]=现价 [2]=涨跌额 [3]=涨跌幅%
+                    if len(fields) > 3 and fields[1]:
+                        price = float(fields[1])
+                        cp = _safe_float(fields[3], None)
+                        if cp is not None:
+                            out[key] = {'price': price,
+                                        'change': cp / 100,
+                                        'change_amount': price * cp / 100}
             except (ValueError, IndexError):
                 continue
     except Exception as e:
@@ -1510,25 +1519,37 @@ def _fetch_ai_chain_sina():
 
 
 def _fetch_ai_chain_eastmoney():
-    """东方财富批量：韩股。单次请求(避免反爬)。返回 {key: {price, change, change_amount}}"""
+    """东方财富批量：韩股(KOSPI + SK海力士 + 三星)。单次批量请求(避免反爬)。
+    东财偶发 RemoteDisconnected(反爬/网络抖动)，故带重试+换UA；
+    全部失败时 KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11)。
+    返回 {key: {price, change, change_amount}}"""
     out = {}
     targets = [c for c in AI_CHAIN_CONFIG if c[4]]
     if not targets:
         return out
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://quote.eastmoney.com/'
-    }
     params = {
         'fltt': 2, 'invt': 2,
         'fields': 'f2,f3,f4,f12,f14',
         'secids': ','.join(c[4] for c in targets)
     }
-    try:
-        resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+    data = None
+    for attempt in range(3):
+        headers = {
+            'User-Agent': get_random_user_agent(),
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': 'https://quote.eastmoney.com/'
+        }
+        try:
+            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))   # 1.5s、3s 退避后换 UA 重试
+            else:
+                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(重试3次仍失败): {e}")
+    if data:
         diff = data.get('data', {}).get('diff', []) if data.get('data') else []
         em_map = {item.get('f12'): item for item in diff}
         for c in targets:
@@ -1540,8 +1561,23 @@ def _fetch_ai_chain_eastmoney():
                     'change': float(item.get('f3', 0) or 0) / 100,
                     'change_amount': float(item.get('f4', 0) or 0),
                 }
-    except Exception as e:
-        error_logger.warning(f"东方财富AI链指标(韩股)获取失败: {e}")
+
+    # 兜底：东财也失败时，KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11，change 为分数)
+    # （KOSPI 主源已切到新浪 b_KOSPI，见 _fetch_ai_chain_sina；此处仅作最后兜底）
+    if 'kospi' not in out:
+        try:
+            if os.path.exists(GLOBAL_INDICES_CACHE_FILE):
+                with open(GLOBAL_INDICES_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    gcache = json.load(f)
+                v = gcache.get('100.KS11')
+                if v and v.get('price') is not None and v.get('change') is not None:
+                    out['kospi'] = {
+                        'price': float(v['price']),
+                        'change': v['change'],
+                        'change_amount': v.get('change_amount'),
+                    }
+        except Exception as e:
+            error_logger.warning(f"KOSPI复用全球指数缓存失败: {e}")
     return out
 
 
@@ -1594,10 +1630,10 @@ def get_ai_chain_indicators():
     us10y = _fetch_ai_chain_us10y()          # 美债10年(日线)
 
     raw_map = {}
-    for k, v in sina_data.items():
-        raw_map[k] = (v, 'sina')
     for k, v in em_data.items():
         raw_map[k] = (v, 'eastmoney')
+    for k, v in sina_data.items():
+        raw_map[k] = (v, 'sina')   # 新浪优先：有新浪数据源优先用新浪，覆盖东财
     if us10y:
         raw_map['us10y'] = (us10y, 'treasury')
 

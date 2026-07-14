@@ -41,10 +41,11 @@
         </button>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
-          {{ cacheLoading ? '更新中...' : '🔄 行业库' }}
+          <IconRefresh v-if="!cacheLoading" />
+          {{ cacheLoading ? '更新中...' : '行业库' }}
         </button>
         <button @click="fetchData(true)" class="mm-refresh-btn" :disabled="refreshing">
-          <span class="mm-refresh-spin" :class="{ on: refreshing }">↻</span> 刷新行情
+          <IconRefresh :spin="refreshing" />刷新行情
         </button>
         <button @click="handleClearPushed" class="mm-clear-push-btn" :disabled="pushedLoading" v-if="pushedOnly || pushedCount">
           {{ pushedLoading ? '清空中...' : '清空推送' }}

@@ -18,7 +18,7 @@
               <div class="wave wave2"></div>
             </div>
           </button>
-          <button class="yuntu-button" @click="guardedGotoMarketMap">📊 大盘云图</button>
+          <button class="yuntu-button" @click="guardedGotoMarketMap"><IconTreemap />大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
           <button class="flow-alert-button" @click="openFlowAlertModal">
@@ -432,7 +432,8 @@
         </div>
         <div class="modal-footer">
           <button class="reanalyze-btn" @click="refreshFlowAlertModal" :disabled="flowAlertLoading">
-            {{ flowAlertLoading ? '刷新中...' : '🔄 刷新' }}
+            <IconRefresh v-if="!flowAlertLoading" />
+            {{ flowAlertLoading ? '刷新中...' : '刷新' }}
           </button>
           <button class="fa-quick-viewall" @click="gotoFlowAlertPage">查看全天全部 →</button>
         </div>
