@@ -59,8 +59,33 @@
 
 <script>
 import * as echarts from 'echarts'
-import { getGlobalIndices } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
+
+// 全球指数配置：展示名 / 东财 secid / 经纬度 / 区域。
+// 快照与分时都在前端直连东财（CORS 已开放），服务器不再碰东财，规避反爬封禁。
+const GLOBAL_INDICES = [
+  { name: '上证指数',     secid: '1.000001',  lat: 31.23,  lng: 121.47, region: '中国' },
+  { name: '沪深300',      secid: '1.000300',  lat: 39.90,  lng: 116.40, region: '中国' },
+  { name: '恒生指数',     secid: '100.HSI',   lat: 22.32,  lng: 114.17, region: '香港' },
+  { name: '台湾加权',     secid: '100.TWII',  lat: 25.03,  lng: 121.57, region: '台湾' },
+  { name: '日经225',      secid: '100.N225',  lat: 35.68,  lng: 139.69, region: '日本' },
+  { name: '韩国KOSPI',    secid: '100.KS11',  lat: 37.57,  lng: 126.98, region: '韩国' },
+  { name: '富时马来西亚', secid: '100.KLSE',  lat: 3.14,   lng: 101.69, region: '马来西亚' },
+  { name: '印尼综合',     secid: '100.JKSE',  lat: -6.21,  lng: 106.85, region: '印尼' },
+  { name: '越南胡志明',   secid: '100.VNINDEX', lat: 10.78, lng: 106.70, region: '越南' },
+  { name: '印度SENSEX',  secid: '100.SENSEX', lat: 19.08,  lng: 72.88, region: '印度' },
+  { name: '澳大利亚ASX200', secid: '100.AS51', lat: -33.87, lng: 151.21, region: '澳大利亚' },
+  { name: '道琼斯',       secid: '100.DJIA',  lat: 38.90,  lng: -77.04, region: '美国' },
+  { name: '纳斯达克',     secid: '100.NDX',   lat: 40.71,  lng: -74.01, region: '美国' },
+  { name: '标普500',      secid: '100.SPX',   lat: 41.80,  lng: -87.65, region: '美国' },
+  { name: '巴西BOVESPA', secid: '100.BVSP',  lat: -23.55, lng: -46.63, region: '巴西' },
+  { name: '英国富时100', secid: '100.FTSE',  lat: 51.51,  lng: -0.13,  region: '英国' },
+  { name: '德国DAX30',   secid: '100.GDAXI', lat: 50.11,  lng: 8.68,   region: '德国' },
+  { name: '法国CAC40',   secid: '100.FCHI',  lat: 48.86,  lng: 2.35,   region: '法国' },
+  { name: '荷兰AEX',     secid: '100.AEX',   lat: 52.37,  lng: 4.90,   region: '荷兰' },
+  { name: '瑞士SMI',     secid: '100.SSMI',  lat: 47.37,  lng: 8.54,   region: '瑞士' },
+  { name: '俄罗斯RTS',   secid: '100.RTS',   lat: 55.75,  lng: 37.62,  region: '俄罗斯' }
+]
 
 // 英文国家名 → 中文映射（覆盖世界地图主要国家）
 const COUNTRY_ZH_MAP = {
@@ -216,15 +241,48 @@ export default {
     async fetchData(showLoading) {
       this.loading = showLoading
       try {
-        const res = await getGlobalIndices()
-        if (res.success) {
-          this.data = res.data
-          this.$nextTick(() => this.renderChart())
-        }
+        const data = await this.fetchSnapshot()
+        this.data = data
+        this.$nextTick(() => this.renderChart())
+        // 快照更新后，分时也刷新一次（同一批 secid）
+        this.fetchIntraday()
       } catch (e) {
         console.error('获取全球指数失败', e)
       } finally {
         this.loading = false
+      }
+    },
+    // 快照：前端直连东财 ulist.np（已开 CORS），一次性批量取全部指数报价。
+    // 用访客自己的 IP，服务器不碰东财。返回与原后端结构一致：{indices, update_time, source}
+    async fetchSnapshot() {
+      const secids = GLOBAL_INDICES.map(c => c.secid).join(',')
+      const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f12,f14&secids=${secids}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const body = await res.json()
+      const diff = (body && body.data && body.data.diff) || []
+      const emMap = {}
+      diff.forEach(it => { if (it && it.f12) emMap[it.f12] = it })
+      const indices = []
+      for (const c of GLOBAL_INDICES) {
+        const emCode = c.secid.split('.').pop()   // 东财 f12 不含市场前缀
+        const it = emMap[emCode]
+        if (!it) continue
+        const price = parseFloat(it.f2)
+        if (Number.isNaN(price)) continue
+        const chgPct = parseFloat(it.f3)
+        const change = Number.isNaN(chgPct) ? 0 : chgPct / 100   // f3 是百分数，转分数
+        indices.push({
+          name: c.name, code: c.secid, price, change,
+          change_amount: parseFloat(it.f4) || 0,
+          lat: c.lat, lng: c.lng, region: c.region, source: 'eastmoney'
+        })
+      }
+      indices.sort((a, b) => b.change - a.change)
+      return {
+        indices,
+        update_time: new Date().toLocaleString('zh-CN', { hour12: false }),
+        source: 'eastmoney'
       }
     },
     formatChange(change) {
