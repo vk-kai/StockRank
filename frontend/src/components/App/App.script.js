@@ -1792,9 +1792,11 @@ export default {
     },
 
     getMonitorStatusText(healthKey, healthItem) {
+      if (!healthItem) return '检测中...'
+
       const crawlerStatus = this.getCrawlerStatus(healthKey)
       const crawlerMessage = this.getCrawlerMessage(healthKey)
-      
+
       if (crawlerStatus === 'checking') {
         return '检测中...'
       }
@@ -1804,10 +1806,13 @@ export default {
       if (healthItem.status === 'ok') {
         return '正常'
       }
+      if (healthItem.status === 'partial') {
+        return '板块正常，个股异常'
+      }
       if (healthItem.status === 'error') {
         return healthItem.error || '异常'
       }
-      return '检测中'
+      return '检测中...'
     },
 
     async doHealthCheck() {
@@ -1840,24 +1845,6 @@ export default {
         'sector': '板块资金'
       }
       return labels[key] || key
-    },
-    
-    getMonitorStatusText(key, item) {
-      if (!item) return '检测中...'
-      
-      if (item.status === 'ok') {
-        return '正常'
-      }
-      
-      if (item.status === 'partial') {
-        return '板块正常，个股异常'
-      }
-      
-      if (item.status === 'checking') {
-        return '检测中...'
-      }
-      
-      return item.error || '异常'
     },
 
     getThreadTitle(key, thread) {
