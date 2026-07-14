@@ -478,6 +478,17 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
+  // 十字光标：纵轴标签反算回真实资金净流入（断轴时由 axisMapping 反映射，线性时直接格式化）
+  yAxisConfig.axisPointer = {
+    label: {
+      formatter: (params) => {
+        const v = (params && typeof params === 'object' && 'value' in params) ? params.value : params
+        if (useBrokenAxis) return axisMapping ? axisMapping.getAxisLabel(v) : formatAxisFlow(v)
+        return formatAxisFlow(v)
+      }
+    }
+  }
+
   const animationDuration = isReplayMode ? 8000 : 700
   
   return {
@@ -498,10 +509,20 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         color: '#fff'
       },
       axisPointer: {
-        type: 'line',
+        type: 'cross',
+        snap: true,
         lineStyle: {
           color: 'rgba(84, 112, 198, 0.55)',
           width: 1
+        },
+        crossStyle: {
+          color: 'rgba(84, 112, 198, 0.55)',
+          width: 1
+        },
+        label: {
+          backgroundColor: '#334155',
+          color: '#fff',
+          borderWidth: 0
         }
       },
       formatter: (params) => {
@@ -730,16 +751,37 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
     }
   }
 
+  // 十字光标：纵轴标签反算回真实资金净流入（断轴时由 axisMapping 反映射，线性时直接格式化）
+  yAxisConfig.axisPointer = {
+    label: {
+      formatter: (params) => {
+        const v = (params && typeof params === 'object' && 'value' in params) ? params.value : params
+        if (useBrokenAxis) return axisMapping ? axisMapping.getAxisLabel(v) : formatAxisFlow(v)
+        return formatAxisFlow(v)
+      }
+    }
+  }
+
   return {
     backgroundColor: '#111827',
     animation: false,
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'line',
+        type: 'cross',
+        snap: true,
         lineStyle: {
           color: 'rgba(84, 112, 198, 0.55)',
           width: 1
+        },
+        crossStyle: {
+          color: 'rgba(84, 112, 198, 0.55)',
+          width: 1
+        },
+        label: {
+          backgroundColor: '#334155',
+          color: '#fff',
+          borderWidth: 0
         }
       },
       backgroundColor: 'rgba(20,25,45,0.95)',
