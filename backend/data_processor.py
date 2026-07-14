@@ -9,6 +9,7 @@ import hashlib
 import subprocess
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from bs4 import BeautifulSoup
 from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent
@@ -1394,6 +1395,102 @@ def get_global_market_indices():
         'indices': indices,
         'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'source': 'eastmoney' if em_ok else 'sina'
+    }
+
+
+# ========== 全球指数当日分时线（东财 trends2，供全球地图下方分时图）==========
+EM_TRENDS2_URL = "https://push2his.eastmoney.com/api/qt/stock/trends2/get"
+
+
+def _fetch_one_global_intraday(cfg):
+    """抓单只全球指数的当日分时线。返回 dict 或 None（单只失败不影响其它）。"""
+    name, secid, _sina, lat, lng, region = cfg
+    headers = {
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': 'https://quote.eastmoney.com/'
+    }
+    params = {
+        'secid': secid,
+        'fields1': 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13',
+        'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
+        'iscr': 0,
+        'ndays': 1
+    }
+    try:
+        resp = requests.get(EM_TRENDS2_URL, params=params, headers=headers, timeout=8)
+        resp.raise_for_status()
+        body = resp.json()
+        data = body.get('data') if body else None
+        if not data:
+            return None
+        trends = data.get('trends') or []
+        pre_close = data.get('preClose')
+        series = []
+        last_price = None
+        for line in trends:
+            # 形如 "2024-07-15 09:31,4200.12,4200.0,12345,..."
+            parts = line.split(',')
+            if len(parts) < 2:
+                continue
+            try:
+                price = float(parts[1])
+            except (ValueError, TypeError):
+                continue
+            t = parts[0]
+            hhmm = t[11:16] if len(t) >= 16 else t   # 取 HH:MM
+            series.append({'t': hhmm, 'price': price})
+            last_price = price
+        if not series or last_price is None:
+            return None
+        change = None
+        if pre_close:
+            try:
+                change = (last_price / float(pre_close)) - 1
+            except (ValueError, TypeError, ZeroDivisionError):
+                change = None
+        return {
+            'name': name,
+            'code': secid,
+            'region': region,
+            'price': last_price,
+            'pre_close': float(pre_close) if pre_close else None,
+            'change': change,
+            'series': series
+        }
+    except Exception as e:
+        error_logger.warning(f"全球指数分时获取失败 {name}({secid}): {e}")
+        return None
+
+
+def get_global_indices_intraday():
+    """获取全球主要指数当日分时线（东财 trends2，并发抓取，单只失败不影响其它）。"""
+    results = []
+    ex = ThreadPoolExecutor(max_workers=8)
+    try:
+        futures = {ex.submit(_fetch_one_global_intraday, cfg): cfg for cfg in GLOBAL_INDICES_CONFIG}
+        for fut in as_completed(futures, timeout=20):
+            try:
+                item = fut.result(timeout=10)
+            except Exception as e:
+                error_logger.warning(f"全球指数分时任务异常: {e}")
+                item = None
+            if item:
+                results.append(item)
+    except Exception as e:
+        # as_completed 超时或整体异常：已取到的部分仍返回，未完成的在 finally 取消
+        error_logger.error(f"全球指数分时并发获取失败/超时: {e}")
+    finally:
+        ex.shutdown(wait=False)
+    # 保持配置顺序，前端排版稳定
+    order = {cfg[1]: i for i, cfg in enumerate(GLOBAL_INDICES_CONFIG)}
+    results.sort(key=lambda x: order.get(x['code'], 999))
+    if not results:
+        return None
+    return {
+        'indices': results,
+        'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'source': 'eastmoney'
     }
 
 

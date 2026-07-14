@@ -25,30 +25,30 @@
         </div>
       </div>
 
-      <aside class="gm-rank">
-        <div class="gm-rank-section">
-          <h3 class="gm-rank-title up">📈 涨幅榜</h3>
-          <div class="gm-rank-list">
-            <div v-for="item in topGainers" :key="item.code" class="gm-rank-item">
-              <span class="gm-rank-region">{{ item.region }}</span>
-              <span class="gm-rank-name">{{ item.name }}</span>
-              <span class="gm-rank-change up">{{ formatChange(item.change) }}</span>
+      <div class="gm-intraday-section">
+        <div class="gi-section-head">
+          <h3>📊 主要指数分时</h3>
+          <span class="gi-update" v-if="intradayUpdatedAt">更新：{{ intradayUpdatedAt }}</span>
+          <span class="gi-loading" v-if="intradayLoading">分时加载中…</span>
+        </div>
+        <div class="gm-intraday" v-if="intraday.length">
+          <div class="gi-card" v-for="ix in intraday" :key="ix.code" :class="ix.change >= 0 ? 'up' : 'down'">
+            <div class="gi-head">
+              <span class="gi-name">{{ ix.name }}</span>
+              <span class="gi-chg" :class="ix.change >= 0 ? 'up' : 'down'">{{ formatChange(ix.change) }}</span>
             </div>
-            <div v-if="topGainers.length === 0" class="gm-empty">暂无数据</div>
+            <svg class="gi-spark" viewBox="0 0 100 36" preserveAspectRatio="none">
+              <path v-if="sparkArea(ix)" :d="sparkArea(ix)" :fill="ix.change >= 0 ? 'rgba(255,77,79,0.16)' : 'rgba(82,196,26,0.16)'" stroke="none" />
+              <path :d="sparkPath(ix)" :stroke="ix.change >= 0 ? '#ff4d4f' : '#52c41a'" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
+            </svg>
+            <div class="gi-foot">
+              <span class="gi-region">{{ ix.region }}</span>
+              <span class="gi-price">{{ formatPrice(ix.price) }}</span>
+            </div>
           </div>
         </div>
-        <div class="gm-rank-section">
-          <h3 class="gm-rank-title down">📉 跌幅榜</h3>
-          <div class="gm-rank-list">
-            <div v-for="item in topLosers" :key="item.code" class="gm-rank-item clickable" @click="focusIndex(item)">
-              <span class="gm-rank-region">{{ item.region }}</span>
-              <span class="gm-rank-name">{{ item.name }}</span>
-              <span class="gm-rank-change down">{{ formatChange(item.change) }}</span>
-            </div>
-            <div v-if="topLosers.length === 0" class="gm-empty">暂无数据</div>
-          </div>
-        </div>
-      </aside>
+        <div class="gi-empty" v-else-if="!intradayLoading">暂无分时数据（非交易时段或数据源暂未返回）</div>
+      </div>
     </div>
 
     <div class="gm-footer">数据来源：东方财富 / 新浪财经（双源容错）· 仅供投资参考，不构成建议</div>
@@ -58,7 +58,7 @@
 
 <script>
 import * as echarts from 'echarts'
-import { getGlobalIndices } from './services/apiService'
+import { getGlobalIndices, getGlobalIntraday } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 // 英文国家名 → 中文映射（覆盖世界地图主要国家）
@@ -114,7 +114,11 @@ export default {
       loading: false,
       data: null,
       chart: null,
-      timer: null
+      timer: null,
+      intraday: [],
+      intradayLoading: false,
+      intradayUpdatedAt: '',
+      intradayTimer: null
     }
   },
   computed: {
@@ -132,10 +136,13 @@ export default {
     await this.loadMap()
     await this.fetchData(true)
     this.timer = setInterval(() => this.fetchData(false), 30000)
+    this.fetchIntraday()
+    this.intradayTimer = setInterval(() => this.fetchIntraday(), 60000)
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
     clearInterval(this.timer)
+    clearInterval(this.intradayTimer)
     window.removeEventListener('resize', this.handleResize)
     if (this.chart) {
       this.chart.dispose()
@@ -202,8 +209,50 @@ export default {
       }
     },
     formatChange(change) {
+      if (change === null || change === undefined || Number.isNaN(Number(change))) return '--'
       const pct = (change * 100).toFixed(2)
       return (change >= 0 ? '+' : '') + pct + '%'
+    },
+
+    formatPrice(price) {
+      if (price === null || price === undefined || Number.isNaN(Number(price))) return '--'
+      return Number(price).toLocaleString('en-US', { maximumFractionDigits: 2 })
+    },
+
+    async fetchIntraday() {
+      this.intradayLoading = true
+      try {
+        const res = await getGlobalIntraday()
+        if (res.success) {
+          this.intraday = res.data.indices || []
+          this.intradayUpdatedAt = res.data.update_time || ''
+        }
+      } catch (e) {
+        console.error('获取全球指数分时失败', e)
+      } finally {
+        this.intradayLoading = false
+      }
+    },
+
+    // 分时 sparkline 折线路径（viewBox 100×36）
+    sparkPath(ix) {
+      const s = ix && ix.series
+      if (!s || s.length < 2) return ''
+      const prices = s.map(p => Number(p.price))
+      const min = Math.min(...prices)
+      const max = Math.max(...prices)
+      const range = (max - min) || 1
+      const n = prices.length
+      return prices.map((p, i) => {
+        const x = (i / (n - 1)) * 100
+        const y = 33 - ((p - min) / range) * 30   // 上下留 ~3px
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`
+      }).join(' ')
+    },
+    sparkArea(ix) {
+      const d = this.sparkPath(ix)
+      if (!d) return ''
+      return d + ' L100 36 L0 36 Z'
     },
     handleResize() {
       if (this.chart) this.chart.resize()
@@ -428,25 +477,108 @@ export default {
 
 .gm-body {
   display: flex;
-  gap: 20px;
+  flex-direction: column;
+  gap: 16px;
   flex: 1;
   min-height: 0;
 }
 
 .gm-chart-wrapper {
-  flex: 1;
   position: relative;
+  height: 56vh;
+  min-height: 340px;
   background: rgba(26, 35, 53, 0.6);
   border-radius: 12px;
   border: 1px solid rgba(58, 74, 107, 0.5);
-  padding: 16px;
+  padding: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 }
 
 .gm-chart {
   width: 100%;
   height: 100%;
-  min-height: 600px;
+  min-height: 320px;
+}
+
+/* ===== 下方分时图网格 ===== */
+.gm-intraday-section {
+  background: rgba(26, 35, 53, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(58, 74, 107, 0.5);
+  padding: 14px 16px;
+}
+
+.gi-section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.gi-section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #e0e6f0;
+}
+.gi-update { font-size: 12px; color: #8ba4c7; }
+.gi-loading { font-size: 12px; color: #69c0ff; }
+
+.gm-intraday {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.gi-card {
+  background: rgba(13, 19, 32, 0.55);
+  border: 1px solid rgba(58, 74, 107, 0.45);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.gi-card.up { border-left-color: #ff4d4f; }
+.gi-card.down { border-left-color: #52c41a; }
+
+.gi-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.gi-name {
+  font-size: 12px;
+  color: #e0e6f0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gi-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gi-chg.up { color: #ff4d4f; }
+.gi-chg.down { color: #52c41a; }
+
+.gi-spark {
+  display: block;
+  width: 100%;
+  height: 38px;
+}
+
+.gi-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 2px;
+}
+.gi-region { font-size: 11px; color: #8ba4c7; }
+.gi-price { font-size: 11px; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+
+.gi-empty {
+  text-align: center;
+  color: #8ba4c7;
+  font-size: 13px;
+  padding: 24px 0;
 }
 
 .gm-legend {
@@ -593,11 +725,18 @@ export default {
   .gm-header h1 {
     font-size: 1.1rem;
   }
-  .gm-rank {
-    flex-direction: column;
+  /* 移动端：地图高度收紧，分时网格两列 */
+  .gm-chart-wrapper {
+    height: 44vh;
+    min-height: 260px;
+    padding: 8px;
   }
-  .gm-chart {
-    min-height: 420px;
+  .gm-intraday {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .gi-section-head {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 </style>
