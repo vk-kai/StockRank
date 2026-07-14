@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from stock_resolver import classify_board, get_limit_pct
+from stock_resolver import (
+    classify_board, get_limit_pct,
+    parse_sina_suggest, resolve_identifier, NameCodeCache,
+)
 
 
 class BoardLimitTests(unittest.TestCase):
@@ -36,6 +39,37 @@ class BoardLimitTests(unittest.TestCase):
     def test_unknown_falls_back_to_ten(self):
         self.assertEqual(classify_board('zz999999'), 'unknown')
         self.assertEqual(get_limit_pct('zz999999', '某某'), 10.0)
+
+
+class ResolveTests(unittest.TestCase):
+    def test_parse_sina_suggest_returns_name_code_exchange(self):
+        sample = "11\t贵州茅台\tsh600519\tgzmaotai\n11\t茅台转债\tsh113511\tmaotaizhuanzhuan\n"
+        rows = parse_sina_suggest(sample)
+        self.assertEqual(rows[0], ('贵州茅台', 'sh600519'))
+        self.assertEqual(len(rows), 2)
+
+    def test_resolve_name_uses_injected_fetcher_and_caches(self):
+        calls = {'n': 0}
+
+        def fake_fetch(keyword):
+            calls['n'] += 1
+            return "11\t贵州茅台\tsh600519\tgzmaotai\n"
+
+        cache = NameCodeCache(path=None)
+        name, code = resolve_identifier('贵州茅台', hint='name', fetcher=fake_fetch, cache=cache)
+        self.assertEqual(code, 'sh600519')
+        self.assertEqual(name, '贵州茅台')
+        resolve_identifier('贵州茅台', hint='name', fetcher=fake_fetch, cache=cache)
+        self.assertEqual(calls['n'], 1)
+
+    def test_resolve_code_normalizes_prefix(self):
+        self.assertEqual(resolve_identifier('600519', hint='code', fetcher=None)[1], 'sh600519')
+        self.assertEqual(resolve_identifier('sh600519', hint='code', fetcher=None)[1], 'sh600519')
+        self.assertEqual(resolve_identifier('sz301236', hint='code', fetcher=None)[1], 'sz301236')
+
+    def test_resolve_unresolvable_returns_none(self):
+        self.assertIsNone(resolve_identifier('不存在的公司xyz', hint='name',
+                                             fetcher=lambda k: '\n', cache=NameCodeCache(path=None)))
 
 
 if __name__ == '__main__':
