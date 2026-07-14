@@ -37,15 +37,6 @@
         </div>
       </div>
       <div class="controls">
-        <div class="time-selector">
-          <label>时间跨度：</label>
-          <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
-            <option :value="'today'">当天</option>
-            <option :value="7">近7天</option>
-            <option :value="15">近15天</option>
-            <option :value="30">近30天</option>
-          </select>
-        </div>
         <div class="last-update" v-if="lastUpdate">
           最后更新：{{ lastUpdate }}
         </div>
@@ -92,6 +83,15 @@
     </header>
 
     <div class="market-summary-panel">
+      <div class="time-selector">
+        <label>时间跨度：</label>
+        <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
+          <option :value="'today'">当天</option>
+          <option :value="7">近7天</option>
+          <option :value="15">近15天</option>
+          <option :value="30">近30天</option>
+        </select>
+      </div>
       <div class="market-breadth-row">
         <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
         <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>

@@ -82,9 +82,13 @@
 }
 
 .time-selector {
+  grid-area: ts;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
+  white-space: nowrap;
 }
 
 .time-selector label {
@@ -144,16 +148,16 @@
 }
 
 .market-summary-panel {
-  width: min(540px, calc(100vw - 900px));
+  width: min(700px, calc(100vw - 820px));
   margin: 0 auto 4px;
   padding: 5px 10px;
   display: grid;
-  grid-template-columns: 88px minmax(180px, 1fr) 88px;
+  grid-template-columns: auto 84px minmax(140px, 1fr) 84px;
   grid-template-areas:
-    "down bar up"
-    "limit turnover limit2";
+    "ts down bar up"
+    "ts limit turnover limit2";
   align-items: center;
-  gap: 3px 8px;
+  gap: 3px 10px;
   background: linear-gradient(135deg, rgba(22, 32, 56, 0.55) 0%, rgba(28, 36, 60, 0.55) 100%);
   border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 10px;
@@ -374,8 +378,8 @@ button:active:not(:disabled) {
 
 @media (max-width: 1200px) {
   .market-summary-panel {
-    width: min(430px, calc(100vw - 850px));
-    grid-template-columns: 70px minmax(120px, 1fr) 70px;
+    width: min(560px, calc(100vw - 740px));
+    grid-template-columns: auto 70px minmax(110px, 1fr) 70px;
     gap: 3px 6px;
   }
 
@@ -415,7 +419,7 @@ button:active:not(:disabled) {
   .market-summary-panel {
     width: 100%;
     margin-bottom: 10px;
-    grid-template-columns: 74px minmax(120px, 1fr) 74px;
+    grid-template-columns: auto 74px minmax(110px, 1fr) 74px;
   }
 
   .market-index-strip {
