@@ -1398,75 +1398,72 @@ def get_global_market_indices():
     }
 
 
-# ========== 全球指数当日分时线（东财 trends2，供全球地图下方分时图）==========
-EM_TRENDS2_URL = "https://push2his.eastmoney.com/api/qt/stock/trends2/get"
+# ========== 全球指数当日分时线（腾讯 gtimg minute，供全球地图下方分时图）==========
+# 东财 trends2 反爬严重（集中并发会被中途断连 RemoteDisconnected），改用腾讯分时接口：
+# 稳定、国内可访问、低反爬。仅返回"分时序列"，涨跌幅/价格由前端从全球快照(eastmoney ulist，稳定)合并。
+TENCENT_MINUTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/minute/query"
+# 东财 secid -> 腾讯分时 code 映射。A股/港股/美股较有把握；日韩欧等为尽力映射，拿不到则该指数无分时线（前端仍显示快照涨跌幅）。
+TENCENT_CODE_MAP = {
+    '1.000001': 'sh000001', '1.000300': 'sh000300',
+    '100.HSI': 'hkHSI',
+    '100.DJIA': 'usDJI', '100.NDX': 'usNDX', '100.SPX': 'usSPX',
+    '100.N225': 'jpN225', '100.KS11': 'koKS11', '100.SENSEX': 'inSENSEX',
+    '100.FTSE': 'ukFTSE', '100.GDAXI': 'deDAX', '100.FCHI': 'frCAC', '100.BVSP': 'brBVSP',
+}
 
 
 def _fetch_one_global_intraday(cfg):
-    """抓单只全球指数的当日分时线。返回 dict 或 None（单只失败不影响其它）。"""
+    """抓单只全球指数的当日分时线（腾讯 minute）。返回 {code,name,region,series} 或 None。"""
     name, secid, _sina, lat, lng, region = cfg
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://quote.eastmoney.com/'
-    }
-    params = {
-        'secid': secid,
-        'fields1': 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13',
-        'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
-        'iscr': 0,
-        'ndays': 1
-    }
+    tcode = TENCENT_CODE_MAP.get(secid)
+    if not tcode:
+        return None
+    headers = {'User-Agent': get_random_user_agent(), 'Referer': 'https://gu.qq.com/'}
     try:
-        resp = requests.get(EM_TRENDS2_URL, params=params, headers=headers, timeout=8)
+        resp = requests.get(TENCENT_MINUTE_URL, params={'code': tcode}, headers=headers, timeout=8)
         resp.raise_for_status()
         body = resp.json()
-        data = body.get('data') if body else None
-        if not data:
+        d = (body.get('data') or {}).get(tcode) if isinstance(body, dict) else None
+        if not d:
             return None
-        trends = data.get('trends') or []
-        pre_close = data.get('preClose')
         series = []
-        last_price = None
-        for line in trends:
-            # 形如 "2024-07-15 09:31,4200.12,4200.0,12345,..."
-            parts = line.split(',')
-            if len(parts) < 2:
-                continue
-            try:
-                price = float(parts[1])
-            except (ValueError, TypeError):
-                continue
-            t = parts[0]
-            hhmm = t[11:16] if len(t) >= 16 else t   # 取 HH:MM
-            series.append({'t': hhmm, 'price': price})
-            last_price = price
-        if not series or last_price is None:
+        # 腾讯分时返回有两种形态，都兼容：
+        #  1) d.minute = [["2024-07-15 09:30", 价格, 量, 均价], ...]
+        #  2) d.data   = {"09:30": "价格,均价,...", ...}
+        minute = d.get('minute')
+        if isinstance(minute, list):
+            for row in minute:
+                if not isinstance(row, (list, tuple)) or len(row) < 2:
+                    continue
+                t = str(row[0])
+                try:
+                    price = float(row[1])
+                except (ValueError, TypeError):
+                    continue
+                hhmm = t[11:16] if len(t) >= 16 else t
+                series.append({'t': hhmm, 'price': price})
+        else:
+            dat = d.get('data')
+            if isinstance(dat, dict):
+                for t, val in dat.items():
+                    try:
+                        price = float(str(val).split(',')[0])
+                    except (ValueError, TypeError):
+                        continue
+                    series.append({'t': t, 'price': price})
+        if not series:
             return None
-        change = None
-        if pre_close:
-            try:
-                change = (last_price / float(pre_close)) - 1
-            except (ValueError, TypeError, ZeroDivisionError):
-                change = None
-        return {
-            'name': name,
-            'code': secid,
-            'region': region,
-            'price': last_price,
-            'pre_close': float(pre_close) if pre_close else None,
-            'change': change,
-            'series': series
-        }
+        return {'code': secid, 'name': name, 'region': region, 'series': series}
     except Exception as e:
-        error_logger.warning(f"全球指数分时获取失败 {name}({secid}): {e}")
+        error_logger.warning(f"腾讯分时获取失败 {name}({tcode}): {e}")
         return None
 
 
 def get_global_indices_intraday():
-    """获取全球主要指数当日分时线（东财 trends2，并发抓取，单只失败不影响其它）。"""
+    """获取全球主要指数当日分时线（腾讯 gtimg minute，并发抓取，单只失败不影响其它）。
+    仅返回分时序列；涨跌幅/价格由前端从全球快照接口合并（快照走东财 ulist，稳定）。"""
     results = []
-    ex = ThreadPoolExecutor(max_workers=8)
+    ex = ThreadPoolExecutor(max_workers=6)
     try:
         futures = {ex.submit(_fetch_one_global_intraday, cfg): cfg for cfg in GLOBAL_INDICES_CONFIG}
         for fut in as_completed(futures, timeout=20):
@@ -1490,7 +1487,7 @@ def get_global_indices_intraday():
     return {
         'indices': results,
         'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'source': 'eastmoney'
+        'source': 'tencent'
     }
 
 

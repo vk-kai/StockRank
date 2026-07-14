@@ -31,23 +31,24 @@
           <span class="gi-update" v-if="intradayUpdatedAt">更新：{{ intradayUpdatedAt }}</span>
           <span class="gi-loading" v-if="intradayLoading">分时加载中…</span>
         </div>
-        <div class="gm-intraday" v-if="intraday.length">
-          <div class="gi-card" v-for="ix in intraday" :key="ix.code" :class="ix.change >= 0 ? 'up' : 'down'">
+        <div class="gm-intraday" v-if="globalCards.length">
+          <div class="gi-card" v-for="ix in globalCards" :key="ix.code" :class="ix.change >= 0 ? 'up' : 'down'">
             <div class="gi-head">
               <span class="gi-name">{{ ix.name }}</span>
               <span class="gi-chg" :class="ix.change >= 0 ? 'up' : 'down'">{{ formatChange(ix.change) }}</span>
             </div>
-            <svg class="gi-spark" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <svg v-if="ix.series && ix.series.length >= 2" class="gi-spark" viewBox="0 0 100 36" preserveAspectRatio="none">
               <path v-if="sparkArea(ix)" :d="sparkArea(ix)" :fill="ix.change >= 0 ? 'rgba(255,77,79,0.16)' : 'rgba(82,196,26,0.16)'" stroke="none" />
               <path :d="sparkPath(ix)" :stroke="ix.change >= 0 ? '#ff4d4f' : '#52c41a'" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
             </svg>
+            <div v-else class="gi-noline">暂无分时</div>
             <div class="gi-foot">
               <span class="gi-region">{{ ix.region }}</span>
               <span class="gi-price">{{ formatPrice(ix.price) }}</span>
             </div>
           </div>
         </div>
-        <div class="gi-empty" v-else-if="!intradayLoading">暂无分时数据（非交易时段或数据源暂未返回）</div>
+        <div class="gi-empty" v-else-if="!intradayLoading">暂无数据</div>
       </div>
     </div>
 
@@ -130,6 +131,24 @@ export default {
     },
     topLosers() {
       return this.indices.slice(-8).reverse()
+    },
+    // 分时序列按 code 建立查找表（分时接口只返回 series，不含涨跌幅/价格）
+    intradaySeriesMap() {
+      const m = {}
+      this.intraday.forEach(ix => { if (ix && ix.code) m[ix.code] = ix.series })
+      return m
+    },
+    // 卡片基于全球快照（含全部指数涨跌幅/价格，稳定），上证/韩国KOSPI/纳斯达克 固定前三；
+    // 分时线从分时接口按 code 叠加，拿不到的卡片只显示涨跌幅不画线
+    globalCards() {
+      const pin = ['1.000001', '100.KS11', '100.NDX']
+      const headSet = new Set(pin)
+      const byCode = {}
+      this.indices.forEach(i => { byCode[i.code] = i })
+      const head = pin.map(c => byCode[c]).filter(Boolean)
+      const rest = this.indices.filter(i => !headSet.has(i.code))
+      const sm = this.intradaySeriesMap
+      return [...head, ...rest].map(i => ({ ...i, series: sm[i.code] || [] }))
     }
   },
   async mounted() {
@@ -282,6 +301,20 @@ export default {
       // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
 
+      // 主要金融中心之间的流动连线（用各指数实际经纬度，缺坐标的自动跳过）
+      const hub = {}
+      list.forEach(i => { hub[i.code] = [i.lng, i.lat] })
+      const H = code => hub[code]
+      const linePairs = [
+        ['100.NDX', '100.FTSE'], ['100.FTSE', '100.GDAXI'], ['100.GDAXI', '1.000001'],
+        ['1.000001', '100.HSI'], ['100.HSI', '100.N225'], ['100.N225', '100.KS11'],
+        ['100.NDX', '1.000001'], ['100.NDX', '100.N225']
+      ]
+      const lineData = linePairs
+        .map(([a, b]) => [H(a), H(b)])
+        .filter(p => p[0] && p[1])
+        .map(p => ({ coords: p }))
+
       this.chart.setOption({
         backgroundColor: 'transparent',
         tooltip: {
@@ -321,67 +354,71 @@ export default {
           },
           silent: false
         },
-        series: [{
-          type: 'scatter',
-          coordinateSystem: 'geo',
-          data: scatterData,
-          symbolSize: v => sizeOf(v),
-          itemStyle: {
-            color: p => colorOf(p.value),
-            borderColor: p => borderColorOf(p.value),
-            borderWidth: 2.5,
-            shadowBlur: 14,
-            shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.45)' : 'rgba(82,196,26,0.45)')
+        series: [
+          // 0) 金融中心流动连线（带尾迹飞行动效）
+          {
+            type: 'lines',
+            coordinateSystem: 'geo',
+            zlevel: 1,
+            effect: { show: true, period: 5, trailLength: 0.5, symbol: 'arrow', symbolSize: 5, color: '#5ad8ff' },
+            lineStyle: { color: '#3a7bd5', width: 1, opacity: 0.45, curveness: 0.25 },
+            data: lineData
           },
-          label: {
-            show: true,
-            // 圆圈内显示涨跌幅，白色文字（深色圆点上清晰）
-            formatter: p => {
-              const chg = p.value[2]
-              return (chg >= 0 ? '+' : '') + chg + '%'
-            },
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 'bold',
-            position: 'inside',
-            textShadowColor: 'rgba(0,0,0,0.45)',
-            textShadowBlur: 3
-          },
-          // 高亮：圆圈放大、边框加粗、光晕增强
-          emphasis: {
-            scale: 1.6,
+          // 1) 脉冲散点（涟漪环）—— 各指数涨跌气泡，常驻脉冲
+          {
+            type: 'effectScatter',
+            coordinateSystem: 'geo',
+            data: scatterData,
+            symbolSize: v => sizeOf(v),
+            rippleEffect: { brushType: 'stroke', scale: 3.2, period: 4 },
+            showEffectOn: 'render',
             itemStyle: {
-              borderColor: '#ffd666',
-              borderWidth: 3,
-              shadowBlur: 24,
-              shadowColor: '#ffd666'
+              color: p => colorOf(p.value),
+              borderColor: p => borderColorOf(p.value),
+              borderWidth: 2.5,
+              shadowBlur: 16,
+              shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.5)' : 'rgba(82,196,26,0.5)')
             },
-            label: { fontSize: 12 }
+            label: {
+              show: true,
+              formatter: p => { const chg = p.value[2]; return (chg >= 0 ? '+' : '') + chg + '%' },
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 'bold',
+              position: 'inside',
+              textShadowColor: 'rgba(0,0,0,0.45)',
+              textShadowBlur: 3
+            },
+            emphasis: {
+              scale: 1.5,
+              label: { fontSize: 13 }
+            },
+            zlevel: 2
           },
-          zlevel: 2
-        }, {
-          // 第二个系列：仅显示国名标签，放在圆圈下方
-          type: 'scatter',
-          coordinateSystem: 'geo',
-          data: scatterData,
-          symbolSize: 0,
-          label: {
-            show: true,
-            formatter: p => p.data.name,
-            color: '#e0e6f0',
-            fontSize: 12,
-            fontWeight: 'bold',
-            position: 'bottom',
-            distance: 8,
-            textShadowColor: '#000',
-            textShadowBlur: 4,
-            backgroundColor: 'rgba(13, 27, 42, 0.7)',
-            padding: [2, 6],
-            borderRadius: 3
-          },
-          tooltip: { show: false },
-          zlevel: 2
-        }]
+          // 2) 国名标签（圆圈下方，无散点本体）
+          {
+            type: 'scatter',
+            coordinateSystem: 'geo',
+            data: scatterData,
+            symbolSize: 0,
+            label: {
+              show: true,
+              formatter: p => p.data.name,
+              color: '#e0e6f0',
+              fontSize: 12,
+              fontWeight: 'bold',
+              position: 'bottom',
+              distance: 8,
+              textShadowColor: '#000',
+              textShadowBlur: 4,
+              backgroundColor: 'rgba(13, 27, 42, 0.7)',
+              padding: [2, 6],
+              borderRadius: 3
+            },
+            tooltip: { show: false },
+            zlevel: 2
+          }
+        ]
       }, true)
     }
   }
@@ -562,6 +599,15 @@ export default {
   display: block;
   width: 100%;
   height: 38px;
+}
+
+.gi-noline {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #5a6b85;
 }
 
 .gi-foot {
