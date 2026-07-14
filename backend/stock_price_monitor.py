@@ -56,3 +56,170 @@ def append_sample(code, sample, date):
     if len(data[code]) > 1500:
         data[code] = data[code][-1500:]
     _save_quotes(date, data)
+
+
+# --------------------------------------------------------------------------
+# 默认阈值(新增自选股默认全开)
+# --------------------------------------------------------------------------
+DEFAULT_ALERTS_CFG = {
+    'limit_up':    {'enabled': True},
+    'limit_down':  {'enabled': True},
+    'rapid_rise':  {'enabled': True, 'pct': 3.0, 'win_min': 3},
+    'rapid_drop':  {'enabled': True, 'pct': 3.0, 'win_min': 3},
+    'cum_move':    {'enabled': True, 'pct': 3.0},
+    'spike_fade':  {'enabled': True, 'peak': 3.0, 'back': 2.0},
+    'dip_rebound': {'enabled': True, 'trough': 3.0, 'back': 2.0},
+    'gap_open':    {'enabled': True, 'pct': 3.0},
+    'amplitude':   {'enabled': True, 'pct': 7.0},
+    'limit_break': {'enabled': True, 'back': 1.0},
+}
+
+
+def _find_ref(series, win_min):
+    """取距今最接近 win_min 分钟(及以前)的一个历史采样,作急涨急跌比较点。"""
+    if len(series) < 2:
+        return None
+    try:
+        cur = datetime.strptime(series[-1]['ts'], '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return None
+    cutoff = cur - timedelta(minutes=win_min)
+    ref = None
+    for s in series[:-1]:
+        try:
+            t = datetime.strptime(s['ts'], '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            continue
+        if t <= cutoff:
+            ref = s
+        else:
+            break
+    return ref or series[0]
+
+
+def _rapid_move(q, series, cfg):
+    ref = _find_ref(series, cfg['rapid_rise']['win_min'])
+    if not ref:
+        return None
+    prev_close = q['prev_close'] or 0
+    if not prev_close:
+        return None
+    cur_pct = (q['price'] - prev_close) / prev_close * 100
+    ref_pct = (ref['price'] - prev_close) / prev_close * 100
+    delta = cur_pct - ref_pct
+    if delta >= cfg['rapid_rise']['pct'] and cfg['rapid_rise']['enabled']:
+        return {'type': 'rapid_rise', 'label': f'急速拉升 {delta:+.2f}%/{cfg["rapid_rise"]["win_min"]}min'}
+    if delta <= -cfg['rapid_drop']['pct'] and cfg['rapid_drop']['enabled']:
+        return {'type': 'rapid_drop', 'label': f'急速打压 {delta:+.2f}%/{cfg["rapid_drop"]["win_min"]}min'}
+    return None
+
+
+def _cum_move(q, cfg):
+    if not cfg['cum_move']['enabled']:
+        return None
+    pct = q['pct']
+    if abs(pct) < cfg['cum_move']['pct']:
+        return None
+    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%'}
+
+
+def _spike_fade(q, cfg):
+    if not cfg['spike_fade']['enabled']:
+        return None
+    pc = q['prev_close'] or 0
+    if not pc or not q.get('high'):
+        return None
+    peak_pct = (q['high'] - pc) / pc * 100
+    if peak_pct < cfg['spike_fade']['peak']:
+        return None
+    back = (q['high'] - q['price']) / q['high'] * 100
+    if back >= cfg['spike_fade']['back']:
+        return {'type': 'spike_fade', 'label': f'冲高回落 从高点 -{back:.2f}%'}
+    return None
+
+
+def _dip_rebound(q, cfg):
+    if not cfg['dip_rebound']['enabled']:
+        return None
+    pc = q['prev_close'] or 0
+    if not pc or not q.get('low'):
+        return None
+    trough_pct = (pc - q['low']) / pc * 100
+    if trough_pct < cfg['dip_rebound']['trough']:
+        return None
+    reb = (q['price'] - q['low']) / q['low'] * 100
+    if reb >= cfg['dip_rebound']['back']:
+        return {'type': 'dip_rebound', 'label': f'探底回升 从低点 +{reb:.2f}%'}
+    return None
+
+
+def _gap_open(q, state, cfg):
+    if not cfg['gap_open']['enabled'] or state.get('gap_fired'):
+        return None
+    pc = q['prev_close'] or 0
+    if not pc or not q.get('open'):
+        return None
+    gap = (q['open'] - pc) / pc * 100
+    if abs(gap) >= cfg['gap_open']['pct']:
+        state['gap_fired'] = True
+        return {'type': 'gap_open', 'label': f'大幅{"高开" if gap > 0 else "低开"} {gap:+.2f}%'}
+    return None
+
+
+def _amplitude(q, cfg):
+    if not cfg['amplitude']['enabled']:
+        return None
+    pc = q['prev_close'] or 0
+    if not pc or q.get('high') is None or q.get('low') is None:
+        return None
+    amp = (q['high'] - q['low']) / pc * 100
+    if amp >= cfg['amplitude']['pct']:
+        return {'type': 'amplitude', 'label': f'振幅过大 {amp:.2f}%'}
+    return None
+
+
+def _limit_break(q, limit, state, cfg):
+    if not cfg['limit_break']['enabled']:
+        return None
+    if q['pct'] >= limit * 0.995:
+        state['touched_up'] = True
+    if q['pct'] <= -limit * 0.995:
+        state['touched_down'] = True
+    if state.get('touched_up') and q['pct'] <= limit - cfg['limit_break']['back']:
+        return {'type': 'limit_break', 'label': f'炸板 回落至 {q["pct"]:+.2f}%'}
+    if state.get('touched_down') and q['pct'] >= -limit + cfg['limit_break']['back']:
+        return {'type': 'limit_break', 'label': f'撬板 反弹至 {q["pct"]:+.2f}%'}
+    return None
+
+
+def detect_hits(q, series, state, alerts_cfg, limit, name):
+    """对一只票跑全部启用的检测,返回 hits 列表(一次报价可能命中多条)。"""
+    hits = []
+    if alerts_cfg['limit_up']['enabled'] and q['pct'] >= limit * 0.995:
+        hits.append({'type': 'limit_up', 'label': '涨停触及'})
+    if alerts_cfg['limit_down']['enabled'] and q['pct'] <= -limit * 0.995:
+        hits.append({'type': 'limit_down', 'label': '跌停触及'})
+
+    checkers = (
+        lambda: _rapid_move(q, series, alerts_cfg),
+        lambda: _cum_move(q, alerts_cfg),
+        lambda: _spike_fade(q, alerts_cfg),
+        lambda: _dip_rebound(q, alerts_cfg),
+        lambda: _amplitude(q, alerts_cfg),
+    )
+    for fn in checkers:
+        try:
+            h = fn()
+        except Exception as e:
+            logger.warning(f'检测异常 {name}: {e}')
+            h = None
+        if h:
+            hits.append(h)
+
+    h = _gap_open(q, state, alerts_cfg)
+    if h:
+        hits.append(h)
+    h = _limit_break(q, limit, state, alerts_cfg)
+    if h:
+        hits.append(h)
+    return hits
