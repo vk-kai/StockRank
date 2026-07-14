@@ -281,3 +281,69 @@ def list_alerts(date_str=None, limit=200):
     if date_str:
         alerts = [a for a in alerts if a.get('date') == date_str]
     return sorted(alerts, key=lambda a: a.get('timestamp', ''), reverse=True)[:limit]
+
+
+# --------------------------------------------------------------------------
+# 配置:旧 schema 迁移 + 加载
+# --------------------------------------------------------------------------
+def _gen_id():
+    import uuid
+    return uuid.uuid4().hex[:12]
+
+
+def migrate_legacy_config(raw):
+    """旧 {enabled, stocks:[{enabled,name,code,keywords}]} → 新 watchlist schema。
+
+    新 schema(含 watchlist)直接透传;旧 schema 转换:
+      - 有 name/code 的当 name 类型 + 默认全开 price_alerts
+      - 仅 keywords 的当 keyword 类型(无 price_alerts)
+    """
+    if not isinstance(raw, dict):
+        raw = {}
+    if 'watchlist' in raw:
+        return {
+            'enabled': raw.get('enabled', True),
+            'poll_interval_seconds': raw.get('poll_interval_seconds', 25),
+            'cooldown_minutes': raw.get('cooldown_minutes', 30),
+            'watchlist': raw.get('watchlist', []),
+        }
+
+    watchlist = []
+    for s in raw.get('stocks', []):
+        if not isinstance(s, dict) or not s.get('enabled', True):
+            continue
+        name = (s.get('name') or '').strip()
+        code = (s.get('code') or '').strip()
+        keywords = s.get('keywords') or []
+        if name or code:
+            watchlist.append({
+                'id': _gen_id(), 'type': 'name', 'value': name or code, 'enabled': True,
+                'resolved_name': name, 'resolved_code': code,
+                'price_alerts': json.loads(json.dumps(DEFAULT_ALERTS_CFG)),
+            })
+        elif keywords:
+            for kw in keywords:
+                if kw.strip():
+                    watchlist.append({
+                        'id': _gen_id(), 'type': 'keyword', 'value': kw.strip(), 'enabled': True,
+                    })
+    return {
+        'enabled': raw.get('enabled', True),
+        'poll_interval_seconds': 25,
+        'cooldown_minutes': 30,
+        'watchlist': watchlist,
+    }
+
+
+def load_config():
+    """读取 stock_monitor.json 并迁移为新 schema。"""
+    default = {'enabled': False, 'poll_interval_seconds': 25, 'cooldown_minutes': 30, 'watchlist': []}
+    if not os.path.exists(STOCK_MONITOR_CONFIG_FILE):
+        return default
+    try:
+        with open(STOCK_MONITOR_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+    except Exception as e:
+        error_logger.error(f'读取股票监控配置失败: {e}')
+        return default
+    return migrate_legacy_config(raw)
