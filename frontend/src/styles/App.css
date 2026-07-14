@@ -2667,3 +2667,57 @@ button:active:not(:disabled) {
   }
 }
 
+/* ===== 移动端排版第二轮精修（按钮 3 列网格 + 摘要面板纵向堆叠）===== */
+@media (max-width: 768px) {
+  /* header 子项铺满宽度：避免 align-items:flex-start 让 title-actions 收缩到内容宽、
+     flex-wrap 失效而撑成一行横向溢出 */
+  .header {
+    align-items: stretch;
+  }
+
+  /* 6 个功能按钮 → 3 列 × 2 行整齐网格，杜绝横向溢出/滚动 */
+  .title-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    margin-right: 0;
+  }
+  .title-actions > button,
+  .title-actions > .more-menu-wrapper {
+    width: 100%;
+  }
+  .title-actions .ai-analyze-button,
+  .title-actions .yuntu-button,
+  .title-actions .global-button,
+  .title-actions .quant-button,
+  .title-actions .flow-alert-button,
+  .title-actions .more-button {
+    padding: 7px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    text-align: center;
+    min-width: 0;
+  }
+
+  /* 大盘摘要面板：原 4 列横排太挤 → 改 2 列纵向堆叠，各行透气 */
+  .market-summary-panel {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "ts ts"
+      "down up"
+      "bar bar"
+      "limit limit2"
+      "turnover turnover";
+    gap: 6px 10px;
+  }
+  .market-breadth-row {
+    font-size: 15px;
+  }
+  .time-selector {
+    border-right: none;
+    padding-right: 0;
+  }
+}
+
