@@ -244,58 +244,70 @@
         <h2>📈 股票监控配置</h2>
         <div class="config-form">
           <div class="form-group">
-            <label>启用股票监控</label>
+            <label>启用自选股价格监控</label>
             <div class="toggle-switch">
               <input type="checkbox" v-model="stockConfig.enabled" id="stock-enabled">
               <label for="stock-enabled"></label>
             </div>
           </div>
 
+          <div class="form-group" style="display:flex;gap:12px;align-items:center;">
+            <label style="margin:0;">轮询频率(秒)</label>
+            <input type="number" v-model.number="stockConfig.poll_interval_seconds" min="10" style="width:90px;">
+            <label style="margin:0 0 0 16px;">去重冷却(分钟)</label>
+            <input type="number" v-model.number="stockConfig.cooldown_minutes" min="1" style="width:90px;">
+          </div>
+
           <div class="stock-list">
             <div class="stock-header">
-              <h3>监控股票列表</h3>
-              <button @click="addStock" class="btn-add">+ 添加股票</button>
+              <h3>监控列表(三类型,每条只填一个)</h3>
             </div>
 
-            <div 
-              v-for="(stock, index) in stockConfig.stocks" 
-              :key="index"
-              class="stock-item"
-            >
-              <div class="stock-info">
-                <input 
-                  type="text" 
-                  v-model="stock.name" 
-                  placeholder="股票名称"
-                  class="stock-name-input"
-                >
-                <input 
-                  type="text" 
-                  v-model="stock.code" 
-                  placeholder="股票代码"
-                  class="stock-code-input"
-                >
-              </div>
-              <div class="stock-keywords">
-                <input 
-                  type="text" 
-                  v-model="stock.keywordsString" 
-                  placeholder="关键词(用逗号分隔)"
-                  class="stock-keywords-input"
-                  @change="updateKeywords(index)"
-                >
-              </div>
-              <div class="stock-actions">
+            <div class="stock-item" style="align-items:center;">
+              <select v-model="newWatch.type" style="padding:6px;">
+                <option value="name">按股票名字</option>
+                <option value="code">按代码</option>
+                <option value="keyword">按关键词(新闻)</option>
+              </select>
+              <input type="text" v-model="newWatch.value"
+                     :placeholder="newWatch.type==='keyword' ? '关键词(新闻命中)' : (newWatch.type==='name' ? '股票名字' : '股票代码')"
+                     style="flex:1;" @keyup.enter="addWatchItem">
+              <button @click="addWatchItem" class="btn-add">＋ 添加</button>
+            </div>
+
+            <div v-for="w in stockConfig.watchlist" :key="w.id" class="stock-item" style="flex-direction:column;align-items:stretch;">
+              <div style="display:flex;gap:10px;align-items:center;width:100%;">
+                <input type="checkbox" :value="w.id" v-model="selectedIds">
+                <span :style="{padding:'2px 8px',borderRadius:'10px',fontSize:'12px',background:w.type==='name'?'rgba(24,144,255,.2)':w.type==='code'?'rgba(82,196,26,.2)':'rgba(250,140,22,.2)',color:w.type==='name'?'#40a9ff':w.type==='code'?'#52c41a':'#fa8c16'}">{{ {name:'名字',code:'代码',keyword:'关键词'}[w.type] }}</span>
+                <strong style="flex:1;">{{ w.value }}</strong>
                 <div class="toggle-switch small">
-                  <input 
-                    type="checkbox" 
-                    v-model="stock.enabled" 
-                    :id="`stock-enabled-${index}`"
-                  >
-                  <label :for="`stock-enabled-${index}`"></label>
+                  <input type="checkbox" v-model="w.enabled" :id="'w-'+w.id">
+                  <label :for="'w-'+w.id"></label>
                 </div>
-                <button @click="removeStock(index)" class="btn-remove">删除</button>
+                <button @click="removeWatchItem(w.id)" class="btn-remove">删除</button>
               </div>
+              <details v-if="w.price_alerts" style="width:100%;margin-top:6px;">
+                <summary>价格预警设置 ({{ enabledCount(w) }}/{{ PRICE_TYPES.length }} 开启)</summary>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;">
+                  <div v-for="t in PRICE_TYPES" :key="t.key" style="background:rgba(255,255,255,.04);padding:4px 8px;border-radius:4px;font-size:13px;">
+                    <label style="display:flex;align-items:center;gap:4px;">
+                      <input type="checkbox" v-model="w.price_alerts[t.key].enabled"> {{ t.label }}
+                    </label>
+                    <span v-for="f in t.fields" :key="f.k" style="margin-left:10px;font-size:12px;">
+                      {{ f.label }}<input type="number" step="0.1" v-model.number="w.price_alerts[t.key][f.k]" style="width:56px;margin-left:4px;">
+                    </span>
+                  </div>
+                </div>
+              </details>
+              <div v-else style="color:#8ba4c7;font-size:12px;margin-top:4px;">新闻关键词监控(无价格预警)</div>
+            </div>
+
+            <div v-if="selectedIds.length" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <span>已选 {{ selectedIds.length }} 项:</span>
+              <button @click="batchToggle('limit_up', true)" class="btn-add">开启涨停</button>
+              <button @click="batchToggle('limit_up', false)" class="btn-remove">关闭涨停</button>
+              <button @click="batchToggle('cum_move', true)" class="btn-add">开启累计涨跌</button>
+              <button @click="selectedIds = []" class="btn-remove">取消选择</button>
             </div>
           </div>
 

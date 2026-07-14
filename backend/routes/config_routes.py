@@ -463,11 +463,8 @@ def test_wechat_push():
 @config_bp.route('/stock-monitor', methods=['GET'])
 def get_stock_monitor_config():
     try:
-        if os.path.exists(STOCK_MONITOR_CONFIG_FILE):
-            with open(STOCK_MONITOR_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                return jsonify({'success': True, 'data': config})
-        return jsonify({'success': True, 'data': {}})
+        from stock_price_monitor import load_config as load_stock_monitor_config
+        return jsonify({'success': True, 'data': load_stock_monitor_config()})
     except Exception as e:
         error_logger.error(f"获取股票监控配置失败: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")

@@ -428,7 +428,7 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
 def stock_price_loop():
     from data_collector import is_trading_day, is_trading_time
     from stock_price_feed import get_quotes
-    from stock_resolver import get_limit_pct
+    from stock_resolver import resolve_identifier, get_limit_pct
     logger.info('价格异动监控线程启动')
     while True:
         try:
@@ -439,17 +439,26 @@ def stock_price_loop():
                 time.sleep(interval); continue
             if not (is_trading_day(now) and is_trading_time(now)):
                 time.sleep(interval); continue
-            targets = [w for w in cfg.get('watchlist', [])
-                       if w.get('enabled') and w.get('type') in ('name', 'code') and w.get('resolved_code')]
+            targets = []  # [(code, name), ...]
+            for w in cfg.get('watchlist', []):
+                if not (w.get('enabled') and w.get('type') in ('name', 'code')):
+                    continue
+                code = (w.get('resolved_code') or '').strip()
+                name = w.get('resolved_name') or ''
+                if not code:
+                    # 现场解析:名字 -> 代码;纯代码 -> 补交易所前缀
+                    resolved = resolve_identifier(w.get('value', ''), hint=w.get('type'))
+                    if not resolved:
+                        continue
+                    name, code = resolved
+                targets.append((code, name or w.get('value', '')))
             if targets:
-                codes = [w['resolved_code'] for w in targets]
+                codes = [t[0] for t in targets]
                 quotes = get_quotes(codes)
-                for w in targets:
-                    code = w['resolved_code']
+                for code, name in targets:
                     q = quotes.get(code)
                     if not q:
                         continue
-                    name = w.get('resolved_name') or q.get('name') or code
                     try:
                         limit = get_limit_pct(code, name)
                         process_tick(code, name, q, cfg, limit)

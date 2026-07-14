@@ -74,8 +74,24 @@ export default {
       ],
       stockConfig: {
         enabled: false,
-        stocks: []
+        poll_interval_seconds: 25,
+        cooldown_minutes: 30,
+        watchlist: [],
       },
+      newWatch: { type: 'name', value: '' },
+      selectedIds: [],
+      PRICE_TYPES: [
+        { key: 'limit_up', label: '涨停触及', fields: [], defaults: {} },
+        { key: 'limit_down', label: '跌停触及', fields: [], defaults: {} },
+        { key: 'rapid_rise', label: '急速拉升', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
+        { key: 'rapid_drop', label: '急速打压', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
+        { key: 'cum_move', label: '累计大涨/大跌', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 3 } },
+        { key: 'spike_fade', label: '冲高回落', fields: [{ k: 'peak', label: '曾涨%' }, { k: 'back', label: '回落%' }], defaults: { peak: 3, back: 2 } },
+        { key: 'dip_rebound', label: '探底回升', fields: [{ k: 'trough', label: '曾跌%' }, { k: 'back', label: '反弹%' }], defaults: { trough: 3, back: 2 } },
+        { key: 'gap_open', label: '大幅高/低开', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 3 } },
+        { key: 'amplitude', label: '振幅过大', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 7 } },
+        { key: 'limit_break', label: '炸板/撬板', fields: [{ k: 'back', label: '回落%' }], defaults: { back: 1 } },
+      ],
       aiPrompt: '',
       aiDailyPrompt: '',
       bannedIPs: [],
@@ -138,11 +154,13 @@ export default {
           this.wechatConfig = { ...this.wechatConfig, ...wechatRes.data }
         }
         if (stockRes.success) {
-          this.stockConfig = { ...this.stockConfig, ...stockRes.data }
-          this.stockConfig.stocks = this.stockConfig.stocks.map(stock => ({
-            ...stock,
-            keywordsString: stock.keywords.join(', ')
-          }))
+          const d = stockRes.data || {}
+          this.stockConfig = {
+            enabled: d.enabled || false,
+            poll_interval_seconds: d.poll_interval_seconds || 25,
+            cooldown_minutes: d.cooldown_minutes || 30,
+            watchlist: d.watchlist || [],
+          }
         }
         if (promptRes.success) {
           this.aiPrompt = promptRes.data
@@ -374,42 +392,54 @@ export default {
       }
     },
 
-    addStock() {
-      this.stockConfig.stocks.push({
-        name: '',
-        code: '',
-        keywords: [],
-        keywordsString: '',
-        enabled: true
+    defaultPriceAlerts() {
+      const o = {}
+      this.PRICE_TYPES.forEach(t => {
+        o[t.key] = { enabled: true, ...(t.defaults || {}) }
       })
+      return o
     },
 
-    removeStock(index) {
-      this.stockConfig.stocks.splice(index, 1)
+    addWatchItem() {
+      const v = (this.newWatch.value || '').trim()
+      if (!v) { this.showToast('请输入内容', 'error'); return }
+      const item = {
+        id: Math.random().toString(36).slice(2, 12),
+        type: this.newWatch.type, value: v, enabled: true,
+      }
+      if (this.newWatch.type !== 'keyword') {
+        // 解析(名字->代码 / 代码补前缀)由后端轮询时完成;前端先存值与占位
+        item.resolved_name = this.newWatch.type === 'name' ? v : ''
+        item.resolved_code = this.newWatch.type === 'code' ? v : ''
+        item.price_alerts = JSON.parse(JSON.stringify(this.defaultPriceAlerts()))
+      }
+      this.stockConfig.watchlist.unshift(item)
+      this.newWatch.value = ''
     },
 
-    updateKeywords(index) {
-      const stock = this.stockConfig.stocks[index]
-      stock.keywords = stock.keywordsString.split(',').map(k => k.trim()).filter(k => k)
+    removeWatchItem(id) {
+      this.stockConfig.watchlist = this.stockConfig.watchlist.filter(w => w.id !== id)
+      this.selectedIds = this.selectedIds.filter(x => x !== id)
+    },
+
+    enabledCount(w) {
+      if (!w.price_alerts) return 0
+      return this.PRICE_TYPES.filter(t => w.price_alerts[t.key] && w.price_alerts[t.key].enabled).length
+    },
+
+    batchToggle(field, value) {
+      this.stockConfig.watchlist
+        .filter(w => this.selectedIds.includes(w.id) && w.price_alerts && w.price_alerts[field])
+        .forEach(w => { w.price_alerts[field].enabled = value })
     },
 
     async saveStockConfig() {
       this.showPasswordModal(async (password) => {
         try {
-          const config = {
-            ...this.stockConfig,
-            stocks: this.stockConfig.stocks.map(stock => ({
-              name: stock.name,
-              code: stock.code,
-              keywords: stock.keywords,
-              enabled: stock.enabled
-            })),
-            password: password
-          }
+          const config = { ...this.stockConfig, password: password }
           const response = await saveStockMonitorConfig(config)
           if (response.success) {
             this.showToast('股票监控配置保存成功', 'success')
-            await this.loadConfigs()
           } else {
             this.showToast(response.message || '保存失败', 'error')
           }
@@ -417,8 +447,7 @@ export default {
           if (error.response?.status === 401) {
             this.showToast('密码错误', 'error')
           } else {
-            const message = error.response?.data?.message || '保存失败'
-            this.showToast(message, 'error')
+            this.showToast(error.response?.data?.message || '保存失败', 'error')
           }
         }
       })
