@@ -2175,6 +2175,9 @@ button:active:not(:disabled) {
     right: auto;
     width: 100%;
     margin-bottom: 15px;
+    /* 清除桌面端浮动卡的 scale(0.9) + 左/右 transform-origin，
+       否则两张卡一张贴左一张贴右、各自 90% 宽，视觉上对不齐 */
+    transform: none;
   }
 
   .market-summary-panel {
