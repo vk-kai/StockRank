@@ -773,14 +773,16 @@
 }
 
 @media (max-width: 768px) {
-  .log-container {
-    padding: 10px;
+  .log-page {
+    padding: 12px;
   }
 
+  /* 清除桌面端 .log-header 的 padding-right:110px */
   .log-header {
     flex-direction: column;
     gap: 10px;
     align-items: stretch;
+    padding-right: 0;
   }
 
   .log-tabs {
@@ -788,7 +790,7 @@
     padding-bottom: 5px;
   }
 
-  .log-tab {
+  .tab-button {
     padding: 8px 12px;
     font-size: 13px;
     white-space: nowrap;
@@ -799,28 +801,60 @@
     gap: 10px;
   }
 
-  .log-search {
+  .search-input {
     width: 100%;
   }
 
-  .log-search input {
-    width: 100%;
-  }
-
+  /* 日志表 → 卡片流式布局：不再强制 min-width:800px 横滑 */
   .log-lines {
-    overflow-x: auto;
+    overflow: visible;
   }
 
-  .log-header-row,
+  .log-header-row {
+    display: none;
+  }
+
   .log-line {
-    min-width: 800px;
-    font-size: 11px;
-    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    align-items: flex-start;
+    margin-bottom: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
   }
 
-  .log-header-row.security-header,
-  .log-line.security-line {
-    min-width: 900px;
+  /* 各字段加中文标签（级别徽章 .log-level 不加） */
+  .log-timestamp::before,
+  .log-module::before,
+  .log-source::before,
+  .log-ip::before,
+  .log-attack::before,
+  .log-api::before,
+  .log-keyword::before,
+  .log-message::before {
+    color: #8ba4c7;
+    margin-right: 4px;
+  }
+  .log-timestamp::before { content: '时间 '; }
+  .log-module::before { content: '模块 '; }
+  .log-source::before { content: '来源 '; }
+  .log-ip::before { content: 'IP '; }
+  .log-attack::before { content: '类型 '; }
+  .log-api::before { content: '路径 '; }
+  .log-keyword::before { content: '关键词 '; }
+  .log-message::before { content: '消息 '; }
+
+  /* 消息允许换行（桌面为单行省略） */
+  .log-message {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .log-action {
+    align-self: flex-end;
   }
 
   .log-body {

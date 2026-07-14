@@ -539,8 +539,16 @@ export default {
 
 @media (max-width: 768px) {
   .house-kline-page { padding: 10px; }
-  .kline-header { flex-wrap: wrap; }
+  /* 清除桌面端 .kline-header 的 padding-right:130px */
+  .kline-header { flex-wrap: wrap; padding: 12px; }
   .kline-header h1 { font-size: 1.1rem; }
+  /* 数据集下拉 + 新增/删除按钮换行铺满 */
+  .kline-actions { flex-wrap: wrap; width: 100%; }
+  .ds-select { max-width: 100%; flex: 1 1 100%; }
+  /* 周期按钮允许换行并居中，避免桌面 padding:10px 30px 在窄屏溢出 */
+  .kline-controls { width: 100%; }
+  .period-buttons { flex-wrap: wrap; justify-content: center; }
+  .period-btn { padding: 8px 14px; font-size: 13px; }
   .form-grid { grid-template-columns: 1fr; }
   .frame-list { grid-template-columns: 1fr; }
   .main-chart { height: 500px; }

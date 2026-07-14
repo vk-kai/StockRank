@@ -2465,8 +2465,17 @@ export default {
 
 @media (max-width: 768px) {
   .market-map-page { padding: 6px; }
-  .mm-header { flex-direction: column; gap: 6px; text-align: center; }
+  .mm-header { flex-direction: column; gap: 8px; align-items: stretch; text-align: center; }
   .mm-header h1 { font-size: 1rem; }
+  .mm-header-left,
+  .mm-header-right { width: 100%; }
+  /* 搜索框铺满整行 */
+  .mm-search-wrap { flex: 1 1 100%; width: 100%; }
+  .mm-search { width: 100%; }
+  /* 右侧 7+ 控件允许换行；次要统计文本移动端隐藏以保持头部紧凑（数据仍可从图表/tooltip 看到） */
+  .mm-header-right { flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .mm-stats,
+  .mm-update { display: none; }
   .mm-chart-wrapper { min-height: 240px; }
 }
 </style>

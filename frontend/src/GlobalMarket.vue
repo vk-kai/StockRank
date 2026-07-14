@@ -587,6 +587,8 @@ export default {
     flex-direction: column;
     gap: 10px;
     text-align: center;
+    /* 清除桌面端 padding:15px 130px 15px 20px 的 130px 右内边距 */
+    padding: 12px;
   }
   .gm-header h1 {
     font-size: 1.1rem;

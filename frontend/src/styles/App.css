@@ -2632,3 +2632,38 @@ button:active:not(:disabled) {
   }
 }
 
+/* ===== 移动端排版统一修复（@media 768px 汇总，置于文件末尾以覆盖桌面端遗留规则）===== */
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 12px;
+  }
+
+  /* 清除桌面端 .title-actions 的 margin-right:110px，消除按钮组右侧死空白、居中错乱 */
+  .title-actions {
+    margin-right: 0;
+  }
+
+  /* controls 信息条：指数条 / AI环境条各占满一行居中，不再与“最后更新/倒计时”混排换行 */
+  .controls {
+    gap: 10px;
+  }
+  .market-index-strip,
+  .ai-chain-strip {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+
+  /* 成交额行：单项保持 nowrap，容器居中并允许在项目间断行，避免“2.69万亿29”粘连 */
+  .market-turnover-row {
+    justify-content: center;
+    flex-wrap: wrap;
+    column-gap: 14px;
+    row-gap: 2px;
+  }
+
+  /* AI分析按钮放开桌面端 min-width:140px，避免窄屏顶死宽度、其余按钮被迫提前换行 */
+  .ai-analyze-button {
+    min-width: 0;
+  }
+}
+

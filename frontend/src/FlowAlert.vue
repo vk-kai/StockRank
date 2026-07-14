@@ -387,4 +387,25 @@ export default {
 .fa-more { text-align: center; margin-top: 10px; }
 .fa-more button { background: #1a2236; color: #8ba4c7; border: 1px solid rgba(148,163,184,.25); border-radius: 4px; padding: 8px 20px; cursor: pointer; font-size: 13px; }
 .fa-footnote { text-align: center; margin-top: 24px; font-size: 11px; color: #6a7a99; line-height: 1.8; }
+
+/* ===== 移动端适配（原先完全没有 @media）===== */
+@media (max-width: 768px) {
+  .fa-page { padding: 12px; }
+  /* 清除桌面端 .fa-header 的 padding-right:110px；标题与按钮组换行 */
+  .fa-header { padding-right: 0; flex-wrap: wrap; gap: 10px; }
+  .fa-header h1 { font-size: 18px; }
+  .fa-header-right { width: 100%; display: flex; gap: 8px; }
+  .fa-header-right .fa-run-btn,
+  .fa-header-right .fa-test-btn { flex: 1; margin-left: 0; }
+  /* 汇总说明文字另起一行，不再挤在日期后 */
+  .fa-snapshot span { display: block; margin-left: 0; margin-top: 4px; }
+  /* 6 个统计卡 3 列 × 2 行 */
+  .fa-stats { gap: 8px; }
+  .fa-stat { flex: 1 1 30%; min-width: 0; padding: 10px 6px; }
+  .fa-stat-num { font-size: 20px; }
+  /* 卡片头部允许换行，板块名超长省略 */
+  .fa-card-head { flex-wrap: wrap; gap: 6px 10px; }
+  .fa-sector { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fa-card-meta { gap: 8px 16px; }
+}
 </style>
