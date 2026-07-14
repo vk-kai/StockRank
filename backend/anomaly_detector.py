@@ -554,7 +554,7 @@ def _format_message(f):
         elif h['type'] == 'spike':
             detail = f"（相比 {h['prev_time']} 变化 {h['delta']:+.2f}亿）"
         elif h['type'] == 'streak':
-            detail = f"（连续 {h['streak']} 个时点≈{h['minutes']}分钟，累计 {h['cum_net_flow']:+.2f}亿）"
+            detail = f"（连续 {h['streak']} 个时点≈{h['minutes']}分钟，累计 {h['cum_delta']:+.2f}亿）"
         elif h['type'] == 'divergence':
             detail = f"（价量方向背离）"
         lines.append(f"• {h['label']}{detail}")

@@ -260,46 +260,109 @@
 
           <div class="stock-list">
             <div class="stock-header">
-              <h3>监控列表(三类型,每条只填一个)</h3>
+              <h3>监控列表（每个股可独立开关：价格监控 / 新闻监控）</h3>
             </div>
 
-            <div class="stock-item" style="align-items:center;">
-              <select v-model="newWatch.type" style="padding:6px;">
-                <option value="name">按股票名字</option>
-                <option value="code">按代码</option>
-                <option value="keyword">按关键词(新闻)</option>
-              </select>
-              <input type="text" v-model="newWatch.value"
-                     :placeholder="newWatch.type==='keyword' ? '关键词(新闻命中)' : (newWatch.type==='name' ? '股票名字' : '股票代码')"
-                     style="flex:1;" @keyup.enter="addWatchItem">
-              <button @click="addWatchItem" class="btn-add">＋ 添加</button>
+            <!-- 添加：模式切换 -->
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+              <button :class="['btn-add', newWatch.mode==='stock'?'':'btn-ghost']" @click="switchWatchMode('stock')">📈 添加个股</button>
+              <button :class="['btn-add', newWatch.mode==='keyword'?'':'btn-ghost']" @click="switchWatchMode('keyword')">📰 添加新闻关键词</button>
+            </div>
+
+            <!-- 个股：实时搜索，只能从结果选 -->
+            <div v-if="newWatch.mode==='stock'" class="stock-item" style="flex-direction:column;align-items:stretch;position:relative;">
+              <div style="display:flex;gap:10px;align-items:center;width:100%;">
+                <input type="text" v-model="newWatch.search"
+                       placeholder="输入股票名字或代码搜索（如 长电科技 / 600584），只能从结果里点选"
+                       style="flex:1;"
+                       @input="onSearchInput"
+                       @keydown="onSearchKeydown"
+                       @focus="newWatch.showResults = true"
+                       @blur="blurSearch">
+                <span v-if="newWatch.searching" style="color:#8ba4c7;font-size:12px;white-space:nowrap;">搜索中…</span>
+              </div>
+              <div v-if="newWatch.showResults && (newWatch.results.length || (newWatch.search && !newWatch.searching))"
+                   style="position:absolute;top:44px;left:0;right:0;max-height:260px;overflow-y:auto;background:#16263b;border:1px solid rgba(255,255,255,.12);border-radius:6px;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.4);">
+                <div v-if="newWatch.search && !newWatch.results.length && !newWatch.searching" style="padding:10px 12px;color:#8ba4c7;font-size:13px;">无匹配结果</div>
+                <div v-for="(r, idx) in newWatch.results" :key="r.code"
+                     @mousedown.prevent="selectStock(r)"
+                     :style="{padding:'8px 12px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',background:newWatch.highlight===idx?'rgba(24,144,255,.25)':'transparent',color:'#cfe0f5',fontSize:'13px',borderBottom:'1px solid rgba(255,255,255,.05)'}">
+                  <span>{{ r.name }}</span>
+                  <span style="color:#6f8fb3;">{{ r.code }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 关键词：自由输入 -->
+            <div v-else class="stock-item" style="align-items:center;">
+              <input type="text" v-model="newWatch.keyword"
+                     placeholder="新闻关键词（任意文本，不受搜索限制，如 纳斯达克中国金龙）"
+                     style="flex:1;" @keyup.enter="addKeywordItem">
+              <button @click="addKeywordItem" class="btn-add">＋ 添加关键词</button>
             </div>
 
             <div v-for="w in stockConfig.watchlist" :key="w.id" class="stock-item" style="flex-direction:column;align-items:stretch;">
               <div style="display:flex;gap:10px;align-items:center;width:100%;">
                 <input type="checkbox" :value="w.id" v-model="selectedIds">
-                <span :style="{padding:'2px 8px',borderRadius:'10px',fontSize:'12px',background:w.type==='name'?'rgba(24,144,255,.2)':w.type==='code'?'rgba(82,196,26,.2)':'rgba(250,140,22,.2)',color:w.type==='name'?'#40a9ff':w.type==='code'?'#52c41a':'#fa8c16'}">{{ {name:'名字',code:'代码',keyword:'关键词'}[w.type] }}</span>
+                <span :style="{padding:'2px 8px',borderRadius:'10px',fontSize:'12px',background:w.type==='keyword'?'rgba(250,140,22,.2)':'rgba(24,144,255,.2)',color:w.type==='keyword'?'#fa8c16':'#40a9ff'}">{{ w.type==='keyword' ? '关键词' : '个股' }}</span>
                 <strong style="flex:1;">{{ w.value }}</strong>
+                <span v-if="w.type!=='keyword' && w.resolved_code" style="color:#6f8fb3;font-size:12px;">{{ w.resolved_code }}</span>
                 <div class="toggle-switch small">
                   <input type="checkbox" v-model="w.enabled" :id="'w-'+w.id">
                   <label :for="'w-'+w.id"></label>
                 </div>
                 <button @click="removeWatchItem(w.id)" class="btn-remove">删除</button>
               </div>
-              <details v-if="w.price_alerts" style="width:100%;margin-top:6px;">
-                <summary>价格预警设置 ({{ enabledCount(w) }}/{{ PRICE_TYPES.length }} 开启)</summary>
-                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;">
-                  <div v-for="t in PRICE_TYPES" :key="t.key" style="background:rgba(255,255,255,.04);padding:4px 8px;border-radius:4px;font-size:13px;">
-                    <label style="display:flex;align-items:center;gap:4px;">
-                      <input type="checkbox" v-model="w.price_alerts[t.key].enabled"> {{ t.label }}
+
+              <!-- 个股：价格监控 + 新闻监控 双区块 -->
+              <template v-if="w.type !== 'keyword'">
+                <div style="width:100%;margin-top:8px;border-top:1px dashed rgba(255,255,255,.08);padding-top:8px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <label style="font-size:13px;color:#a9bfd8;">
+                      💹 价格监控
+                      <span style="color:#6f8fb3;font-size:11px;">（{{ enabledCount(w) }}/{{ PRICE_TYPES.length }} 项细项）</span>
                     </label>
-                    <span v-for="f in t.fields" :key="f.k" style="margin-left:10px;font-size:12px;">
-                      {{ f.label }}<input type="number" step="0.1" v-model.number="w.price_alerts[t.key][f.k]" style="width:56px;margin-left:4px;">
+                    <div class="toggle-switch small">
+                      <input type="checkbox" v-model="w.price_monitor" :id="'pm-'+w.id">
+                      <label :for="'pm-'+w.id"></label>
+                    </div>
+                  </div>
+                  <details v-if="w.price_monitor && w.price_alerts" style="margin-top:6px;">
+                    <summary style="font-size:12px;color:#8ba4c7;cursor:pointer;">价格预警细项设置</summary>
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;">
+                      <div v-for="t in PRICE_TYPES" :key="t.key" style="background:rgba(255,255,255,.04);padding:4px 8px;border-radius:4px;font-size:13px;">
+                        <label style="display:flex;align-items:center;gap:4px;">
+                          <input type="checkbox" v-model="w.price_alerts[t.key].enabled"> {{ t.label }}
+                        </label>
+                        <span v-for="f in t.fields" :key="f.k" style="margin-left:10px;font-size:12px;">
+                          {{ f.label }}<input type="number" step="0.1" v-model.number="w.price_alerts[t.key][f.k]" style="width:56px;margin-left:4px;">
+                        </span>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <div style="width:100%;margin-top:8px;border-top:1px dashed rgba(255,255,255,.08);padding-top:8px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <label style="font-size:13px;color:#a9bfd8;">📰 新闻监控（新闻命中关键词即提醒）</label>
+                    <div class="toggle-switch small">
+                      <input type="checkbox" v-model="w.news_alerts.enabled" :id="'na-'+w.id" @change="onNewsToggle(w)">
+                      <label :for="'na-'+w.id"></label>
+                    </div>
+                  </div>
+                  <div v-if="w.news_alerts.enabled" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                    <span v-for="(kw, idx) in (w.news_alerts.keywords||[])" :key="idx"
+                          style="background:rgba(250,140,22,.18);color:#ffb066;padding:2px 8px;border-radius:10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;">
+                      {{ kw }}
+                      <span @click="removeKeyword(w, idx)" style="cursor:pointer;opacity:.7;font-weight:bold;">×</span>
                     </span>
+                    <input type="text" v-model="w._newKeyword" placeholder="加关键词…" style="width:120px;padding:3px 6px;font-size:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#cfe0f5;border-radius:4px;" @keyup.enter="addKeyword(w)">
+                    <button @click="addKeyword(w)" class="btn-add" style="padding:2px 10px;font-size:12px;">+</button>
                   </div>
                 </div>
-              </details>
-              <div v-else style="color:#8ba4c7;font-size:12px;margin-top:4px;">新闻关键词监控(无价格预警)</div>
+              </template>
+
+              <!-- 关键词类型：纯新闻 -->
+              <div v-else style="color:#8ba4c7;font-size:12px;margin-top:4px;">📰 新闻关键词监控（无价格监控）</div>
             </div>
 
             <div v-if="selectedIds.length" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">

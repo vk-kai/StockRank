@@ -263,7 +263,7 @@ def cleanup_old_news():
         result['reason'] = f"清理失败: {str(e)}"
         return result
 
-def get_recent_news(page=1, page_size=40, importance=None):
+def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_time=None):
     ensure_news_dir()
     
     all_news = []
@@ -311,7 +311,17 @@ def get_recent_news(page=1, page_size=40, importance=None):
         
         if importance is not None:
             unique_news = [news for news in unique_news if news.get('importance') == importance]
-        
+
+        # 时间区间过滤(按新闻发布时间 time 字段,Unix 秒;半开区间 [start, end))
+        if start_time is not None or end_time is not None:
+            def _in_range(t):
+                if start_time is not None and t < start_time:
+                    return False
+                if end_time is not None and t >= end_time:
+                    return False
+                return True
+            unique_news = [news for news in unique_news if _in_range(get_sort_time(news))]
+
         total_count = len(unique_news)
         
         start_index = (page - 1) * page_size

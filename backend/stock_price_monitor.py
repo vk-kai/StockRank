@@ -302,21 +302,57 @@ def _gen_id():
     return uuid.uuid4().hex[:12]
 
 
+def _normalize_watch_item(it):
+    """确保单个 watchlist item 同时带 price_alerts(name/code 适用)与 news_alerts。
+
+    每个 item 最终都有 news_alerts:{enabled, keywords};name/code 类型补 price_alerts。
+    这样既能兼容旧 watchlist(无 news_alerts),也让新闻匹配链路读到统一结构。
+    """
+    if not isinstance(it, dict):
+        return it
+    it = dict(it)
+    typ = it.get('type', 'name')
+    # 价格告警:name/code 类型补默认(若缺);keyword 类型不挂(沿用旧行为,loop 会过滤)
+    if typ in ('name', 'code'):
+        if not it.get('price_alerts'):
+            it['price_alerts'] = json.loads(json.dumps(DEFAULT_ALERTS_CFG))
+        it.setdefault('price_monitor', True)  # 价格监控总开关
+    # 新闻告警:所有类型都补全结构
+    na = it.get('news_alerts')
+    if not isinstance(na, dict):
+        name = (it.get('resolved_name') or (it.get('value', '') if typ != 'keyword' else '') or '').strip()
+        code = (it.get('resolved_code') or '').strip()
+        if typ == 'keyword':
+            base_kw = [it.get('value', '')] if it.get('value') else []
+            enabled = True
+        else:
+            base_kw = [k for k in [name, code] if k]
+            enabled = False
+        it['news_alerts'] = {'enabled': enabled, 'keywords': base_kw}
+    else:
+        na.setdefault('enabled', False)
+        if not isinstance(na.get('keywords'), list):
+            na['keywords'] = []
+    return it
+
+
 def migrate_legacy_config(raw):
     """旧 {enabled, stocks:[{enabled,name,code,keywords}]} → 新 watchlist schema。
 
-    新 schema(含 watchlist)直接透传;旧 schema 转换:
-      - 有 name/code 的当 name 类型 + 默认全开 price_alerts
-      - 仅 keywords 的当 keyword 类型(无 price_alerts)
+    新 schema(含 watchlist)透传并补全 news_alerts;旧 schema 转换:
+      - 有 name/code 的当 name 类型 + 默认全开 price_alerts + news_alerts(继承旧 keywords)
+      - 仅 keywords 的当 keyword 类型(无 price_alerts,news_alerts 用 keywords)
+    每个 watchlist item 最终都带 news_alerts,部分带 price_alerts。
     """
     if not isinstance(raw, dict):
         raw = {}
     if 'watchlist' in raw:
+        watchlist = [_normalize_watch_item(it) for it in raw.get('watchlist', [])]
         return {
             'enabled': raw.get('enabled', True),
             'poll_interval_seconds': raw.get('poll_interval_seconds', 25),
             'cooldown_minutes': raw.get('cooldown_minutes', 30),
-            'watchlist': raw.get('watchlist', []),
+            'watchlist': watchlist,
         }
 
     watchlist = []
@@ -325,19 +361,25 @@ def migrate_legacy_config(raw):
             continue
         name = (s.get('name') or '').strip()
         code = (s.get('code') or '').strip()
-        keywords = s.get('keywords') or []
+        keywords = [k.strip() for k in (s.get('keywords') or []) if k and k.strip()]
         if name or code:
+            kws = []
+            for k in [name, code] + keywords:
+                if k and k not in kws:
+                    kws.append(k)
             watchlist.append({
                 'id': _gen_id(), 'type': 'name', 'value': name or code, 'enabled': True,
                 'resolved_name': name, 'resolved_code': code,
+                'price_monitor': True,
                 'price_alerts': json.loads(json.dumps(DEFAULT_ALERTS_CFG)),
+                'news_alerts': {'enabled': bool(keywords), 'keywords': kws},
             })
         elif keywords:
             for kw in keywords:
-                if kw.strip():
-                    watchlist.append({
-                        'id': _gen_id(), 'type': 'keyword', 'value': kw.strip(), 'enabled': True,
-                    })
+                watchlist.append({
+                    'id': _gen_id(), 'type': 'keyword', 'value': kw, 'enabled': True,
+                    'news_alerts': {'enabled': True, 'keywords': [kw]},
+                })
     return {
         'enabled': raw.get('enabled', True),
         'poll_interval_seconds': 25,
@@ -441,7 +483,8 @@ def stock_price_loop():
                 time.sleep(interval); continue
             targets = []  # [(code, name), ...]
             for w in cfg.get('watchlist', []):
-                if not (w.get('enabled') and w.get('type') in ('name', 'code')):
+                if not (w.get('enabled') and w.get('type') in ('name', 'code')
+                        and w.get('price_monitor', True)):
                     continue
                 code = (w.get('resolved_code') or '').strip()
                 name = w.get('resolved_name') or ''

@@ -66,13 +66,33 @@ SUGGEST_URL = 'https://suggest3.sinajs.cn/suggest/type=11,12,13,14,15&key={kw}&n
 
 
 def parse_sina_suggest(text):
-    """解析新浪 suggest3 文本 -> [(name, prefixed_code), ...]。
+    """解析新浪 suggest3 响应 -> [(name, prefixed_code), ...]。
 
-    每行形如 '类别\\t名称\\t代码\\t拼音'(代码已含交易所前缀,如 sh600519)。
+    兼容两种返回格式:
+    - 新(comma): var suggestdata="字段0,字段1,...;字段0,..."; 其中 index3=带前缀代码(sh600030), index4=名称
+    - 旧(tab): 逐行 '类别\\t名称\\t代码\\t拼音'
     """
+    import re
     rows = []
     if not text:
         return rows
+    # 新格式: 提取 var suggestdata="..." 内的条目(分号分隔)
+    m = re.search(r'var\s+suggestdata="([^"]*)"', text)
+    if m:
+        for entry in m.group(1).split(';'):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split(',')
+            code = parts[3].strip().lower() if len(parts) > 3 else ''
+            name = parts[4].strip() if len(parts) > 4 else ''
+            if not name and len(parts) > 6:
+                name = parts[6].strip()
+            if name and code:
+                rows.append((name, code))
+        if rows:
+            return rows
+    # 旧格式(tab 分隔,逐行)
     for line in text.splitlines():
         parts = line.split('\t')
         if len(parts) >= 3:
@@ -128,15 +148,15 @@ class NameCodeCache:
                 logger.warning(f'名字代码缓存落盘失败: {e}')
 
 
-_default_cache = None
+_default_cache_instance = None
 
 
 def _default_cache():
-    global _default_cache
-    if _default_cache is None:
+    global _default_cache_instance
+    if _default_cache_instance is None:
         from config import CONFIG_DIR
-        _default_cache = NameCodeCache(path=os.path.join(CONFIG_DIR, 'name_code_cache.json'))
-    return _default_cache
+        _default_cache_instance = NameCodeCache(path=os.path.join(CONFIG_DIR, 'name_code_cache.json'))
+    return _default_cache_instance
 
 
 def _default_fetcher(keyword):
@@ -148,11 +168,39 @@ def _default_fetcher(keyword):
             'User-Agent': get_random_user_agent(),
             'Referer': 'https://finance.sina.com.cn/',
         }, timeout=8)
-        resp.encoding = 'utf-8'
+        resp.encoding = 'gbk'   # 新浪 suggest 返回 GBK,非 utf-8
         return resp.text
     except Exception as e:
         logger.warning(f'新浪 suggest 请求失败({keyword}): {e}')
         return ''
+
+
+def search_candidates(keyword, limit=10, fetcher='__default__'):
+    """搜索关键词,返回候选列表 [{name, code, board}, ...](按 code 去重,限 limit 条)。
+
+    用于"添加个股"下拉搜索:只能从结果里选择,不能自填。
+    纯代码也能搜(suggest 对数字同样返回结果,如输入"600519"搜到贵州茅台)。
+    fetcher=None 时返回 [](便于纯逻辑测试)。
+    """
+    keyword = (keyword or '').strip()
+    if not keyword:
+        return []
+    if fetcher == '__default__':
+        fetcher = _default_fetcher
+    rows = parse_sina_suggest(fetcher(keyword)) if fetcher else []
+    seen = set()
+    out = []
+    for name, code in rows:
+        if not code or code in seen:
+            continue
+        # 只保留 A 股(sh/sz/bj);过滤掉港股/美股/指数等 suggest 噪声
+        if code[:2] not in ('sh', 'sz', 'bj'):
+            continue
+        seen.add(code)
+        out.append({'name': name, 'code': code, 'board': classify_board(code)})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def resolve_identifier(value, hint, fetcher='__default__', cache=None):

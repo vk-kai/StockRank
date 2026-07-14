@@ -10,6 +10,7 @@ import {
   testWechatConnection,
   getStockMonitorConfig,
   saveStockMonitorConfig,
+  searchStocks,
   getAIPrompt,
   saveAIPrompt,
   getAIDailyPrompt,
@@ -78,8 +79,17 @@ export default {
         cooldown_minutes: 30,
         watchlist: [],
       },
-      newWatch: { type: 'name', value: '' },
+      newWatch: {
+        mode: 'stock',          // 'stock' 实时搜索选个股 | 'keyword' 自由关键词
+        keyword: '',            // 关键词模式输入(不受搜索限制)
+        search: '',             // 股票搜索输入(只能从结果选)
+        results: [],            // 搜索结果 [{name, code, board}]
+        searching: false,
+        highlight: -1,          // 键盘上下选高亮索引
+        showResults: false,     // 下拉是否展开
+      },
       selectedIds: [],
+      _searchTimer: null,
       PRICE_TYPES: [
         { key: 'limit_up', label: '涨停触及', fields: [], defaults: {} },
         { key: 'limit_down', label: '跌停触及', fields: [], defaults: {} },
@@ -161,6 +171,7 @@ export default {
             cooldown_minutes: d.cooldown_minutes || 30,
             watchlist: d.watchlist || [],
           }
+          this.normalizeWatchlist()
         }
         if (promptRes.success) {
           this.aiPrompt = promptRes.data
@@ -400,21 +411,107 @@ export default {
       return o
     },
 
-    addWatchItem() {
-      const v = (this.newWatch.value || '').trim()
-      if (!v) { this.showToast('请输入内容', 'error'); return }
-      const item = {
+    // ---- 添加个股:实时搜索,只能从结果选 ----
+    onSearchInput() {
+      this.newWatch.highlight = -1
+      const kw = (this.newWatch.search || '').trim()
+      this.newWatch.showResults = true
+      if (this._searchTimer) clearTimeout(this._searchTimer)
+      if (!kw) { this.newWatch.results = []; this.newWatch.searching = false; return }
+      this.newWatch.searching = true
+      this._searchTimer = setTimeout(async () => {
+        try {
+          const res = await searchStocks(kw)
+          this.newWatch.results = (res && res.success ? res.data : []) || []
+        } catch (e) {
+          this.newWatch.results = []
+        } finally {
+          this.newWatch.searching = false
+        }
+      }, 280)
+    },
+    onSearchKeydown(e) {
+      const n = this.newWatch.results.length
+      if (!n) return
+      if (e.key === 'ArrowDown') { e.preventDefault(); this.newWatch.highlight = (this.newWatch.highlight + 1) % n }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); this.newWatch.highlight = (this.newWatch.highlight - 1 + n) % n }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = this.newWatch.results[this.newWatch.highlight]; if (it) this.selectStock(it) }
+      else if (e.key === 'Escape') { this.newWatch.showResults = false }
+    },
+    selectStock(item) {
+      if (!item || !item.code) return
+      // 去重:已存在同代码则提示
+      if (this.stockConfig.watchlist.some(w => (w.resolved_code || '') === item.code)) {
+        this.showToast(`${item.name} 已在监控列表`, 'error'); return
+      }
+      const watchItem = {
         id: Math.random().toString(36).slice(2, 12),
-        type: this.newWatch.type, value: v, enabled: true,
+        type: 'name', value: item.name, enabled: true,
+        resolved_name: item.name, resolved_code: item.code,
+        price_monitor: true,
+        price_alerts: JSON.parse(JSON.stringify(this.defaultPriceAlerts())),
+        news_alerts: { enabled: true, keywords: [item.name, item.code] },
       }
-      if (this.newWatch.type !== 'keyword') {
-        // 解析(名字->代码 / 代码补前缀)由后端轮询时完成;前端先存值与占位
-        item.resolved_name = this.newWatch.type === 'name' ? v : ''
-        item.resolved_code = this.newWatch.type === 'code' ? v : ''
-        item.price_alerts = JSON.parse(JSON.stringify(this.defaultPriceAlerts()))
+      this.stockConfig.watchlist.unshift(watchItem)
+      this.newWatch.search = ''
+      this.newWatch.results = []
+      this.newWatch.showResults = false
+      this.newWatch.highlight = -1
+      this.showToast(`已添加 ${item.name}(${item.code})`, 'success')
+    },
+    addKeywordItem() {
+      const kw = (this.newWatch.keyword || '').trim()
+      if (!kw) { this.showToast('请输入关键词', 'error'); return }
+      if (this.stockConfig.watchlist.some(w => w.type === 'keyword' && w.value === kw)) {
+        this.showToast('该关键词已存在', 'error'); return
       }
-      this.stockConfig.watchlist.unshift(item)
-      this.newWatch.value = ''
+      this.stockConfig.watchlist.unshift({
+        id: Math.random().toString(36).slice(2, 12),
+        type: 'keyword', value: kw, enabled: true,
+        news_alerts: { enabled: true, keywords: [kw] },
+      })
+      this.newWatch.keyword = ''
+      this.showToast(`已添加关键词「${kw}」`, 'success')
+    },
+    addWatchItem() { // 兼容保留:当前模式触发对应添加
+      if (this.newWatch.mode === 'keyword') this.addKeywordItem()
+    },
+    switchWatchMode(m) {
+      this.newWatch.mode = m
+      this.newWatch.results = []
+      this.newWatch.showResults = false
+    },
+    blurSearch() { setTimeout(() => { this.newWatch.showResults = false }, 180) },
+
+    // ---- 新闻关键词管理 ----
+    addKeyword(w) {
+      const kw = (w._newKeyword || '').trim()
+      if (!kw) return
+      if (!w.news_alerts) w.news_alerts = { enabled: true, keywords: [] }
+      if (!w.news_alerts.keywords.includes(kw)) w.news_alerts.keywords.push(kw)
+      w._newKeyword = ''
+    },
+    removeKeyword(w, idx) {
+      if (w.news_alerts && w.news_alerts.keywords) w.news_alerts.keywords.splice(idx, 1)
+    },
+    onNewsToggle(w) {
+      // 开启新闻监控时确保有默认关键词(名字+代码)
+      if (w.news_alerts && w.news_alerts.enabled && (!w.news_alerts.keywords || !w.news_alerts.keywords.length)) {
+        const base = [w.resolved_name, w.resolved_code].filter(x => x)
+        if (base.length) w.news_alerts.keywords = base
+      }
+    },
+
+    // 兜底:确保已加载的 watchlist item 都有 news_alerts/price_monitor 结构
+    normalizeWatchlist() {
+      for (const w of this.stockConfig.watchlist) {
+        if (!w.news_alerts || typeof w.news_alerts !== 'object') {
+          const base = w.type === 'keyword' ? [w.value].filter(x => x)
+            : [w.resolved_name, w.resolved_code].filter(x => x)
+          w.news_alerts = { enabled: w.type === 'keyword', keywords: base }
+        }
+        if (w.type !== 'keyword' && w.price_monitor === undefined) w.price_monitor = true
+      }
     },
 
     removeWatchItem(id) {
@@ -436,7 +533,12 @@ export default {
     async saveStockConfig() {
       this.showPasswordModal(async (password) => {
         try {
-          const config = { ...this.stockConfig, password: password }
+          // 剥离临时 UI 字段(_newKeyword),只持久化数据
+          const watchlist = this.stockConfig.watchlist.map(w => {
+            const { _newKeyword, ...rest } = w
+            return rest
+          })
+          const config = { ...this.stockConfig, watchlist, password: password }
           const response = await saveStockMonitorConfig(config)
           if (response.success) {
             this.showToast('股票监控配置保存成功', 'success')

@@ -417,11 +417,17 @@ export async function getLatestData() {
  * @param {string} importance - 重要性筛选 (可选，如 '3' 表示重要新闻)
  * @returns {Promise<Object>} 新闻数据
  */
-export async function getNews(page = 1, pageSize = 40, importance = null) {
+export async function getNews(page = 1, pageSize = 40, importance = null, timeRange = null) {
   try {
     const params = { page: page, page_size: pageSize }
     if (importance) {
       params.importance = importance
+    }
+    if (timeRange && timeRange.start != null) {
+      params.start_time = timeRange.start
+    }
+    if (timeRange && timeRange.end != null) {
+      params.end_time = timeRange.end
     }
     const response = await apiClient.get('/news', {
       params: params
@@ -566,6 +572,17 @@ export async function saveStockMonitorConfig(config) {
   } catch (error) {
     console.error('保存股票监控配置失败:', error)
     throw error
+  }
+}
+
+export async function searchStocks(keyword) {
+  // 添加个股实时搜索:返回新浪 suggest 候选 [{name, code, board}]
+  try {
+    const response = await apiClient.get('/config/stock-search', { params: { kw: keyword } })
+    return response.data
+  } catch (error) {
+    console.error('股票搜索失败:', error)
+    return { success: false, data: [] }
   }
 }
 

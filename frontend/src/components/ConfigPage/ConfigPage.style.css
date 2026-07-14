@@ -288,6 +288,13 @@
   background: rgba(76, 175, 80, 0.3);
 }
 
+/* 未激活的模式切换按钮(配合 .btn-add 复用) */
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: #8ba4c7;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
 .stock-item {
   display: grid;
   grid-template-columns: 1fr 2fr auto;

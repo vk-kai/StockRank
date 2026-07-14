@@ -73,8 +73,15 @@
         </div>
       </div>
       <div class="score-charts-wrapper">
-        <div ref="scoreTrendChart" class="score-trend-chart"></div>
+        <div ref="scoreTrendChart" class="score-trend-chart" title="双击柱子可筛选该时段的新闻"></div>
         <div ref="scorePieChart" class="score-pie-chart"></div>
+      </div>
+      <div class="bucket-hint">💡 双击柱状图可筛选对应时段的新闻</div>
+      <div class="bucket-filter-bar" v-if="activeBucket">
+        <span class="bucket-filter-chip">
+          🕐 已筛选「{{ activeBucket }}」时段<span v-if="bucketTotal"> · 共 {{ bucketTotal }} 条</span>
+          <button class="bucket-filter-clear" @click="clearBucketFilter" title="清除时段筛选">✕ 清除</button>
+        </span>
       </div>
     </div>
 
@@ -145,7 +152,8 @@
     </div>
 
     <div class="no-news" v-if="!loading && newsList.length === 0">
-      <p>暂无新闻数据</p>
+      <p>{{ activeBucket ? `「${activeBucket}」时段暂无新闻` : '暂无新闻数据' }}</p>
+      <button v-if="activeBucket" @click="clearBucketFilter" style="margin-top:8px;padding:6px 16px;background:rgba(79,195,247,.15);border:1px solid rgba(79,195,247,.5);color:#4fc3f7;border-radius:6px;cursor:pointer;">✕ 清除时段筛选</button>
     </div>
 
     <button 

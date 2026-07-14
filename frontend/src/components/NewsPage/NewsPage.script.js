@@ -44,7 +44,12 @@ export default {
       scoreTrendChart: null,
       scorePieChart: null,
       // 是否仅显示盘中（隐藏盘前盘后），默认只看盘中
-      onlyMarketHours: true
+      onlyMarketHours: true,
+      // 双击柱子筛选：当前选中的时段标签(null=未筛选)
+      activeBucket: null,
+      bucketTotal: 0,
+      _chartLastClick: { idx: -1, t: 0 },
+      _currentXAxis: []
     }
   },
   computed: {
@@ -157,25 +162,29 @@ export default {
         this.newsList = []
         
         const importance = this.showOnlyImportant ? '3' : null
-        const response = await getNews(1, this.pageSize, importance)
+        const range = this.activeBucket ? this.bucketToTimeRange(this.activeBucket) : null
+        const response = await getNews(1, this.pageSize, importance, range)
         if (response.success) {
           const newNews = response.data
-          
-          if (newNews.length > 0 && this.enableNotification) {
+
+          if (newNews.length > 0 && this.enableNotification && !range) {
             const latestId = newNews[0]?.id
-            if (latestId && latestId !== this.lastNewsId) {
+            // lastNewsId===null 为首屏基线,只记录不弹窗,避免打开页面即误通知
+            // 时段筛选结果不触发桌面通知(非"最新到达"语义)
+            if (latestId && latestId !== this.lastNewsId && this.lastNewsId !== null) {
               const latestNews = newNews.find(n => n.id === latestId)
               if (latestNews) {
                 this.sendNotification(latestNews)
               }
             }
           }
-          
+
           this.newsList = newNews
-          if (newNews.length > 0) {
+          if (newNews.length > 0 && !range) {
             this.lastNewsId = newNews[0].id
           }
-          
+          this.bucketTotal = range ? (response.pagination?.total || newNews.length) : 0
+
           if (response.pagination) {
             this.total = response.pagination.total
             this.hasMore = response.pagination.has_more
@@ -235,6 +244,23 @@ export default {
       if (!this.scoreTrendChart) {
         this.scoreTrendChart = echarts.init(chartDom)
       }
+      // 绑定柱子点击(模拟双击:350ms 内同一柱第二次点击视为双击 → 筛选该时段)
+      if (!this._trendClickBound) {
+        this._trendClickBound = true
+        this.scoreTrendChart.on('click', (params) => {
+          if (!params || params.componentType !== 'series' || params.seriesType !== 'bar') return
+          const idx = params.dataIndex
+          const nowTs = Date.now()
+          const last = this._chartLastClick
+          if (last.idx === idx && (nowTs - last.t) < 350) {
+            this._chartLastClick = { idx: -1, t: 0 }
+            const label = this._currentXAxis[idx]
+            if (label) this.selectBucket(label)
+          } else {
+            this._chartLastClick = { idx, t: nowTs }
+          }
+        })
+      }
       
       const data = this.scoreTrendData
       if (!data || !data.x_axis || data.x_axis.length === 0) {
@@ -268,6 +294,14 @@ export default {
         negativeData = filteredIndices.map(i => data.series.negative[i])
         neutralData = filteredIndices.map(i => data.series.neutral[i])
       }
+
+      // 记录当前轴(供双击点击事件 dataIndex → 桶标签)
+      this._currentXAxis = xAxisData
+      // 选中柱高亮(双击筛选后,给该柱加亮边框)
+      const selectedIdx = this.activeBucket ? xAxisData.indexOf(this.activeBucket) : -1
+      const selBorder = { borderColor: '#fbbf24', borderWidth: 2 }
+      // 移动端窄屏判定(用于轴标签稀疏化)
+      const isNarrow = (chartDom.clientWidth || 600) < 480
       
       // 共识区：红绿相间斜条纹
       const stripedPattern = {
@@ -291,9 +325,11 @@ export default {
         const neg = negativeData[idx]
         const minVal = Math.min(pos, neg)
         const sign = pos >= neg ? 1 : -1
+        const itemStyle = { color: stripedPattern }
+        if (idx === selectedIdx) Object.assign(itemStyle, selBorder)
         return {
           value: minVal * sign,
-          itemStyle: { color: stripedPattern }
+          itemStyle: itemStyle
         }
       })
       // 净差区（赢家颜色）：|diff|，标注较多方数量
@@ -304,9 +340,11 @@ export default {
         const isPositiveWin = pos > neg
         const sign = isPositiveWin ? 1 : -1
         const color = isPositiveWin ? '#ef4444' : (diff === 0 ? '#9ca3af' : '#22c55e')
+        const itemStyle = { color: color }
+        if (idx === selectedIdx) Object.assign(itemStyle, selBorder)
         return {
           value: diff * sign,
-          itemStyle: { color: color }
+          itemStyle: itemStyle
         }
       })
       // 共识区标签：较少方数量
@@ -357,9 +395,10 @@ export default {
           data: xAxisData,
           axisLabel: {
             color: '#aaa',
-            interval: 0,
-            rotate: 45,
-            fontSize: 11
+            // 窄屏(移动端)自动稀疏化标签,避免 37 个 10 分钟桶标签挤成一团
+            interval: isNarrow ? 'auto' : 0,
+            rotate: isNarrow ? 55 : 45,
+            fontSize: isNarrow ? 10 : 11
           },
           axisLine: { lineStyle: { color: '#444' } }
         },
@@ -427,9 +466,59 @@ export default {
 
     toggleMarketHours() {
       this.onlyMarketHours = !this.onlyMarketHours
+      // 切到"仅盘中"后,若选中的是盘前/盘后(已隐藏)则清除筛选并刷新列表
+      if (this.activeBucket && this.onlyMarketHours &&
+          (this.activeBucket === '盘前' || this.activeBucket === '盘后')) {
+        this.activeBucket = null
+        this.bucketTotal = 0
+        this.renderScoreTrendChart()
+        this.renderScorePieChart()
+        this.fetchNews()
+        return
+      }
       this.renderScoreTrendChart()
       this.renderScorePieChart()
     },
+
+    // ===== 双击柱子筛选：桶标签 → 今日时间窗(Unix 秒,半开区间) =====
+    bucketToTimeRange(label) {
+      const now = new Date()
+      const y = now.getFullYear(), mo = now.getMonth(), d = now.getDate()
+      const u = (h, mi, s) => Math.floor(new Date(y, mo, d, h, mi, s || 0).getTime() / 1000)
+      if (label === '盘前') return { start: u(0, 0, 0), end: u(9, 0, 0) }
+      if (label === '盘后') return { start: u(15, 0, 0), end: u(23, 59, 59) }
+      const parts = String(label).split(':')
+      const hh = parseInt(parts[0], 10) || 0
+      const mm = parseInt(parts[1], 10) || 0
+      const start = u(hh, mm, 0)
+      let endH = hh, endMin = mm + 10
+      if (endMin >= 60) { endMin -= 60; endH += 1 }
+      if (endH >= 24) { endH = 23; endMin = 59 }   // 末桶兜底
+      return { start, end: u(endH, endMin, 0) }
+    },
+
+    selectBucket(label) {
+      if (!label) return
+      // 再次双击同一柱子 → 取消筛选
+      if (this.activeBucket === label) {
+        this.clearBucketFilter()
+        return
+      }
+      this.activeBucket = label
+      this.isSearching = false
+      this.searchKeyword = ''
+      this.renderScoreTrendChart()   // 立即高亮选中柱
+      this.fetchNews()
+    },
+
+    clearBucketFilter() {
+      if (!this.activeBucket) return
+      this.activeBucket = null
+      this.bucketTotal = 0
+      this.renderScoreTrendChart()
+      this.fetchNews()
+    },
+
 
     // 从computed获取过滤后的统计（与折线图同步）
     getFilteredPieData() {
@@ -567,12 +656,8 @@ export default {
       if (saved !== null) {
         this.enableNotification = saved === 'true'
       }
-      
-      if (browserGranted && !this.enableNotification) {
-        this.enableNotification = true
-        localStorage.setItem('newsNotificationEnabled', 'true')
-      }
-      
+
+      // 不再因"浏览器已授权"就把用户手动关闭的开关改回开启(否则破坏"关闭通知后不提醒")。
       if (!browserGranted && this.enableNotification) {
         this.enableNotification = false
         localStorage.setItem('newsNotificationEnabled', 'false')
@@ -610,6 +695,7 @@ export default {
       
       try {
         this.isSearching = true
+        this.activeBucket = null   // 搜索与时段筛选互斥：开始搜索即清除时段筛选
         this.loading = true
         this.error = null
         this.currentSearchPage = 1
@@ -878,7 +964,8 @@ export default {
         } else {
           this.currentApiPage++
           const importance = this.showOnlyImportant ? '3' : null
-          const response = await getNews(this.currentApiPage, this.pageSize, importance)
+          const range = this.activeBucket ? this.bucketToTimeRange(this.activeBucket) : null
+          const response = await getNews(this.currentApiPage, this.pageSize, importance, range)
           if (response.success) {
             const newNews = response.data
             this.newsList = [...this.newsList, ...newNews]

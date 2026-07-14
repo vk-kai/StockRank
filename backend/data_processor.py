@@ -1465,7 +1465,7 @@ def _fetch_ai_chain_sina():
     headers = {'User-Agent': get_random_user_agent(), 'Referer': 'https://finance.sina.com.cn/'}
     try:
         resp = requests.get('https://hq.sinajs.cn/list=' + ','.join(c[3] for c in targets),
-                            headers=headers, timeout=10)
+                            headers=headers, timeout=6)
         resp.encoding = 'gbk'
         code_to_key = {c[3]: c[0] for c in targets}
         for line in resp.text.strip().split('\n'):
@@ -1533,22 +1533,22 @@ def _fetch_ai_chain_eastmoney():
         'secids': ','.join(c[4] for c in targets)
     }
     data = None
-    for attempt in range(3):
+    for attempt in range(2):   # 快速失败:最多2次,避免反爬断连时长时间阻塞页面
         headers = {
             'User-Agent': get_random_user_agent(),
             'Accept': 'application/json, text/plain, */*',
             'Referer': 'https://quote.eastmoney.com/'
         }
         try:
-            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=4)
             resp.raise_for_status()
             data = resp.json()
             break
         except Exception as e:
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))   # 1.5s、3s 退避后换 UA 重试
+            if attempt == 0:
+                time.sleep(0.4)   # 换 UA 再试一次
             else:
-                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(重试3次仍失败): {e}")
+                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(快速失败): {e}")
     if data:
         diff = data.get('data', {}).get('diff', []) if data.get('data') else []
         em_map = {item.get('f12'): item for item in diff}
@@ -1588,7 +1588,7 @@ def _fetch_ai_chain_us10y():
         url = (f"https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
                f"daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve"
                f"&field_tdr_date_value={year}&page&_format=csv")
-        resp = requests.get(url, headers={'User-Agent': get_random_user_agent()}, timeout=12)
+        resp = requests.get(url, headers={'User-Agent': get_random_user_agent()}, timeout=8)
         resp.raise_for_status()
         lines = [ln for ln in resp.text.splitlines() if ln.strip()]
         col = None
@@ -1623,11 +1623,31 @@ def _fetch_ai_chain_us10y():
 
 
 def get_ai_chain_indicators():
-    """AI产业链外部环境温度计：7个领先指标，三源+缓存兜底，预算 impact 与综合环境灯。
+    """AI产业链外部环境温度计：7个领先指标，三源并发+缓存兜底，预算 impact 与综合环境灯。
+    三源并发拉取,整体最坏 ~10s 内返回(任一源超时即放弃,用已得数据+缓存兜底)。
     返回 {indicators:[...], summary:{...}, update_time, source}，失败返回 None。"""
-    sina_data = _fetch_ai_chain_sina()       # 美股3 + 美元指数
-    em_data = _fetch_ai_chain_eastmoney()    # 韩股2
-    us10y = _fetch_ai_chain_us10y()          # 美债10年(日线)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import TimeoutError as _FutTimeout
+    ex = ThreadPoolExecutor(max_workers=3)
+    fut_map = {
+        ex.submit(_fetch_ai_chain_sina): 'sina',        # 美股3 + 美元指数
+        ex.submit(_fetch_ai_chain_eastmoney): 'em',     # 韩股2
+        ex.submit(_fetch_ai_chain_us10y): 'us10y',      # 美债10年(日线)
+    }
+    results = {'sina': {}, 'em': {}, 'us10y': None}
+    try:
+        for fut in as_completed(fut_map, timeout=10):
+            kind = fut_map[fut]
+            try:
+                results[kind] = fut.result()
+            except Exception as e:
+                error_logger.warning(f"AI链数据源({kind})异常: {e}")
+    except _FutTimeout:
+        error_logger.warning("AI链部分数据源超时,使用已得数据 + 缓存兜底")
+    ex.shutdown(wait=False)   # 不等待仍在跑的线程,尽快返回
+    sina_data = results['sina'] or {}
+    em_data = results['em'] or {}
+    us10y = results['us10y']
 
     raw_map = {}
     for k, v in em_data.items():

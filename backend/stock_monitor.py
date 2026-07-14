@@ -31,24 +31,54 @@ def load_stock_monitor_config():
 
 def check_news_for_stocks(news_item):
     config = load_stock_monitor_config()
-    
+
     if not config or not config.get('enabled'):
         return []
-    
-    stocks = config.get('stocks', [])
+
     matched_stocks = []
-    
+
     title = news_item.get('title', '')
     content = news_item.get('content', '')
     text = f"{title} {content}"
-    
-    for stock in stocks:
+
+    # 优先读新 schema: watchlist[].news_alerts(只对 news_alerts.enabled=true 的项匹配)
+    watchlist = config.get('watchlist', [])
+    if watchlist:
+        for w in watchlist:
+            if not w.get('enabled'):
+                continue
+            na = w.get('news_alerts')
+            if isinstance(na, dict):
+                if not na.get('enabled'):
+                    continue
+                keywords = na.get('keywords') or []
+            elif w.get('type') == 'keyword':
+                # 旧 watchlist 无 news_alerts 字段:keyword 类型按 value 兜底匹配
+                keywords = [w.get('value', '')]
+            else:
+                continue
+            stock_name = (w.get('resolved_name') or
+                          (w.get('value', '') if w.get('type') != 'keyword' else '')).strip()
+            stock_code = (w.get('resolved_code') or '').strip()
+            for keyword in keywords:
+                kw = (keyword or '').strip()
+                if kw and kw in text:
+                    matched_stocks.append({
+                        'name': stock_name or w.get('value', ''),
+                        'code': stock_code,
+                        'keyword': kw,
+                    })
+                    break
+        return matched_stocks
+
+    # 回退:旧 schema stocks[].keywords
+    for stock in config.get('stocks', []):
         if not stock.get('enabled'):
             continue
-        
+
         stock_name = stock.get('name', '')
         keywords = stock.get('keywords', [])
-        
+
         for keyword in keywords:
             if keyword in text:
                 matched_stocks.append({
@@ -57,7 +87,7 @@ def check_news_for_stocks(news_item):
                     'keyword': keyword
                 })
                 break
-    
+
     return matched_stocks
 
 def should_push_news(news_item):

@@ -18,24 +18,26 @@ def get_news():
         page = request.args.get('page', '1', type=int)
         page_size = request.args.get('page_size', '40', type=int)
         importance = request.args.get('importance', None, type=str)
-        
+        start_time = request.args.get('start_time', None, type=int)
+        end_time = request.args.get('end_time', None, type=int)
+
         page = max(1, page)
         page_size = max(1, min(100, page_size))
-        
+
         if importance is not None:
             importance = importance.strip()
             if not importance:
                 importance = None
-        
-        result = get_recent_news(page, page_size, importance)
-        
+
+        result = get_recent_news(page, page_size, importance, start_time, end_time)
+
         # 附加AI分析评分
         ai_cache = load_news_analysis_cache()
         for item in result['news']:
             cached = ai_cache.get(str(item.get('id')), {})
             item['ai_score'] = cached.get('score')
             item['ai_label'] = cached.get('label')
-        
+
         return jsonify({
             'success': True,
             'data': result['news'],
@@ -47,7 +49,9 @@ def get_news():
                 'has_more': result['page'] < result['total_pages']
             },
             'filter': {
-                'importance': importance
+                'importance': importance,
+                'start_time': start_time,
+                'end_time': end_time
             },
             'timestamp': datetime.now().astimezone().isoformat()
         })

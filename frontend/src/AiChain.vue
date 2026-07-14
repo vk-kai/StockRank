@@ -61,9 +61,10 @@
       </div>
     </section>
 
-    <div class="aic-empty" v-if="!loading && !indicators.length">暂无数据</div>
+    <div class="aic-empty" v-if="!loading && !indicators.length">暂无数据（数据源暂不可用，稍后将自动重试）</div>
     <div class="aic-loading" v-if="loading && !data">
-      <div class="aic-spinner"></div>加载中...
+      <template v-if="!slowHint"><div class="aic-spinner"></div>加载中...</template>
+      <div v-else class="aic-slow">数据获取较慢，部分指标（韩股）可能来自缓存或暂不可用，已为您加载可用的数据…</div>
     </div>
 
     <footer class="aic-footer">
@@ -88,7 +89,7 @@ export default {
   name: 'AiChain',
   components: { SecurityAlert },
   data() {
-    return { loading: false, data: null, timer: null }
+    return { loading: false, data: null, timer: null, slowHint: false, _watchdog: null }
   },
   computed: {
     indicators() { return this.data?.indicators || [] },
@@ -108,11 +109,20 @@ export default {
   },
   beforeUnmount() {
     clearInterval(this.timer)
+    if (this._watchdog) clearTimeout(this._watchdog)
   },
   methods: {
     goBack() { this.$router.push('/') },
     async fetchData(showLoading) {
       this.loading = showLoading
+      if (showLoading) {
+        this.slowHint = false
+        if (this._watchdog) clearTimeout(this._watchdog)
+        // 8s 仍未返回则切换为"部分数据"提示，避免一直转圈
+        this._watchdog = setTimeout(() => {
+          if (this.loading && !this.data) this.slowHint = true
+        }, 8000)
+      }
       try {
         const res = await getAiChain()
         if (res.success) this.data = res.data
@@ -120,6 +130,7 @@ export default {
         console.error('AI链指标获取失败:', e)
       } finally {
         this.loading = false
+        if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null }
       }
     },
     impactClass(it) {
@@ -333,6 +344,13 @@ export default {
   margin-right: 8px;
 }
 @keyframes aic-spin { to { transform: rotate(360deg); } }
+
+.aic-slow {
+  color: #faad14;
+  line-height: 1.6;
+  max-width: 520px;
+  margin: 0 auto;
+}
 
 .aic-footer {
   text-align: center;

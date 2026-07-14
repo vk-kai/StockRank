@@ -21,7 +21,7 @@
           <button class="yuntu-button" @click="guardedGotoMarketMap"><IconTreemap />大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
-          <button class="flow-alert-button" @click="openFlowAlertModal">
+          <button class="flow-alert-button" :class="{ 'has-new': hasUnreadAnomaly }" @click="openFlowAlertModal">
             🚨 异动预警
             <span class="unread-dot" v-if="hasUnreadAnomaly" title="有新异动"></span>
           </button>

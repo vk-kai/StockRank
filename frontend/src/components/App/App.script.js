@@ -1345,12 +1345,9 @@ export default {
         this.enableNotification = true
         localStorage.setItem('homeNewsNotificationEnabled', 'true')
       }
-      
-      if (browserGranted && !this.enableNotification) {
-        this.enableNotification = true
-        localStorage.setItem('homeNewsNotificationEnabled', 'true')
-      }
-      
+
+      // 注意:此处不再因"浏览器已授权"就把用户手动关闭的开关改回开启——
+      // 那样会破坏"关闭通知后不提醒"。只在浏览器权限未授予时校正为关闭。
       if (!browserGranted && this.enableNotification) {
         this.enableNotification = false
         localStorage.setItem('homeNewsNotificationEnabled', 'false')

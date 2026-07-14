@@ -48,6 +48,15 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(rows[0], ('贵州茅台', 'sh600519'))
         self.assertEqual(len(rows), 2)
 
+    def test_parse_sina_suggest_comma_format(self):
+        # 新浪 suggest3 当前实际返回格式: var suggestdata="字段0,..,name,..;...",分号分隔多条
+        sample = ('var suggestdata="中信证券,11,600030,sh600030,中信证券,,中信证券,99,1,ESG,,;'
+                  '中信银行,11,601998,sh601998,中信银行,,中信银行,99,1,ESG,,";')
+        rows = parse_sina_suggest(sample)
+        self.assertEqual(rows[0], ('中信证券', 'sh600030'))
+        self.assertEqual(rows[1], ('中信银行', 'sh601998'))
+        self.assertEqual(len(rows), 2)
+
     def test_resolve_name_uses_injected_fetcher_and_caches(self):
         calls = {'n': 0}
 

@@ -460,6 +460,22 @@ def test_wechat_push():
         return jsonify({'success': False, 'status_code': None, 'error': str(e)}), 500
 
 # ==================== 股票监控配置 ====================
+@config_bp.route('/stock-search', methods=['GET'])
+def stock_search():
+    """添加个股时的实时搜索:返回新浪 suggest 候选(只 A 股,去重)。
+    前端只能从结果里选择,不能自填名字/代码;关键词不受此限制。"""
+    try:
+        kw = (request.args.get('kw') or request.args.get('q') or '').strip()
+        if not kw:
+            return jsonify({'success': True, 'data': []})
+        from stock_resolver import search_candidates
+        data = search_candidates(kw, limit=10)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        error_logger.error(f"股票搜索失败: {e}")
+        system_logger.error(f"API错误 [/api/config/stock-search]: {str(e)}")
+        return jsonify({'success': False, 'message': '股票搜索失败'}), 500
+
 @config_bp.route('/stock-monitor', methods=['GET'])
 def get_stock_monitor_config():
     try:
