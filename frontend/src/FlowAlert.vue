@@ -66,26 +66,32 @@
         </div>
 
         <div v-else class="fa-timeline stagger-in">
-          <div class="fa-card" v-for="(f, idx) in shownFindings" :key="idx" :style="{ '--i': Math.min(idx, 15) }">
+          <div class="fa-card" v-for="(f, idx) in shownFindings" :key="idx"
+               :class="{ 'fa-card-stock': f.kind === 'stock' }"
+               :style="{ '--i': Math.min(idx, 15) }">
             <div class="fa-card-head">
               <span class="fa-time">{{ f.date }} {{ f.time }}</span>
-              <span class="fa-sector">{{ f.sector }}</span>
+              <span class="fa-sector">{{ f.kind === 'stock' ? (f.name + ' ' + f.code) : f.sector }}</span>
               <span class="fa-rank" v-if="f.is_rank_top">★ 榜首</span>
-              <span class="fa-rank-id" v-else>#{{ f.rank }}</span>
+              <span class="fa-rank-id" v-else-if="f.kind !== 'stock'">#{{ f.rank }}</span>
+              <span class="fa-stock-tag" v-else>📈 价格异动</span>
             </div>
             <div class="fa-card-meta">
-              <span class="fa-net" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
+              <span v-if="f.kind !== 'stock'" class="fa-net" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
                 净流入 {{ fmt(f.net_flow) }} 亿
               </span>
               <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
                 {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
               </span>
+              <span v-if="f.kind === 'stock'" class="fa-price">现价 {{ fmt(f.price) }}</span>
               <span class="fa-lead" v-if="f.lead_stock">龙头 {{ f.lead_stock }}<template v-if="f.lead_change != null"> {{ f.lead_change >= 0 ? '+' : '' }}{{ fmt(f.lead_change) }}%</template></span>
             </div>
             <div class="fa-hits">
-              <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', `hit-${h.type}`]" :title="hitDetail(h)">
-                {{ hitIcon(h.type) }} {{ h.label }}
-                <span class="fa-hit-sub">{{ hitSub(h) }}</span>
+              <span v-for="(h, i) in f.hits" :key="i"
+                    :class="['fa-hit', f.kind === 'stock' ? 'hit-price' : `hit-${h.type}`]"
+                    :title="f.kind === 'stock' ? '' : hitDetail(h)">
+                {{ hitIcon(f.kind === 'stock' ? 'price' : h.type) }} {{ h.label }}
+                <span class="fa-hit-sub" v-if="f.kind !== 'stock'">{{ hitSub(h) }}</span>
               </span>
             </div>
           </div>
@@ -139,7 +145,8 @@ const DIM_META = {
   divergence: { icon: '⚖️', label: '背离' },
   surge:      { icon: '💥', label: '巨量' },
   spike:      { icon: '⚡', label: '突变' },
-  streak:     { icon: '🔁', label: '连续' }
+  streak:     { icon: '🔁', label: '连续' },
+  price:      { icon: '📈', label: '价格异动' }
 }
 
 export default {
@@ -163,12 +170,17 @@ export default {
     sectorCount() { return new Set(this.findings.map(f => f.sector)).size },
     dimCount() {
       const c = {}
-      this.findings.forEach(f => f.hits.forEach(h => { c[h.type] = (c[h.type] || 0) + 1 }))
+      this.findings.forEach(f => {
+        if (f.kind === 'stock') { c.price = (c.price || 0) + 1; return }
+        f.hits.forEach(h => { c[h.type] = (c[h.type] || 0) + 1 })
+      })
       return c
     },
     filteredFindings() {
       const list = this.filter === 'all' ? this.findings
-        : this.findings.filter(f => f.hits.some(h => h.type === this.filter))
+        : this.filter === 'price'
+          ? this.findings.filter(f => f.kind === 'stock')
+          : this.findings.filter(f => f.kind !== 'stock' && f.hits.some(h => h.type === this.filter))
       return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
     },
     shownFindings() { return this.filteredFindings.slice(0, this.showLimit) }
@@ -365,6 +377,12 @@ export default {
 .hit-surge { background: rgba(255,77,79,.18); border-color: rgba(255,120,117,.5); }
 .hit-spike { background: rgba(250,140,22,.18); border-color: rgba(255,169,64,.5); }
 .hit-streak { background: rgba(6,182,212,.18); border-color: rgba(34,211,238,.5); }
+/* 价格异动(个股) */
+.chip-price.active { background: #52c41a; border-color: #73d13d; }
+.hit-price { background: rgba(82,196,26,.18); border-color: rgba(82,196,26,.5); }
+.fa-card-stock { border-left-color: #52c41a; }
+.fa-stock-tag { font-size: 11px; color: #52c41a; border: 1px solid #52c41a; border-radius: 10px; padding: 1px 8px; }
+.fa-price { color: #c0cce0; }
 .fa-more { text-align: center; margin-top: 10px; }
 .fa-more button { background: #1a2236; color: #8ba4c7; border: 1px solid rgba(148,163,184,.25); border-radius: 4px; padding: 8px 20px; cursor: pointer; font-size: 13px; }
 .fa-footnote { text-align: center; margin-top: 24px; font-size: 11px; color: #6a7a99; line-height: 1.8; }
