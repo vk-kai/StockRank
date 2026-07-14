@@ -66,19 +66,6 @@ export async function getGlobalIndices() {
 }
 
 /**
- * 获取全球主要股市指数的当日分时线（东财 trends2）
- */
-export async function getGlobalIntraday() {
-  try {
-    const response = await apiClient.get('/flow/global-intraday', { timeout: 25000 })
-    return response.data
-  } catch (error) {
-    console.error('获取全球指数分时失败:', error)
-    throw error
-  }
-}
-
-/**
  * 获取AI产业链外部环境温度计（7个领先指标 + 综合环境灯）
  */
 export async function getAiChain() {

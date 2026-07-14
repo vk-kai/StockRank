@@ -59,7 +59,7 @@
 
 <script>
 import * as echarts from 'echarts'
-import { getGlobalIndices, getGlobalIntraday } from './services/apiService'
+import { getGlobalIndices } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 // 英文国家名 → 中文映射（覆盖世界地图主要国家）
@@ -239,15 +239,39 @@ export default {
     },
 
     async fetchIntraday() {
+      const list = this.indices
+      if (!list.length) return
       this.intradayLoading = true
       try {
-        const res = await getGlobalIntraday()
-        if (res.success) {
-          this.intraday = res.data.indices || []
-          this.intradayUpdatedAt = res.data.update_time || ''
-        }
+        // 前端直连东方财富 trends2（该接口已开 CORS：Access-Control-Allow-Origin: *）。
+        // 用访客自己的 IP 抓，服务器 IP 不碰东财，规避反爬封禁。单只失败不影响其它。
+        const fetched = await Promise.all(list.map(async ix => {
+          try {
+            const url = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(ix.code)}&fields1=f1,f2&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1`
+            const res = await fetch(url)
+            if (!res.ok) return null
+            const body = await res.json()
+            const trends = body && body.data && body.data.trends
+            if (!Array.isArray(trends) || !trends.length) return null
+            const series = []
+            for (const line of trends) {
+              const parts = line.split(',')
+              if (parts.length < 2) continue
+              const price = parseFloat(parts[1])
+              if (Number.isNaN(price)) continue
+              const t = parts[0]
+              series.push({ t: t.length >= 16 ? t.slice(11, 16) : t, price })
+            }
+            if (!series.length) return null
+            return { code: ix.code, name: ix.name, region: ix.region, series }
+          } catch (e) {
+            return null
+          }
+        }))
+        this.intraday = fetched.filter(Boolean)
+        this.intradayUpdatedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       } catch (e) {
-        console.error('获取全球指数分时失败', e)
+        console.error('前端获取分时失败', e)
       } finally {
         this.intradayLoading = false
       }
@@ -301,20 +325,6 @@ export default {
       // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
 
-      // 主要金融中心之间的流动连线（用各指数实际经纬度，缺坐标的自动跳过）
-      const hub = {}
-      list.forEach(i => { hub[i.code] = [i.lng, i.lat] })
-      const H = code => hub[code]
-      const linePairs = [
-        ['100.NDX', '100.FTSE'], ['100.FTSE', '100.GDAXI'], ['100.GDAXI', '1.000001'],
-        ['1.000001', '100.HSI'], ['100.HSI', '100.N225'], ['100.N225', '100.KS11'],
-        ['100.NDX', '1.000001'], ['100.NDX', '100.N225']
-      ]
-      const lineData = linePairs
-        .map(([a, b]) => [H(a), H(b)])
-        .filter(p => p[0] && p[1])
-        .map(p => ({ coords: p }))
-
       this.chart.setOption({
         backgroundColor: 'transparent',
         tooltip: {
@@ -355,16 +365,7 @@ export default {
           silent: false
         },
         series: [
-          // 0) 金融中心流动连线（带尾迹飞行动效）
-          {
-            type: 'lines',
-            coordinateSystem: 'geo',
-            zlevel: 1,
-            effect: { show: true, period: 5, trailLength: 0.5, symbol: 'arrow', symbolSize: 5, color: '#5ad8ff' },
-            lineStyle: { color: '#3a7bd5', width: 1, opacity: 0.45, curveness: 0.25 },
-            data: lineData
-          },
-          // 1) 脉冲散点（涟漪环）—— 各指数涨跌气泡，常驻脉冲
+          // 0) 脉冲散点（涟漪环）—— 各指数涨跌气泡，常驻脉冲
           {
             type: 'effectScatter',
             coordinateSystem: 'geo',

@@ -11,7 +11,7 @@ from data_processor import (
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
-    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices, get_global_indices_intraday, get_ai_chain_indicators,
+    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices, get_ai_chain_indicators,
     get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
@@ -55,23 +55,6 @@ def global_indices():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/global-indices]: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@flow_bp.route('/global-intraday', methods=['GET'])
-def global_intraday():
-    """获取全球主要指数当日分时线（东财 trends2），用于全球股市地图下方的分时图。
-    并发抓取约20只指数，单只失败不影响其它。"""
-    try:
-        data = get_global_indices_intraday()
-        if data:
-            return jsonify({'success': True, 'data': data})
-        return jsonify({'success': False, 'error': '获取全球指数分时数据失败'}), 500
-    except Exception as e:
-        error_msg = f"全球指数分时接口错误: {str(e)}"
-        error_logger.error(error_msg)
-        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
-        system_logger.error(f"API错误 [/api/flow/global-intraday]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
