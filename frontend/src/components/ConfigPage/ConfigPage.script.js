@@ -40,8 +40,13 @@ export default {
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
         { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
         { id: 'security', name: 'IP黑名单', icon: '🛡️' },
-        { id: 'anomaly', name: '异动检测', icon: '🚨' }
+        { id: 'anomaly', name: '异动检测', icon: '🚨' },
+        { id: 'notify', name: '桌面通知', icon: '🔔' }
       ],
+      // 全局桌面通知设置（与 services/notificationManager 共享 localStorage key）
+      notifyEnabled: true,
+      notifySoundMode: 'all',
+      notifyPermission: 'default',
       aiConfig: {
         enabled: false,
         api_url: '',
@@ -137,10 +142,70 @@ export default {
   mounted() {
     this.loadConfigs()
     this.loadAnomalyConfig()
+    this.loadNotifySettings()
   },
   methods: {
     goBack() {
       this.$router.go(-1)
+    },
+
+    // ===== 桌面通知（全局唯一设置入口；触发由 services/notificationManager 负责）=====
+    loadNotifySettings() {
+      this.notifyEnabled = localStorage.getItem('newsNotificationEnabled') !== 'false'
+      const sm = localStorage.getItem('newsSoundMode')
+      this.notifySoundMode = ['none', 'important', 'all'].includes(sm) ? sm : 'all'
+      if (typeof Notification === 'undefined') this.notifyPermission = 'unsupported'
+      else this.notifyPermission = Notification.permission
+    },
+    notifyPermissionLabel() {
+      return ({ granted: '已允许', denied: '已被拒绝', default: '未授权', unsupported: '浏览器不支持' })[this.notifyPermission] || '未知'
+    },
+    onToggleNotify() {
+      // v-model 已翻转 notifyEnabled，这里持久化；开启时若未授权则请求权限
+      localStorage.setItem('newsNotificationEnabled', this.notifyEnabled ? 'true' : 'false')
+      if (this.notifyEnabled && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        this.requestNotifyPermission()
+      } else if (!this.notifyEnabled) {
+        this.showToast('已关闭桌面通知', 'info')
+      } else if (this.notifyPermission === 'granted') {
+        this.showToast('已开启桌面通知', 'success')
+      }
+    },
+    onNotifySoundChange() {
+      localStorage.setItem('newsSoundMode', this.notifySoundMode)
+      this.showToast('提醒方式已保存', 'success')
+    },
+    async requestNotifyPermission() {
+      if (typeof Notification === 'undefined') {
+        this.notifyPermission = 'unsupported'
+        this.showToast('浏览器不支持通知', 'error')
+        return
+      }
+      const res = await Notification.requestPermission()
+      this.notifyPermission = res
+      if (res !== 'granted') {
+        this.notifyEnabled = false
+        localStorage.setItem('newsNotificationEnabled', 'false')
+        this.showToast('未授权通知权限，请在浏览器地址栏左侧“锁”图标里允许通知', 'error')
+      } else {
+        this.showToast('通知权限已授予', 'success')
+      }
+    },
+    testNotify() {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        this.showToast('请先授权通知权限', 'error')
+        return
+      }
+      try {
+        const n = new Notification('🔔 测试通知', {
+          body: '新闻 / 资金异动到达时会这样提醒你（任意页面都生效）',
+          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A8%BF.png'
+        })
+        n.onclick = () => { window.focus(); n.close() }
+        this.showToast('已发送测试通知', 'success')
+      } catch (e) {
+        this.showToast('发送失败：' + e.message, 'error')
+      }
     },
 
     async loadConfigs() {

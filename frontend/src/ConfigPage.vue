@@ -524,6 +524,42 @@
           </div>
         </div>
       </div>
+
+      <div v-if="activeTab === 'notify'" class="config-section">
+        <h2>🔔 桌面通知（全局唯一设置）</h2>
+        <div class="config-form">
+          <div class="form-group">
+            <label>开启桌面通知</label>
+            <div class="toggle-switch">
+              <input type="checkbox" v-model="notifyEnabled" @change="onToggleNotify" id="notify-enabled">
+              <label for="notify-enabled"></label>
+            </div>
+            <span class="hint">新闻与资金异动到达时弹桌面提醒，<b>任意页面都生效</b>（由全局通知服务统一触发，与当前所在页面无关）。</span>
+          </div>
+
+          <div class="form-group">
+            <label>浏览器权限状态</label>
+            <span class="hint">
+              当前：<b>{{ notifyPermissionLabel() }}</b> ·
+              <a href="javascript:void(0)" @click="requestNotifyPermission" style="color:#4fc3f7;">重新授权</a>
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label>提醒方式</label>
+            <select v-model="notifySoundMode" @change="onNotifySoundChange">
+              <option value="all">全部提醒（含音效）</option>
+              <option value="important">仅重要（含音效）</option>
+              <option value="none">静音（只弹窗不响）</option>
+            </select>
+            <span class="hint">控制是否播放提示音，不影响是否弹窗。仅作用于“新闻”类通知；资金异动默认带音效。</span>
+          </div>
+
+          <div class="form-actions">
+            <button @click="testNotify" class="btn-secondary">🔔 发送测试通知</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="password-modal" v-if="passwordModal.show" @click.self="closePasswordModal">

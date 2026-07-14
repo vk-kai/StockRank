@@ -20,7 +20,6 @@ export default {
       pageSize: 40,
       hasMore: true,
       total: 0,
-      enableNotification: true,
       lastNewsId: null,
       showOnlyImportant: false,
       threadStatus: {},
@@ -110,7 +109,6 @@ export default {
     }
   },
   mounted() {
-    this.loadNotificationState()
     this.loadFilterState()
     this.fetchNews()
     this.loadScoreSummary()
@@ -167,18 +165,7 @@ export default {
         if (response.success) {
           const newNews = response.data
 
-          if (newNews.length > 0 && this.enableNotification && !range) {
-            const latestId = newNews[0]?.id
-            // lastNewsId===null 为首屏基线,只记录不弹窗,避免打开页面即误通知
-            // 时段筛选结果不触发桌面通知(非"最新到达"语义)
-            if (latestId && latestId !== this.lastNewsId && this.lastNewsId !== null) {
-              const latestNews = newNews.find(n => n.id === latestId)
-              if (latestNews) {
-                this.sendNotification(latestNews)
-              }
-            }
-          }
-
+          // 桌面通知改由全局 notificationManager 统一负责（任意页面都提醒），这里只渲染列表
           this.newsList = newNews
           if (newNews.length > 0 && !range) {
             this.lastNewsId = newNews[0].id
@@ -644,26 +631,6 @@ export default {
       }, 1000)
     },
 
-    loadNotificationState() {
-      if (!('Notification' in window)) {
-        this.enableNotification = false
-        return
-      }
-      
-      const saved = localStorage.getItem('newsNotificationEnabled')
-      const browserGranted = Notification.permission === 'granted'
-      
-      if (saved !== null) {
-        this.enableNotification = saved === 'true'
-      }
-
-      // 不再因"浏览器已授权"就把用户手动关闭的开关改回开启(否则破坏"关闭通知后不提醒")。
-      if (!browserGranted && this.enableNotification) {
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-      }
-    },
-
     loadFilterState() {
       const saved = localStorage.getItem('newsShowOnlyImportant')
       if (saved !== null) {
@@ -729,90 +696,6 @@ export default {
     clearSearch() {
       this.searchKeyword = ''
       this.fetchNews()
-    },
-
-    toggleNotification() {
-      if (!this.enableNotification) {
-        this.enableNotification = true
-        localStorage.setItem('newsNotificationEnabled', 'true')
-        this.requestNotificationPermission()
-      } else {
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-      }
-    },
-
-    async requestNotificationPermission() {
-      if (!('Notification' in window)) {
-        alert('您的浏览器不支持系统通知功能')
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-        return
-      }
-      
-      if (Notification.permission === 'granted') {
-        return
-      }
-      
-      if (Notification.permission === 'denied') {
-        const guide = '您之前已禁止通知权限。\n\n请在浏览器地址栏左侧点击"锁"图标，\n找到"通知"选项并选择"允许"，\n然后刷新页面即可。'
-        alert(guide)
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-        return
-      }
-      
-      const permission = await Notification.requestPermission()
-      if (permission === 'granted') {
-        try {
-          if (typeof Notification === 'function') {
-            new Notification('通知已开启', {
-              body: '您将收到重要新闻的推送提醒',
-              icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
-            })
-          }
-        } catch (e) {
-          console.log('当前浏览器不支持直接创建通知')
-        }
-      } else if (permission === 'denied') {
-        alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-      } else {
-        this.enableNotification = false
-        localStorage.setItem('newsNotificationEnabled', 'false')
-      }
-    },
-
-    sendNotification(news) {
-      if (!('Notification' in window) || Notification.permission !== 'granted') {
-        return
-      }
-      
-      try {
-        const title = news.title
-        let body = news.content || ''
-        if (body.length > 100) {
-          body = body.substring(0, 100) + '...'
-        }
-        
-        const notification = new Notification(title, {
-          body: body,
-          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
-          tag: news.id,
-          requireInteraction: this.isImportant(news.importance)
-        })
-        
-        notification.onclick = () => {
-          window.focus()
-          if (news.url) {
-            window.open(news.url, '_blank')
-          }
-          notification.close()
-        }
-      } catch (e) {
-        console.log('发送通知失败，当前浏览器可能不支持:', e.message)
-      }
     },
 
     formatTime(timeStr) {

@@ -62,8 +62,6 @@ export default {
       crawlerStatus: {},
       healthChecking: false,
       healthCheckInterval: null,
-      enableNotification: true,
-      soundMode: 'all',
       lastNewsId: null,
       anomalyWatchInterval: null,
       lastAnomalyTimestamp: '',
@@ -311,8 +309,6 @@ export default {
     window.addEventListener('auth-login-success', this.onAuthLogin)
     window.addEventListener('auth-logout', this.onAuthLogout)
 
-    this.loadNotificationState()
-    this.loadSoundMode()
     this.initChart()
     window.addEventListener('resize', this.handleResize)
     this.$nextTick(() => {
@@ -944,7 +940,7 @@ export default {
             lazyUpdate: true
           })
         } catch (e) {
-          console.error('setOption 澶辫触:', e)
+          console.error('setOption 失败:', e)
         }
         return
       }
@@ -1240,16 +1236,7 @@ export default {
         if (response.success) {
           const newNews = response.data
           
-          if (newNews.length > 0 && this.enableNotification) {
-            const latestId = newNews[0]?.id
-            if (latestId && latestId !== this.lastNewsId && this.lastNewsId !== null) {
-              const latestNewsItem = newNews.find(n => n.id === latestId)
-              if (latestNewsItem) {
-                this.sendNotification(latestNewsItem)
-              }
-            }
-          }
-          
+          // 桌面通知改由全局 notificationManager 统一负责（任意页面都提醒），这里只更新首页滚动条展示
           const previousFirstId = this.latestNews.length > 0 ? this.latestNews[0].id : null
           this.latestNews = newNews
           this.latestNewsCount = response.pagination?.total || 0
@@ -1329,110 +1316,6 @@ export default {
     guardedGotoIntradayTimeline() { if (this.requireAuthOrPrompt()) return; this.goToIntradayTimeline() },
     guardedOpenQuantSystem() { if (this.requireAuthOrPrompt()) return; this.openQuantSystem() },
     async guardedAnalyzeDailyFlow() { if (this.requireAuthOrPrompt()) return; this.analyzeDailyFlow() },
-
-    loadNotificationState() {
-      if (!('Notification' in window)) {
-        this.enableNotification = false
-        return
-      }
-      
-      const saved = localStorage.getItem('homeNewsNotificationEnabled')
-      const browserGranted = Notification.permission === 'granted'
-      
-      if (saved !== null) {
-        this.enableNotification = saved === 'true'
-      } else {
-        this.enableNotification = true
-        localStorage.setItem('homeNewsNotificationEnabled', 'true')
-      }
-
-      // 注意:此处不再因"浏览器已授权"就把用户手动关闭的开关改回开启——
-      // 那样会破坏"关闭通知后不提醒"。只在浏览器权限未授予时校正为关闭。
-      if (!browserGranted && this.enableNotification) {
-        this.enableNotification = false
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-      }
-    },
-
-    toggleNotification() {
-      this.enableNotification = !this.enableNotification
-      
-      if (this.enableNotification) {
-        localStorage.setItem('homeNewsNotificationEnabled', 'true')
-        this.requestNotificationPermission()
-      } else {
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-      }
-    },
-
-    loadSoundMode() {
-      const saved = localStorage.getItem('newsSoundMode')
-      if (saved !== null && ['none', 'important', 'all'].includes(saved)) {
-        this.soundMode = saved
-      } else {
-        this.soundMode = 'all'
-        localStorage.setItem('newsSoundMode', 'all')
-      }
-    },
-
-    saveSoundMode(mode) {
-      this.soundMode = mode
-      localStorage.setItem('newsSoundMode', mode)
-    },
-
-    playSound(type) {
-      try {
-        const audio = new Audio(`/assets/sounds/${type}.mp3`)
-        audio.volume = 0.5
-        audio.play().catch(e => {
-          console.log('播放音效失败:', e)
-        })
-      } catch (e) {
-        console.log('播放音效失败:', e)
-      }
-    },
-
-    async requestNotificationPermission() {
-      if (!('Notification' in window)) {
-        alert('您的浏览器不支持系统通知功能')
-        this.enableNotification = false
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-        return
-      }
-      
-      if (Notification.permission === 'granted') {
-        return
-      }
-      
-      if (Notification.permission === 'denied') {
-        const guide = '您之前已禁止通知权限。\n\n请在浏览器地址栏左侧点击"锁"图标，\n找到"通知"选项并选择"允许"，\n然后刷新页面即可。'
-        alert(guide)
-        this.enableNotification = false
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-        return
-      }
-      
-      const permission = await Notification.requestPermission()
-      if (permission === 'granted') {
-        try {
-          if (typeof Notification === 'function') {
-            new Notification('通知已开启', {
-              body: '您将收到最新新闻的推送提醒',
-              icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
-            })
-          }
-        } catch (e) {
-          console.log('当前浏览器不支持直接创建通知')
-        }
-      } else if (permission === 'denied') {
-        alert('您拒绝了通知权限，如需开启请在浏览器地址栏左侧设置')
-        this.enableNotification = false
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-      } else {
-        this.enableNotification = false
-        localStorage.setItem('homeNewsNotificationEnabled', 'false')
-      }
-    },
 
     async openStockModal(sector) {
       let sectorUrl = sector.sector_url
@@ -1534,46 +1417,7 @@ export default {
       this.sortStocks()
     },
 
-    sendNotification(news) {
-      if (!('Notification' in window) || Notification.permission !== 'granted') {
-        return
-      }
-      
-      try {
-        const title = news.title
-        let body = news.content || ''
-        if (body.length > 100) {
-          body = body.substring(0, 100) + '...'
-        }
-        
-        const notification = new Notification(title, {
-          body: body,
-          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
-          tag: news.id,
-          requireInteraction: news.importance === '3'
-        })
-        
-        notification.onclick = () => {
-          window.focus()
-          if (news.url) {
-            window.open(news.url, '_blank')
-          }
-          notification.close()
-        }
-        
-        const isImportant = news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
-        
-        if (this.soundMode === 'all') {
-          this.playSound(isImportant ? 'important' : 'normal')
-        } else if (this.soundMode === 'important' && isImportant) {
-          this.playSound('important')
-        }
-      } catch (e) {
-        console.log('发送通知失败:', e)
-      }
-    },
-
-    // ===== 资金异动桌面通知（与新闻通知并行，复用 enableNotification 开关与 soundMode 音效）=====
+    // ===== 资金异动未读红点轮询（桌面通知已交由全局 notificationManager 统一负责）=====
     startAnomalyWatch() {
       this.fetchAnomalyForNotify(true)   // 首次只记录基线，不弹窗
       this.anomalyWatchInterval = setInterval(() => {
@@ -1599,34 +1443,10 @@ export default {
         if (!newest || newest <= this.lastAnomalyTimestamp) return
         const fresh = alerts.filter(a => (a.timestamp || '') > this.lastAnomalyTimestamp)
         this.lastAnomalyTimestamp = newest
-        // 有新异动就亮未读红点，与桌面通知开关/权限无关
+        // 有新异动就亮未读红点（桌面通知已交由全局 notificationManager 统一负责）
         if (fresh.length) this.hasUnreadAnomaly = true
-        if (!fresh.length || !this.enableNotification) return
-        if (!('Notification' in window) || Notification.permission !== 'granted') return
-        fresh.slice(0, 5).forEach(a => this.sendAnomalyNotification(a))
       } catch (e) {
         console.log('异动通知轮询失败:', e)
-      }
-    },
-
-    sendAnomalyNotification(alert) {
-      try {
-        const labels = (alert.labels && alert.labels.length) ? alert.labels.join('、') : '资金异动'
-        const nf = alert.net_flow != null ? `净流入${alert.net_flow >= 0 ? '+' : ''}${Number(alert.net_flow).toFixed(2)}亿` : ''
-        const chg = alert.change_pct != null ? ` ${alert.change_pct >= 0 ? '+' : ''}${Number(alert.change_pct).toFixed(2)}%` : ''
-        const lead = alert.lead_stock ? ` 龙头${alert.lead_stock}` : ''
-        const n = new Notification(`🚨 资金异动 · ${alert.sector}`, {
-          body: `${labels}｜${nf}${chg}${lead}`,
-          icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
-          tag: `${alert.date}-${alert.time}-${alert.sector}`,
-          requireInteraction: true
-        })
-        n.onclick = () => { window.focus(); this.$router.push('/flow-alert'); n.close() }
-        if (this.soundMode === 'all' || this.soundMode === 'important') {
-          this.playSound('important')
-        }
-      } catch (e) {
-        console.log('异动通知失败:', e)
       }
     },
 

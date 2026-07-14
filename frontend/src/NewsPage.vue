@@ -15,14 +15,6 @@
       >
         {{ showOnlyImportant ? '⭐ 仅重要' : '📰 全部' }}
       </button>
-      <button 
-        class="notification-toggle" 
-        :class="{ 'active': enableNotification }"
-        @click="toggleNotification"
-        :title="enableNotification ? '关闭新闻提醒' : '开启新闻提醒'"
-      >
-        {{ enableNotification ? '🔔 提醒已开启' : '🔕 提醒已关闭' }}
-      </button>
       <div class="search-box">
         <input 
           type="text" 

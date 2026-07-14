@@ -149,18 +149,6 @@
     <div class="news-ticker-container" v-if="!needsAuth && latestNews.length > 0">
       <div class="news-ticker-header">
         <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
-        <div class="header-controls">
-          <label class="notification-toggle">
-            <input type="checkbox" :checked="enableNotification" @change="toggleNotification">
-            <span class="toggle-slider"></span>
-            <span class="toggle-label">{{ enableNotification ? '已开启' : '已关闭' }}</span>
-          </label>
-          <select v-model="soundMode" @change="saveSoundMode(soundMode)" class="sound-mode-selector">
-            <option value="none">静音</option>
-            <option value="important">仅重要</option>
-            <option value="all">全部提醒</option>
-          </select>
-        </div>
       </div>
       <div class="news-ticker-content">
         <div 
@@ -171,7 +159,7 @@
         >
           <div class="news-title">
             <span class="news-index">{{ currentNewsIndex + 1 }}:</span>
-            <span v-if="currentNewsItem.importance === '3'" class="important-badge">閲嶈</span>
+            <span v-if="currentNewsItem.importance === '3'" class="important-badge">重要</span>
             {{ currentNewsItem.title }}
           </div>
           <div class="news-time">{{ formatNewsTime(currentNewsItem.timestamp) }}</div>
