@@ -866,6 +866,8 @@ export default {
     if (this.replayTimer) clearTimeout(this.replayTimer)
     if (this._raf) cancelAnimationFrame(this._raf)
     if (this._hlTimer) clearTimeout(this._hlTimer)
+    if (this._flyAnim) cancelAnimationFrame(this._flyAnim)
+    if (this._flyDebounce) clearTimeout(this._flyDebounce)
     if (this.clickTimer) clearTimeout(this.clickTimer)
     if (this.finChart) { this.finChart.dispose(); this.finChart = null }
     if (this.ro) this.ro.disconnect()
@@ -906,22 +908,93 @@ export default {
       this.legendTooltip.visible = false
     },
 
-    // 搜索：模糊匹配个股(名称/代码)与行业(一/二级)，命中项在云图上高亮5秒(醒目黄框)
+    // 搜索：模糊匹配个股(名称/代码)与行业(一/二级)。命中后自动放大定位到命中区域，
+    // 小市值股的格子也能看清；高亮在搜索词存在期间持续显示（不再只闪5秒）。
     onSearchInput() {
       if (!this.layout) { this.matchCount = 0; return }
-      const m = this.computeMatches(this.searchQuery)
+      const q = (this.searchQuery || '').trim()
+      const m = q ? this.computeMatches(q) : null
       this._matches = m
       this.matchCount = m ? (m.stocks.size + m.l1s.size + m.l2s.size) : 0
-      if (m) {
-        this._hlUntil = Date.now() + 5000
-        this.view = { k: 1, tx: 0, ty: 0 }   // 复位到全图，确保高亮落在视野内
-        if (this._hlTimer) clearTimeout(this._hlTimer)
-        this._hlTimer = setTimeout(() => { this._hlUntil = 0; this.render() }, 5000)
-      } else {
-        this._hlUntil = 0
-        if (this._hlTimer) clearTimeout(this._hlTimer)
+      // 不再用限时高亮，清掉旧的5秒定时器
+      if (this._hlTimer) { clearTimeout(this._hlTimer); this._hlTimer = null }
+      this._hlUntil = 0
+      // 取消进行中的飞行动画 / 防抖
+      if (this._flyAnim) { cancelAnimationFrame(this._flyAnim); this._flyAnim = 0 }
+      if (this._flyDebounce) { clearTimeout(this._flyDebounce); this._flyDebounce = null }
+
+      if (!m) {
+        // 清空搜索词：回到全图；有词但无命中：保持当前视图不动
+        if (!q) this.view = { k: 1, tx: 0, ty: 0 }
+        this.render()
+        return
       }
+      // 防抖200ms：打字停顿后一次性平滑飞到命中区域，避免逐键抖动
+      this._flyDebounce = setTimeout(() => { this._flyDebounce = null; this.flyToMatches(m) }, 200)
       this.render()
+    },
+    // 命中项在 layout 基坐标系下的包围盒（个股 + 二级 + 一级并集）
+    matchesBBox(m) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      const expand = (n) => {
+        if (!n) return
+        if (n.x < minX) minX = n.x
+        if (n.y < minY) minY = n.y
+        if (n.x + n.w > maxX) maxX = n.x + n.w
+        if (n.y + n.h > maxY) maxY = n.y + n.h
+      }
+      for (const s of this.layout) {
+        if (m.l1s.has(s.name)) expand(s)
+        for (const l2 of s.children) {
+          if (m.l2s.has(l2.name)) expand(l2)
+          for (const st of l2.children) {
+            if (m.stocks.has(st.code)) expand(st)
+          }
+        }
+      }
+      if (minX === Infinity) return null
+      return { minX, minY, maxX, maxY }
+    },
+    // 由包围盒算“恰好框住并居中”的目标视图（留28%边距；过小格子上限12倍）
+    computeFitView(bbox) {
+      const bw = Math.max(1e-3, bbox.maxX - bbox.minX)
+      const bh = Math.max(1e-3, bbox.maxY - bbox.minY)
+      let k = Math.min(this.cssW / bw, this.cssH / bh) * 0.72
+      // 命中区域很小时，至少放大到目标在屏幕上约96px（再受12倍上限约束）
+      const needK = 96 / Math.min(bw, bh)
+      if (k < needK) k = needK
+      k = clamp(k, 1, 12)
+      const cx = (bbox.minX + bbox.maxX) / 2
+      const cy = (bbox.minY + bbox.maxY) / 2
+      const view = { k, tx: this.cssW / 2 - cx * k, ty: this.cssH / 2 - cy * k }
+      // 复刻 clampView 的平移边界（此处不写 this.view，交给 animateView 过渡）
+      view.tx = clamp(view.tx, this.cssW * (1 - k), 0)
+      view.ty = clamp(view.ty, this.cssH * (1 - k), 0)
+      return view
+    },
+    flyToMatches(m) {
+      const bbox = this.matchesBBox(m)
+      if (!bbox) return
+      this.animateView(this.computeFitView(bbox))
+    },
+    // 平滑过渡到目标视图（easeOutCubic），动画期间每帧 render
+    animateView(target, duration = 460) {
+      if (this._flyAnim) cancelAnimationFrame(this._flyAnim)
+      const start = { k: this.view.k, tx: this.view.tx, ty: this.view.ty }
+      const t0 = Date.now()
+      const lerp = (a, b, e) => a + (b - a) * e
+      const step = () => {
+        const t = Math.min(1, (Date.now() - t0) / duration)
+        const e = 1 - Math.pow(1 - t, 3)
+        this.view.k = lerp(start.k, target.k, e)
+        this.view.tx = lerp(start.tx, target.tx, e)
+        this.view.ty = lerp(start.ty, target.ty, e)
+        this.clampView()
+        this.render()
+        if (t < 1) this._flyAnim = requestAnimationFrame(step)
+        else this._flyAnim = 0
+      }
+      this._flyAnim = requestAnimationFrame(step)
     },
     computeMatches(q) {
       const ql = (q || '').trim().toLowerCase()
@@ -1447,6 +1520,8 @@ export default {
             if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
             let matched = this.stockMatchesActiveFilter(st)
             if (matched && pushedSet) matched = pushedSet.has(extractDigits(st.code))
+            // 搜索命中的个股强制上色，避免被图例筛选灰显、淹没在背景里
+            if (this._matches && this._matches.stocks.has(st.code)) matched = true
             if (matched) sectorHasMatch = true
             ctx.fillStyle = matched ? st.color : DIM_COLOR
             ctx.fillRect(x, y, w, h)
@@ -1493,8 +1568,8 @@ export default {
         }
       }
 
-      // 搜索高亮：在所有元素之上叠加醒目黄色边框（5秒内有效）
-      if (this._matches && Date.now() < (this._hlUntil || 0)) {
+      // 搜索高亮：搜索词存在期间持续叠加醒目黄色边框（不再限时5秒）
+      if (this._matches) {
         const { stocks, l1s, l2s } = this._matches
         ctx.save()
         ctx.strokeStyle = '#FFE100'
@@ -1520,6 +1595,22 @@ export default {
           }
         }
         ctx.restore()
+        // 极小命中格（屏幕尺寸不足14px，即便放大后仍可能看不清）补一个“图钉”圆点，
+        // 保证小市值股也一定能定位到
+        for (const s of this.layout) for (const l2 of s.children) for (const st of l2.children) {
+          if (!stocks.has(st.code)) continue
+          const X = st.x * k + tx, Y = st.y * k + ty, W = st.w * k, H = st.h * k
+          if (W < 14 || H < 14) {
+            const cx = X + W / 2, cy = Y + H / 2
+            ctx.beginPath()
+            ctx.arc(cx, cy, 6, 0, Math.PI * 2)
+            ctx.fillStyle = '#FFE100'
+            ctx.fill()
+            ctx.lineWidth = 2
+            ctx.strokeStyle = '#0a1220'
+            ctx.stroke()
+          }
+        }
       }
     },
 
