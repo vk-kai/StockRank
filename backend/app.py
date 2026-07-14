@@ -207,6 +207,11 @@ if __name__ == '__main__':
         monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         monitor_thread.start()
         system_logger.info("监控线程已启动")
+
+        # 自选股价格异动监控(交易时段每 N 秒轮询)
+        from stock_price_monitor import stock_price_loop
+        threading.Thread(target=stock_price_loop, daemon=True).start()
+        system_logger.info("价格异动监控线程已启动")
         
         system_logger.info("Flask服务器启动")
         app.run(host='0.0.0.0', port=5000, debug=False)
