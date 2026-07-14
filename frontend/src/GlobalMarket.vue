@@ -87,6 +87,29 @@ const GLOBAL_INDICES = [
   { name: '俄罗斯RTS',   secid: '100.RTS',   lat: 55.75,  lng: 37.62,  region: '俄罗斯' }
 ]
 
+// 东财 push2 接口对 fetch/XHR 跨域会带 Origin 头触发 WAF 掐连（ERR_EMPTY_RESPONSE），
+// 但对 <script> JSONP 放行（其自家网页小组件即此机制）。故用 JSONP 取数。
+function jsonp(url, timeout = 12000) {
+  return new Promise((resolve, reject) => {
+    const cbName = '__gmcb_' + Math.random().toString(36).slice(2)
+    const script = document.createElement('script')
+    let done = false
+    const cleanup = () => {
+      done = true
+      try { delete window[cbName] } catch (e) { window[cbName] = undefined }
+      if (script.parentNode) script.parentNode.removeChild(script)
+    }
+    const timer = setTimeout(() => { if (!done) { cleanup(); reject(new Error('JSONP 超时')) } }, timeout)
+    window[cbName] = (data) => { clearTimeout(timer); cleanup(); resolve(data) }
+    script.onerror = () => { clearTimeout(timer); cleanup(); reject(new Error('JSONP 加载失败')) }
+    // 关键：script 本就不发 Origin；再加 no-referrer 去掉 Referer，避免东财 WAF 因
+    // 第三方站点来源头（0vk.top）掐连（ERR_EMPTY_RESPONSE）
+    script.referrerPolicy = 'no-referrer'
+    script.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + cbName
+    document.head.appendChild(script)
+  })
+}
+
 // 英文国家名 → 中文映射（覆盖世界地图主要国家）
 const COUNTRY_ZH_MAP = {
   'China': '中国', 'Russia': '俄罗斯', 'Mongolia': '蒙古',
@@ -257,9 +280,7 @@ export default {
     async fetchSnapshot() {
       const secids = GLOBAL_INDICES.map(c => c.secid).join(',')
       const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f12,f14&secids=${secids}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const body = await res.json()
+      const body = await jsonp(url)
       const diff = (body && body.data && body.data.diff) || []
       const emMap = {}
       diff.forEach(it => { if (it && it.f12) emMap[it.f12] = it })
@@ -306,9 +327,7 @@ export default {
         const fetched = await Promise.all(list.map(async ix => {
           try {
             const url = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(ix.code)}&fields1=f1,f2&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1`
-            const res = await fetch(url)
-            if (!res.ok) return null
-            const body = await res.json()
+            const body = await jsonp(url)
             const trends = body && body.data && body.data.trends
             if (!Array.isArray(trends) || !trends.length) return null
             const series = []
