@@ -223,3 +223,61 @@ def detect_hits(q, series, state, alerts_cfg, limit, name):
     if h:
         hits.append(h)
     return hits
+
+
+# --------------------------------------------------------------------------
+# 去重冷却 + 推送入库
+# --------------------------------------------------------------------------
+def _load_alerts():
+    if not os.path.exists(ALERTS_FILE):
+        return []
+    try:
+        with open(ALERTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_alerts(alerts):
+    os.makedirs(REALTIME_DIR, exist_ok=True)
+    with open(ALERTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(alerts[-500:], f, ensure_ascii=False)
+
+
+def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
+    """同 (股票,类型) 在 cooldown_minutes 内是否已推过。"""
+    now = now or datetime.now()
+    threshold = timedelta(minutes=cooldown_minutes)
+    for a in reversed(alerts):
+        if a.get('code') == code and a.get('type') == hit_type:
+            try:
+                t = datetime.fromisoformat(a['timestamp'])
+            except Exception:
+                continue
+            if now - t < threshold:
+                return True
+    return False
+
+
+def record_alert(code, name, hit, quote, pushed, now=None):
+    """记录一条已推送(或冷却内未推)的异动。"""
+    now = now or datetime.now()
+    alerts = _load_alerts()
+    rec = {
+        'code': code, 'name': name, 'kind': 'stock',
+        'type': hit['type'], 'label': hit.get('label', ''),
+        'price': quote.get('price'), 'pct': quote.get('pct'),
+        'time': quote.get('ts', ''),
+        'date': (quote.get('ts', '') or now.strftime('%Y-%m-%d'))[:10],
+        'pushed': pushed, 'timestamp': now.isoformat(),
+    }
+    alerts.append(rec)
+    _save_alerts(alerts)
+    return rec
+
+
+def list_alerts(date_str=None, limit=200):
+    alerts = _load_alerts()
+    if date_str:
+        alerts = [a for a in alerts if a.get('date') == date_str]
+    return sorted(alerts, key=lambda a: a.get('timestamp', ''), reverse=True)[:limit]

@@ -3,6 +3,7 @@ import os
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 
 import stock_price_monitor as m
 
@@ -78,6 +79,33 @@ class DetectionTests(unittest.TestCase):
         cfg['amplitude']['enabled'] = False
         now = _q(10.2, 10.0, high=10.7, low=9.5)
         self.assertIsNone(m._amplitude(now, cfg))
+
+
+class CooldownTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        m.REALTIME_DIR = self.tmp
+        m.ALERTS_FILE = os.path.join(self.tmp, 'stock_price_alerts.json')
+
+    def test_no_cooldown_on_first_hit(self):
+        self.assertFalse(m.is_in_cooldown('sh600519', 'rapid_rise', [], 30))
+
+    def test_cooldown_blocks_same_type_within_window(self):
+        t0 = datetime(2026, 7, 14, 10, 0, 0)
+        alerts = [{'code': 'sh600519', 'type': 'rapid_rise', 'timestamp': t0.isoformat()}]
+        later = t0 + timedelta(minutes=10)
+        self.assertTrue(m.is_in_cooldown('sh600519', 'rapid_rise', alerts, 30, now=later))
+
+    def test_different_type_not_blocked(self):
+        t0 = datetime(2026, 7, 14, 10, 0, 0)
+        alerts = [{'code': 'sh600519', 'type': 'rapid_rise', 'timestamp': t0.isoformat()}]
+        self.assertFalse(m.is_in_cooldown('sh600519', 'cum_move', alerts, 30, now=t0))
+
+    def test_expired_cooldown_releases(self):
+        t0 = datetime(2026, 7, 14, 10, 0, 0)
+        alerts = [{'code': 'sh600519', 'type': 'rapid_rise', 'timestamp': t0.isoformat()}]
+        later = t0 + timedelta(minutes=31)
+        self.assertFalse(m.is_in_cooldown('sh600519', 'rapid_rise', alerts, 30, now=later))
 
 
 if __name__ == '__main__':
