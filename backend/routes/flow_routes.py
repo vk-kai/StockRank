@@ -11,7 +11,7 @@ from data_processor import (
     load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
-    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices,
+    refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices, get_ai_chain_indicators,
     get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
@@ -55,6 +55,22 @@ def global_indices():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/global-indices]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/ai-chain', methods=['GET'])
+def ai_chain():
+    """获取AI产业链外部环境温度计（7个领先指标：英伟达/费城半导体/台积电/SK海力士/三星/美元指数/美债10年）"""
+    try:
+        data = get_ai_chain_indicators()
+        if data:
+            return jsonify({'success': True, 'data': data})
+        return jsonify({'success': False, 'error': '获取AI产业链指标失败'}), 500
+    except Exception as e:
+        error_msg = f"AI产业链接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/ai-chain]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

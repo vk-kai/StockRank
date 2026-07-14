@@ -66,6 +66,19 @@ export async function getGlobalIndices() {
 }
 
 /**
+ * 获取AI产业链外部环境温度计（7个领先指标 + 综合环境灯）
+ */
+export async function getAiChain() {
+  try {
+    const response = await apiClient.get('/flow/ai-chain')
+    return response.data
+  } catch (error) {
+    console.error('获取AI产业链指标失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取大盘云图行业板块列表
  */
 export async function getMarketMap() {

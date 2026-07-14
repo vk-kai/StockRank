@@ -180,6 +180,45 @@
   text-overflow: ellipsis;
 }
 
+/* AI产业链环境灯条（首页每日一瞥，点击进入 /ai-chain） */
+.ai-chain-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid rgba(111, 142, 190, 0.35);
+  background: rgba(16, 24, 39, 0.6);
+  color: #cbd5e1;
+  transition: all 0.2s ease;
+}
+.ai-chain-strip:hover {
+  background: rgba(30, 40, 60, 0.85);
+  border-color: rgba(111, 142, 190, 0.6);
+}
+.ai-chain-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8ba4c7;
+  flex-shrink: 0;
+}
+.ai-chain-label { color: #8ba4c7; font-weight: 600; }
+.ai-chain-overall { font-weight: 800; }
+.ai-chain-sub { color: #8ba4c7; font-weight: 600; font-size: 11px; }
+.ai-chain-arrow { color: #8ba4c7; margin-left: 2px; }
+/* 综合环境灯配色：偏多=红(A股惯例红涨)、偏空=绿、中性=灰 */
+.ai-chain-strip.ai-bull { border-color: rgba(239, 83, 80, 0.6); background: rgba(239, 83, 80, 0.12); color: #ef5350; }
+.ai-chain-strip.ai-bull .ai-chain-dot { background: #ef5350; box-shadow: 0 0 6px #ef5350; }
+.ai-chain-strip.ai-bear { border-color: rgba(34, 197, 94, 0.55); background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+.ai-chain-strip.ai-bear .ai-chain-dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.ai-chain-strip.ai-neutral { border-color: rgba(139, 164, 199, 0.4); color: #cbd5e1; }
+.ai-chain-strip.ai-neutral .ai-chain-dot { background: #8ba4c7; }
+
 .market-breadth-row,
 .market-limit-row,
 .market-turnover-row {

@@ -9,6 +9,7 @@ const HouseKline = () => import('./HouseKline.vue')
 const GlobalMarket = () => import('./GlobalMarket.vue')
 const MarketMap = () => import('./MarketMap.vue')
 const FlowAlert = () => import('./FlowAlert.vue')
+const AiChain = () => import('./AiChain.vue')
 
 const routes = [
   {
@@ -55,6 +56,11 @@ const routes = [
     path: '/flow-alert',
     name: 'FlowAlert',
     component: FlowAlert
+  },
+  {
+    path: '/ai-chain',
+    name: 'AiChain',
+    component: AiChain
   }
 ]
 

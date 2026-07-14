@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -96,6 +96,8 @@ export default {
       marketSummary: null,
       marketSummaryError: null,
       marketSummaryInterval: null,
+      aiChainSummary: null,
+      aiChainInterval: null,
       aiAnalyzing: false,
       showMoreMenu: false,
       showAIAnalysisModal: false,
@@ -143,6 +145,20 @@ export default {
         { ...indexMap['399001'], code: '399001', name: indexMap['399001'].name || '深证成指' },
         { ...indexMap['399006'], code: '399006', name: indexMap['399006'].name || '创业板' }
       ]
+    },
+    aiChainOverallClass() {
+      const s = this.aiChainSummary?.overall
+      if (s === '偏多') return 'ai-bull'
+      if (s === '偏空') return 'ai-bear'
+      return 'ai-neutral'
+    },
+    aiChainOverallText() {
+      return this.aiChainSummary?.overall || '加载中'
+    },
+    aiChainSubText() {
+      const s = this.aiChainSummary
+      if (!s) return ''
+      return `需求${s.demand_signal} · 宏观${s.macro_signal}`
     },
     healthDisplayItems() {
       const items = {}
@@ -349,6 +365,9 @@ export default {
     if (this.marketSummaryInterval) {
       clearInterval(this.marketSummaryInterval)
     }
+    if (this.aiChainInterval) {
+      clearTimeout(this.aiChainInterval)
+    }
     if (this.aiAnalysisPollTimer) {
       clearInterval(this.aiAnalysisPollTimer)
     }
@@ -394,6 +413,8 @@ export default {
       this.fetchHealthStatus()
       this.fetchMarketSummary()
       this.startMarketSummaryRefresh()
+      this.fetchAiChain()
+      this.startAiChainRefresh()
       this.checkAIAnalysisStatus()
     },
     // 点击数据相关按钮时，如未登录则唤起登录框
@@ -506,6 +527,28 @@ export default {
         }, this.getMarketSummaryRefreshDelay())
       }
       scheduleNextRefresh()
+    },
+
+    async fetchAiChain() {
+      try {
+        const response = await getAiChain()
+        if (response.success) {
+          this.aiChainSummary = response.data?.summary || null
+        }
+      } catch (err) {
+        console.error('获取AI产业链指标失败:', err)
+      }
+    },
+
+    startAiChainRefresh() {
+      const scheduleNext = () => {
+        // 外部指标无需高频，且避免东财反爬：固定60s
+        this.aiChainInterval = setTimeout(async () => {
+          await this.fetchAiChain()
+          scheduleNext()
+        }, 60000)
+      }
+      scheduleNext()
     },
 
     initChart() {
@@ -1282,6 +1325,7 @@ export default {
     guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
     guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
+    guardedGotoAiChain() { if (this.requireAuthOrPrompt()) return; this.$router.push('/ai-chain') },
     guardedGotoIntradayTimeline() { if (this.requireAuthOrPrompt()) return; this.goToIntradayTimeline() },
     guardedOpenQuantSystem() { if (this.requireAuthOrPrompt()) return; this.openQuantSystem() },
     async guardedAnalyzeDailyFlow() { if (this.requireAuthOrPrompt()) return; this.analyzeDailyFlow() },
