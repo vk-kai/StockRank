@@ -295,6 +295,285 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* ===== 股票监控：卡片化 + 移动端适配 ===== */
+.add-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.add-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.05);
+  color: #8ba4c7;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.add-tab.active {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.stock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.stock-card.add-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #cfe0f5;
+  font-size: 14px;
+}
+.search-input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+.search-hint {
+  color: #8ba4c7;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.search-dropdown {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #16263b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  z-index: 50;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.search-empty {
+  padding: 10px 12px;
+  color: #8ba4c7;
+  font-size: 13px;
+}
+.search-result {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #cfe0f5;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.search-result.active {
+  background: rgba(24, 144, 255, 0.25);
+}
+.sr-code {
+  color: #6f8fb3;
+}
+
+/* 监控卡片头部（允许换行，避免窄屏挤压） */
+.watch-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.watch-check {
+  flex: 0 0 auto;
+}
+.type-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.type-badge.keyword {
+  background: rgba(250, 140, 22, 0.2);
+  color: #fa8c16;
+}
+.type-badge.name, .type-badge.code {
+  background: rgba(24, 144, 255, 0.2);
+  color: #40a9ff;
+}
+.watch-name {
+  flex: 1 1 auto;
+  min-width: 60px;   /* 关键：保证名字有足够宽度横排，不会被挤成竖排 */
+  word-break: keep-all;
+}
+.watch-code {
+  flex: 0 0 auto;
+  color: #6f8fb3;
+  font-size: 12px;
+}
+.head-toggle {
+  flex: 0 0 auto;
+}
+
+/* 价格/新闻 监控区块 */
+.monitor-block {
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+.monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.monitor-label {
+  font-size: 13px;
+  color: #a9bfd8;
+}
+.monitor-sub {
+  color: #6f8fb3;
+  font-size: 11px;
+}
+.monitor-sub-text {
+  color: #8ba4c7;
+  font-size: 12px;
+}
+.price-details {
+  margin-top: 6px;
+}
+.price-details summary {
+  font-size: 12px;
+  color: #8ba4c7;
+  cursor: pointer;
+}
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+.price-cell {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.price-cell-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.price-field {
+  margin-left: 10px;
+  font-size: 12px;
+}
+.price-num {
+  width: 56px;
+  margin-left: 4px;
+}
+
+/* 关键词标签行 */
+.kw-row {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.kw-chip {
+  background: rgba(250, 140, 22, 0.18);
+  color: #ffb066;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.kw-x {
+  cursor: pointer;
+  opacity: 0.7;
+  font-weight: bold;
+}
+.kw-input {
+  width: 120px;
+  padding: 3px 6px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cfe0f5;
+  border-radius: 4px;
+}
+.kw-add {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.batch-bar {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 768px) {
+  .add-mode-tabs {
+    flex-direction: column;
+  }
+  .add-tab {
+    width: 100%;
+    padding: 10px;
+  }
+  .stock-card {
+    padding: 12px;
+  }
+  .stock-card.add-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stock-card.add-row .btn-add {
+    width: 100%;
+    padding: 10px;
+  }
+  .search-input {
+    width: 100%;
+  }
+  /* 头部换行后，让开关和删除独占一行，名字拿到更多空间 */
+  .watch-head .head-toggle,
+  .watch-head .btn-remove {
+    flex: 0 0 auto;
+  }
+  .watch-name {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  /* 价格细项：手机端单列，更易点选 */
+  .price-grid {
+    grid-template-columns: 1fr;
+  }
+  .price-num {
+    width: 64px;
+  }
+  .kw-input {
+    flex: 1 1 120px;
+    width: auto;
+  }
+}
+
 .stock-item {
   display: grid;
   grid-template-columns: 1fr 2fr auto;
