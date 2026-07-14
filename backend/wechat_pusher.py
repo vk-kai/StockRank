@@ -5,7 +5,7 @@ from datetime import datetime
 import requests
 
 from config import WECHAT_CONFIG_FILE
-from feishu_pusher import format_change_value, format_flow_value
+from feishu_pusher import format_change_value, format_flow_value, build_ai_chain_env_lines
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -141,6 +141,9 @@ def push_daily_summary_wechat(comparison_data, period='上午'):
     title = f"📅 {date_str} {time_str} {period}收盘汇总"
 
     content_lines = []
+    # 上午汇总头部追加 AI产业链外部环境灯（与飞书对称，跟随各通道 enabled 开关）
+    if period == '上午':
+        content_lines.extend(build_ai_chain_env_lines())
 
     for item in top5:
         rank = item['rank']
