@@ -1409,6 +1409,7 @@ AI_CHAIN_CONFIG = [
     ('tsm',     '台积电',     'demand', 'gb_tsm',  None,         '美股'),
     ('skhynix', 'SK海力士',   'demand', None,     '177.000660', '韩股'),
     ('samsung', '三星电子',   'demand', None,     '177.005930', '韩股'),
+    ('kospi',   '韩国综合',   'demand', None,     '100.KS11',   '韩国'),   # KOSPI 指数(东财全球指数)
     ('dxy',     '美元指数',   'macro',  'DINIW',  None,         '外汇'),
     ('us10y',   '美债10年',   'macro',  None,     None,         '美债'),
 ]

@@ -162,6 +162,36 @@ def format_change_value(value):
     sign = '+' if percent >= 0 else ''
     return f"{sign}{percent:.2f}%"
 
+def build_ai_chain_env_lines():
+    """构建"AI产业链外部环境"文本行，用于每日早间(上午)飞书汇总卡头部。
+    数据来自 data_processor.get_ai_chain_indicators()；任一失败返回空列表，绝不影响主汇总推送。"""
+    try:
+        from data_processor import get_ai_chain_indicators
+        data = get_ai_chain_indicators()
+        if not data:
+            return []
+        s = data.get('summary') or {}
+        indicators = data.get('indicators') or []
+        overall = s.get('overall', '--')
+        emoji = '🔴' if overall == '偏多' else ('🟢' if overall == '偏空' else '⚪')
+        lines = [
+            f"{emoji} **AI链外部环境：{overall}**",
+            f"需求链{s.get('demand_signal', '--')} · 宏观链{s.get('macro_signal', '--')} · 利好{s.get('bull_count', 0)} 利空{s.get('bear_count', 0)}",
+        ]
+        parts = []
+        for it in indicators:
+            chg = it.get('change')
+            pct = f"{chg * 100:+.2f}%" if isinstance(chg, (int, float)) else '--'
+            tag = '好' if it.get('impact') == '利好' else ('空' if it.get('impact') == '利空' else '平')
+            parts.append(f"{it.get('name', '')}{pct}({tag})")
+        if parts:
+            lines.append("　".join(parts))
+        lines.append("---")
+        return lines
+    except Exception as e:
+        error_logger.warning(f"AI链环境灯构建失败（跳过，不影响主推送）: {e}")
+        return []
+
 def push_daily_summary_feishu(comparison_data, period='上午'):
     config = load_feishu_config()
     
@@ -185,7 +215,10 @@ def push_daily_summary_feishu(comparison_data, period='上午'):
     content_lines = [
         ""
     ]
-    
+    # 上午汇总卡头部追加 AI产业链外部环境灯（下午不加，那时隔夜信号已陈旧）
+    if period == '上午':
+        content_lines.extend(build_ai_chain_env_lines())
+
     for item in top5:
         rank = item['rank']
         name = item['name']

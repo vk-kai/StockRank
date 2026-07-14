@@ -1795,6 +1795,8 @@ button:active:not(:disabled) {
   z-index: 100;
   cursor: pointer;
   transition: all 0.3s ease;
+  transform: scale(0.9);
+  transform-origin: top left;
 }
 
 .monitor-card-container:hover {
@@ -2002,6 +2004,8 @@ button:active:not(:disabled) {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 100;
   overflow: hidden;
+  transform: scale(0.9);
+  transform-origin: top right;
 }
 
 .news-ticker-header {

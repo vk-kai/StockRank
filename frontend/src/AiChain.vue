@@ -257,7 +257,7 @@ export default {
 
 .aic-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
 }
 .aic-grid-macro { grid-template-columns: repeat(2, 1fr); max-width: 50%; }
