@@ -875,6 +875,30 @@ export async function getAnomalyAlerts(date) {
   }
 }
 
+/** 自选股价格异动当日命中 */
+export async function runStockPriceAnomaly(date) {
+  try {
+    const params = {}
+    if (date) params.date = date
+    const response = await apiClient.get('/flow/stock-price/run', { params })
+    return response.data
+  } catch (error) {
+    console.error('查询价格异动失败:', error)
+    throw error
+  }
+}
+
+/** 价格异动已推送记录 */
+export async function getStockPriceAlerts(date) {
+  try {
+    const response = await apiClient.get('/flow/stock-price/alerts', { params: { date } })
+    return response.data
+  } catch (error) {
+    console.error('获取价格异动记录失败:', error)
+    throw error
+  }
+}
+
 export async function getAnomalyConfig() {
   try {
     const response = await apiClient.get('/flow/anomaly/config')
