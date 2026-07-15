@@ -31,7 +31,7 @@
             <option value="change">着色：涨跌幅</option>
             <option value="margin">着色：融资净流入</option>
             <option value="score" v-if="hasScores">着色：AI打分</option>
-            <option value="cycle" v-if="hasCycleScores">着色：行业周期诊断</option>
+            <option value="cycle" v-if="hasCycleScores">着色：9维周期雷达</option>
           </select>
           <span class="mm-color-date" v-if="colorMode === 'margin' && marginDate">{{ marginDate }}</span>
           <span class="mm-color-date" v-if="colorMode === 'score' && scoreDate">打分：{{ scoreDate }}</span>
@@ -41,9 +41,9 @@
           <span class="mm-score-spin" :class="{ on: scoringRunning }">🤖</span>
           {{ scoringRunning ? '打分中…' : (hasScores ? '重新打分' : 'AI批量打分') }}
         </button>
-        <button @click="openCycleDialog" class="mm-cycle-btn" :class="{ running: cycleRunning }" title="调用 AI 对所有二级行业进行见顶周期诊断">
+        <button @click="openCycleDialog" class="mm-cycle-btn" :class="{ running: cycleRunning }" title="调用 AI 对所有二级行业进行9维产业周期雷达分析">
           <span class="mm-cycle-spin" :class="{ on: cycleRunning }">🔬</span>
-          {{ cycleRunning ? '诊断中…' : (hasCycleScores ? '重新诊断' : 'AI行业周期诊断') }}
+          {{ cycleRunning ? '雷达扫描中…' : (hasCycleScores ? '重新扫描' : 'AI周期雷达') }}
         </button>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
@@ -81,7 +81,7 @@
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
         <div class="mm-tooltip-row">
-          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : (colorMode === 'cycle' ? '周期诊断' : '涨跌幅')) }}</span>
+          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : (colorMode === 'cycle' ? '周期雷达' : '涨跌幅')) }}</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
         <div class="mm-tooltip-row">
@@ -353,14 +353,14 @@
     <div class="mm-modal-overlay" v-if="cycleDialog.visible" @click="closeCycleDialog">
       <div class="mm-modal mm-score-modal" @click.stop>
         <div class="mm-modal-header">
-          <div class="mm-modal-title"><span class="mm-modal-name">🔬 AI 行业周期诊断</span></div>
+          <div class="mm-modal-title"><span class="mm-modal-name">🔬 AI 9维产业周期雷达</span></div>
           <button class="mm-modal-close" @click="closeCycleDialog" v-if="cycleDialog.view !== 'running'">✕</button>
         </div>
 
         <!-- 确认 -->
         <div v-if="cycleDialog.view === 'confirm'" class="mm-score-body">
           <p class="mm-score-desc">
-            将调用 AI 对大盘云图中约 <b>{{ cycleEstimate.total || '?' }}</b> 个二级行业逐一进行"6信号见顶诊断"，
+            将调用 AI 对大盘云图中约 <b>{{ cycleEstimate.total || '?' }}</b> 个二级行业逐一进行"9维产业周期雷达"分析，
         返回 0-100 的见顶风险评分（<span class="up">&lt;50 安全</span> / <span class="down">≥50 危险</span>），
         云图中直接显示风险分（绿=危险/红=安全，与涨跌幅相反）。
           </p>
@@ -368,14 +368,12 @@
             <li>⏱️ 每个行业约需 30-60 秒，全量约 <b>{{ cycleEstimate.eta || '20-60' }} 分钟</b>。</li>
             <li>💰 会消耗 AI 额度（约几十个行业，每行业一次 AI 调用）。</li>
             <li>💾 诊断结果持久保存，可反复使用。重新诊断会清除旧结果。</li>
-            <li>🔄 诊断期间云图可实时着色（切到「着色：行业周期诊断」查看）。</li>
+            <li>🔄 雷达扫描期间云图可实时着色（切到「着色：9维周期雷达」查看）。</li>
           </ul>
           <p class="mm-score-warn" v-if="!aiEnabled">⚠️ 当前 AI 未启用或配置不完整，请先到「🤖 AI大模型配置」中设置并测试通过。</p>
           <div class="mm-score-actions">
             <button class="mm-score-btn-cancel" @click="closeCycleDialog">取消</button>
-            <button class="mm-score-btn-ok" :disabled="!aiEnabled || cycleDialog.busy" @click="confirmStartCycle">
-              {{ cycleDialog.busy ? '启动中…' : (hasCycleScores ? '确认重新诊断' : '确认开始诊断') }}
-            </button>
+            <button class="mm-score-btn-ok" :disabled="!aiEnabled || cycleDialog.busy" @click="confirmStartCycle">{{ cycleDialog.busy ? '启动中…' : (hasCycleScores ? '确认重新扫描' : '确认开始扫描') }}</button>
           </div>
         </div>
 
@@ -390,7 +388,7 @@
             <span>已诊断 <b class="up">{{ cycleStatus.done || 0 }}</b> / {{ cycleStatus.total || '?' }}</span>
             <span v-if="cycleStatus.failed">· 失败 <b class="down">{{ cycleStatus.failed }}</b></span>
           </div>
-          <p class="mm-score-note">过程中可切到"着色：行业周期诊断"实时查看。可关闭此窗口，诊断在后台继续。</p>
+          <p class="mm-score-note">过程中可切到"着色：9维周期雷达"实时查看。可关闭此窗口，扫描在后台继续。</p>
           <div class="mm-score-actions">
             <button class="mm-score-btn-cancel" @click="handleStopCycle">停止诊断</button>
             <button class="mm-score-btn-ghost" @click="cycleDialog.visible = false">后台运行，关闭窗口</button>
@@ -403,7 +401,7 @@
             ✅ {{ cycleStatus.message || '诊断完成' }}
           </p>
           <div class="mm-score-actions">
-            <button class="mm-score-btn-ok" @click="finishAndSwitchToCycle">查看诊断云图</button>
+            <button class="mm-score-btn-ok" @click="finishAndSwitchToCycle">查看雷达云图</button>
             <button class="mm-score-btn-warn" v-if="cycleStatus.failed && cycleStatus.failed_industries && cycleStatus.failed_industries.length" @click="retryFailedCycle">
               重试失败行业（{{ cycleStatus.failed_industries.length }}个）
             </button>
@@ -824,7 +822,7 @@ export default {
     footerColorDesc() {
       if (this.colorMode === 'margin') return '颜色=融资净流入金额（红=净流入多 / 绿=净流出多）'
       if (this.colorMode === 'score') return '颜色=AI打分（红=高分可考虑 / 绿=低分需谨慎，50 为界）'
-      if (this.colorMode === 'cycle') return '颜色=行业周期诊断（绿=危险/红=安全，见顶风险分）'
+      if (this.colorMode === 'cycle') return '颜色=9维周期雷达（绿=危险/红=安全，见顶风险分）'
       return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
@@ -899,7 +897,7 @@ export default {
         } else if (this.colorMode === 'score') {
           desc = ((SCORE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || 'AI打分'
         } else if (this.colorMode === 'cycle') {
-          desc = ((CYCLE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || '行业周期诊断'
+          desc = ((CYCLE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || '9维周期雷达'
         } else if (a === 'limit_up') desc = '涨停'
         else if (a === 'limit_down') desc = '跌停'
         else if (a <= -4) desc = '跌幅 ≤ -4%'
@@ -2119,7 +2117,7 @@ export default {
               this.openFinancing(node)
             }, 280)
           } else if (hit && hit.node && !hit.node.code && hit.node.children && this.colorMode === 'cycle') {
-            // 点击了二级行业标题条 → 跳转到行业周期诊断
+            // 点击了二级行业标题条 → 跳转到9维产业周期雷达
             this.$router.push({ path: '/industry-cycle', query: { industry: hit.node.name, from: 'market-map' } })
           }
         }

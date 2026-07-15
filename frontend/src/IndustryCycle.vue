@@ -4,7 +4,7 @@
       <div class="icy-header-left">
         <button class="icy-back" @click="goBack">← 返回主页</button>
         <button class="icy-back icy-back-map" @click="goBackToMap" v-if="fromMap">← 大盘云图</button>
-        <h1>🔬 行业见顶周期诊断</h1>
+        <h1>🔬 9维产业周期雷达</h1>
       </div>
       <!-- 已分析行业下拉框 -->
       <div class="icy-history" v-if="analyzedIndustries.length > 0">
@@ -35,7 +35,7 @@
         </button>
       </div>
       <div class="icy-input-hint">
-        基于六大见顶信号（渗透率/产能/利润率/政策/全民讨论/龙头走弱），AI将对行业进行周期诊断并与历史经典周期对标
+        基于9维产业周期雷达（渗透率/产能/利润率/政策/全民讨论/龙头表现/成长性/估值/CAPEX），AI将对行业进行全周期诊断并与历史经典周期对标
       </div>
     </section>
 
@@ -76,9 +76,9 @@
         <div class="icy-verdict-time" v-if="result.analyze_time">分析时间：{{ result.analyze_time }}</div>
       </div>
 
-      <!-- 六大信号诊断 -->
+      <!-- 9维产业周期雷达 -->
       <div class="icy-signals">
-        <h2 class="icy-section-title">📊 六大见顶信号诊断</h2>
+        <h2 class="icy-section-title">📊 9维产业周期雷达</h2>
         <div class="icy-signals-grid">
           <div
             class="icy-signal-card"
@@ -131,7 +131,7 @@
 
       <!-- 警示信号 -->
       <div class="icy-warnings" v-if="result.warnings && result.warnings.length">
-        <h2 class="icy-section-title">🚨 需警惕的见顶信号</h2>
+        <h2 class="icy-section-title">🚨 需警惕的风险信号</h2>
         <div class="icy-warning-list">
           <div class="icy-warning-item" v-for="(w, idx) in result.warnings" :key="idx">
             {{ w }}
@@ -155,7 +155,7 @@
     <!-- 无结果提示 -->
     <section class="icy-empty" v-if="!result && !analyzing && !error">
       <div class="icy-empty-icon">🔬</div>
-      <div class="icy-empty-text">输入行业名称，开始见顶周期诊断</div>
+      <div class="icy-empty-text">输入行业名称，开始9维产业周期诊断</div>
       <div class="icy-empty-sub">分析需要1-3分钟，支持异步查询</div>
     </section>
 
