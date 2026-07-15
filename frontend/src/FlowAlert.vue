@@ -67,35 +67,71 @@
         </div>
 
         <div v-else class="fa-timeline stagger-in">
-          <div class="fa-card" v-for="(f, idx) in shownFindings" :key="idx"
-               :class="{ 'fa-card-stock': f.kind === 'stock' }"
-               :style="{ '--i': Math.min(idx, 15) }">
-            <div class="fa-card-head">
-              <span class="fa-time">{{ f.date }} {{ f.time }}</span>
-              <span class="fa-sector">{{ f.kind === 'stock' ? (f.name + ' ' + f.code) : f.sector }}</span>
-              <span class="fa-rank" v-if="f.is_rank_top">★ 榜首</span>
-              <span class="fa-rank-id" v-else-if="f.kind !== 'stock'">#{{ f.rank }}</span>
-              <span class="fa-stock-tag" v-else>📈 价格异动</span>
+          <template v-for="(group, gidx) in groupedFindings" :key="gidx">
+            <!-- 普通板块异动（无折叠） -->
+            <div v-if="group.type !== 'stock'" class="fa-card" v-for="(f, idx) in group.items" :key="gidx+'-'+idx"
+                 :style="{ '--i': Math.min(gidx + idx, 15) }">
+              <div class="fa-card-head">
+                <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                <span class="fa-sector">{{ f.sector }}</span>
+                <span class="fa-rank" v-if="f.is_rank_top">★ 榜首</span>
+                <span class="fa-rank-id" v-else>#{{ f.rank }}</span>
+              </div>
+              <div class="fa-card-meta">
+                <span class="fa-net" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
+                  净流入 {{ fmt(f.net_flow) }} 亿
+                </span>
+                <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
+                  {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
+                </span>
+                <span class="fa-lead" v-if="f.lead_stock">龙头 {{ f.lead_stock }}<template v-if="f.lead_change != null"> {{ f.lead_change >= 0 ? '+' : '' }}{{ fmt(f.lead_change) }}%</template></span>
+              </div>
+              <div class="fa-hits">
+                <span v-for="(h, i) in f.hits" :key="i"
+                      :class="['fa-hit', `hit-${h.type}`]"
+                      :title="hitDetail(h)">
+                  {{ hitIcon(h.type) }} {{ h.label }}
+                  <span class="fa-hit-sub">{{ hitSub(h) }}</span>
+                </span>
+              </div>
             </div>
-            <div class="fa-card-meta">
-              <span v-if="f.kind !== 'stock'" class="fa-net" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
-                净流入 {{ fmt(f.net_flow) }} 亿
-              </span>
-              <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
-                {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
-              </span>
-              <span v-if="f.kind === 'stock'" class="fa-price">现价 {{ fmt(f.price) }}</span>
-              <span class="fa-lead" v-if="f.lead_stock">龙头 {{ f.lead_stock }}<template v-if="f.lead_change != null"> {{ f.lead_change >= 0 ? '+' : '' }}{{ fmt(f.lead_change) }}%</template></span>
+            <!-- 价格异动（同股折叠） -->
+            <div v-else class="fa-card fa-card-stock" :style="{ '--i': Math.min(gidx, 15) }">
+              <div class="fa-card-head" @click="toggleStockGroup(group.key)" style="cursor:pointer">
+                <span class="fa-time">{{ group.latest.date }} {{ group.latest.time }}</span>
+                <span class="fa-sector">{{ group.latest.name }} {{ group.latest.code }}</span>
+                <span class="fa-stock-tag">📈 价格异动</span>
+                <span v-if="group.items.length > 1" class="fa-expand-hint">{{ expandedStocks[group.key] ? '收起' : `共${group.items.length}条 ▶` }}</span>
+              </div>
+              <div class="fa-card-meta">
+                <span class="fa-chg" :class="group.latest.change_pct >= 0 ? 'pos' : 'neg'">
+                  {{ group.latest.change_pct >= 0 ? '+' : '' }}{{ fmt(group.latest.change_pct) }}%
+                </span>
+                <span class="fa-price">现价 {{ fmt(group.latest.price) }}</span>
+              </div>
+              <div class="fa-hits">
+                <span v-for="(h, i) in group.latest.hits" :key="i"
+                      :class="['fa-hit', 'hit-price']">
+                  {{ hitIcon('price') }} {{ h.label }}
+                </span>
+              </div>
+              <!-- 展开的历史异动 -->
+              <div v-if="expandedStocks[group.key] && group.items.length > 1" class="fa-stock-history">
+                <div v-for="(f, idx) in group.items.slice(1)" :key="idx" class="fa-stock-hist-item">
+                  <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                  <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
+                    {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
+                  </span>
+                  <span class="fa-price">现价 {{ fmt(f.price) }}</span>
+                  <div class="fa-hits" style="margin-top:4px">
+                    <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', 'hit-price']">
+                      {{ hitIcon('price') }} {{ h.label }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="fa-hits">
-              <span v-for="(h, i) in f.hits" :key="i"
-                    :class="['fa-hit', f.kind === 'stock' ? 'hit-price' : `hit-${h.type}`]"
-                    :title="f.kind === 'stock' ? '' : hitDetail(h)">
-                {{ hitIcon(f.kind === 'stock' ? 'price' : h.type) }} {{ h.label }}
-                <span class="fa-hit-sub" v-if="f.kind !== 'stock'">{{ hitSub(h) }}</span>
-              </span>
-            </div>
-          </div>
+          </template>
           <div class="fa-more" v-if="filteredFindings.length > shownFindings.length">
             <button @click="showLimit += 100">加载更多（剩余 {{ filteredFindings.length - shownFindings.length }}）</button>
           </div>
@@ -163,7 +199,8 @@ export default {
       findings: [],
       pushed: [],
       filter: 'all',
-      showLimit: 100
+      showLimit: 100,
+      expandedStocks: {}
     }
   },
   computed: {
@@ -184,7 +221,35 @@ export default {
           : this.findings.filter(f => f.kind !== 'stock' && f.hits.some(h => h.type === this.filter))
       return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
     },
-    shownFindings() { return this.filteredFindings.slice(0, this.showLimit) }
+    shownFindings() { return this.filteredFindings.slice(0, this.showLimit) },
+    groupedFindings() {
+      // 将 filteredFindings 分组：同一股票的价格异动折叠
+      const shown = this.shownFindings
+      const groups = []
+      const stockMap = new Map() // code -> group index
+      for (const f of shown) {
+        if (f.kind === 'stock') {
+          const code = f.code || f.name
+          if (stockMap.has(code)) {
+            const gidx = stockMap.get(code)
+            groups[gidx].items.push(f)
+          } else {
+            stockMap.set(code, groups.length)
+            groups.push({ type: 'stock', key: code, items: [f], latest: f })
+          }
+        } else {
+          groups.push({ type: 'sector', items: [f] })
+        }
+      }
+      // 每个stock group按时间倒序，latest是最新的
+      for (const g of groups) {
+        if (g.type === 'stock') {
+          g.items.sort((a, b) => (a.time < b.time ? 1 : -1))
+          g.latest = g.items[0]
+        }
+      }
+      return groups
+    }
   },
   async mounted() {
     window.addEventListener('auth-required', this.onAuthRequired)
@@ -200,6 +265,11 @@ export default {
     promptLogin() { window.dispatchEvent(new CustomEvent('auth-request-login')) },
     onAuthRequired() { this.needsAuth = true; this.loading = false },
     onAuthLogin() { if (this.needsAuth) { this.needsAuth = false; this.runDetect() } },
+    toggleStockGroup(key) {
+      this.expandedStocks[key] = !this.expandedStocks[key]
+      // 触发Vue响应式更新
+      this.expandedStocks = { ...this.expandedStocks }
+    },
     fmt(v) { return (v == null || isNaN(v)) ? '--' : Number(v).toFixed(2) },
     hitIcon(t) { return (DIM_META[t] || {}).icon || '•' },
     hitDetail(h) {
@@ -384,6 +454,11 @@ export default {
 .fa-card-stock { border-left-color: #52c41a; }
 .fa-stock-tag { font-size: 11px; color: #52c41a; border: 1px solid #52c41a; border-radius: 10px; padding: 1px 8px; }
 .fa-price { color: #c0cce0; }
+.fa-expand-hint { font-size: 11px; color: #8ba4c7; border: 1px solid rgba(139,164,199,.3); border-radius: 10px; padding: 1px 8px; cursor: pointer; transition: all .2s; }
+.fa-expand-hint:hover { color: #fff; border-color: #52c41a; }
+.fa-stock-history { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(82,196,26,.3); }
+.fa-stock-hist-item { padding: 6px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fa-stock-hist-item + .fa-stock-hist-item { border-top: 1px solid rgba(255,255,255,.04); }
 .fa-more { text-align: center; margin-top: 10px; }
 .fa-more button { background: #1a2236; color: #8ba4c7; border: 1px solid rgba(148,163,184,.25); border-radius: 4px; padding: 8px 20px; cursor: pointer; font-size: 13px; }
 .fa-footnote { text-align: center; margin-top: 24px; font-size: 11px; color: #6a7a99; line-height: 1.8; }
