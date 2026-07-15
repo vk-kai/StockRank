@@ -7,11 +7,12 @@
 //       仅在已登录时轮询；刷新后若 cookie 仍有效则通过 getAuthSession 自启。
 // 开关/声音：读 localStorage（newsNotificationEnabled / newsSoundMode），
 //           首页与新闻页的开关 UI 写入同一 key，全局生效。
-import { getNews, getAnomalyAlerts, getAuthSession } from './apiService'
+import { getNews, getAnomalyAlerts, getStockPriceAlerts, getAuthSession } from './apiService'
 
 const ICON = 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
-const NEWS_INTERVAL = 30000   // 与首页新闻轮询同频
-const ANOMALY_INTERVAL = 60000 // 与首页异动轮询同频
+const NEWS_INTERVAL = 10000    // 新闻轮询 10s
+const ANOMALY_INTERVAL = 15000 // 资金异动轮询 15s
+const PRICE_ALERT_INTERVAL = 10000 // 价格异动轮询 10s
 const SOUND_PATHS = { important: '/assets/sounds/important.mp3', normal: '/assets/sounds/normal.mp3' }
 
 const state = {
@@ -19,11 +20,14 @@ const state = {
   authed: false,
   newsTimer: null,
   anomalyTimer: null,
+  priceAlertTimer: null,
   lastNewsId: null,
   lastAnomalyTs: '',
+  lastPriceAlertTs: '',
   // 首次轮询只建立基线（记录当前最新 id/timestamp）不弹窗，避免一登录就把存量当新消息刷屏
   newsBaselined: false,
-  anomalyBaselined: false
+  anomalyBaselined: false,
+  priceAlertBaselined: false
 }
 
 function isEnabled() {
@@ -86,6 +90,27 @@ function sendAnomalyNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
+function sendPriceAlertNotification(a) {
+  try {
+    const pct = a.pct != null ? (a.pct >= 0 ? '+' : '') + Number(a.pct).toFixed(2) + '%' : ''
+    const price = a.price != null ? ` 现价${a.price}` : ''
+    const label = a.label || a.type || '价格异动'
+    // 利好(涨/回升)用🔴，利空(跌/回落)用🟢，与推送消息一致
+    const bullish = /大涨|拉升|高开|涨停|回升|反弹|撬板/.test(label)
+    const bearish = /大跌|打压|低开|跌停|回落|炸板/.test(label)
+    const icon = bullish ? '🔴' : bearish ? '🟢' : (a.pct || 0) >= 0 ? '🔴' : '🟢'
+    const n = new Notification(`${icon} 价格异动 · ${a.name || a.code}`, {
+      body: `${label}｜${pct}${price}`,
+      icon: ICON,
+      tag: a.timestamp,
+      requireInteraction: true
+    })
+    n.onclick = () => { window.focus(); n.close() }
+    const mode = getSoundMode()
+    if (mode === 'all' || mode === 'important') playSound('important')
+  } catch (e) { /* 忽略 */ }
+}
+
 async function pollNews() {
   if (!state.authed) return
   try {
@@ -121,21 +146,40 @@ async function pollAnomaly() {
   } catch (e) { /* 静默 */ }
 }
 
+async function pollPriceAlert() {
+  if (!state.authed) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const res = await getStockPriceAlerts(today)
+    if (!res || !res.success || !Array.isArray(res.data) || !res.data.length) return
+    const newest = res.data[0].timestamp || ''
+    if (!state.priceAlertBaselined) { state.lastPriceAlertTs = newest; state.priceAlertBaselined = true; return }
+    if (!newest || newest <= state.lastPriceAlertTs) return
+    const fresh = res.data.filter(a => (a.timestamp || '') > state.lastPriceAlertTs)
+    state.lastPriceAlertTs = newest
+    if (fresh.length && isEnabled() && canNotify()) fresh.slice(0, 5).forEach(sendPriceAlertNotification)
+  } catch (e) { /* 静默 */ }
+}
+
 function startTimers() {
-  if (state.newsTimer || state.anomalyTimer) return
+  if (state.newsTimer || state.anomalyTimer || state.priceAlertTimer) return
   // 立即跑一次建立基线（不弹窗），随后定时轮询
   pollNews()
   pollAnomaly()
+  pollPriceAlert()
   state.newsTimer = setInterval(pollNews, NEWS_INTERVAL)
   state.anomalyTimer = setInterval(pollAnomaly, ANOMALY_INTERVAL)
+  state.priceAlertTimer = setInterval(pollPriceAlert, PRICE_ALERT_INTERVAL)
 }
 
 function stopTimers() {
   if (state.newsTimer) { clearInterval(state.newsTimer); state.newsTimer = null }
   if (state.anomalyTimer) { clearInterval(state.anomalyTimer); state.anomalyTimer = null }
+  if (state.priceAlertTimer) { clearInterval(state.priceAlertTimer); state.priceAlertTimer = null }
   // 登出/失鉴权时重置基线，下次登录重新建立，既不漏报也不误报
   state.newsBaselined = false
   state.anomalyBaselined = false
+  state.priceAlertBaselined = false
 }
 
 function onLogin() {
