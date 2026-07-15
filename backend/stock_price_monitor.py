@@ -519,6 +519,17 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
     title, content = _format_message(name, code, quote, primary)
     pushed = pusher(title, content)
     record_alert(code, name, primary, hits, quote, pushed)
+    # WebSocket实时推送价格异动到前端
+    try:
+        from app import push_event
+        push_event('price_alert', {
+            'code': code, 'name': name, 'type': primary['type'],
+            'label': primary['label'], 'price': quote.get('price'),
+            'pct': quote.get('pct'), 'timestamp': _now_iso(),
+            'pushed': pushed
+        })
+    except Exception:
+        pass
     return hits
 
 

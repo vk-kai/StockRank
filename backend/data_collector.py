@@ -177,6 +177,12 @@ def data_collection_thread():
                         success = save_realtime_data(today, minute_key, data)
                         if success:
                             data_logger.info(f"数据采集成功，获取{len(data)}个板块")
+                            # WebSocket通知前端数据已刷新
+                            try:
+                                from app import push_event
+                                push_event('data_update', {'type': 'sector_flow', 'date': today, 'time': minute_key, 'count': len(data)})
+                            except Exception:
+                                pass
                             # 资金异动检测（独立模块，异常绝不影响采集主循环）
                             try:
                                 from anomaly_detector import detect_and_push

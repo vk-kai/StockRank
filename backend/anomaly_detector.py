@@ -525,6 +525,13 @@ def _push_findings(findings, cfg):
         # 仅保留最近 500 条，防膨胀
         _save_alerts(alerts[-500:])
         logger.info(f"异动推送 {len(new_records)} 条")
+        # WebSocket实时推送异动到前端
+        try:
+            from app import push_event
+            for record in new_records:
+                push_event('anomaly', record)
+        except Exception:
+            pass
 
 
 def _format_message(f):

@@ -1,37 +1,25 @@
 // 全局桌面通知管理器（单例）
-// 目的：新闻 / 资金异动的桌面通知与当前所在页面解耦——只要网站开着且已登录，
-// 不管在哪个路由，新到达的新闻/异动都会通知。在 main.js 启动时调用一次，
-// 常驻整个会话；轮询独立于任何 Vue 组件，路由切换不影响。
+// 通过 WebSocket 接收服务器实时推送，触发桌面通知。
+// 事件类型：news(新闻) / anomaly(资金异动) / price_alert(价格异动) / data_update(数据刷新)
 //
-// 鉴权：监听 Root.vue 派发的 auth-login-success / auth-logout / auth-required 事件，
-//       仅在已登录时轮询；刷新后若 cookie 仍有效则通过 getAuthSession 自启。
+// 鉴权：监听 auth-login-success / auth-logout / auth-required 事件，
+//       仅在已登录时连接 WebSocket。
 // 开关/声音：读 localStorage（newsNotificationEnabled / newsSoundMode），
 //           首页与新闻页的开关 UI 写入同一 key，全局生效。
-import { getNews, getAnomalyAlerts, getStockPriceAlerts, getAuthSession } from './apiService'
+import { io } from 'socket.io-client'
+import { getAuthSession } from './apiService'
 
 const ICON = 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png'
-const NEWS_INTERVAL = 10000    // 新闻轮询 10s
-const ANOMALY_INTERVAL = 15000 // 资金异动轮询 15s
-const PRICE_ALERT_INTERVAL = 10000 // 价格异动轮询 10s
 const SOUND_PATHS = { important: '/assets/sounds/important.mp3', normal: '/assets/sounds/normal.mp3' }
 
 const state = {
   started: false,
   authed: false,
-  newsTimer: null,
-  anomalyTimer: null,
-  priceAlertTimer: null,
-  lastNewsId: null,
-  lastAnomalyTs: '',
-  lastPriceAlertTs: '',
-  // 首次轮询只建立基线（记录当前最新 id/timestamp）不弹窗，避免一登录就把存量当新消息刷屏
-  newsBaselined: false,
-  anomalyBaselined: false,
-  priceAlertBaselined: false
+  socket: null,
+  reconnectTimer: null,
 }
 
 function isEnabled() {
-  // 默认开启；用户在首页/新闻页切换通知开关会写入此 key
   return localStorage.getItem('newsNotificationEnabled') !== 'false'
 }
 function getSoundMode() {
@@ -53,6 +41,8 @@ function playSound(type) {
 function isNewsImportant(news) {
   return news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
 }
+
+// ==================== 桌面通知 ====================
 
 function sendNewsNotification(news) {
   try {
@@ -95,7 +85,6 @@ function sendPriceAlertNotification(a) {
     const pct = a.pct != null ? (a.pct >= 0 ? '+' : '') + Number(a.pct).toFixed(2) + '%' : ''
     const price = a.price != null ? ` 现价${a.price}` : ''
     const label = a.label || a.type || '价格异动'
-    // 利好(涨/回升)用🔴，利空(跌/回落)用🟢，与推送消息一致
     const bullish = /大涨|拉升|高开|涨停|回升|反弹|撬板/.test(label)
     const bearish = /大跌|打压|低开|跌停|回落|炸板/.test(label)
     const icon = bullish ? '🔴' : bearish ? '🟢' : (a.pct || 0) >= 0 ? '🔴' : '🟢'
@@ -111,84 +100,85 @@ function sendPriceAlertNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
-async function pollNews() {
-  if (!state.authed) return
-  try {
-    const res = await getNews(1, 5)
-    if (!res || !res.success) return
-    const list = Array.isArray(res.data) ? res.data : []
-    if (!list.length) return
-    const newest = list[0]
-    if (!state.newsBaselined) { state.lastNewsId = newest.id; state.newsBaselined = true; return }
-    // 收集比上次水位更新的条目（按 id 倒序走到命中 lastNewsId 为止）
-    const fresh = []
-    for (const n of list) {
-      if (n.id === state.lastNewsId) break
-      fresh.unshift(n)
-    }
-    // 始终推进水位——即便用户关了通知，重开时也不会把积压一次性弹出
-    state.lastNewsId = newest.id
-    if (fresh.length && isEnabled() && canNotify()) fresh.slice(0, 5).forEach(sendNewsNotification)
-  } catch (e) { /* 401 等鉴权异常由 auth-required 事件统一处理，这里静默 */ }
+// ==================== WebSocket 推送处理 ====================
+
+function handlePushEvent(msg) {
+  if (!msg || !msg.type) return
+
+  // data_update 事件：触发全局自定义事件，让各页面组件自行刷新数据
+  if (msg.type === 'data_update') {
+    window.dispatchEvent(new CustomEvent('ws-data-update', { detail: msg.data }))
+    return
+  }
+
+  // 以下事件需要检查通知开关和权限
+  if (!isEnabled() || !canNotify()) return
+
+  switch (msg.type) {
+    case 'news':
+      if (msg.data) sendNewsNotification(msg.data)
+      break
+    case 'anomaly':
+      if (msg.data) sendAnomalyNotification(msg.data)
+      break
+    case 'price_alert':
+      if (msg.data) sendPriceAlertNotification(msg.data)
+      break
+  }
 }
 
-async function pollAnomaly() {
-  if (!state.authed) return
-  try {
-    const res = await getAnomalyAlerts()
-    if (!res || !res.success || !Array.isArray(res.data) || !res.data.length) return
-    const newest = res.data[0].timestamp || ''
-    if (!state.anomalyBaselined) { state.lastAnomalyTs = newest; state.anomalyBaselined = true; return }
-    if (!newest || newest <= state.lastAnomalyTs) return
-    const fresh = res.data.filter(a => (a.timestamp || '') > state.lastAnomalyTs)
-    state.lastAnomalyTs = newest
-    if (fresh.length && isEnabled() && canNotify()) fresh.slice(0, 5).forEach(sendAnomalyNotification)
-  } catch (e) { /* 静默 */ }
+// ==================== WebSocket 连接管理 ====================
+
+function connectSocket() {
+  if (state.socket && state.socket.connected) return
+
+  // 自动检测WebSocket地址（同源或显式指定）
+  const wsUrl = window.location.protocol === 'https:'
+    ? `https://${window.location.host}`
+    : `http://${window.location.hostname}:5000`
+
+  const socket = io(wsUrl, {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 30000,
+    timeout: 10000,
+    path: '/socket.io/'
+  })
+
+  socket.on('push', handlePushEvent)
+
+  socket.on('connect', () => {
+    console.log('[WS] 已连接', socket.id)
+  })
+
+  socket.on('disconnect', (reason) => {
+    console.log('[WS] 断开', reason)
+  })
+
+  socket.on('connect_error', (err) => {
+    console.warn('[WS] 连接失败', err.message)
+  })
+
+  state.socket = socket
 }
 
-async function pollPriceAlert() {
-  if (!state.authed) return
-  try {
-    const today = new Date().toISOString().slice(0, 10)
-    const res = await getStockPriceAlerts(today)
-    if (!res || !res.success || !Array.isArray(res.data) || !res.data.length) return
-    const newest = res.data[0].timestamp || ''
-    if (!state.priceAlertBaselined) { state.lastPriceAlertTs = newest; state.priceAlertBaselined = true; return }
-    if (!newest || newest <= state.lastPriceAlertTs) return
-    const fresh = res.data.filter(a => (a.timestamp || '') > state.lastPriceAlertTs)
-    state.lastPriceAlertTs = newest
-    if (fresh.length && isEnabled() && canNotify()) fresh.slice(0, 5).forEach(sendPriceAlertNotification)
-  } catch (e) { /* 静默 */ }
-}
-
-function startTimers() {
-  if (state.newsTimer || state.anomalyTimer || state.priceAlertTimer) return
-  // 立即跑一次建立基线（不弹窗），随后定时轮询
-  pollNews()
-  pollAnomaly()
-  pollPriceAlert()
-  state.newsTimer = setInterval(pollNews, NEWS_INTERVAL)
-  state.anomalyTimer = setInterval(pollAnomaly, ANOMALY_INTERVAL)
-  state.priceAlertTimer = setInterval(pollPriceAlert, PRICE_ALERT_INTERVAL)
-}
-
-function stopTimers() {
-  if (state.newsTimer) { clearInterval(state.newsTimer); state.newsTimer = null }
-  if (state.anomalyTimer) { clearInterval(state.anomalyTimer); state.anomalyTimer = null }
-  if (state.priceAlertTimer) { clearInterval(state.priceAlertTimer); state.priceAlertTimer = null }
-  // 登出/失鉴权时重置基线，下次登录重新建立，既不漏报也不误报
-  state.newsBaselined = false
-  state.anomalyBaselined = false
-  state.priceAlertBaselined = false
+function disconnectSocket() {
+  if (state.socket) {
+    state.socket.disconnect()
+    state.socket = null
+  }
 }
 
 function onLogin() {
   state.authed = true
-  startTimers()
+  connectSocket()
 }
+
 function onLogout() {
   state.authed = false
-  stopTimers()
+  disconnectSocket()
 }
 
 export function startNotificationManager() {
@@ -197,7 +187,7 @@ export function startNotificationManager() {
   window.addEventListener('auth-login-success', onLogin)
   window.addEventListener('auth-logout', onLogout)
   window.addEventListener('auth-required', onLogout)
-  // 初始鉴权探测：刷新页面后若 cookie 仍为登录态，直接启动轮询
+  // 初始鉴权探测：刷新页面后若 cookie 仍为登录态，直接连接
   getAuthSession()
     .then(s => { if (s && s.authenticated) onLogin() })
     .catch(() => {})

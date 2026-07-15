@@ -283,6 +283,12 @@ def process_news_with_ai_and_push(news_list):
                     results = send_news_item_to_channels(news_item, None, direct_channels)
                     if _record_push_results(news_item, results):
                         record_pushed(news_item, reason, news_item.get('core_event', ''))
+                        # WebSocket实时推送新闻到前端
+                        try:
+                            from app import push_event
+                            push_event('news', news_item)
+                        except Exception:
+                            pass
 
                 if ai_channels:
                     news_item['ai_analyzed'] = True
@@ -291,6 +297,12 @@ def process_news_with_ai_and_push(news_list):
                             results = send_news_item_to_channels(news_item, analysis, ai_channels)
                             if _record_push_results(news_item, results):
                                 record_pushed(news_item, analysis.get('reason', ''), analysis.get('core_event', ''))
+                                # WebSocket实时推送新闻到前端
+                                try:
+                                    from app import push_event
+                                    push_event('news', news_item)
+                                except Exception:
+                                    pass
                         else:
                             record_ignored(news_item, analysis.get('reason', ''), analysis.get('level', ''))
                     else:

@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 from werkzeug.exceptions import HTTPException
 import threading
 import os
@@ -20,6 +21,23 @@ from Jarvis import SecurityMiddleware
 from Jarvis.middleware import create_security_blueprint
 from Jarvis.config import get_config as get_jarvis_config
 
+# ==================== SocketIO 实例（全局单例） ====================
+socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
+
+def push_event(event_type, data):
+    """向所有已连接的前端客户端推送实时事件。
+    
+    event_type 类型:
+      - 'news'         新新闻
+      - 'anomaly'      资金异动
+      - 'price_alert'  价格异动
+      - 'data_update'  数据刷新（板块资金、大盘指数等）
+    """
+    try:
+        socketio.emit('push', {'type': event_type, 'data': data})
+    except Exception as e:
+        error_logger.warning(f"SocketIO推送失败: {e}")
+
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
 margin_collection_thread = threading.Thread(target=margin_collection_func, daemon=True)
@@ -31,8 +49,6 @@ def create_app():
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
-        # 登录态永不过期：设为 100 年。浏览器实际会按自身上限保留
-        # （Chrome 约 400 天），效果上等同永久登录，关闭浏览器/重开仍保持登录。
         PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 365 * 100,
     )
     
@@ -68,6 +84,16 @@ def create_app():
     app.register_blueprint(log_bp)
     app.register_blueprint(house_bp)
     install_auth_guard(app)
+    
+    # ==================== SocketIO 事件 ====================
+    @socketio.on('connect')
+    def on_connect():
+        system_logger.info(f"SocketIO客户端已连接: {request.sid}")
+        emit('push', {'type': 'connected', 'data': {'sid': request.sid}})
+    
+    @socketio.on('disconnect')
+    def on_disconnect():
+        system_logger.info(f"SocketIO客户端断开: {request.sid}")
     
     @app.route('/health', methods=['GET', 'POST', 'OPTIONS'])
     def health():
@@ -164,6 +190,8 @@ def create_app():
         error_logger.error(f"未捕获的异常: {e}\n{traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
+    # 初始化SocketIO
+    socketio.init_app(app)
     return app
 
 app = create_app()
@@ -190,11 +218,9 @@ if __name__ == '__main__':
             mm_snapshot_thread.start()
         system_logger.info("大盘云图快照线程已注册启动")
         
-        # 启动时自动执行健康检测（获取可用请求头 + 启动定时检测）
         start_health_checker()
         system_logger.info("健康检测已启动")
 
-        # 后台预热异动检测基线（扫历史数据较慢，提前构建避免首次 anomaly 接口卡顿）
         def _preload_anomaly_baseline():
             try:
                 from anomaly_detector import build_baseline
@@ -208,13 +234,12 @@ if __name__ == '__main__':
         monitor_thread.start()
         system_logger.info("监控线程已启动")
 
-        # 自选股价格异动监控(交易时段每 N 秒轮询)
         from stock_price_monitor import stock_price_loop
         threading.Thread(target=stock_price_loop, daemon=True).start()
         system_logger.info("价格异动监控线程已启动")
         
-        system_logger.info("Flask服务器启动")
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        system_logger.info("Flask-SocketIO服务器启动")
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
         
     except KeyboardInterrupt:
         system_logger.info("服务器正在关闭...")
