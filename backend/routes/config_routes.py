@@ -681,16 +681,31 @@ def test_datasource():
                 # akshare等非HTTP接口，标记为跳过
                 results[key] = {'ok': None, 'status_code': None, 'latency_ms': None, 'error': '非HTTP接口，跳过测试'}
                 continue
-            # 根据数据源类型选请求头
+            # 根据数据源类型选请求头（与业务请求完全一致）
             provider = ds.get('provider', '')
             if '东方财富' in provider:
                 headers = get_eastmoney_headers()
             elif '同花顺' in provider:
-                headers = {
-                    'User-Agent': get_random_user_agent(),
-                    'Referer': 'https://data.10jqka.com.cn/',
-                    'Accept': '*/*',
-                }
+                # 使用与业务请求相同的cookie生成逻辑
+                try:
+                    from data_processor import attach_fresh_ths_cookie, generate_random_headers, normalize_ths_sector_headers
+                    host = 'data.10jqka.com.cn'
+                    if 'q.10jqka' in test_url:
+                        host = 'q.10jqka.com.cn'
+                    elif 'dq.10jqka' in test_url:
+                        host = 'dq.10jqka.com.cn'
+                    elif 'news.10jqka' in test_url:
+                        host = 'news.10jqka.com.cn'
+                    if 'hyzjl' in test_url or 'field' in test_url:
+                        headers = attach_fresh_ths_cookie(normalize_ths_sector_headers())
+                    else:
+                        headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
+                except Exception:
+                    headers = {
+                        'User-Agent': get_random_user_agent(),
+                        'Referer': 'https://data.10jqka.com.cn/',
+                        'Accept': '*/*',
+                    }
             elif '新浪' in provider:
                 headers = {
                     'User-Agent': get_random_user_agent(),
@@ -701,16 +716,32 @@ def test_datasource():
                     'User-Agent': get_random_user_agent(),
                     'Referer': 'https://gu.qq.com/',
                 }
+            elif '金融界' in provider:
+                headers = {
+                    'User-Agent': get_random_user_agent(),
+                    'Referer': 'https://www.jrj.com.cn/',
+                }
             else:
                 headers = {'User-Agent': get_random_user_agent()}
 
             import time as _t
             start = _t.time()
             try:
-                resp = requests.get(test_url, headers=headers, timeout=8, allow_redirects=True)
-                latency = int((_t.time() - start) * 1000)
-                ok = resp.status_code == 200
-                results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}'}
+                if '东方财富' in provider:
+                    # 使用em_request支持代理自动切换
+                    from config import em_request
+                    resp = em_request(test_url, headers=headers, timeout=10)
+                    latency = int((_t.time() - start) * 1000)
+                    if resp is None:
+                        results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '直连+代理均不可达'}
+                    else:
+                        ok = resp.status_code == 200 and len(resp.content) > 10
+                        results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}' if resp.status_code != 200 else '响应内容为空'}
+                else:
+                    resp = requests.get(test_url, headers=headers, timeout=8, allow_redirects=True)
+                    latency = int((_t.time() - start) * 1000)
+                    ok = resp.status_code == 200
+                    results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}'}
             except requests.exceptions.Timeout:
                 latency = int((_t.time() - start) * 1000)
                 results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '超时'}
