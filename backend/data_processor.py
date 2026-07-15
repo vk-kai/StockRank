@@ -12,7 +12,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from bs4 import BeautifulSoup
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent, get_eastmoney_headers
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent, get_eastmoney_headers, em_request
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -1125,10 +1125,12 @@ def get_eastmoney_market_index_data():
     }
     
     try:
-        response = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        response = em_request(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        if response is None:
+            raise Exception("东方财富大盘指数请求失败(直连+代理均不可达)")
         response.raise_for_status()
         data = response.json()
-        
+
         if 'data' in data and 'diff' in data['data']:
             indices = {}
             for item in data['data']['diff']:
@@ -1271,10 +1273,11 @@ def get_global_market_indices():
     result = {}
     em_ok = False
     try:
-        response = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        diff = data.get('data', {}).get('diff', []) if data.get('data') else []
+        response = em_request(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+        if response is not None:
+            response.raise_for_status()
+            data = response.json()
+            diff = data.get('data', {}).get('diff', []) if data.get('data') else []
         em_map = {item.get('f12'): item for item in diff}
         for cfg in GLOBAL_INDICES_CONFIG:
             name, secid, sina_code, lat, lng, region = cfg
@@ -1530,10 +1533,11 @@ def _fetch_ai_chain_eastmoney():
     for attempt in range(max_retries):
         headers = get_eastmoney_headers()
         try:
-            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=8)
-            resp.raise_for_status()
-            data = resp.json()
-            break
+            resp = em_request(MARKET_INDEX_URL, params=params, headers=headers, timeout=8)
+            if resp is not None:
+                resp.raise_for_status()
+                data = resp.json()
+                break
         except Exception as e:
             if attempt < max_retries - 1:
                 # 指数退避：0.5s, 1.5s，每次换全新请求头
@@ -1811,6 +1815,24 @@ def refresh_market_map_cache():
     # 用Session复用HTTP连接(keep-alive)+页间小延时+断连退避重试，降低东财反爬断连概率
     session = requests.Session()
     session.headers.update(get_eastmoney_headers())
+    # 检测直连是否可达，不可达则启用代理
+    from config import EM_PROXY_ENABLED, EM_PROXY_POOL, load_em_proxy_pool
+    _use_proxy_for_session = False
+    _session_proxies = None
+    try:
+        test_resp = session.get(EM_ALL_STOCK_URL, params={'pn': 1, 'pz': 1, 'np': 1, 'fltt': 2, 'invt': 2, 'fid': 'f12', 'fs': EM_A_SHARE_FS, 'fields': 'f12'}, timeout=8)
+        if test_resp.status_code != 200 or len(test_resp.content) < 10:
+            raise Exception("Empty response")
+    except Exception:
+        # 直连失败，尝试加载代理
+        if EM_PROXY_ENABLED:
+            if not EM_PROXY_POOL:
+                load_em_proxy_pool()
+            if EM_PROXY_POOL:
+                proxy = EM_PROXY_POOL[0]
+                _session_proxies = {'http': proxy, 'https': proxy}
+                session.proxies.update(_session_proxies)
+                _use_proxy_for_session = True
     all_stocks = {}
     page = 1
     while page <= 80:
@@ -2232,7 +2254,9 @@ def get_stock_statistics():
     }
     
     try:
-        response = requests.get(STOCK_STAT_URL, params=params, headers=headers, timeout=10)
+        response = em_request(STOCK_STAT_URL, params=params, headers=headers, timeout=10)
+        if response is None:
+            raise Exception("东方财富个股统计请求失败(直连+代理均不可达)")
         data = response.json()
         
         if 'data' in data and 'diff' in data['data']:

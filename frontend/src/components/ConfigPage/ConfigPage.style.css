@@ -81,18 +81,36 @@
 }
 
 /* 数据源设置 */
-.datasource-item {
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
+.ds-group {
+  margin-bottom: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
 }
-.datasource-header {
+.ds-group-header {
+  background: rgba(79, 195, 247, 0.12);
+  color: #4fc3f7;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ds-item {
+  padding: 8px 12px 8px 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.02);
+}
+.ds-item:last-child { border-bottom: none; }
+.ds-item-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+.ds-item-name {
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+  font-size: 12px;
 }
 .datasource-dot {
   display: inline-block;
@@ -105,7 +123,6 @@
 .dot-fail { background: #f44336; box-shadow: 0 0 4px #f44336; }
 .dot-skip { background: #9e9e9e; }
 .dot-unknown { background: rgba(255, 255, 255, 0.2); }
-.datasource-name { color: #fff; font-weight: 600; font-size: 13px; }
 .datasource-role {
   font-size: 11px;
   padding: 1px 6px;
@@ -115,28 +132,27 @@
 .role-primary { background: rgba(76, 175, 80, 0.25); color: #81c784; }
 .role-backup { background: rgba(255, 193, 7, 0.25); color: #ffd54f; }
 .role-complement { background: rgba(79, 195, 247, 0.25); color: #4fc3f7; }
-.datasource-provider { color: rgba(255,255,255,0.5); font-size: 11px; margin-left: auto; }
-.datasource-url-row { display: flex; align-items: center; gap: 8px; }
+.ds-test-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+.ds-test-ok { color: #81c784; background: rgba(76, 175, 80, 0.15); }
+.ds-test-fail { color: #ef9a9a; background: rgba(244, 67, 54, 0.15); }
 .datasource-url-input {
-  flex: 1;
+  width: 100%;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255,255,255,0.8);
-  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255,255,255,0.7);
+  padding: 4px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: 'Consolas', 'Courier New', monospace;
 }
 .datasource-url-input:focus {
   border-color: #4fc3f7;
   outline: none;
-}
-.datasource-test-info {
-  color: rgba(255,255,255,0.5);
-  font-size: 11px;
-  white-space: nowrap;
-  min-width: 60px;
-  text-align: right;
 }
 
 .tab-button {

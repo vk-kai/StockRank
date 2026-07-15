@@ -260,33 +260,28 @@
             <span class="hint">修改数据源URL后保存即可生效。角色标注：<b class="role-primary">主</b>=主要数据源，<b class="role-backup">备</b>=备用数据源(主源失败时启用)，<b class="role-complement">互补</b>=补充数据源(提供主源没有的部分数据)</span>
           </div>
 
-          <div v-for="ds in datasourceList" :key="ds.key" class="datasource-item">
-            <div class="datasource-header">
-              <span class="datasource-dot"
-                :class="{
-                  'dot-ok': datasourceTestResults[ds.key]?.ok === true,
-                  'dot-fail': datasourceTestResults[ds.key]?.ok === false,
-                  'dot-skip': datasourceTestResults[ds.key]?.ok === null,
-                  'dot-unknown': datasourceTestResults[ds.key] === undefined
-                }"
-              ></span>
-              <span class="datasource-name">{{ ds.name }}</span>
-              <span class="datasource-role" :class="datasourceRoleClass(ds.role)">{{ ds.role }}</span>
-              <span class="datasource-provider">{{ ds.provider }}</span>
-            </div>
-            <div class="datasource-url-row">
+          <div v-for="group in datasourceGroups" :key="group.category" class="ds-group">
+            <div class="ds-group-header">{{ group.category }}</div>
+            <div v-for="ds in group.items" :key="ds.key" class="ds-item">
+              <div class="ds-item-header">
+                <span class="datasource-dot"
+                  :class="{
+                    'dot-ok': datasourceTestResults[ds.key]?.ok === true,
+                    'dot-fail': datasourceTestResults[ds.key]?.ok === false,
+                    'dot-skip': datasourceTestResults[ds.key]?.ok === null,
+                    'dot-unknown': datasourceTestResults[ds.key] === undefined
+                  }"
+                ></span>
+                <span class="ds-item-name">{{ ds.provider }}</span>
+                <span class="datasource-role" :class="datasourceRoleClass(ds.role)">{{ ds.role }}</span>
+                <span v-if="datasourceTestResults[ds.key]" class="ds-test-badge"
+                  :class="{'ds-test-ok': datasourceTestResults[ds.key].ok === true, 'ds-test-fail': datasourceTestResults[ds.key].ok === false}">
+                  <template v-if="datasourceTestResults[ds.key].ok === true">{{ datasourceTestResults[ds.key].latency_ms }}ms</template>
+                  <template v-else-if="datasourceTestResults[ds.key].ok === false">{{ datasourceTestResults[ds.key].error }}</template>
+                  <template v-else>{{ datasourceTestResults[ds.key].error }}</template>
+                </span>
+              </div>
               <input type="text" v-model="ds.url" class="datasource-url-input">
-              <span v-if="datasourceTestResults[ds.key]" class="datasource-test-info">
-                <template v-if="datasourceTestResults[ds.key].ok === true">
-                  {{ datasourceTestResults[ds.key].latency_ms }}ms
-                </template>
-                <template v-else-if="datasourceTestResults[ds.key].ok === false">
-                  {{ datasourceTestResults[ds.key].error }}
-                </template>
-                <template v-else>
-                  {{ datasourceTestResults[ds.key].error }}
-                </template>
-              </span>
             </div>
           </div>
 

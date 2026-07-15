@@ -2,6 +2,7 @@ import os
 import random
 import string
 import json
+import requests
 from datetime import timedelta
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +27,10 @@ THS_SECTOR_NET_OUT_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/
 THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 
 USE_PROXY = False
+
+# 东方财富专用代理池（IP被封时自动使用）
+EM_PROXY_POOL = []
+EM_PROXY_ENABLED = True  # 开关：东方财富请求失败时自动尝试代理
 
 # 东方财富反爬绕过：专用请求头生成（模拟真实浏览器完整指纹）
 def get_eastmoney_headers():
@@ -209,3 +214,67 @@ DEFAULT_DATASOURCES = [
      'role': '互补', 'url': 'akshare:stock_margin_detail_szse',
      'test_url': '', 'provider': '深交所(akshare)'},
 ]
+
+
+# ==================== 东方财富代理请求 ====================
+def load_em_proxy_pool():
+    """从免费代理API获取国内HTTPS代理，供东方财富请求使用。"""
+    global EM_PROXY_POOL
+    try:
+        resp = requests.get("https://proxy.scdn.io/api/get_proxy.php", params={
+            'protocol': 'https', 'count': 5, 'country_code': 'CN'
+        }, timeout=15)
+        data = resp.json()
+        if data.get('code') == 200 and data.get('data', {}).get('proxies'):
+            EM_PROXY_POOL = [f'https://{p}' for p in data['data']['proxies']]
+    except Exception:
+        pass
+
+
+def em_request(url, params=None, headers=None, timeout=10, max_retries=2):
+    """东方财富请求：直连失败自动切换代理重试。
+
+    典型场景：服务器IP被东方财富WAF封禁(Empty reply / Connection refused)，
+    通过国内代理绕过。
+    """
+    # 第一次直连
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=timeout,
+                            allow_redirects=True)
+        if resp.status_code == 200 and len(resp.content) > 10:
+            return resp
+    except (requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError):
+        pass
+    except Exception:
+        pass
+
+    # 直连失败，尝试代理
+    if not EM_PROXY_ENABLED:
+        return resp  # 返回上一次的response(可能失败)
+
+    # 懒加载代理池
+    if not EM_PROXY_POOL:
+        load_em_proxy_pool()
+
+    for attempt in range(max_retries):
+        if not EM_PROXY_POOL:
+            break
+        proxy = random.choice(EM_PROXY_POOL)
+        proxies = {'http': proxy, 'https': proxy}
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=timeout,
+                                proxies=proxies, allow_redirects=True, verify=False)
+            if resp.status_code == 200 and len(resp.content) > 10:
+                return resp
+        except Exception:
+            # 该代理不可用，从池中移除
+            if proxy in EM_PROXY_POOL:
+                EM_PROXY_POOL.remove(proxy)
+            continue
+
+    # 代理也失败，返回直连的response
+    try:
+        return requests.get(url, params=params, headers=headers, timeout=timeout)
+    except Exception:
+        return None

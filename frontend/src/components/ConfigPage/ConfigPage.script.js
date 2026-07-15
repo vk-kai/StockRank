@@ -155,6 +155,24 @@ export default {
     this.loadNotifySettings()
     this.loadDatasourceConfig()
   },
+  computed: {
+    datasourceGroups() {
+      const map = new Map()
+      for (const ds of this.datasourceList) {
+        const cat = ds.category || '其他'
+        if (!map.has(cat)) map.set(cat, [])
+        map.get(cat).push(ds)
+      }
+      const groups = []
+      for (const [category, items] of map) {
+        // 排序：主 > 备 > 互补
+        const order = { '主': 0, '备': 1, '互补': 2 }
+        items.sort((a, b) => (order[a.role] ?? 9) - (order[b.role] ?? 9))
+        groups.push({ category, items })
+      }
+      return groups
+    }
+  },
   methods: {
     goBack() {
       this.$router.go(-1)
