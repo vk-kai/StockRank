@@ -315,19 +315,42 @@ export default {
       }
       if (Notification.permission !== 'granted') { alert('请先允许浏览器通知权限'); return }
       try {
-        const n = new Notification('🚨 资金异动 · 半导体（测试）', {
-          body: '回调吸筹｜突变｜净流入+99.14亿 +0.74% 龙头有研硅',
+        // 同时测试飞书+微信推送
+        const { default: apiService } = await import('./services/apiService')
+        const res = await apiService.testPushNotification()
+        const feishuOk = res.feishu === true
+        const wechatOk = res.wechat === true
+
+        // 桌面通知1: 模拟资金异动格式
+        const n1 = new Notification('🔴 半导体回调吸筹 净流入+99.14亿', {
+          body: '回调吸筹、突变｜+0.74% 龙头有研硅',
           icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
           tag: 'anomaly-test',
           requireInteraction: true
         })
-        n.onclick = () => { window.focus(); n.close() }
-        const tryPlay = (paths) => {
-          if (!paths.length) return
-          const a = new Audio(paths[0]); a.volume = 0.5
-          a.play().catch(() => tryPlay(paths.slice(1)))
-        }
-        tryPlay(['/assets/sounds/important.mp3', '/sounds/important.mp3'])
+        n1.onclick = () => { window.focus(); n1.close() }
+
+        // 桌面通知2: 模拟价格异动格式
+        setTimeout(() => {
+          const n2 = new Notification('🟢 长电科技累计大跌 -5.31% -5.31%', {
+            body: '现价97.25｜累计大跌 -5.31%',
+            icon: 'https://pic.0vk.top/%E8%82%A1%E7%A5%A8.png',
+            tag: 'price-test',
+            requireInteraction: true
+          })
+          n2.onclick = () => { window.focus(); n2.close() }
+        }, 800)
+
+        // 播放声音
+        const a = new Audio('/assets/sounds/important.mp3'); a.volume = 0.5
+        a.play().catch(() => {})
+
+        const channels = []
+        if (feishuOk) channels.push('飞书✅')
+        else channels.push('飞书❌')
+        if (wechatOk) channels.push('微信✅')
+        else channels.push('微信❌')
+        alert(`推送测试结果：\n${channels.join('  ')}\n桌面通知✅\n\n请检查手机是否收到飞书/微信消息`)
       } catch (e) { alert('通知发送失败: ' + e) }
     },
     async loadPushed() {

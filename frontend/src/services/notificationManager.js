@@ -64,12 +64,15 @@ function sendNewsNotification(news) {
 
 function sendAnomalyNotification(a) {
   try {
-    const labels = (a.labels && a.labels.length) ? a.labels.join('、') : '资金异动'
-    const nf = a.net_flow != null ? `净流入${a.net_flow >= 0 ? '+' : ''}${Number(a.net_flow).toFixed(2)}亿` : ''
+    const topLabel = (a.labels && a.labels.length) ? a.labels[0] : ''
+    const nf = a.net_flow != null ? Number(a.net_flow) : 0
+    const arrow = nf >= 0 ? '🔴' : '🟢'
+    const nfStr = `净流入${nf >= 0 ? '+' : ''}${nf.toFixed(2)}亿`
     const chg = a.change_pct != null ? ` ${a.change_pct >= 0 ? '+' : ''}${Number(a.change_pct).toFixed(2)}%` : ''
     const lead = a.lead_stock ? ` 龙头${a.lead_stock}` : ''
-    const n = new Notification(`🚨 资金异动 · ${a.sector}`, {
-      body: `${labels}｜${nf}${chg}${lead}`,
+    // 标题直接关键信息，不加"资金异动"前缀
+    const n = new Notification(`${arrow} ${a.sector}${topLabel} ${nfStr}`, {
+      body: `${(a.labels || []).join('、')}｜${chg}${lead}`,
       icon: ICON,
       tag: `${a.date}-${a.time}-${a.sector}`,
       requireInteraction: true
@@ -84,12 +87,13 @@ function sendPriceAlertNotification(a) {
   try {
     const pct = a.pct != null ? (a.pct >= 0 ? '+' : '') + Number(a.pct).toFixed(2) + '%' : ''
     const price = a.price != null ? ` 现价${a.price}` : ''
-    const label = a.label || a.type || '价格异动'
+    const label = a.label || a.type || '异动'
     const bullish = /大涨|拉升|高开|涨停|回升|反弹|撬板/.test(label)
     const bearish = /大跌|打压|低开|跌停|回落|炸板/.test(label)
     const icon = bullish ? '🔴' : bearish ? '🟢' : (a.pct || 0) >= 0 ? '🔴' : '🟢'
-    const n = new Notification(`${icon} 价格异动 · ${a.name || a.code}`, {
-      body: `${label}｜${pct}${price}`,
+    // 标题直接关键信息，不加"价格异动"前缀
+    const n = new Notification(`${icon} ${a.name || a.code}${label} ${pct}`, {
+      body: `现价${a.price || '--'}｜${label}`,
       icon: ICON,
       tag: a.timestamp,
       requireInteraction: true

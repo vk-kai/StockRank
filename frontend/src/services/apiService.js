@@ -990,3 +990,13 @@ export async function testDatasource() {
     throw error
   }
 }
+
+export async function testPushNotification() {
+  try {
+    const response = await apiClient.post('/config/push/test')
+    return response.data
+  } catch (error) {
+    console.error('测试推送失败:', error)
+    throw error
+  }
+}

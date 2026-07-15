@@ -567,7 +567,9 @@ def _format_message(f):
         lines.append(f"• {h['label']}{detail}")
     lines.append("")
     lines.append(f"⏰ {f['date']} {f['time']}")
-    title = f"{arrow} 资金异动 · {sector}"
+    # 标题直接写关键信息，方便手机横幅一眼看到
+    top_hit = f['hits'][0]['label'] if f['hits'] else ''
+    title = f"{arrow} {sector}{top_hit} 净流入{nf:+.2f}亿"
     return title, "\n".join(lines)
 
 

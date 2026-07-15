@@ -753,3 +753,43 @@ def test_datasource():
         error_logger.error(f"测试数据源失败: {e}")
         return jsonify({'success': False, 'message': f'测试数据源失败: {e}'}), 500
 
+# ==================== 测试推送 ====================
+@config_bp.route('/push/test', methods=['POST'])
+def test_push_notification():
+    """测试推送：同时发送飞书+微信，使用真实格式"""
+    from notification_pusher import is_push_enabled, send_feishu_message, send_wechat_message
+    feishu_ok = False
+    wechat_ok = False
+    
+    # 测试资金异动格式
+    anomaly_title = '🔴 半导体回调吸筹 净流入+99.14亿'
+    anomaly_content = '> 时间：**2026-07-15 09:30**\n> 净流入：<font color="warning">+99.14 亿</font>\n> 涨跌幅：**+0.74%**\n> 龙头：**有研硅** +2.15%\n\n**触发条件**\n• 回调吸筹（历史上榜样本 12 次）\n• 突变（相比 09:25 变化 +5.21亿）'
+    
+    # 测试价格异动格式
+    price_title = '🟢 长电科技累计大跌 -5.31%'
+    price_content = '> 时间:**2026-07-15 09:35:00**\n> 现价:**97.25**  涨跌幅:**-5.31%**\n**累计大跌 -5.31%**'
+
+    # 发送飞书
+    if is_push_enabled('feishu'):
+        try:
+            send_feishu_message(anomaly_title, anomaly_content)
+            send_feishu_message(price_title, price_content)
+            feishu_ok = True
+        except Exception as e:
+            error_logger.warning(f"测试飞书推送失败: {e}")
+
+    # 发送微信
+    if is_push_enabled('wechat'):
+        try:
+            send_wechat_message(anomaly_title, anomaly_content)
+            send_wechat_message(price_title, price_content)
+            wechat_ok = True
+        except Exception as e:
+            error_logger.warning(f"测试微信推送失败: {e}")
+
+    return jsonify({
+        'success': True,
+        'feishu': feishu_ok,
+        'wechat': wechat_ok
+    })
+

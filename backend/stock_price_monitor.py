@@ -443,7 +443,9 @@ def _format_message(name, code, quote, primary_hit):
         f"> 现价:**{quote.get('price')}**  涨跌幅:**{pct_s}**\n"
         f"**{label}**"
     )
-    return f"{icon} 价格异动 · {name}", content
+    # 标题直接写关键信息，不加"价格异动"前缀，方便手机横幅一眼看到
+    title = f"{icon} {name}{label}"
+    return title, content
 
 
 def _select_primary_hit(code, hits, alerts, cooldown):
