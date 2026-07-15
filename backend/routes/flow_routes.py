@@ -22,6 +22,7 @@ from anomaly_detector import (
 )
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
+from industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result
 from intraday_timeline import get_stock_hover_summary
 from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
@@ -1171,3 +1172,70 @@ def anomaly_baseline_rebuild():
     except Exception as e:
         error_logger.error(f"API /api/flow/anomaly/baseline/rebuild 异常: {e}")
         return jsonify({'success': False, 'message': f'重建失败: {str(e)[:100]}'}), 500
+
+
+# ============================================================
+# 行业见顶周期分析
+# ============================================================
+@flow_bp.route('/industry-cycle/start', methods=['POST'])
+def industry_cycle_start():
+    """发起行业见顶周期分析（异步AI）"""
+    try:
+        data = request.get_json() or {}
+        industry_name = (data.get('industry') or '').strip()
+        if not industry_name:
+            return jsonify({'success': False, 'message': '行业名称不能为空'}), 400
+
+        result = start_industry_analysis(industry_name)
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 409  # 409 Conflict: 已有任务在跑
+
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/start 异常: {e}")
+        return jsonify({'success': False, 'message': f'启动失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/status', methods=['GET'])
+def industry_cycle_status():
+    """查询行业周期分析状态"""
+    try:
+        status = get_analysis_status()
+        result_data = get_analysis_result()
+
+        resp = {
+            'success': True,
+            'status': status.get('status', 'idle'),
+            'industry': status.get('industry'),
+            'progress': status.get('progress', 0),
+            'step': status.get('step', ''),
+            'start_time': status.get('start_time'),
+            'complete_time': status.get('complete_time'),
+            'error': status.get('error'),
+        }
+
+        # 分析完成时附带结果
+        if status.get('status') == 'completed' and result_data:
+            resp['result'] = result_data
+
+        return jsonify(resp)
+
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/status 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/result', methods=['GET'])
+def industry_cycle_result():
+    """获取最近一次行业周期分析结果"""
+    try:
+        result = get_analysis_result()
+        if result:
+            return jsonify({'success': True, 'data': result})
+        else:
+            return jsonify({'success': True, 'data': None})
+
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/result 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500

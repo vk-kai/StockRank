@@ -10,6 +10,7 @@ const GlobalMarket = () => import('./GlobalMarket.vue')
 const MarketMap = () => import('./MarketMap.vue')
 const FlowAlert = () => import('./FlowAlert.vue')
 const AiChain = () => import('./AiChain.vue')
+const IndustryCycle = () => import('./IndustryCycle.vue')
 
 const routes = [
   {
@@ -61,6 +62,11 @@ const routes = [
     path: '/ai-chain',
     name: 'AiChain',
     component: AiChain
+  },
+  {
+    path: '/industry-cycle',
+    name: 'IndustryCycle',
+    component: IndustryCycle
   }
 ]
 

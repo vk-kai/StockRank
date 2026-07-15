@@ -1281,6 +1281,10 @@ export default {
       this.$router.push('/house-kline')
     },
 
+    goToIndustryCycle() {
+      this.$router.push('/industry-cycle')
+    },
+
     openQuantSystem() {
       const baseUrl = window.location.origin
       // 携带 tz_gate 特征：StockRank nginx 据此放行并下发 cookie，直接复制裸 URL 访问会被踢回首页
@@ -1309,6 +1313,7 @@ export default {
     guardedGoToConfig() { if (this.requireAuthOrPrompt()) return; this.goToConfig() },
     guardedGoToLogs() { if (this.requireAuthOrPrompt()) return; this.goToLogs() },
     guardedGoToHouseKline() { if (this.requireAuthOrPrompt()) return; this.goToHouseKline() },
+    guardedGoToIndustryCycle() { if (this.requireAuthOrPrompt()) return; this.goToIndustryCycle() },
     guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
     guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },

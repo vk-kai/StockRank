@@ -30,6 +30,7 @@
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
             <div class="more-dropdown" v-if="showMoreMenu">
               <div class="more-dropdown-item" @click="guardedGoToConfig(); showMoreMenu = false">AI配置</div>
+              <div class="more-dropdown-item" @click="guardedGoToIndustryCycle(); showMoreMenu = false">行业见顶诊断</div>
               <div class="more-dropdown-item" @click="guardedGoToLogs(); showMoreMenu = false">日志</div>
               <div class="more-dropdown-item" @click="guardedGoToHouseKline(); showMoreMenu = false">房价K线</div>
             </div>

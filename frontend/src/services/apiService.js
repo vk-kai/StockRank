@@ -1000,3 +1000,39 @@ export async function testPushNotification() {
     throw error
   }
 }
+
+// ============================================================
+// 行业见顶周期分析
+// ============================================================
+/** 发起行业见顶周期分析（异步AI）。body { industry: 'AI/新能源/医药...' } */
+export async function startIndustryCycle(industry) {
+  try {
+    const response = await apiClient.post('/flow/industry-cycle/start', { industry })
+    return response.data
+  } catch (error) {
+    console.error('发起行业周期分析失败:', error)
+    throw error
+  }
+}
+
+/** 查询行业周期分析状态（含结果） */
+export async function getIndustryCycleStatus() {
+  try {
+    const response = await apiClient.get('/flow/industry-cycle/status')
+    return response.data
+  } catch (error) {
+    console.error('查询行业周期分析状态失败:', error)
+    throw error
+  }
+}
+
+/** 获取最近一次行业周期分析结果 */
+export async function getIndustryCycleResult() {
+  try {
+    const response = await apiClient.get('/flow/industry-cycle/result')
+    return response.data
+  } catch (error) {
+    console.error('获取行业周期分析结果失败:', error)
+    throw error
+  }
+}
