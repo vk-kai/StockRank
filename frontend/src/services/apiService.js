@@ -1036,3 +1036,61 @@ export async function getIndustryCycleResult() {
     throw error
   }
 }
+
+// ============================================================
+// 行业见顶周期批量诊断（大盘云图）
+// ============================================================
+/** 发起批量行业周期诊断。body { industries: ['消费电子', '半导体', ...] } */
+export async function startIndustryCycleBatch(industries) {
+  try {
+    const response = await apiClient.post('/flow/industry-cycle/batch-start', { industries })
+    return response.data
+  } catch (error) {
+    console.error('发起批量行业周期诊断失败:', error)
+    throw error
+  }
+}
+
+/** 查询批量行业周期诊断状态 */
+export async function getIndustryCycleBatchStatus() {
+  try {
+    const response = await apiClient.get('/flow/industry-cycle/batch-status')
+    return response.data
+  } catch (error) {
+    console.error('查询批量行业周期诊断状态失败:', error)
+    throw error
+  }
+}
+
+/** 停止批量行业周期诊断 */
+export async function stopIndustryCycleBatch() {
+  try {
+    const response = await apiClient.post('/flow/industry-cycle/batch-stop')
+    return response.data
+  } catch (error) {
+    console.error('停止批量行业周期诊断失败:', error)
+    throw error
+  }
+}
+
+/** 获取所有行业的周期诊断结果（供大盘云图着色） */
+export async function getIndustryCycleAllScores() {
+  try {
+    const response = await apiClient.get('/flow/industry-cycle/all-scores')
+    return response.data
+  } catch (error) {
+    console.error('获取行业周期诊断结果失败:', error)
+    throw error
+  }
+}
+
+/** 获取单个行业的周期诊断结果 */
+export async function getIndustryCycleSingleScore(industry) {
+  try {
+    const response = await apiClient.get('/flow/industry-cycle/single-score', { params: { industry } })
+    return response.data
+  } catch (error) {
+    console.error('获取单个行业周期诊断结果失败:', error)
+    throw error
+  }
+}

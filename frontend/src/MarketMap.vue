@@ -31,13 +31,19 @@
             <option value="change">着色：涨跌幅</option>
             <option value="margin">着色：融资净流入</option>
             <option value="score" v-if="hasScores">着色：AI打分</option>
+            <option value="cycle" v-if="hasCycleScores">着色：行业周期诊断</option>
           </select>
           <span class="mm-color-date" v-if="colorMode === 'margin' && marginDate">{{ marginDate }}</span>
           <span class="mm-color-date" v-if="colorMode === 'score' && scoreDate">打分：{{ scoreDate }}</span>
+          <span class="mm-color-date" v-if="colorMode === 'cycle' && cycleDate">诊断：{{ cycleDate }}</span>
         </div>
         <button @click="openScoreDialog" class="mm-score-btn" :class="{ running: scoringRunning }" title="调用 AI 给全市场股票打分（耗时较长，结果可反复使用）">
           <span class="mm-score-spin" :class="{ on: scoringRunning }">🤖</span>
           {{ scoringRunning ? '打分中…' : (hasScores ? '重新打分' : 'AI批量打分') }}
+        </button>
+        <button @click="openCycleDialog" class="mm-cycle-btn" :class="{ running: cycleRunning }" title="调用 AI 对所有二级行业进行见顶周期诊断">
+          <span class="mm-cycle-spin" :class="{ on: cycleRunning }">🔬</span>
+          {{ cycleRunning ? '诊断中…' : (hasCycleScores ? '重新诊断' : 'AI行业周期诊断') }}
         </button>
         <span class="mm-push-tag" v-if="pushedOnly && pushedCount">推送股票 {{ pushedCount }} 只</span>
         <button @click="refreshCache" class="mm-cache-btn" :disabled="cacheLoading">
@@ -75,7 +81,7 @@
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
         <div class="mm-tooltip-row">
-          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : '涨跌幅') }}</span>
+          <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : (colorMode === 'cycle' ? '周期诊断' : '涨跌幅')) }}</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
         <div class="mm-tooltip-row">
@@ -343,12 +349,82 @@
       </div>
     </div>
 
+    <!-- AI 行业周期诊断弹窗：确认 → 进度 → 完成/失败 -->
+    <div class="mm-modal-overlay" v-if="cycleDialog.visible" @click="closeCycleDialog">
+      <div class="mm-modal mm-score-modal" @click.stop>
+        <div class="mm-modal-header">
+          <div class="mm-modal-title"><span class="mm-modal-name">🔬 AI 行业周期诊断</span></div>
+          <button class="mm-modal-close" @click="closeCycleDialog" v-if="cycleDialog.view !== 'running'">✕</button>
+        </div>
+
+        <!-- 确认 -->
+        <div v-if="cycleDialog.view === 'confirm'" class="mm-score-body">
+          <p class="mm-score-desc">
+            将调用 AI 对大盘云图中约 <b>{{ cycleEstimate.total || '?' }}</b> 个二级行业逐一进行"6信号见顶诊断"，
+            返回 0-100 的见顶风险评分（<span class="down">&lt;50 安全</span> / <span class="up">≥50 危险</span>），
+            云图中用 <b>100-风险分</b> 显示（分越高=越安全=红）。
+          </p>
+          <ul class="mm-score-tips">
+            <li>⏱️ 每个行业约需 30-60 秒，全量约 <b>{{ cycleEstimate.eta || '20-60' }} 分钟</b>。</li>
+            <li>💰 会消耗 AI 额度（约几十个行业，每行业一次 AI 调用）。</li>
+            <li>💾 诊断结果持久保存，可反复使用。重新诊断会清除旧结果。</li>
+            <li>🔄 诊断期间云图可实时着色（切到「着色：行业周期诊断」查看）。</li>
+          </ul>
+          <p class="mm-score-warn" v-if="!aiEnabled">⚠️ 当前 AI 未启用或配置不完整，请先到「🤖 AI大模型配置」中设置并测试通过。</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-cancel" @click="closeCycleDialog">取消</button>
+            <button class="mm-score-btn-ok" :disabled="!aiEnabled || cycleDialog.busy" @click="confirmStartCycle">
+              {{ cycleDialog.busy ? '启动中…' : (hasCycleScores ? '确认重新诊断' : '确认开始诊断') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 进行中 -->
+        <div v-else-if="cycleDialog.view === 'running'" class="mm-score-body">
+          <div class="mm-score-progress">
+            <div class="mm-score-progress-bar"><div class="mm-score-progress-fill" :style="{ width: (cycleStatus.progress || 0) + '%' }"></div></div>
+            <div class="mm-score-progress-num">{{ cycleStatus.progress || 0 }}%</div>
+          </div>
+          <div class="mm-score-step">{{ cycleStatus.step || cycleStatus.current || '处理中…' }}</div>
+          <div class="mm-score-stat">
+            <span>已诊断 <b class="up">{{ cycleStatus.done || 0 }}</b> / {{ cycleStatus.total || '?' }}</span>
+            <span v-if="cycleStatus.failed">· 失败 <b class="down">{{ cycleStatus.failed }}</b></span>
+          </div>
+          <p class="mm-score-note">过程中可切到"着色：行业周期诊断"实时查看。可关闭此窗口，诊断在后台继续。</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-cancel" @click="handleStopCycle">停止诊断</button>
+            <button class="mm-score-btn-ghost" @click="cycleDialog.visible = false">后台运行，关闭窗口</button>
+          </div>
+        </div>
+
+        <!-- 完成 -->
+        <div v-else-if="cycleDialog.view === 'done'" class="mm-score-body">
+          <p class="mm-score-result" :class="{ warn: cycleStatus.failed }">
+            ✅ {{ cycleStatus.message || '诊断完成' }}
+          </p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-ok" @click="finishAndSwitchToCycle">查看诊断云图</button>
+            <button class="mm-score-btn-cancel" @click="closeCycleDialog">关闭</button>
+          </div>
+        </div>
+
+        <!-- 失败/中断 -->
+        <div v-else class="mm-score-body">
+          <p class="mm-score-result warn">⚠️ {{ cycleStatus.message || '诊断未完成' }}</p>
+          <div class="mm-score-actions">
+            <button class="mm-score-btn-ok" @click="confirmStartCycle">重新诊断</button>
+            <button class="mm-score-btn-cancel" @click="closeCycleDialog">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <SecurityAlert />
   </div>
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -463,6 +539,31 @@ function inScoreFilter(value, active) {
   if (active == null) return true
   if (typeof value !== 'number' || isNaN(value)) return false
   const step = SCORE_LEGEND_STEPS.find(item => item.value === active)
+  if (!step) return false
+  if (step.min == null) return value <= step.max
+  if (step.max == null) return value > step.min
+  return value > step.min && value <= step.max
+}
+
+// 行业周期诊断着色：用 100 - overall_score 作为显示分
+// 显示分越高=越安全=红，显示分越低=越危险=绿（与AI个股打分视觉一致）
+const CYCLE_LEGEND_STEPS = [
+  { value: 'cycle-1', label: '≤10',   countTitle: '极度危险 0-10',    max: 10,           color: '#2cbc58' },
+  { value: 'cycle-2', label: '11-25', countTitle: '危险 11-25',       min: 10, max: 25,  color: '#2a9a55' },
+  { value: 'cycle-3', label: '26-40', countTitle: '偏危险 26-40',     min: 25, max: 40,  color: '#3d7a55' },
+  { value: 'cycle-4', label: '41-49', countTitle: '中性偏危险 41-49', min: 40, max: 49,  color: '#5a5a4a' },
+  { value: 'cycle-5', label: '50-59', countTitle: '中性偏安全 50-59', min: 49, max: 59,  color: '#6a4050' },
+  { value: 'cycle-6', label: '60-69', countTitle: '偏安全 60-69',     min: 59, max: 69,  color: '#963c48' },
+  { value: 'cycle-7', label: '70-79', countTitle: '安全 70-79',       min: 69, max: 79,  color: '#c03843' },
+  { value: 'cycle-8', label: '80-89', countTitle: '很安全 80-89',     min: 79, max: 89,  color: '#e2323d' },
+  { value: 'cycle-9', label: '≥90',   countTitle: '极度安全 90-100',  min: 89,           color: '#f02d37' }
+]
+const NO_CYCLE_COLOR = '#3a4458'  // 未诊断行业的中性色
+
+function inCycleFilter(value, active) {
+  if (active == null) return true
+  if (typeof value !== 'number' || isNaN(value)) return false
+  const step = CYCLE_LEGEND_STEPS.find(item => item.value === active)
   if (!step) return false
   if (step.min == null) return value <= step.max
   if (step.max == null) return value > step.min
@@ -636,6 +737,16 @@ export default {
       scoringStatus: { status: 'idle', progress: 0, step: '', total: 0, done: 0, failed: 0, message: '' },
       scoreEstimate: { total: 0, batches: 0, workers: 1, eta_minutes: '60-180' },
       scoreDialog: { visible: false, view: 'confirm', busy: false },
+      // 行业周期诊断维度
+      cycleMap: {},            // {行业名: {overall_score, overall_verdict, ...}}
+      cycleDate: '',
+      cycleLoading: false,
+      cycleLoaded: false,
+      cycleRunning: false,
+      cycleTimer: null,
+      cycleStatus: { status: 'idle', progress: 0, step: '', current: '', total: 0, done: 0, failed: 0, message: '' },
+      cycleEstimate: { total: 0, eta: '20-60' },
+      cycleDialog: { visible: false, view: 'confirm', busy: false },
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
@@ -667,6 +778,9 @@ export default {
     hasScores() {
       return this.scoreLoaded && Object.keys(this.scoreMap || {}).length > 0
     },
+    hasCycleScores() {
+      return this.cycleLoaded && Object.keys(this.cycleMap || {}).length > 0
+    },
     // 是否有可播放的复盘快照（至少一个时间点已抓取）
     hasReplayAvailable() {
       return this.replayPoints.some(p => p.available)
@@ -675,6 +789,7 @@ export default {
     footerColorDesc() {
       if (this.colorMode === 'margin') return '颜色=融资净流入金额（红=净流入多 / 绿=净流出多）'
       if (this.colorMode === 'score') return '颜色=AI打分（红=高分可考虑 / 绿=低分需谨慎，50 为界）'
+      if (this.colorMode === 'cycle') return '颜色=行业周期诊断（红=安全/绿=危险，100-见顶风险分）'
       return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
@@ -710,6 +825,12 @@ export default {
           title: '点击只看 ' + step.countTitle + '，再次点击复原'
         }))
       }
+      if (this.colorMode === 'cycle') {
+        return CYCLE_LEGEND_STEPS.map(step => ({
+          ...step,
+          title: '点击只看 ' + step.countTitle + '，再点复原'
+        }))
+      }
       const labels = ['-4%', '-3%', '-2%', '-1%', '0%', '1%', '2%', '3%', '4%']
       const titles = ['跌幅 ≤ -4%', '-4% ~ -3%', '-3% ~ -2%', '-2% ~ -1%', '-1% ~ 0%', '0% ~ 1%', '1% ~ 2%', '2% ~ 3%', '涨幅 > 3%']
       return COLOR_STOPS.map(([v, rgb], i) => ({
@@ -742,6 +863,8 @@ export default {
           desc = (MARGIN_LEGEND_STEPS.find(step => step.value === a) || {}).label || '融资净流入'
         } else if (this.colorMode === 'score') {
           desc = ((SCORE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || 'AI打分'
+        } else if (this.colorMode === 'cycle') {
+          desc = ((CYCLE_LEGEND_STEPS.find(step => step.value === a) || {}).countTitle) || '行业周期诊断'
         } else if (a === 'limit_up') desc = '涨停'
         else if (a === 'limit_down') desc = '跌停'
         else if (a <= -4) desc = '跌幅 ≤ -4%'
@@ -772,6 +895,18 @@ export default {
           for (const l2 of (s.children || [])) {
             for (const st of (l2.children || [])) {
               const step = SCORE_LEGEND_STEPS.find(item => inScoreFilter(this.scoreValue(st), item.value))
+              if (step) counts[step.value]++
+            }
+          }
+        }
+        return counts
+      }
+      if (this.colorMode === 'cycle') {
+        const counts = Object.fromEntries(CYCLE_LEGEND_STEPS.map(step => [step.value, 0]))
+        for (const s of this.tree) {
+          for (const l2 of (s.children || [])) {
+            for (const st of (l2.children || [])) {
+              const step = CYCLE_LEGEND_STEPS.find(item => inCycleFilter(this.cycleValue(st), item.value))
               if (step) counts[step.value]++
             }
           }
@@ -858,11 +993,14 @@ export default {
     this.checkScoringStatus()
     this.loadScoreData()
     this.checkAiEnabled()
+    this.checkCycleStatus()
+    this.loadCycleData()
   },
   beforeUnmount() {
     clearInterval(this.timer)
     clearInterval(this.replayPointsTimer)
     if (this.scoringTimer) clearInterval(this.scoringTimer)
+    if (this.cycleTimer) clearInterval(this.cycleTimer)
     if (this.replayTimer) clearTimeout(this.replayTimer)
     if (this._raf) cancelAnimationFrame(this._raf)
     if (this._hlTimer) clearTimeout(this._hlTimer)
@@ -1194,18 +1332,31 @@ export default {
       const v = entry && entry.score
       return typeof v === 'number' && isFinite(v) ? v : null
     },
+    // 个股所属二级行业的周期诊断分（100 - overall_score，越高=越安全）
+    cycleValue(stock) {
+      const l2Name = stock && stock.l2Name
+      if (!l2Name) return null
+      const entry = this.cycleMap[l2Name]
+      if (!entry || typeof entry.overall_score !== 'number') return null
+      return 100 - entry.overall_score
+    },
     stockMatchesActiveFilter(stock) {
       const applied = this.legendApplied
       if (!applied || applied.length === 0) return true   // 无应用筛选 → 全显示
       // 多选 OR：命中任一已勾选区间即显示
       if (this.colorMode === 'margin') return applied.some(a => inMarginFilter(this.marginValue(stock), a))
       if (this.colorMode === 'score') return applied.some(a => inScoreFilter(this.scoreValue(stock), a))
+      if (this.colorMode === 'cycle') return applied.some(a => inCycleFilter(this.cycleValue(stock), a))
       return applied.some(a => inChangeFilter(stock.change, stock.code, a))
     },
     stockMetricLabel(stock) {
       if (this.colorMode === 'margin') return this.formatMoney(this.marginValue(stock))
       if (this.colorMode === 'score') {
         const v = this.scoreValue(stock)
+        return v == null ? '--' : String(v)
+      }
+      if (this.colorMode === 'cycle') {
+        const v = this.cycleValue(stock)
         return v == null ? '--' : String(v)
       }
       return fmtPct(stock.change)
@@ -1218,6 +1369,10 @@ export default {
         const v = this.scoreValue(s)
         return v == null ? NO_SCORE_COLOR : interpScoreColor(v)
       }
+      if (this.colorMode === 'cycle') {
+        const v = this.cycleValue(s)
+        return v == null ? NO_CYCLE_COLOR : interpScoreColor(v)
+      }
       return interpColor(s.change)
     },
     async onColorModeChange(mode) {
@@ -1227,6 +1382,7 @@ export default {
       this.legendApplied = []
       if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
       if (mode === 'score' && !this.scoreLoaded) await this.loadScoreData()
+      if (mode === 'cycle' && !this.cycleLoaded) await this.loadCycleData()
       this.buildLayout()
       this.render()
     },
@@ -1394,6 +1550,152 @@ export default {
       this.buildLayout()
       this.render()
     },
+
+    // ===== 行业周期诊断维度 =====
+    async loadCycleData() {
+      this.cycleLoading = true
+      try {
+        const res = await getIndustryCycleAllScores()
+        if (res && res.success) {
+          this.cycleMap = res.scores || {}
+          this.cycleDate = res.analyzed_at ? String(res.analyzed_at).slice(0, 10) : ''
+          this.cycleLoaded = true
+        }
+      } catch (e) {
+        console.error('行业周期诊断加载失败', e)
+      } finally {
+        this.cycleLoading = false
+      }
+    },
+
+    // 批量诊断弹窗
+    openCycleDialog() {
+      this.cycleDialog.busy = false
+      // 统计二级行业数量
+      const l2Names = this._collectL2Names()
+      this.cycleEstimate.total = l2Names.length
+      this.cycleEstimate.eta = l2Names.length > 30 ? '30-90' : '10-30'
+
+      if (this.cycleRunning || this.cycleStatus.status === 'running') {
+        this.cycleDialog.view = 'running'
+      } else if (this.cycleStatus.status === 'completed') {
+        this.cycleDialog.view = 'done'
+      } else if (this.cycleStatus.status === 'failed' || this.cycleStatus.status === 'interrupted') {
+        this.cycleDialog.view = 'error'
+      } else {
+        this.cycleDialog.view = 'confirm'
+      }
+      this.cycleDialog.visible = true
+    },
+    closeCycleDialog() {
+      this.cycleDialog.visible = false
+    },
+    _collectL2Names() {
+      const names = []
+      for (const s of this.tree) {
+        for (const l2 of (s.children || [])) {
+          if (l2.name) names.push(l2.name)
+        }
+      }
+      return [...new Set(names)]
+    },
+    async confirmStartCycle() {
+      this.cycleDialog.busy = true
+      try {
+        const industries = this._collectL2Names()
+        if (!industries.length) {
+          this.cycleStatus = { ...this.cycleStatus, status: 'failed', message: '未找到二级行业，请先更新行业库' }
+          this.cycleDialog.view = 'error'
+          return
+        }
+        const res = await startIndustryCycleBatch(industries)
+        if (res && res.success) {
+          this.cycleRunning = true
+          this.cycleStatus = {
+            ...this.cycleStatus,
+            status: 'running',
+            progress: 0,
+            total: res.total || industries.length,
+            done: 0,
+            failed: 0,
+            step: '已启动',
+            current: ''
+          }
+          this.cycleDialog.view = 'running'
+          this.startCyclePolling()
+        } else {
+          if (res && res.status === 'running') {
+            this.cycleRunning = true
+            this.cycleStatus = { ...this.cycleStatus, status: 'running', progress: res.progress || 0 }
+            this.cycleDialog.view = 'running'
+            this.startCyclePolling()
+          } else {
+            this.cycleStatus = { ...this.cycleStatus, status: 'failed', message: (res && res.message) || '启动失败' }
+            this.cycleDialog.view = 'error'
+          }
+        }
+      } catch (e) {
+        this.cycleStatus = { ...this.cycleStatus, status: 'failed', message: '启动失败：' + ((e && e.message) || '网络错误') }
+        this.cycleDialog.view = 'error'
+      } finally {
+        this.cycleDialog.busy = false
+      }
+    },
+    startCyclePolling() {
+      if (this.cycleTimer) clearInterval(this.cycleTimer)
+      this.cycleTimer = setInterval(() => { this.pollCycleOnce() }, 5000)
+    },
+    async pollCycleOnce() {
+      try {
+        const res = await getIndustryCycleBatchStatus()
+        if (!res || !res.success) return
+        const st = res.status
+        this.cycleStatus = { ...this.cycleStatus, ...res }
+        if (st === 'running') {
+          this.cycleRunning = true
+          if (this.cycleDialog.visible) this.cycleDialog.view = 'running'
+          if (this.colorMode === 'cycle') {
+            await this.loadCycleData()
+            this.buildLayout()
+            this.render()
+          }
+        } else if (st === 'completed') {
+          this.cycleRunning = false
+          if (this.cycleTimer) { clearInterval(this.cycleTimer); this.cycleTimer = null }
+          await this.loadCycleData()
+          if (this.colorMode === 'cycle') { this.buildLayout(); this.render() }
+          if (this.cycleDialog.visible) this.cycleDialog.view = 'done'
+        } else if (st === 'failed' || st === 'interrupted') {
+          this.cycleRunning = false
+          if (this.cycleTimer) { clearInterval(this.cycleTimer); this.cycleTimer = null }
+          await this.loadCycleData()
+          if (this.cycleDialog.visible) this.cycleDialog.view = 'error'
+        }
+      } catch (e) { /* 轮询失败继续 */ }
+    },
+    async handleStopCycle() {
+      try { await stopIndustryCycleBatch() } catch (e) { /* noop */ }
+    },
+    finishAndSwitchToCycle() {
+      this.cycleDialog.visible = false
+      if (!this.hasCycleScores) return
+      this.colorMode = 'cycle'
+      this.legendSel = []
+      this.legendApplied = []
+      this.buildLayout()
+      this.render()
+    },
+    // 挂载时检查周期诊断任务状态
+    async checkCycleStatus() {
+      try {
+        const res = await getIndustryCycleBatchStatus()
+        if (res && res.success && res.status === 'running') {
+          this.cycleRunning = true
+          this.cycleStatus = { ...this.cycleStatus, ...res }
+          this.startCyclePolling()
+        }
+      } catch (e) { /* noop */ }
+    },
     // 挂载时检查打分任务状态：running 则恢复轮询（刷新页面不丢失在跑任务）
     async checkScoringStatus() {
       try {
@@ -1539,7 +1841,16 @@ export default {
             const hh = l2.headerH * k
             ctx.fillStyle = '#171f2e'
             ctx.fillRect(lx, ly, lw, hh)
-            const l2Txt = this.colorMode === 'margin' ? `${l2.name}  ${this.formatMoney(l2.marginAgg)}` : `${l2.name}  ${fmtPct(l2.change)}`
+            let l2Txt
+            if (this.colorMode === 'cycle') {
+              const cycleEntry = this.cycleMap[l2.name]
+              const displayScore = cycleEntry ? (100 - (cycleEntry.overall_score || 0)) : null
+              l2Txt = displayScore != null ? `${l2.name}  ${displayScore}分` : `${l2.name}`
+            } else if (this.colorMode === 'margin') {
+              l2Txt = `${l2.name}  ${this.formatMoney(l2.marginAgg)}`
+            } else {
+              l2Txt = `${l2.name}  ${fmtPct(l2.change)}`
+            }
             this.drawHeaderText(ctx, l2Txt, lx + 5, ly, lw, hh, clamp(hh * 0.6, 9, 13))
           }
           ctx.lineWidth = 1.5
@@ -1547,13 +1858,37 @@ export default {
           ctx.strokeRect(lx + 0.75, ly + 0.75, lw - 1.5, lh - 1.5)
           ctx.lineWidth = 1
           ctx.strokeStyle = '#070b13'
+          // 行业周期诊断：在L2区域中央显示大字号分数和总体判断
+          if (this.colorMode === 'cycle' && lw > 60 && lh > 40) {
+            const cycleEntry = this.cycleMap[l2.name]
+            if (cycleEntry) {
+              const displayScore = 100 - (cycleEntry.overall_score || 0)
+              const verdict = cycleEntry.overall_verdict || ''
+              const cx = lx + lw / 2
+              const cy = ly + lh / 2 + l2.headerH * k / 2
+              // 大字号分数
+              const fontSize = clamp(Math.min(lw * 0.15, (lh - l2.headerH * k) * 0.25), 14, 36)
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+              ctx.fillStyle = interpScoreColor(displayScore)
+              ctx.font = `900 ${fontSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
+              ctx.fillText(String(displayScore), cx, cy - fontSize * 0.3)
+              // 总体判断（小字）
+              if (verdict && lh > 60) {
+                const vFontSize = clamp(fontSize * 0.4, 9, 14)
+                ctx.font = `600 ${vFontSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
+                ctx.fillStyle = 'rgba(224, 230, 240, 0.7)'
+                ctx.fillText(verdict, cx, cy + fontSize * 0.5)
+              }
+            }
+          }
         }
         // 一级标题条 + 边框
         if (s.headerH > 0) {
           const hh = s.headerH * k
           ctx.fillStyle = '#10151f'
           ctx.fillRect(sx, sy, sw, hh)
-          const sTxt = this.colorMode === 'margin' ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : `${s.name}    ${fmtPct(s.change)}`
+          const sTxt = this.colorMode === 'margin' ? `${s.name}    ${this.formatMoney(s.marginAgg)}` : this.colorMode === 'cycle' ? `${s.name}` : `${s.name}    ${fmtPct(s.change)}`
           this.drawHeaderText(ctx, sTxt, sx + 8, sy, sw, hh, clamp(hh * 0.72, 11, 17))
         }
         ctx.lineWidth = 2.5
@@ -1717,6 +2052,9 @@ export default {
               this.clickTimer = null
               this.openFinancing(node)
             }, 280)
+          } else if (hit && hit.node && !hit.node.code && hit.node.children && this.colorMode === 'cycle') {
+            // 点击了二级行业标题条 → 跳转到行业周期诊断
+            this.$router.push({ path: '/industry-cycle', query: { industry: hit.node.name, from: 'market-map' } })
           }
         }
       }
@@ -1925,6 +2263,7 @@ export default {
           change: this.stockMetricLabel(n),
           cls: this.colorMode === 'margin' ? this.valueClass(this.marginValue(n))
             : this.colorMode === 'score' ? (sv == null ? '' : (sv >= 50 ? 'up' : 'down'))
+            : this.colorMode === 'cycle' ? (() => { const cv = this.cycleValue(n); return cv == null ? '' : (cv >= 50 ? 'up' : 'down') })()
             : (n.change >= 0 ? 'up' : 'down'),
           marketCap: fmtCap(n.value),
           pe: fmtPE(n.pe),
@@ -2517,6 +2856,20 @@ export default {
 .mm-score-spin { display: inline-block; margin-right: 3px; font-size: 13px; line-height: 1; }
 .mm-score-spin.on { animation: mm-score-pulse 1.2s ease-in-out infinite; }
 @keyframes mm-score-pulse { 0%, 100% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.15); } }
+
+/* AI 行业周期诊断按钮 */
+.mm-cycle-btn {
+  order: 7; padding: 6px 12px;
+  background: linear-gradient(135deg, #d4380d, #ad2102);
+  border: 1px solid #ff7a45; border-radius: 6px;
+  color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: all 0.3s ease; white-space: nowrap;
+}
+.mm-cycle-btn:hover:not(.running) { background: linear-gradient(135deg, #ff7a45, #d4380d); transform: translateY(-1px); }
+.mm-cycle-btn.running { background: linear-gradient(135deg, #ad2102, #871400); opacity: 0.95; }
+.mm-cycle-spin { display: inline-block; margin-right: 3px; font-size: 13px; line-height: 1; }
+.mm-cycle-spin.on { animation: mm-cycle-pulse 1.2s ease-in-out infinite; }
+@keyframes mm-cycle-pulse { 0%, 100% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.15); } }
 
 /* 打分 tooltip：分数后的档位标签 + 一句话理由 */
 .mm-tooltip-val small { font-size: 11px; font-weight: normal; color: #b0c4e0; margin-left: 4px; }

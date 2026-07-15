@@ -22,7 +22,7 @@ from anomaly_detector import (
 )
 from margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow
 from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
-from industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result
+from industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
 from intraday_timeline import get_stock_hover_summary
 from market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
@@ -1238,4 +1238,77 @@ def industry_cycle_result():
 
     except Exception as e:
         error_logger.error(f"API /api/flow/industry-cycle/result 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+# ============================================================
+# 行业见顶周期批量诊断（大盘云图）
+# ============================================================
+@flow_bp.route('/industry-cycle/batch-start', methods=['POST'])
+def industry_cycle_batch_start():
+    """发起批量行业见顶周期分析（异步AI）。body: { industries: ['消费电子', '半导体', ...] }"""
+    try:
+        data = request.get_json() or {}
+        industries = data.get('industries', [])
+        if not industries or not isinstance(industries, list):
+            return jsonify({'success': False, 'message': 'industries 列表不能为空'}), 400
+
+        # 去重去空
+        industries = list(dict.fromkeys([i.strip() for i in industries if i and i.strip()]))
+        if not industries:
+            return jsonify({'success': False, 'message': '无有效行业名称'}), 400
+
+        result = start_batch_analysis(industries)
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 409
+
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/batch-start 异常: {e}")
+        return jsonify({'success': False, 'message': f'启动失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/batch-status', methods=['GET'])
+def industry_cycle_batch_status():
+    """查询批量行业周期分析状态"""
+    try:
+        status = get_batch_status()
+        return jsonify({'success': True, **status})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/batch-status 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/batch-stop', methods=['POST'])
+def industry_cycle_batch_stop():
+    """停止批量行业周期分析"""
+    try:
+        result = stop_batch_analysis()
+        return jsonify(result)
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/batch-stop 异常: {e}")
+        return jsonify({'success': False, 'message': f'停止失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/all-scores', methods=['GET'])
+def industry_cycle_all_scores():
+    """获取所有行业的周期诊断结果（供大盘云图着色）"""
+    try:
+        return jsonify(get_all_cycle_scores())
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/all-scores 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/industry-cycle/single-score', methods=['GET'])
+def industry_cycle_single_score():
+    """获取单个行业的周期诊断结果"""
+    try:
+        industry_name = (request.args.get('industry') or '').strip()
+        if not industry_name:
+            return jsonify({'success': False, 'message': 'industry 参数不能为空'}), 400
+        return jsonify(get_single_cycle_score(industry_name))
+    except Exception as e:
+        error_logger.error(f"API /api/flow/industry-cycle/single-score 异常: {e}")
         return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500

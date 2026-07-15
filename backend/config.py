@@ -115,6 +115,11 @@ STOCK_SCORES_DIR = os.path.join(DATA_DIR, 'stock_scores')
 STOCK_SCORES_FILE = os.path.join(STOCK_SCORES_DIR, 'scores.json')
 STOCK_SCORE_STATUS_FILE = os.path.join(STOCK_SCORES_DIR, 'status.json')
 
+# 行业见顶周期批量诊断（大盘云图）：分数/状态持久化
+INDUSTRY_CYCLE_SCORES_DIR = os.path.join(DATA_DIR, 'industry_cycle_scores')
+INDUSTRY_CYCLE_SCORES_FILE = os.path.join(INDUSTRY_CYCLE_SCORES_DIR, 'scores.json')
+INDUSTRY_CYCLE_BATCH_STATUS_FILE = os.path.join(INDUSTRY_CYCLE_SCORES_DIR, 'batch_status.json')
+
 def load_monitor_config():
     default_config = {
         'api_base_url': 'http://127.0.0.1:5000',

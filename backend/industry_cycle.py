@@ -20,7 +20,7 @@ import time
 import threading
 import traceback
 
-from config import CONFIG_DIR
+from config import CONFIG_DIR, INDUSTRY_CYCLE_SCORES_DIR, INDUSTRY_CYCLE_SCORES_FILE, INDUSTRY_CYCLE_BATCH_STATUS_FILE
 from ai_analyzer import load_ai_config, call_ai_api
 from data_processor import error_logger
 from logger import get_logger
@@ -37,6 +37,8 @@ _analysis_running = False
 INDUSTRY_CYCLE_PROMPT = """你是一名顶级行业周期分析师，擅长判断一个行业是否处于见顶阶段。
 
 你需要对用户给出的行业进行"6信号见顶诊断"，并与历史经典见顶行业（新能源、医药、白酒）做周期对标。
+
+【重要】用户消息中会包含"当前日期"，你必须以该日期作为"现在"的时间基准来进行分析和周期对标，不要使用你训练数据的截止时间。
 
 【6大见顶信号】
 1. **渗透率是否见顶**：行业产品/服务的市场渗透率是否接近天花板（如新能源车渗透率超50%后增速骤降）
@@ -123,6 +125,11 @@ INDUSTRY_CYCLE_PROMPT = """你是一名顶级行业周期分析师，擅长判�
 - 30-50: 主升浪中后期
 - 50-70: 泡沫期
 - > 70: 见顶/崩盘期
+
+【分数语义】
+- overall_score < 50：行业处于安全期（启动期/主升浪），尚未见顶
+- overall_score ≥ 50：行业进入危险期（泡沫期/崩盘期），见顶风险较高
+- 分数越高代表见顶风险越大，请务必基于真实数据给出有区分度的评分
 
 请务必基于真实数据和事实进行分析，不要编造数据。如果某些数据不确定，请在detail中说明。
 """
@@ -248,7 +255,8 @@ def _run_analysis(industry_name):
         })
 
         # 构建消息
-        user_content = f"请对以下行业进行6信号见顶诊断分析：{industry_name}"
+        current_time = time.strftime('%Y年%m月%d日')
+        user_content = f"当前日期：{current_time}\n\n请对以下行业进行6信号见顶诊断分析：{industry_name}"
         messages = [
             {"role": "system", "content": INDUSTRY_CYCLE_PROMPT},
             {"role": "user", "content": user_content}
@@ -349,43 +357,101 @@ def _parse_industry_result(content, industry_name):
     """解析AI返回的JSON结果"""
     import re
 
-    # 尝试从markdown代码块中提取JSON
-    json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+    # 第1步：尝试从markdown代码块中提取JSON（贪婪匹配，确保拿到完整内容）
+    json_match = re.search(r'```(?:json)?\s*([\s\S]*)\s*```', content)
+    extracted = None
     if json_match:
-        content = json_match.group(1)
-    else:
-        # 尝试直接找JSON对象
-        first_brace = content.find('{')
-        last_brace = content.rfind('}')
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            content = content[first_brace:last_brace + 1]
+        extracted = json_match.group(1).strip()
 
-    try:
-        result = json.loads(content)
-        # 验证关键字段
-        if 'signals' in result or 'overall_verdict' in result:
-            if 'industry' not in result:
-                result['industry'] = industry_name
-            if 'analyze_time' not in result:
-                result['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
-            return result
-    except json.JSONDecodeError as e:
-        error_logger.error(f"行业周期分析结果JSON解析失败: {e}")
+    # 第2步：如果代码块提取失败或解析失败，尝试从全文找最外层的JSON对象
+    # 用括号匹配法找到最外层完整 { ... }
+    def extract_json_object(text):
+        first_brace = text.find('{')
+        if first_brace == -1:
+            return None
+        depth = 0
+        in_string = False
+        escape_next = False
+        for i in range(first_brace, len(text)):
+            c = text[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if c == '\\':
+                escape_next = True
+                continue
+            if c == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[first_brace:i + 1]
+        # 没找到匹配的闭合括号，返回从第一个 { 到末尾
+        return text[first_brace:]
 
-    # 尝试更宽松的解析
-    try:
-        # 移除注释
-        content = re.sub(r'//.*?\n', '', content)
-        content = re.sub(r'/\*[\s\S]*?\*/', '', content)
-        result = json.loads(content)
-        if 'signals' in result or 'overall_verdict' in result:
-            if 'industry' not in result:
-                result['industry'] = industry_name
-            if 'analyze_time' not in result:
+    def try_parse(text):
+        """尝试解析并验证JSON"""
+        try:
+            result = json.loads(text)
+            if isinstance(result, dict) and ('signals' in result or 'overall_verdict' in result):
+                if 'industry' not in result:
+                    result['industry'] = industry_name
+                # 用服务器当前时间覆盖 analyze_time，确保时间正确
                 result['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return None
+
+    # 尝试1：从代码块中提取
+    if extracted:
+        result = try_parse(extracted)
+        if result:
             return result
-    except:
-        pass
+        # 代码块内容可能不是完整JSON，尝试从中提取JSON对象
+        json_obj = extract_json_object(extracted)
+        if json_obj:
+            result = try_parse(json_obj)
+            if result:
+                return result
+
+    # 尝试2：从全文提取JSON对象
+    json_obj = extract_json_object(content)
+    if json_obj:
+        result = try_parse(json_obj)
+        if result:
+            return result
+
+    # 尝试3：移除注释后重试
+    cleaned = content
+    cleaned = re.sub(r'//.*?\n', '\n', cleaned)
+    cleaned = re.sub(r'/\*[\s\S]*?\*/', '', cleaned)
+    json_obj = extract_json_object(cleaned)
+    if json_obj:
+        result = try_parse(json_obj)
+        if result:
+            return result
+
+    # 尝试4：移除尾随逗号（AI常见错误）
+    def fix_trailing_commas(text):
+        # 移除数组/对象中 ] 或 } 前的逗号
+        text = re.sub(r',\s*([}\]])', r'\1', text)
+        return text
+
+    for source_text in [content, extracted, json_obj]:
+        if not source_text:
+            continue
+        fixed = fix_trailing_commas(source_text)
+        json_obj_fixed = extract_json_object(fixed)
+        if json_obj_fixed:
+            result = try_parse(json_obj_fixed)
+            if result:
+                return result
 
     return None
 
@@ -398,3 +464,276 @@ def get_analysis_status():
 def get_analysis_result():
     """获取最近一次分析结果"""
     return _load_result()
+
+
+# ==================== 批量诊断功能 ====================
+
+_batch_lock = threading.Lock()
+_batch_running = False
+_batch_cancel = threading.Event()
+
+
+def _load_cycle_scores():
+    """加载所有行业的周期诊断结果"""
+    try:
+        if os.path.exists(INDUSTRY_CYCLE_SCORES_FILE):
+            with open(INDUSTRY_CYCLE_SCORES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        error_logger.error(f"加载行业周期诊断结果失败: {e}")
+    return {}
+
+
+def _save_cycle_scores(scores):
+    """保存所有行业的周期诊断结果（原子写入）"""
+    try:
+        os.makedirs(INDUSTRY_CYCLE_SCORES_DIR, exist_ok=True)
+        tmp = INDUSTRY_CYCLE_SCORES_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(scores, f, ensure_ascii=False, indent=2)
+        # Windows 安全替换
+        try:
+            os.replace(tmp, INDUSTRY_CYCLE_SCORES_FILE)
+        except (PermissionError, OSError):
+            with open(tmp, 'r', encoding='utf-8') as src, open(INDUSTRY_CYCLE_SCORES_FILE, 'w', encoding='utf-8') as dst:
+                dst.write(src.read())
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    except Exception as e:
+        error_logger.error(f"保存行业周期诊断结果失败: {e}")
+
+
+def _merge_cycle_score(industry_name, result):
+    """合并单个行业的诊断结果到持久存储"""
+    scores = _load_cycle_scores()
+    scores[industry_name] = {
+        'overall_score': result.get('overall_score', 0),
+        'overall_verdict': result.get('overall_verdict', ''),
+        'signals': result.get('signals', []),
+        'cycle_comparison': result.get('cycle_comparison'),
+        'warnings': result.get('warnings', []),
+        'summary': result.get('summary', ''),
+        'analyze_time': result.get('analyze_time', time.strftime('%Y-%m-%d %H:%M:%S')),
+        'analyzed_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    _save_cycle_scores(scores)
+
+
+def _clear_cycle_scores():
+    """清空所有行业周期诊断结果"""
+    _save_cycle_scores({})
+
+
+def _load_batch_status():
+    try:
+        if os.path.exists(INDUSTRY_CYCLE_BATCH_STATUS_FILE):
+            with open(INDUSTRY_CYCLE_BATCH_STATUS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {'status': 'idle'}
+
+
+def _save_batch_status(status_data):
+    try:
+        os.makedirs(INDUSTRY_CYCLE_SCORES_DIR, exist_ok=True)
+        tmp = INDUSTRY_CYCLE_BATCH_STATUS_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, ensure_ascii=False, indent=2)
+        try:
+            os.replace(tmp, INDUSTRY_CYCLE_BATCH_STATUS_FILE)
+        except (PermissionError, OSError):
+            with open(tmp, 'r', encoding='utf-8') as src, open(INDUSTRY_CYCLE_BATCH_STATUS_FILE, 'w', encoding='utf-8') as dst:
+                dst.write(src.read())
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    except Exception as e:
+        error_logger.error(f"保存行业周期批量诊断状态失败: {e}")
+
+
+def start_batch_analysis(industries):
+    """启动批量行业见顶分析（异步后台线程）
+    industries: 行业名称列表，如 ['消费电子', '半导体', '白酒', ...]
+    """
+    global _batch_running
+
+    with _batch_lock:
+        if _batch_running:
+            return {'success': False, 'message': '已有批量分析任务在运行中'}
+
+        _batch_running = True
+        _batch_cancel.clear()
+
+    # 先清空旧的诊断结果
+    _clear_cycle_scores()
+
+    _save_batch_status({
+        'status': 'running',
+        'total': len(industries),
+        'done': 0,
+        'failed': 0,
+        'current': '',
+        'progress': 0,
+        'start_time': time.strftime('%Y-%m-%d %H:%M:%S')
+    })
+
+    thread = threading.Thread(target=_run_batch_analysis, args=(industries,), daemon=True)
+    thread.start()
+
+    return {'success': True, 'status': 'running', 'total': len(industries), 'message': f'批量分析已启动，共{len(industries)}个行业'}
+
+
+def _run_batch_analysis(industries):
+    """后台线程：逐个行业调用AI分析"""
+    global _batch_running
+
+    try:
+        config = load_ai_config()
+        if not config or not config.get('enabled'):
+            _save_batch_status({'status': 'failed', 'message': 'AI未启用或配置不完整', 'total': len(industries), 'done': 0, 'failed': 0})
+            return
+
+        api_url = config.get('api_url')
+        api_key = config.get('api_key')
+        model = config.get('model', 'gpt-3.5-turbo')
+        temperature = config.get('temperature', 0.7)
+        max_tokens = config.get('max_tokens', 4000)
+        timeout = min(config.get('timeout', 180), 300)
+
+        if not api_url or not api_key:
+            _save_batch_status({'status': 'failed', 'message': 'AI配置不完整', 'total': len(industries), 'done': 0, 'failed': 0})
+            return
+
+        full_url = config.get('full_url', False)
+        if not full_url and not api_url.endswith('/chat/completions'):
+            api_url = api_url.rstrip('/') + '/chat/completions'
+
+        done = 0
+        failed = 0
+        total = len(industries)
+
+        for i, industry_name in enumerate(industries):
+            if _batch_cancel.is_set():
+                _save_batch_status({
+                    'status': 'interrupted',
+                    'total': total, 'done': done, 'failed': failed,
+                    'current': industry_name,
+                    'progress': int(done / total * 100) if total else 0,
+                    'message': f'已手动停止：完成 {done}/{total}'
+                })
+                return
+
+            _save_batch_status({
+                'status': 'running',
+                'total': total, 'done': done, 'failed': failed,
+                'current': industry_name,
+                'progress': int((i) / total * 100) if total else 0,
+                'step': f'正在分析：{industry_name}（{i+1}/{total}）'
+            })
+
+            try:
+                # 构建消息（与单行业相同逻辑）
+                current_time = time.strftime('%Y年%m月%d日')
+                user_content = f"当前日期：{current_time}\n\n请对以下行业进行6信号见顶诊断分析：{industry_name}"
+                messages = [
+                    {"role": "system", "content": INDUSTRY_CYCLE_PROMPT},
+                    {"role": "user", "content": user_content}
+                ]
+
+                response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
+
+                if response.status_code == 200:
+                    content = response.json().get('choices', [{}])[0].get('message', {}).get('content', '')
+                    parsed = _parse_industry_result(content, industry_name)
+
+                    if parsed:
+                        # 合并到持久存储
+                        _merge_cycle_score(industry_name, parsed)
+                        done += 1
+                    else:
+                        # 解析失败，也保存原始内容
+                        _merge_cycle_score(industry_name, {
+                            'overall_score': 0,
+                            'overall_verdict': '分析失败',
+                            'signals': [],
+                            'analyze_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'raw_content': content,
+                            'parse_error': True
+                        })
+                        failed += 1
+                else:
+                    failed += 1
+                    error_logger.error(f"批量诊断 {industry_name} AI调用失败: HTTP {response.status_code}")
+
+            except Exception as e:
+                failed += 1
+                error_logger.error(f"批量诊断 {industry_name} 异常: {e}")
+
+            # 批间间隔2秒，避免触发限流
+            if i < total - 1:
+                _batch_cancel.wait(timeout=2.0)
+
+        _save_batch_status({
+            'status': 'completed',
+            'total': total, 'done': done, 'failed': failed,
+            'current': '',
+            'progress': 100,
+            'message': f'批量诊断完成：成功 {done}，失败 {failed}',
+            'complete_time': time.strftime('%Y-%m-%d %H:%M:%S')
+        })
+        info_logger.info(f"行业周期批量诊断完成: 成功 {done}, 失败 {failed}")
+
+    except Exception as e:
+        error_logger.error(f"行业周期批量诊断异常: {e}\n{traceback.format_exc()}")
+        _save_batch_status({
+            'status': 'failed',
+            'message': f'批量诊断异常: {str(e)[:200]}',
+            'total': len(industries), 'done': 0, 'failed': 0
+        })
+    finally:
+        with _batch_lock:
+            _batch_running = False
+
+
+def stop_batch_analysis():
+    """停止批量分析"""
+    _batch_cancel.set()
+    return {'success': True, 'message': '已请求停止批量分析'}
+
+
+def get_batch_status():
+    """获取批量分析状态"""
+    with _batch_lock:
+        if _batch_running:
+            return _load_batch_status()
+    status = _load_batch_status()
+    # 如果状态文件显示running但线程已死，修正为interrupted
+    if status.get('status') == 'running':
+        status['status'] = 'interrupted'
+        status['message'] = status.get('message') or '上次批量分析未完成'
+    return status
+
+
+def get_all_cycle_scores():
+    """获取所有行业的周期诊断结果（供大盘云图着色使用）"""
+    scores = _load_cycle_scores()
+    return {
+        'success': True,
+        'count': len(scores),
+        'industries': list(scores.keys()),
+        'scores': scores,
+        'analyzed_at': max((v.get('analyzed_at', '') for v in scores.values()), default='')
+    }
+
+
+def get_single_cycle_score(industry_name):
+    """获取单个行业的周期诊断结果"""
+    scores = _load_cycle_scores()
+    result = scores.get(industry_name)
+    if result:
+        return {'success': True, 'data': result, 'industry': industry_name}
+    return {'success': False, 'message': f'未找到行业"{industry_name}"的诊断结果'}

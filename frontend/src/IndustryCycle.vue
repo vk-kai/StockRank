@@ -1,8 +1,19 @@
 <template>
   <div class="icy-page">
     <header class="icy-header">
-      <button class="icy-back" @click="goBack">← 返回</button>
-      <h1>🔬 行业见顶周期诊断</h1>
+      <div class="icy-header-left">
+        <button class="icy-back" @click="goBack">← 返回主页</button>
+        <button class="icy-back icy-back-map" @click="goBackToMap" v-if="fromMap">← 大盘云图</button>
+        <h1>🔬 行业见顶周期诊断</h1>
+      </div>
+      <!-- 已分析行业下拉框 -->
+      <div class="icy-history" v-if="analyzedIndustries.length > 0">
+        <span class="icy-history-label">已诊断：</span>
+        <select class="icy-history-select" @change="onHistorySelect($event.target.value)" :value="currentIndustry">
+          <option value="">选择行业...</option>
+          <option v-for="name in analyzedIndustries" :key="name" :value="name">{{ name }}</option>
+        </select>
+      </div>
     </header>
 
     <!-- 输入区 -->
@@ -155,7 +166,7 @@
 </template>
 
 <script>
-import { startIndustryCycle, getIndustryCycleStatus, getIndustryCycleResult } from './services/apiService'
+import { startIndustryCycle, getIndustryCycleStatus, getIndustryCycleResult, getIndustryCycleAllScores, getIndustryCycleSingleScore } from './services/apiService'
 
 export default {
   name: 'IndustryCycle',
@@ -167,7 +178,12 @@ export default {
       analysisStep: '',
       error: '',
       result: null,
-      pollTimer: null
+      pollTimer: null,
+      // 已分析行业列表
+      analyzedIndustries: [],
+      currentIndustry: '',
+      // 来源标记
+      fromMap: false
     }
   },
   computed: {
@@ -189,8 +205,23 @@ export default {
     }
   },
   mounted() {
-    // 尝试加载上次结果
-    this.loadLastResult()
+    // 检查是否从大盘云图跳转过来
+    const query = this.$route?.query || {}
+    this.fromMap = query.from === 'market-map'
+    const queryIndustry = (query.industry || '').trim()
+
+    // 加载已分析行业列表
+    this.loadAnalyzedIndustries()
+
+    if (queryIndustry) {
+      // 从大盘云图跳转，先检查是否已有诊断结果
+      this.industryName = queryIndustry
+      this.currentIndustry = queryIndustry
+      this.loadAndShowIndustry(queryIndustry)
+    } else {
+      // 尝试加载上次结果
+      this.loadLastResult()
+    }
   },
   beforeUnmount() {
     this.stopPolling()
@@ -198,6 +229,40 @@ export default {
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+    goBackToMap() {
+      this.$router.push('/market-map')
+    },
+    async loadAnalyzedIndustries() {
+      try {
+        const res = await getIndustryCycleAllScores()
+        if (res && res.success && res.industries) {
+          this.analyzedIndustries = res.industries
+        }
+      } catch (e) {
+        // 忽略
+      }
+    },
+    async loadAndShowIndustry(industryName) {
+      // 先尝试从批量诊断结果中获取
+      try {
+        const res = await getIndustryCycleSingleScore(industryName)
+        if (res && res.success && res.data) {
+          this.result = res.data
+          this.currentIndustry = industryName
+          return
+        }
+      } catch (e) {
+        // 忽略
+      }
+      // 没有结果，自动启动诊断
+      this.startAnalysis()
+    },
+    onHistorySelect(name) {
+      if (!name) return
+      this.industryName = name
+      this.currentIndustry = name
+      this.loadAndShowIndustry(name)
     },
     async loadLastResult() {
       try {
@@ -224,6 +289,7 @@ export default {
       this.progress = 0
       this.analysisStep = '正在启动分析...'
       this.analyzing = true
+      this.currentIndustry = name
 
       try {
         const res = await startIndustryCycle(name)
@@ -272,6 +338,8 @@ export default {
               this.result = resultRes.data
             }
           }
+          // 刷新已分析行业列表
+          this.loadAnalyzedIndustries()
         } else if (res.status === 'failed') {
           this.analyzing = false
           this.error = res.error || '分析失败'
@@ -323,6 +391,7 @@ export default {
 .icy-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 15px 20px;
   background: rgba(26, 35, 53, 0.8);
@@ -330,12 +399,22 @@ export default {
   border: 1px solid rgba(58, 74, 107, 0.5);
   backdrop-filter: blur(10px);
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.icy-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .icy-header h1 {
   font-size: 1.3rem;
   color: #fff;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.icy-back-map {
+  background: linear-gradient(135deg, #d4380d, #ad2102) !important;
+  border-color: #ff7a45 !important;
 }
 .icy-back {
   border: 1px solid #4a5a7b;
@@ -786,5 +865,36 @@ export default {
   .icy-header h1 {
     font-size: 1.05rem;
   }
+}
+
+/* 已诊断行业下拉框 */
+.icy-history {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.icy-history-label {
+  color: #8899aa;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.icy-history-select {
+  background: rgba(30, 42, 62, 0.9);
+  color: #e0e6f0;
+  border: 1px solid rgba(80, 100, 140, 0.6);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  max-width: 180px;
+}
+.icy-history-select:hover {
+  border-color: var(--accent-main, #60a5fa);
+}
+.icy-history-select:focus {
+  border-color: var(--accent-main, #60a5fa);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
 }
 </style>
