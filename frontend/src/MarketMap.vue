@@ -361,8 +361,8 @@
         <div v-if="cycleDialog.view === 'confirm'" class="mm-score-body">
           <p class="mm-score-desc">
             将调用 AI 对大盘云图中约 <b>{{ cycleEstimate.total || '?' }}</b> 个二级行业逐一进行"6信号见顶诊断"，
-            返回 0-100 的见顶风险评分（<span class="down">&lt;50 安全</span> / <span class="up">≥50 危险</span>），
-            云图中用 <b>100-风险分</b> 显示（分越高=越安全=红）。
+        返回 0-100 的见顶风险评分（<span class="up">&lt;50 安全</span> / <span class="down">≥50 危险</span>），
+        云图中直接显示风险分（绿=危险/红=安全，与涨跌幅相反）。
           </p>
           <ul class="mm-score-tips">
             <li>⏱️ 每个行业约需 30-60 秒，全量约 <b>{{ cycleEstimate.eta || '20-60' }} 分钟</b>。</li>
@@ -404,6 +404,9 @@
           </p>
           <div class="mm-score-actions">
             <button class="mm-score-btn-ok" @click="finishAndSwitchToCycle">查看诊断云图</button>
+            <button class="mm-score-btn-warn" v-if="cycleStatus.failed && cycleStatus.failed_industries && cycleStatus.failed_industries.length" @click="retryFailedCycle">
+              重试失败行业（{{ cycleStatus.failed_industries.length }}个）
+            </button>
             <button class="mm-score-btn-cancel" @click="closeCycleDialog">关闭</button>
           </div>
         </div>
@@ -412,7 +415,10 @@
         <div v-else class="mm-score-body">
           <p class="mm-score-result warn">⚠️ {{ cycleStatus.message || '诊断未完成' }}</p>
           <div class="mm-score-actions">
-            <button class="mm-score-btn-ok" @click="confirmStartCycle">重新诊断</button>
+            <button class="mm-score-btn-warn" v-if="cycleStatus.failed_industries && cycleStatus.failed_industries.length" @click="retryFailedCycle">
+              重试失败行业（{{ cycleStatus.failed_industries.length }}个）
+            </button>
+            <button class="mm-score-btn-ok" v-else @click="confirmStartCycle">重新诊断</button>
             <button class="mm-score-btn-cancel" @click="closeCycleDialog">关闭</button>
           </div>
         </div>
@@ -545,20 +551,49 @@ function inScoreFilter(value, active) {
   return value > step.min && value <= step.max
 }
 
-// 行业周期诊断着色：用 100 - overall_score 作为显示分
-// 显示分越高=越安全=红，显示分越低=越危险=绿（与AI个股打分视觉一致）
+// 行业周期诊断着色：直接用 overall_score（0-100，越高越危险）
+// >50 绿色逐渐加深（越危险越绿），<50 红色逐渐加深（越安全越红），类似涨跌幅
+const CYCLE_COLOR_STOPS = [
+  [0,   [226, 50, 61]],    // 深红：极安全 0
+  [10,  [192, 56, 67]],
+  [25,  [150, 60, 72]],
+  [40,  [106, 64, 80]],
+  [49,  [90, 90, 74]],     // 暗中性：接近50
+  [51,  [61, 122, 85]],    // 暗中性：刚过50
+  [60,  [42, 154, 85]],
+  [75,  [34, 172, 78]],
+  [89,  [30, 190, 82]],
+  [100, [22, 204, 86]]     // 深绿：极危险 100
+]
 const CYCLE_LEGEND_STEPS = [
-  { value: 'cycle-1', label: '≤10',   countTitle: '极度危险 0-10',    max: 10,           color: '#2cbc58' },
-  { value: 'cycle-2', label: '11-25', countTitle: '危险 11-25',       min: 10, max: 25,  color: '#2a9a55' },
-  { value: 'cycle-3', label: '26-40', countTitle: '偏危险 26-40',     min: 25, max: 40,  color: '#3d7a55' },
-  { value: 'cycle-4', label: '41-49', countTitle: '中性偏危险 41-49', min: 40, max: 49,  color: '#5a5a4a' },
-  { value: 'cycle-5', label: '50-59', countTitle: '中性偏安全 50-59', min: 49, max: 59,  color: '#6a4050' },
-  { value: 'cycle-6', label: '60-69', countTitle: '偏安全 60-69',     min: 59, max: 69,  color: '#963c48' },
-  { value: 'cycle-7', label: '70-79', countTitle: '安全 70-79',       min: 69, max: 79,  color: '#c03843' },
-  { value: 'cycle-8', label: '80-89', countTitle: '很安全 80-89',     min: 79, max: 89,  color: '#e2323d' },
-  { value: 'cycle-9', label: '≥90',   countTitle: '极度安全 90-100',  min: 89,           color: '#f02d37' }
+  { value: 'cycle-1', label: '≤10',   countTitle: '极安全 0-10',     max: 10,           color: '#e2323d' },
+  { value: 'cycle-2', label: '11-25', countTitle: '安全 11-25',      min: 10, max: 25,  color: '#c03843' },
+  { value: 'cycle-3', label: '26-40', countTitle: '偏安全 26-40',    min: 25, max: 40,  color: '#963c48' },
+  { value: 'cycle-4', label: '41-49', countTitle: '中性偏安全 41-49', min: 40, max: 49,  color: '#6a4050' },
+  { value: 'cycle-5', label: '50-59', countTitle: '中性偏危险 50-59', min: 49, max: 59,  color: '#3d7a55' },
+  { value: 'cycle-6', label: '60-69', countTitle: '偏危险 60-69',    min: 59, max: 69,  color: '#2a9a55' },
+  { value: 'cycle-7', label: '70-79', countTitle: '危险 70-79',      min: 69, max: 79,  color: '#22ac4e' },
+  { value: 'cycle-8', label: '80-89', countTitle: '很危险 80-89',    min: 79, max: 89,  color: '#1ebe52' },
+  { value: 'cycle-9', label: '≥90',   countTitle: '极度危险 90-100', min: 89,           color: '#16cc56' }
 ]
 const NO_CYCLE_COLOR = '#3a4458'  // 未诊断行业的中性色
+
+function interpCycleColor(score) {
+  if (typeof score !== 'number' || isNaN(score)) return NO_CYCLE_COLOR
+  const s = Math.max(0, Math.min(100, score))
+  for (let i = 0; i < CYCLE_COLOR_STOPS.length - 1; i++) {
+    const [p1, col1] = CYCLE_COLOR_STOPS[i]
+    const [p2, col2] = CYCLE_COLOR_STOPS[i + 1]
+    if (s >= p1 && s <= p2) {
+      const t = p2 === p1 ? 0 : (s - p1) / (p2 - p1)
+      const r = Math.round(col1[0] + (col2[0] - col1[0]) * t)
+      const g = Math.round(col1[1] + (col2[1] - col1[1]) * t)
+      const b = Math.round(col1[2] + (col2[2] - col1[2]) * t)
+      return `rgb(${r},${g},${b})`
+    }
+  }
+  return NO_CYCLE_COLOR
+}
 
 function inCycleFilter(value, active) {
   if (active == null) return true
@@ -789,7 +824,7 @@ export default {
     footerColorDesc() {
       if (this.colorMode === 'margin') return '颜色=融资净流入金额（红=净流入多 / 绿=净流出多）'
       if (this.colorMode === 'score') return '颜色=AI打分（红=高分可考虑 / 绿=低分需谨慎，50 为界）'
-      if (this.colorMode === 'cycle') return '颜色=行业周期诊断（红=安全/绿=危险，100-见顶风险分）'
+      if (this.colorMode === 'cycle') return '颜色=行业周期诊断（绿=危险/红=安全，见顶风险分）'
       return '颜色=涨跌幅（红涨绿跌）'
     },
     // 融资弹窗：序列最新日期（YYYY/MM/DD），用于副标题"数据截至"
@@ -1332,13 +1367,13 @@ export default {
       const v = entry && entry.score
       return typeof v === 'number' && isFinite(v) ? v : null
     },
-    // 个股所属二级行业的周期诊断分（100 - overall_score，越高=越安全）
+    // 个股所属二级行业的周期诊断分（原始分，越高=越危险）
     cycleValue(stock) {
       const l2Name = stock && stock.l2Name
       if (!l2Name) return null
       const entry = this.cycleMap[l2Name]
       if (!entry || typeof entry.overall_score !== 'number') return null
-      return 100 - entry.overall_score
+      return entry.overall_score  // 直接用原始分，越高越危险
     },
     stockMatchesActiveFilter(stock) {
       const applied = this.legendApplied
@@ -1356,8 +1391,7 @@ export default {
         return v == null ? '--' : String(v)
       }
       if (this.colorMode === 'cycle') {
-        const v = this.cycleValue(stock)
-        return v == null ? '--' : String(v)
+        return ''  // 行业周期模式个股不显示分数，分数在大区域显示
       }
       return fmtPct(stock.change)
     },
@@ -1371,7 +1405,7 @@ export default {
       }
       if (this.colorMode === 'cycle') {
         const v = this.cycleValue(s)
-        return v == null ? NO_CYCLE_COLOR : interpScoreColor(v)
+        return v == null ? NO_CYCLE_COLOR : interpCycleColor(v)
       }
       return interpColor(s.change)
     },
@@ -1685,6 +1719,38 @@ export default {
       this.buildLayout()
       this.render()
     },
+    async retryFailedCycle() {
+      const failedList = this.cycleStatus.failed_industries || []
+      if (!failedList.length) return
+      this.cycleDialog.busy = true
+      try {
+        const res = await startIndustryCycleBatch(failedList)
+        if (res && res.success) {
+          this.cycleRunning = true
+          this.cycleStatus = {
+            ...this.cycleStatus,
+            status: 'running',
+            progress: 0,
+            total: res.total || failedList.length,
+            done: 0,
+            failed: 0,
+            step: `重试失败行业：${failedList.length}个`,
+            current: '',
+            failed_industries: []
+          }
+          this.cycleDialog.view = 'running'
+          this.startCyclePolling()
+        } else {
+          this.cycleStatus = { ...this.cycleStatus, status: 'failed', message: (res && res.message) || '启动重试失败' }
+          this.cycleDialog.view = 'error'
+        }
+      } catch (e) {
+        this.cycleStatus = { ...this.cycleStatus, status: 'failed', message: '启动重试失败：' + ((e && e.message) || '网络错误') }
+        this.cycleDialog.view = 'error'
+      } finally {
+        this.cycleDialog.busy = false
+      }
+    },
     // 挂载时检查周期诊断任务状态
     async checkCycleStatus() {
       try {
@@ -1844,7 +1910,7 @@ export default {
             let l2Txt
             if (this.colorMode === 'cycle') {
               const cycleEntry = this.cycleMap[l2.name]
-              const displayScore = cycleEntry ? (100 - (cycleEntry.overall_score || 0)) : null
+              const displayScore = cycleEntry ? cycleEntry.overall_score : null
               l2Txt = displayScore != null ? `${l2.name}  ${displayScore}分` : `${l2.name}`
             } else if (this.colorMode === 'margin') {
               l2Txt = `${l2.name}  ${this.formatMoney(l2.marginAgg)}`
@@ -1861,8 +1927,8 @@ export default {
           // 行业周期诊断：在L2区域中央显示大字号分数和总体判断
           if (this.colorMode === 'cycle' && lw > 60 && lh > 40) {
             const cycleEntry = this.cycleMap[l2.name]
-            if (cycleEntry) {
-              const displayScore = 100 - (cycleEntry.overall_score || 0)
+            if (cycleEntry && typeof cycleEntry.overall_score === 'number') {
+              const displayScore = cycleEntry.overall_score
               const verdict = cycleEntry.overall_verdict || ''
               const cx = lx + lw / 2
               const cy = ly + lh / 2 + l2.headerH * k / 2
@@ -1870,7 +1936,7 @@ export default {
               const fontSize = clamp(Math.min(lw * 0.15, (lh - l2.headerH * k) * 0.25), 14, 36)
               ctx.textAlign = 'center'
               ctx.textBaseline = 'middle'
-              ctx.fillStyle = interpScoreColor(displayScore)
+              ctx.fillStyle = interpCycleColor(displayScore)
               ctx.font = `900 ${fontSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
               ctx.fillText(String(displayScore), cx, cy - fontSize * 0.3)
               // 总体判断（小字）
@@ -2893,6 +2959,8 @@ export default {
 .mm-score-btn-ok:disabled { opacity: 0.5; cursor: not-allowed; }
 .mm-score-btn-cancel { padding: 7px 16px; background: rgba(255,255,255,0.06); border: 1px solid #3a4a6b; border-radius: 6px; color: #c0cee0; cursor: pointer; font-size: 13px; }
 .mm-score-btn-cancel:hover { background: rgba(255,255,255,0.12); }
+.mm-score-btn-warn { padding: 7px 16px; background: linear-gradient(135deg, #d4380d, #ad2102); border: 1px solid #ff7a45; border-radius: 6px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.mm-score-btn-warn:hover { background: linear-gradient(135deg, #ff7a45, #d4380d); }
 .mm-score-btn-ghost { padding: 7px 14px; background: transparent; border: 1px dashed #3a4a6b; border-radius: 6px; color: #8ba4c7; cursor: pointer; font-size: 12px; }
 .mm-score-btn-ghost:hover { color: #e0e6f0; border-color: #5a6b8c; }
 

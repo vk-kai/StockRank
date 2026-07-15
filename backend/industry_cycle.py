@@ -615,6 +615,7 @@ def _run_batch_analysis(industries):
         done = 0
         failed = 0
         total = len(industries)
+        failed_list = []
 
         for i, industry_name in enumerate(industries):
             if _batch_cancel.is_set():
@@ -665,12 +666,15 @@ def _run_batch_analysis(industries):
                             'parse_error': True
                         })
                         failed += 1
+                        failed_list.append(industry_name)
                 else:
                     failed += 1
+                    failed_list.append(industry_name)
                     error_logger.error(f"批量诊断 {industry_name} AI调用失败: HTTP {response.status_code}")
 
             except Exception as e:
                 failed += 1
+                failed_list.append(industry_name)
                 error_logger.error(f"批量诊断 {industry_name} 异常: {e}")
 
             # 批间间隔2秒，避免触发限流
@@ -680,6 +684,7 @@ def _run_batch_analysis(industries):
         _save_batch_status({
             'status': 'completed',
             'total': total, 'done': done, 'failed': failed,
+            'failed_industries': failed_list,
             'current': '',
             'progress': 100,
             'message': f'批量诊断完成：成功 {done}，失败 {failed}',
