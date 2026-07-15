@@ -198,9 +198,9 @@ def detect_hits(q, series, state, alerts_cfg, limit, name):
     """对一只票跑全部启用的检测,返回 hits 列表(一次报价可能命中多条)。"""
     hits = []
     if alerts_cfg['limit_up']['enabled'] and q['pct'] >= limit * 0.995:
-        hits.append({'type': 'limit_up', 'label': '涨停触及'})
+        hits.append({'type': 'limit_up', 'label': '触及涨停'})
     if alerts_cfg['limit_down']['enabled'] and q['pct'] <= -limit * 0.995:
-        hits.append({'type': 'limit_down', 'label': '跌停触及'})
+        hits.append({'type': 'limit_down', 'label': '触及跌停'})
 
     checkers = (
         lambda: _rapid_move(q, series, alerts_cfg),

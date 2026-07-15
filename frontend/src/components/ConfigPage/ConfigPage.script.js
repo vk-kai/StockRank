@@ -103,8 +103,8 @@ export default {
       selectedIds: [],
       _searchTimer: null,
       PRICE_TYPES: [
-        { key: 'limit_up', label: '涨停触及', fields: [], defaults: {} },
-        { key: 'limit_down', label: '跌停触及', fields: [], defaults: {} },
+        { key: 'limit_up', label: '触及涨停', fields: [], defaults: {} },
+        { key: 'limit_down', label: '触及跌停', fields: [], defaults: {} },
         { key: 'rapid_rise', label: '急速拉升', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
         { key: 'rapid_drop', label: '急速打压', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
         { key: 'cum_move', label: '累计大涨/大跌', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 3 } },
