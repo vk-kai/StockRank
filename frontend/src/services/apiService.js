@@ -957,3 +957,36 @@ export async function rebuildAnomalyBaseline(days) {
     throw error
   }
 }
+
+// ============================================================
+// 数据源配置
+// ============================================================
+export async function getDatasourceConfig() {
+  try {
+    const response = await apiClient.get('/config/datasource')
+    return response.data
+  } catch (error) {
+    console.error('获取数据源配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveDatasourceConfig(sources, password) {
+  try {
+    const response = await apiClient.post('/config/datasource', { sources, password })
+    return response.data
+  } catch (error) {
+    console.error('保存数据源配置失败:', error)
+    throw error
+  }
+}
+
+export async function testDatasource() {
+  try {
+    const response = await apiClient.post('/config/datasource/test', null, { timeout: 60000 })
+    return response.data
+  } catch (error) {
+    console.error('测试数据源失败:', error)
+    throw error
+  }
+}

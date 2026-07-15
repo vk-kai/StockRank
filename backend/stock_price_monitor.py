@@ -409,23 +409,76 @@ _state_lock = threading.Lock()
 _stock_state = {}  # {code: {gap_fired, touched_up, touched_down}}
 
 
-def _format_message(name, code, quote, hits):
+def _format_message(name, code, quote, primary_hit):
+    """格式化推送消息：只推一条最重要的异动原因。
+
+    红色=利好(涨), 绿色=利空(跌), 与资金异动一致。
+    """
     pct = quote.get('pct')
     pct_s = f'{round(pct, 2):+.2f}%' if pct is not None else '--'
-    lines = [
-        f"> 时间:**{quote.get('ts', '')}**",
-        f"> 现价:**{quote.get('price')}**  涨跌幅:**{pct_s}**",
-        "**触发**",
-    ]
-    for h in hits:
-        lines.append(f"• {h.get('label', h.get('type'))}")
-    return f"📈 价格异动 · {name}", "\n".join(lines)
+    hit_type = primary_hit.get('type', '')
+    label = primary_hit.get('label', hit_type)
+
+    # 判断异动方向:利好(涨)→红, 利空(跌)→绿
+    bullish_types = {'rapid_rise', 'limit_up', 'gap_open_high', 'limit_break_up'}
+    bearish_types = {'rapid_drop', 'limit_down', 'gap_open_low', 'limit_break_down'}
+    # 混合型按label关键字判断
+    if hit_type in bullish_types or '大涨' in label or '拉升' in label or '高开' in label or '涨停' in label:
+        direction = 'bullish'  # 利好
+    elif hit_type in bearish_types or '大跌' in label or '打压' in label or '低开' in label or '跌停' in label:
+        direction = 'bearish'  # 利空
+    elif '回升' in label or '反弹' in label or '撬板' in label:
+        direction = 'bullish'  # 回升是利好
+    elif '回落' in label or '炸板' in label:
+        direction = 'bearish'  # 回落是利空
+    else:
+        # 振幅/缺口等中性，看当前涨跌方向
+        direction = 'bullish' if (pct or 0) >= 0 else 'bearish'
+
+    # 标题符号: 🔴利好(红) / 🟢利空(绿)，与资金异动保持一致
+    icon = '🔴' if direction == 'bullish' else '🟢'
+
+    content = (
+        f"> 时间:**{quote.get('ts', '')}**\n"
+        f"> 现价:**{quote.get('price')}**  涨跌幅:**{pct_s}**\n"
+        f"**{label}**"
+    )
+    return f"{icon} 价格异动 · {name}", content
+
+
+def _select_primary_hit(code, hits, alerts, cooldown):
+    """从命中列表中选出最重要的一条新触发原因(不在冷却中+优先级最高)。"""
+    PRIORITY = {
+        'limit_up': 1, 'limit_down': 1,
+        'rapid_rise': 2, 'rapid_drop': 2,
+        'cum_move': 3,
+        'spike_fade': 4, 'dip_rebound': 4,
+        'limit_break': 5,
+        'amplitude': 6,
+        'gap_open': 7,
+    }
+    # 先筛选不在冷却中的新触发项
+    new_hits = [h for h in hits if not is_in_cooldown(code, h['type'], alerts, cooldown)]
+    if not new_hits:
+        # 全部在冷却中但整体不是(all在冷却)说明有部分刚过冷却，取优先级最高的
+        new_hits = hits
+    # 按优先级排序取第一个
+    new_hits.sort(key=lambda h: PRIORITY.get(h['type'], 99))
+    return new_hits[0]
 
 
 def _default_pusher(title, content):
     try:
-        from notification_pusher import send_news_message
-        return bool(send_news_message(title, content))
+        from notification_pusher import send_news_message, is_push_enabled
+        if not is_push_enabled():
+            error_logger.warning(f'价格异动推送跳过: 无已启用的推送通道(飞书/企业微信)')
+            return False
+        result = send_news_message(title, content)
+        if result:
+            logger.info(f'价格异动推送成功: {title}')
+        else:
+            error_logger.warning(f'价格异动推送失败: {title} (推送通道返回False)')
+        return bool(result)
     except Exception as e:
         error_logger.error(f'价格异动推送失败: {e}')
         return False
@@ -440,7 +493,10 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
 
     alerts_cfg = None
     for item in cfg.get('watchlist', []):
-        if item.get('resolved_code') == code or item.get('value') == code:
+        rc = (item.get('resolved_code') or '').strip()
+        val = (item.get('value') or '').strip()
+        # 匹配逻辑：resolved_code精确匹配 或 value精确匹配code 或 value匹配不含交易所前缀的代码
+        if rc == code or val == code or (code and val == code[2:]):
             alerts_cfg = item.get('price_alerts', DEFAULT_ALERTS_CFG)
             break
     if not alerts_cfg:
@@ -458,9 +514,11 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
     if all(is_in_cooldown(code, h['type'], alerts, cooldown) for h in hits):
         return []
 
-    title, content = _format_message(name, code, quote, hits)
+    # 选出最重要的新触发原因(只推一条)
+    primary = _select_primary_hit(code, hits, alerts, cooldown)
+    title, content = _format_message(name, code, quote, primary)
     pushed = pusher(title, content)
-    record_alert(code, name, hits[0], hits, quote, pushed)
+    record_alert(code, name, primary, hits, quote, pushed)
     return hits
 
 
@@ -472,15 +530,20 @@ def stock_price_loop():
     from stock_price_feed import get_quotes
     from stock_resolver import resolve_identifier, get_limit_pct
     logger.info('价格异动监控线程启动')
+    _log_skip_count = 0  # 抑制重复日志
     while True:
         try:
             now = datetime.now()
             cfg = load_config()
             interval = cfg.get('poll_interval_seconds', 25)
             if not cfg.get('enabled'):
+                _log_skip_count += 1
+                if _log_skip_count <= 3 or _log_skip_count % 120 == 0:
+                    logger.info(f'价格异动监控: 全局开关未启用，等待中({_log_skip_count})')
                 time.sleep(interval); continue
             if not (is_trading_day(now) and is_trading_time(now)):
                 time.sleep(interval); continue
+            _log_skip_count = 0
             targets = []  # [(code, name), ...]
             for w in cfg.get('watchlist', []):
                 if not (w.get('enabled') and w.get('type') in ('name', 'code')
@@ -492,21 +555,25 @@ def stock_price_loop():
                     # 现场解析:名字 -> 代码;纯代码 -> 补交易所前缀
                     resolved = resolve_identifier(w.get('value', ''), hint=w.get('type'))
                     if not resolved:
+                        error_logger.warning(f'价格异动监控: 无法解析 {w.get("value")}，跳过')
                         continue
                     name, code = resolved
                 targets.append((code, name or w.get('value', '')))
-            if targets:
-                codes = [t[0] for t in targets]
-                quotes = get_quotes(codes)
-                for code, name in targets:
-                    q = quotes.get(code)
-                    if not q:
-                        continue
-                    try:
-                        limit = get_limit_pct(code, name)
-                        process_tick(code, name, q, cfg, limit)
-                    except Exception as e:
-                        error_logger.error(f'process_tick 异常 {code}: {e}')
+            if not targets:
+                time.sleep(interval); continue
+            codes = [t[0] for t in targets]
+            quotes = get_quotes(codes)
+            for code, name in targets:
+                q = quotes.get(code)
+                if not q:
+                    continue
+                try:
+                    limit = get_limit_pct(code, name)
+                    hits = process_tick(code, name, q, cfg, limit)
+                    if hits:
+                        logger.info(f'价格异动 {name}({code}): {[h["type"] for h in hits]}')
+                except Exception as e:
+                    error_logger.error(f'process_tick 异常 {code}: {e}')
         except Exception as e:
             error_logger.error(f'价格异动监控循环异常: {e}')
         time.sleep(interval)

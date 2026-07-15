@@ -7,13 +7,25 @@
     </header>
 
     <div class="config-tabs">
-      <button 
-        v-for="tab in tabs" 
+      <button
+        v-for="tab in tabs"
         :key="tab.id"
         :class="['tab-button', { 'active': activeTab === tab.id }]"
         @click="activeTab = tab.id"
       >
         {{ tab.icon }} {{ tab.name }}
+      </button>
+    </div>
+
+    <!-- 推送设置子页签 -->
+    <div v-if="activeTab === 'push'" class="sub-tabs">
+      <button
+        v-for="sub in tabs.find(t => t.id === 'push').subTabs"
+        :key="sub.id"
+        :class="['sub-tab-button', { 'active': activePushTab === sub.id }]"
+        @click="activePushTab = sub.id"
+      >
+        {{ sub.icon }} {{ sub.name }}
       </button>
     </div>
 
@@ -110,7 +122,7 @@
         </div>
       </div>
 
-      <div v-if="activeTab === 'feishu'" class="config-section">
+      <div v-if="activeTab === 'push' && activePushTab === 'feishu'" class="config-section">
         <h2>📢 飞书机器人配置</h2>
         <div class="config-form">
           <div class="form-group">
@@ -180,7 +192,7 @@
         </div>
       </div>
 
-      <div v-if="activeTab === 'wechat'" class="config-section">
+      <div v-if="activeTab === 'push' && activePushTab === 'wechat'" class="config-section">
         <h2>💬 企业微信机器人配置</h2>
         <div class="config-form">
           <div class="form-group">
@@ -236,6 +248,53 @@
           <div class="form-actions">
             <button @click="saveWechatConfig" class="btn-primary">保存配置</button>
             <button @click="testWechatConfig" class="btn-secondary">测试推送</button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'datasource'" class="config-section">
+        <h2>🔌 数据源设置</h2>
+        <div class="config-form">
+          <div class="form-group">
+            <label>外部数据源URL配置</label>
+            <span class="hint">修改数据源URL后保存即可生效。角色标注：<b class="role-primary">主</b>=主要数据源，<b class="role-backup">备</b>=备用数据源(主源失败时启用)，<b class="role-complement">互补</b>=补充数据源(提供主源没有的部分数据)</span>
+          </div>
+
+          <div v-for="ds in datasourceList" :key="ds.key" class="datasource-item">
+            <div class="datasource-header">
+              <span class="datasource-dot"
+                :class="{
+                  'dot-ok': datasourceTestResults[ds.key]?.ok === true,
+                  'dot-fail': datasourceTestResults[ds.key]?.ok === false,
+                  'dot-skip': datasourceTestResults[ds.key]?.ok === null,
+                  'dot-unknown': datasourceTestResults[ds.key] === undefined
+                }"
+              ></span>
+              <span class="datasource-name">{{ ds.name }}</span>
+              <span class="datasource-role" :class="datasourceRoleClass(ds.role)">{{ ds.role }}</span>
+              <span class="datasource-provider">{{ ds.provider }}</span>
+            </div>
+            <div class="datasource-url-row">
+              <input type="text" v-model="ds.url" class="datasource-url-input">
+              <span v-if="datasourceTestResults[ds.key]" class="datasource-test-info">
+                <template v-if="datasourceTestResults[ds.key].ok === true">
+                  {{ datasourceTestResults[ds.key].latency_ms }}ms
+                </template>
+                <template v-else-if="datasourceTestResults[ds.key].ok === false">
+                  {{ datasourceTestResults[ds.key].error }}
+                </template>
+                <template v-else>
+                  {{ datasourceTestResults[ds.key].error }}
+                </template>
+              </span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button @click="saveDatasourceConfigCfg" class="btn-primary">保存配置</button>
+            <button @click="testDatasourceCfg" class="btn-secondary" :disabled="datasourceTesting">
+              {{ datasourceTesting ? '测试中...' : '一键测试连通性' }}
+            </button>
           </div>
         </div>
       </div>

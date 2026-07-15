@@ -27,6 +27,31 @@ THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 
 USE_PROXY = False
 
+# 东方财富反爬绕过：专用请求头生成（模拟真实浏览器完整指纹）
+def get_eastmoney_headers():
+    """生成东方财富API请求头，模拟真实浏览器行为以绕过反爬检测。
+    东方财富反爬检测点：User-Agent、Referer、Accept-Encoding、Connection、Cookie(cb参数)。
+    """
+    ua = get_random_user_agent()
+    # cb 是东方财富前端JS动态生成的校验参数，不同接口有不同值
+    # push2 接口的典型 cb 值格式：jQuery + 时间戳
+    import time as _time
+    cb = f"jQuery{random.randint(1111111, 9999999)}_{int(_time.time() * 1000)}"
+    return {
+        'User-Agent': ua,
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://quote.eastmoney.com/',
+        'Connection': 'keep-alive',
+        'Cookie': f'qgqp_b_id={_gen_eastmoney_cookie_id()}; cb={cb}',
+    }
+
+def _gen_eastmoney_cookie_id():
+    """模拟东方财富前端生成的浏览器指纹cookie值"""
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(32))
+
 def is_dev_mode():
     return os.environ.get('STOCKRANK_ENV', 'prod') == 'dev'
 
@@ -80,6 +105,7 @@ MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'monitor_config.json')
 
 # AI 批量股票打分（大盘云图）：提示词 + 分数/状态持久化（低频数据，放 data/ 不随每日清理）
 STOCK_SCORE_PROMPT_FILE = os.path.join(CONFIG_DIR, 'stock_score_prompt.txt')
+DATASOURCE_CONFIG_FILE = os.path.join(CONFIG_DIR, 'datasource_config.json')
 STOCK_SCORES_DIR = os.path.join(DATA_DIR, 'stock_scores')
 STOCK_SCORES_FILE = os.path.join(STOCK_SCORES_DIR, 'scores.json')
 STOCK_SCORE_STATUS_FILE = os.path.join(STOCK_SCORES_DIR, 'status.json')
@@ -104,3 +130,82 @@ def load_monitor_config():
 
 if not os.path.exists(CONFIG_DIR):
     os.makedirs(CONFIG_DIR)
+
+# ==================== 数据源默认配置 ====================
+# 每个数据源: key, name(显示名), category(分类), role(主/备/互补), url, test_url(测试可达性的URL), headers_hint(请求头提示)
+DEFAULT_DATASOURCES = [
+    # --- A股板块资金净流入 ---
+    {'key': 'em_stock_list', 'name': '东方财富-A股板块列表', 'category': '板块资金净流入',
+     'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
+     'test_url': 'https://push2.eastmoney.com/api/qt/clist/get', 'provider': '东方财富'},
+    {'key': 'ths_sector_net_in', 'name': '同花顺-板块资金净流入', 'category': '板块资金净流入',
+     'role': '主', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/',
+     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/', 'provider': '同花顺'},
+    {'key': 'ths_sector_net_out', 'name': '同花顺-板块资金净流出', 'category': '板块资金净流入',
+     'role': '互补', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/',
+     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/', 'provider': '同花顺'},
+
+    # --- 大盘指数 ---
+    {'key': 'em_market_index', 'name': '东方财富-大盘指数', 'category': '大盘指数',
+     'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/ulist.np/get',
+     'test_url': 'https://push2.eastmoney.com/api/qt/ulist.np/get', 'provider': '东方财富'},
+    {'key': 'sina_index', 'name': '新浪-大盘指数', 'category': '大盘指数',
+     'role': '备', 'url': 'https://hq.sinajs.cn/list=sh000001,sz399001,sz399006',
+     'test_url': 'https://hq.sinajs.cn/list=sh000001', 'provider': '新浪'},
+
+    # --- 全球股市指数 ---
+    {'key': 'em_global_index', 'name': '东方财富-全球指数', 'category': '全球股市指数',
+     'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/ulist.np/get',
+     'test_url': 'https://push2.eastmoney.com/api/qt/ulist.np/get', 'provider': '东方财富'},
+    {'key': 'sina_global_index', 'name': '新浪-全球指数兜底', 'category': '全球股市指数',
+     'role': '备', 'url': 'https://hq.sinajs.cn/list=int_hangseng,b_KOSPI,int_nikkei',
+     'test_url': 'https://hq.sinajs.cn/list=b_KOSPI', 'provider': '新浪'},
+
+    # --- 个股行情 ---
+    {'key': 'sina_stock_quote', 'name': '新浪-个股行情', 'category': '个股行情',
+     'role': '主', 'url': 'https://hq.sinajs.cn/list=',
+     'test_url': 'https://hq.sinajs.cn/list=sh600519', 'provider': '新浪'},
+    {'key': 'tencent_stock_quote', 'name': '腾讯-个股行情兜底', 'category': '个股行情',
+     'role': '备', 'url': 'https://qt.gtimg.cn/q=',
+     'test_url': 'https://qt.gtimg.cn/q=sh600519', 'provider': '腾讯'},
+
+    # --- 新闻 ---
+    {'key': 'ths_news', 'name': '同花顺-新闻推送', 'category': '新闻',
+     'role': '主', 'url': 'https://news.10jqka.com.cn/tapp/news/push/stock/',
+     'test_url': 'https://news.10jqka.com.cn/tapp/news/push/stock/', 'provider': '同花顺'},
+
+    # --- 行情快闪 ---
+    {'key': 'ths_index_flash', 'name': '同花顺-指数快闪', 'category': '行情快闪',
+     'role': '主', 'url': 'https://q.10jqka.com.cn/api.php?t=indexflash&',
+     'test_url': 'https://q.10jqka.com.cn/api.php?t=indexflash&', 'provider': '同花顺'},
+    {'key': 'ths_turnover_minute', 'name': '同花顺-分钟换手', 'category': '行情快闪',
+     'role': '互补', 'url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data',
+     'test_url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data', 'provider': '同花顺'},
+    {'key': 'jrj_market', 'name': '金融界-市场数据', 'category': '行情快闪',
+     'role': '互补', 'url': 'https://gateway.jrj.com/quot-dc/zdt/market',
+     'test_url': 'https://gateway.jrj.com/quot-dc/zdt/market', 'provider': '金融界'},
+
+    # --- 大盘云图(行业板块+个股) ---
+    {'key': 'sina_sector_list', 'name': '新浪-行业板块列表', 'category': '大盘云图',
+     'role': '主', 'url': 'https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php',
+     'test_url': 'https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php', 'provider': '新浪'},
+    {'key': 'sina_sector_stocks', 'name': '新浪-板块个股', 'category': '大盘云图',
+     'role': '主', 'url': 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData',
+     'test_url': 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData', 'provider': '新浪'},
+    {'key': 'em_all_stock', 'name': '东方财富-全A股列表', 'category': '大盘云图',
+     'role': '互补', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
+     'test_url': 'https://push2.eastmoney.com/api/qt/clist/get', 'provider': '东方财富'},
+
+    # --- 股票搜索 ---
+    {'key': 'sina_suggest', 'name': '新浪-股票搜索建议', 'category': '股票搜索',
+     'role': '主', 'url': 'https://suggest3.sinajs.cn/suggest/type=11,12,13,14,15',
+     'test_url': 'https://suggest3.sinajs.cn/suggest/type=11,12,13,14,15&key=贵州茅台&name=suggestdata', 'provider': '新浪'},
+
+    # --- 融资融券 ---
+    {'key': 'sse_margin', 'name': '上交所-融资融券', 'category': '融资融券',
+     'role': '主', 'url': 'akshare:stock_margin_detail_sse',
+     'test_url': '', 'provider': '上交所(akshare)'},
+    {'key': 'szse_margin', 'name': '深交所-融资融券', 'category': '融资融券',
+     'role': '互补', 'url': 'akshare:stock_margin_detail_szse',
+     'test_url': '', 'provider': '深交所(akshare)'},
+]

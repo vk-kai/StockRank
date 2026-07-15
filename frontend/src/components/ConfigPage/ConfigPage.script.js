@@ -20,7 +20,10 @@ import {
   getAnomalyConfig,
   saveAnomalyConfig,
   getAnomalyBaseline,
-  rebuildAnomalyBaseline
+  rebuildAnomalyBaseline,
+  getDatasourceConfig,
+  saveDatasourceConfig,
+  testDatasource
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -32,10 +35,14 @@ export default {
   data() {
     return {
       activeTab: 'ai',
+      activePushTab: 'feishu',
       tabs: [
         { id: 'ai', name: 'AI配置', icon: '🤖' },
-        { id: 'feishu', name: '飞书推送', icon: '📢' },
-        { id: 'wechat', name: '企业微信推送', icon: '💬' },
+        { id: 'push', name: '推送设置', icon: '📢', subTabs: [
+          { id: 'feishu', name: '飞书推送', icon: '📢' },
+          { id: 'wechat', name: '企业微信推送', icon: '💬' }
+        ]},
+        { id: 'datasource', name: '数据源设置', icon: '🔌' },
         { id: 'stock', name: '股票监控', icon: '📈' },
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
         { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
@@ -136,13 +143,17 @@ export default {
       },
       anomalyBaseline: { sector_count: 0, built_at: '', baseline_days: 0 },
       anomalySaving: false,
-      anomalyRebuilding: false
+      anomalyRebuilding: false,
+      datasourceList: [],
+      datasourceTestResults: {},
+      datasourceTesting: false
     }
   },
   mounted() {
     this.loadConfigs()
     this.loadAnomalyConfig()
     this.loadNotifySettings()
+    this.loadDatasourceConfig()
   },
   methods: {
     goBack() {
@@ -333,6 +344,63 @@ export default {
       } catch (e) {
         this.showToast('重建失败', 'error')
       } finally { this.anomalyRebuilding = false }
+    },
+
+    // ===== 数据源设置 =====
+    async loadDatasourceConfig() {
+      try {
+        const res = await getDatasourceConfig()
+        if (res.success) {
+          this.datasourceList = res.data || []
+        }
+      } catch (e) { /* 401 handled by interceptor */ }
+    },
+    async saveDatasourceConfigCfg() {
+      this.showPasswordModal(async (password) => {
+        try {
+          const sources = {}
+          this.datasourceList.forEach(ds => { sources[ds.key] = ds.url })
+          const res = await saveDatasourceConfig(sources, password)
+          if (res.success) {
+            this.showToast('数据源配置已保存', 'success')
+            await this.loadDatasourceConfig()
+          } else {
+            this.showToast(res.message || '保存失败', 'error')
+          }
+        } catch (e) {
+          if (e.response?.status === 401) {
+            this.showToast('密码错误', 'error')
+          } else {
+            this.showToast(e.response?.data?.message || '保存失败', 'error')
+          }
+        }
+      })
+    },
+    async testDatasourceCfg() {
+      this.datasourceTesting = true
+      this.datasourceTestResults = {}
+      this.showToast('正在测试所有数据源...', 'info')
+      try {
+        const res = await testDatasource()
+        if (res.success) {
+          this.datasourceTestResults = res.data || {}
+          const total = Object.keys(this.datasourceTestResults).length
+          const ok = Object.values(this.datasourceTestResults).filter(r => r.ok === true).length
+          const fail = Object.values(this.datasourceTestResults).filter(r => r.ok === false).length
+          const skip = Object.values(this.datasourceTestResults).filter(r => r.ok === null).length
+          this.showToast(`测试完成：${ok}可用 / ${fail}不可用 / ${skip}跳过`, 'success')
+        } else {
+          this.showToast(res.message || '测试失败', 'error')
+        }
+      } catch (e) {
+        this.showToast('测试失败', 'error')
+      } finally { this.datasourceTesting = false }
+    },
+    datasourceRoleClass(role) {
+      if (role === '主') return 'role-primary'
+      if (role === '备') return 'role-backup'
+      if (role === '互补') return 'role-complement'
+      return ''
     },
 
     async saveAIConfig() {

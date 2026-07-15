@@ -12,7 +12,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from bs4 import BeautifulSoup
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent
+from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent, get_eastmoney_headers
 from logger import get_logger
 
 error_logger = get_logger('error')
@@ -1115,11 +1115,7 @@ def _parse_json_or_jsonp(text):
 def get_eastmoney_market_index_data():
     global latest_market_data
     
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://quote.eastmoney.com/'
-    }
+    headers = get_eastmoney_headers()
     
     params = {
         'fltt': 2,
@@ -1264,11 +1260,7 @@ GLOBAL_INDICES_CACHE_FILE = os.path.join(REALTIME_DIR, 'global_indices_cache.jso
 def get_global_market_indices():
     """获取全球主要股市指数（双源：东方财富为主，新浪兜底）"""
     secids = ','.join(cfg[1] for cfg in GLOBAL_INDICES_CONFIG)
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://quote.eastmoney.com/'
-    }
+    headers = get_eastmoney_headers()
     params = {
         'fltt': 2,
         'invt': 2,
@@ -1521,7 +1513,7 @@ def _fetch_ai_chain_sina():
 
 def _fetch_ai_chain_eastmoney():
     """东方财富批量：韩股(KOSPI + SK海力士 + 三星)。单次批量请求(避免反爬)。
-    东财偶发 RemoteDisconnected(反爬/网络抖动)，故带重试+换UA；
+    东财偶发 RemoteDisconnected(反爬/网络抖动)，故带重试+换完整请求头+指数退避；
     全部失败时 KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11)。
     返回 {key: {price, change, change_amount}}"""
     out = {}
@@ -1534,22 +1526,21 @@ def _fetch_ai_chain_eastmoney():
         'secids': ','.join(c[4] for c in targets)
     }
     data = None
-    for attempt in range(2):   # 快速失败:最多2次,避免反爬断连时长时间阻塞页面
-        headers = {
-            'User-Agent': get_random_user_agent(),
-            'Accept': 'application/json, text/plain, */*',
-            'Referer': 'https://quote.eastmoney.com/'
-        }
+    max_retries = 3
+    for attempt in range(max_retries):
+        headers = get_eastmoney_headers()
         try:
-            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=4)
+            resp = requests.get(MARKET_INDEX_URL, params=params, headers=headers, timeout=8)
             resp.raise_for_status()
             data = resp.json()
             break
         except Exception as e:
-            if attempt == 0:
-                time.sleep(0.4)   # 换 UA 再试一次
+            if attempt < max_retries - 1:
+                # 指数退避：0.5s, 1.5s，每次换全新请求头
+                backoff = 0.5 * (2 ** attempt) + random.uniform(0, 0.5)
+                time.sleep(backoff)
             else:
-                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(快速失败): {e}")
+                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(重试{max_retries}次): {e}")
     if data:
         diff = data.get('data', {}).get('diff', []) if data.get('data') else []
         em_map = {item.get('f12'): item for item in diff}
@@ -1819,11 +1810,7 @@ def refresh_market_map_cache():
     股票行业分类变化极少，建议低频更新（每周/手动触发）。"""
     # 用Session复用HTTP连接(keep-alive)+页间小延时+断连退避重试，降低东财反爬断连概率
     session = requests.Session()
-    session.headers.update({
-        'User-Agent': get_random_user_agent(),
-        'Referer': 'https://quote.eastmoney.com/',
-        'Accept': '*/*'
-    })
+    session.headers.update(get_eastmoney_headers())
     all_stocks = {}
     page = 1
     while page <= 80:
@@ -2229,9 +2216,7 @@ def get_market_map_stocks(sector_code):
 def get_stock_statistics():
     global latest_market_data
     
-    headers = {
-        'User-Agent': get_random_user_agent()
-    }
+    headers = get_eastmoney_headers()
     
     params = {
         'pn': 1,

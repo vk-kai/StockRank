@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request
 import json
 import os
 import requests
@@ -11,7 +11,8 @@ import traceback
 from config import (
     AI_CONFIG_FILE, FEISHU_CONFIG_FILE, WECHAT_CONFIG_FILE,
     STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE,
-    STOCK_SCORE_PROMPT_FILE
+    STOCK_SCORE_PROMPT_FILE, DATASOURCE_CONFIG_FILE, DEFAULT_DATASOURCES,
+    get_random_user_agent, get_eastmoney_headers
 )
 from data_processor import error_logger
 from logger import get_logger
@@ -498,6 +499,29 @@ def update_stock_monitor_config():
         config_data = {k: v for k, v in data.items() if k != 'password'}
         with open(STOCK_MONITOR_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+        # 清除 stock_monitor.py 的配置缓存，让后台监控线程下次循环读到新配置
+        try:
+            from stock_monitor import _cached_config, _cache_time
+            import stock_monitor as _sm
+            _sm._cached_config = None
+            _sm._cache_time = 0
+        except Exception:
+            pass
+
+        # 如果 watchlist 非空且 enabled，打日志确认
+        try:
+            from logger import get_logger
+            _sys_logger = get_logger('system')
+            wl = config_data.get('watchlist', [])
+            enabled = config_data.get('enabled', False)
+            _sys_logger.info(f'股票监控配置已更新: enabled={enabled}, watchlist={len(wl)}项')
+            if enabled and wl:
+                codes = [w.get('resolved_code', w.get('value', '?')) for w in wl if w.get('enabled')]
+                _sys_logger.info(f'监控目标: {codes}')
+        except Exception:
+            pass
+
         return jsonify({'success': True, 'message': '股票监控配置更新成功'})
     except Exception as e:
         error_logger.error(f"更新股票监控配置失败: {e}")
@@ -600,4 +624,101 @@ def update_stock_score_prompt():
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/config/stock-score-prompt POST]: {str(e)}")
         return jsonify({'success': False, 'message': '更新股票打分提示词失败'}), 500
+
+# ==================== 数据源配置 ====================
+def _load_datasource_config():
+    """加载数据源配置：用户自定义URL覆盖默认值"""
+    custom = {}
+    if os.path.exists(DATASOURCE_CONFIG_FILE):
+        try:
+            with open(DATASOURCE_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                custom = json.load(f)
+        except Exception:
+            pass
+    # 合并：默认 + 用户覆盖
+    sources = []
+    for ds in DEFAULT_DATASOURCES:
+        item = dict(ds)
+        if item['key'] in custom:
+            item['url'] = custom[item['key']]
+        sources.append(item)
+    return sources
+
+@config_bp.route('/datasource', methods=['GET'])
+def get_datasource_config():
+    try:
+        sources = _load_datasource_config()
+        return jsonify({'success': True, 'data': sources})
+    except Exception as e:
+        error_logger.error(f"获取数据源配置失败: {e}")
+        return jsonify({'success': False, 'message': '获取数据源配置失败'}), 500
+
+@config_bp.route('/datasource', methods=['POST'])
+def update_datasource_config():
+    try:
+        data = request.json
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+        # data.sources: {key: url} 只保存用户自定义的URL
+        overrides = data.get('sources', {})
+        with open(DATASOURCE_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(overrides, f, ensure_ascii=False, indent=2)
+        return jsonify({'success': True, 'message': '数据源配置更新成功'})
+    except Exception as e:
+        error_logger.error(f"更新数据源配置失败: {e}")
+        return jsonify({'success': False, 'message': '更新数据源配置失败'}), 500
+
+@config_bp.route('/datasource/test', methods=['POST'])
+def test_datasource():
+    """一键测试所有数据源可用性。返回 {key: {ok, status_code, latency_ms, error}}"""
+    try:
+        sources = _load_datasource_config()
+        results = {}
+        for ds in sources:
+            key = ds['key']
+            test_url = ds.get('test_url', '')
+            if not test_url:
+                # akshare等非HTTP接口，标记为跳过
+                results[key] = {'ok': None, 'status_code': None, 'latency_ms': None, 'error': '非HTTP接口，跳过测试'}
+                continue
+            # 根据数据源类型选请求头
+            provider = ds.get('provider', '')
+            if '东方财富' in provider:
+                headers = get_eastmoney_headers()
+            elif '同花顺' in provider:
+                headers = {
+                    'User-Agent': get_random_user_agent(),
+                    'Referer': 'https://data.10jqka.com.cn/',
+                    'Accept': '*/*',
+                }
+            elif '新浪' in provider:
+                headers = {
+                    'User-Agent': get_random_user_agent(),
+                    'Referer': 'https://finance.sina.com.cn/',
+                }
+            elif '腾讯' in provider:
+                headers = {
+                    'User-Agent': get_random_user_agent(),
+                    'Referer': 'https://gu.qq.com/',
+                }
+            else:
+                headers = {'User-Agent': get_random_user_agent()}
+
+            import time as _t
+            start = _t.time()
+            try:
+                resp = requests.get(test_url, headers=headers, timeout=8, allow_redirects=True)
+                latency = int((_t.time() - start) * 1000)
+                ok = resp.status_code == 200
+                results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}'}
+            except requests.exceptions.Timeout:
+                latency = int((_t.time() - start) * 1000)
+                results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '超时'}
+            except Exception as e:
+                latency = int((_t.time() - start) * 1000)
+                results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': str(e)[:80]}
+        return jsonify({'success': True, 'data': results})
+    except Exception as e:
+        error_logger.error(f"测试数据源失败: {e}")
+        return jsonify({'success': False, 'message': f'测试数据源失败: {e}'}), 500
 
