@@ -4,7 +4,7 @@ import requests
 import time
 import re
 import threading
-from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, NEWS_ANALYSIS_CACHE_FILE
+from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, AI_NEWS_SUMMARY_PROMPT_FILE, AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE, NEWS_ANALYSIS_CACHE_FILE
 from logger import get_logger
 from news_score_thresholds import get_score_label as classify_score_label
 
@@ -803,3 +803,233 @@ def analyze_news(title, content):
             return {'success': False, 'message': f'异常: {str(e)[:100]}'}
 
     return {'success': False, 'message': 'AI分析失败，请稍后重试'}
+
+
+# ============= 新闻每日热点总结 =============
+
+def load_ai_news_summary_prompt():
+    """加载新闻每日总结提示词"""
+    try:
+        with open(AI_NEWS_SUMMARY_PROMPT_FILE, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        error_logger.error(f"加载新闻总结提示词失败: {e}")
+        return None
+
+
+def summarize_daily_news(news_items):
+    """AI总结当日所有新闻，提炼次日热点前瞻
+
+    Args:
+        news_items: 新闻列表，每项包含 id, title, content, time, importance 等字段
+
+    Returns:
+        dict: {success: bool, analysis: str, message: str}
+    """
+    global last_ai_call_time
+
+    if not news_items:
+        return {'success': False, 'message': '没有可总结的新闻'}
+
+    config = load_ai_config()
+    if not config or not config.get('enabled'):
+        return {'success': False, 'message': 'AI分析未启用'}
+
+    elapsed = time.time() - last_ai_call_time
+    if elapsed < AI_CALL_INTERVAL:
+        time.sleep(AI_CALL_INTERVAL - elapsed)
+    last_ai_call_time = time.time()
+
+    prompt = load_ai_news_summary_prompt()
+    if not prompt:
+        return {'success': False, 'message': '新闻总结提示词未配置'}
+
+    api_url = config.get('api_url')
+    api_key = config.get('api_key')
+    model = config.get('model', 'gpt-3.5-turbo')
+    temperature = config.get('temperature', 0.7)
+    max_tokens = config.get('max_tokens', 2000)
+    timeout = min(config.get('timeout', 180), 180)
+    retry_count = 1  # 新闻总结为手动/定时任务，快速返回便于重试
+    retry_interval = min(config.get('retry_interval', 10), 10)
+
+    if not api_url or not api_key:
+        error_logger.error("AI配置不完整：缺少api_url或api_key")
+        return {'success': False, 'message': 'AI配置不完整：缺少api_url或api_key'}
+
+    full_url = config.get('full_url', False)
+    if not full_url and not api_url.endswith('/chat/completions'):
+        api_url = api_url.rstrip('/') + '/chat/completions'
+
+    # 构建新闻文本
+    from datetime import datetime
+    news_texts = []
+    for item in news_items:
+        title = clean_text(item.get('title', ''))
+        content = clean_text(item.get('content', ''))
+        time_val = item.get('time', '')
+
+        # 格式化时间
+        time_str = ''
+        if time_val:
+            try:
+                if isinstance(time_val, str) and time_val.isdigit():
+                    dt = datetime.fromtimestamp(int(time_val))
+                elif isinstance(time_val, (int, float)):
+                    dt = datetime.fromtimestamp(float(time_val))
+                else:
+                    dt = None
+                if dt:
+                    time_str = dt.strftime('%H:%M')
+            except (ValueError, TypeError, OSError):
+                pass
+
+        importance = item.get('importance', '0')
+        importance_tag = '【重要】' if importance == '3' else ''
+
+        # 构建单条新闻文本
+        title = truncate_text(title, 200)
+        content = truncate_text(content, 500)
+
+        parts = []
+        if time_str:
+            parts.append(f"[{time_str}]")
+        if importance_tag:
+            parts.append(importance_tag)
+        parts.append(f"标题：{title}")
+        news_line = ' '.join(parts)
+        news_line += f"\n内容：{content}"
+        news_texts.append(news_line)
+
+    combined_text = "\n\n---\n\n".join(news_texts)
+
+    # 如果内容过长，智能截断：优先保留重要新闻，普通新闻只保留标题
+    if len(combined_text) > 12000:
+        important_texts = []
+        normal_texts = []
+        for item in news_items:
+            title = clean_text(item.get('title', ''))
+            content = clean_text(item.get('content', ''))
+            time_val = item.get('time', '')
+            time_str = ''
+            if time_val:
+                try:
+                    if isinstance(time_val, str) and time_val.isdigit():
+                        dt = datetime.fromtimestamp(int(time_val))
+                    elif isinstance(time_val, (int, float)):
+                        dt = datetime.fromtimestamp(float(time_val))
+                    else:
+                        dt = None
+                    if dt:
+                        time_str = dt.strftime('%H:%M')
+                except (ValueError, TypeError, OSError):
+                    pass
+
+            importance = item.get('importance', '0')
+            title = truncate_text(title, 200)
+            content = truncate_text(content, 500)
+
+            if importance == '3':
+                important_texts.append(f"[{time_str}] 【重要】标题：{title}\n内容：{content}")
+            else:
+                normal_texts.append(f"[{time_str}] 标题：{title}")
+
+        combined_text = "\n\n---\n\n".join(important_texts + normal_texts)
+
+        if len(combined_text) > 15000:
+            combined_text = combined_text[:15000] + "\n\n[内容过长，已截断...]"
+
+    # 获取今日日期
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # 替换提示词中的日期占位符
+    system_prompt = prompt.replace('{日期}', today).replace('{date}', today)
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": combined_text}
+    ]
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+
+    for attempt in range(1, retry_count + 1):
+        try:
+            if _heartbeat_callback:
+                _heartbeat_callback()
+
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=timeout
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                return {'success': True, 'analysis': content}
+
+            elif response.status_code == 429:
+                retry_after = response.headers.get('Retry-After', str(retry_interval))
+                try:
+                    wait_time = int(retry_after)
+                except:
+                    wait_time = retry_interval
+                if attempt < retry_count:
+                    time.sleep(wait_time)
+                    continue
+                return {'success': False, 'message': 'API速率限制，请稍后重试'}
+
+            elif response.status_code == 504:
+                error_logger.error("新闻总结AI API返回504 Gateway Timeout")
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': 'AI API超时(504)，请稍后重试'}
+
+            else:
+                error_msg = f'HTTP {response.status_code}'
+                try:
+                    error_data = response.json()
+                    if isinstance(error_data.get('error'), dict):
+                        error_msg = error_data['error'].get('message', error_msg)
+                except:
+                    error_msg = response.text[:200] if response.text else error_msg
+                error_logger.error(f"新闻总结AI API错误: {error_msg}, 状态码: {response.status_code}")
+                if attempt < retry_count:
+                    time.sleep(retry_interval)
+                    continue
+                return {'success': False, 'message': error_msg}
+
+        except requests.exceptions.Timeout:
+            error_logger.error("新闻总结AI API请求超时")
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': '请求超时，请稍后重试'}
+
+        except requests.exceptions.ConnectionError as e:
+            error_logger.error(f"新闻总结AI API连接失败: {str(e)}")
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'连接失败'}
+
+        except Exception as e:
+            error_logger.error(f"新闻总结AI API异常: {str(e)}")
+            if attempt < retry_count:
+                time.sleep(retry_interval)
+                continue
+            return {'success': False, 'message': f'异常: {str(e)[:100]}'}
+
+    return {'success': False, 'message': '新闻总结失败，请稍后重试'}

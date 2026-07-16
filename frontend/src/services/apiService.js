@@ -1094,3 +1094,25 @@ export async function getIndustryCycleSingleScore(industry) {
     throw error
   }
 }
+
+/** 手动触发新闻热点总结 */
+export async function startNewsSummary() {
+  try {
+    const response = await apiClient.post('/news/summary/start')
+    return response.data
+  } catch (error) {
+    console.error('触发新闻总结失败:', error)
+    throw error
+  }
+}
+
+/** 查询新闻热点总结状态和结果 */
+export async function getNewsSummaryStatus() {
+  try {
+    const response = await apiClient.get('/news/summary/status')
+    return response.data
+  } catch (error) {
+    console.error('查询新闻总结状态失败:', error)
+    throw error
+  }
+}

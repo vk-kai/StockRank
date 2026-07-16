@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 import traceback
+import threading
 from news_processor import get_recent_news, search_news, NEWS_DIR
 from ai_analyzer import load_news_analysis_cache
 from news_score_thresholds import classify_score, is_directional_score
 from data_processor import error_logger
+from config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
 from logger import get_logger
 import os
 import json
@@ -421,4 +423,106 @@ def get_news_score_trend():
         return jsonify({
             'success': False,
             'message': '服务器内部错误'
+        }), 500
+
+
+# ============================================================
+# 新闻每日热点总结
+# ============================================================
+
+_news_summary_running = False
+_news_summary_lock = threading.Lock()
+
+
+@news_bp.route('/news/summary/start', methods=['POST'])
+def start_news_summary():
+    """手动触发新闻热点总结（异步后台线程）"""
+    global _news_summary_running
+
+    with _news_summary_lock:
+        if _news_summary_running:
+            return jsonify({
+                'success': True,
+                'status': 'running',
+                'message': '新闻总结正在执行中，请稍后查询结果'
+            })
+
+    def _background_summary():
+        global _news_summary_running
+        with _news_summary_lock:
+            _news_summary_running = True
+        try:
+            from news_collector import _run_news_summary
+            _run_news_summary(auto=False)
+        except Exception as e:
+            error_logger.error(f"手动新闻总结后台任务异常: {e}")
+        finally:
+            with _news_summary_lock:
+                _news_summary_running = False
+
+    thread = threading.Thread(target=_background_summary)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        'success': True,
+        'status': 'running',
+        'message': '新闻总结已启动，请稍后查询结果'
+    })
+
+
+@news_bp.route('/news/summary/status', methods=['GET'])
+def get_news_summary_status():
+    """查询新闻热点总结状态和结果"""
+    try:
+        # 检查是否正在运行
+        if _news_summary_running:
+            return jsonify({
+                'success': True,
+                'status': 'running',
+                'message': '新闻总结正在执行中'
+            })
+
+        # 检查状态文件
+        if os.path.exists(AI_NEWS_SUMMARY_STATUS_FILE):
+            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'r', encoding='utf-8') as f:
+                status_data = json.load(f)
+
+            status = status_data.get('status', '')
+
+            if status == 'completed':
+                # 读取结果
+                analysis_content = ''
+                if os.path.exists(AI_NEWS_SUMMARY_RESULT_FILE):
+                    with open(AI_NEWS_SUMMARY_RESULT_FILE, 'r', encoding='utf-8') as f:
+                        analysis_content = f.read()
+
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'analysis': analysis_content,
+                    'date': status_data.get('date', ''),
+                    'end_time': status_data.get('end_time', ''),
+                    'auto': status_data.get('auto', False)
+                })
+            elif status == 'failed':
+                return jsonify({
+                    'success': False,
+                    'status': 'failed',
+                    'message': status_data.get('message', '总结失败'),
+                    'date': status_data.get('date', '')
+                })
+
+        # 无状态文件
+        return jsonify({
+            'success': True,
+            'status': 'idle',
+            'message': '尚无总结结果'
+        })
+
+    except Exception as e:
+        error_logger.error(f"API /api/news/summary/status 异常: {e}")
+        return jsonify({
+            'success': False,
+            'message': '查询状态失败'
         }), 500
