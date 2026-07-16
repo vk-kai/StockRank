@@ -491,8 +491,8 @@ def news_collection_thread():
             current_hour = now.hour
             current_minute = now.minute
 
-            # 每晚11点自动触发新闻热点总结
-            if current_hour == 23 and current_minute == 0:
+            # 每晚8点自动触发新闻热点总结
+            if current_hour == 20 and current_minute == 0:
                 if _last_news_summary_date != today:
                     _last_news_summary_date = today
                     try:

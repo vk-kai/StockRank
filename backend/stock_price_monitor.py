@@ -117,12 +117,18 @@ def _rapid_move(q, series, cfg):
 
 
 def _cum_move(q, cfg):
+    """累计涨跌检测。
+    
+    累计涨跌容易反复触发（如持续上涨），建议设置较长冷却时间。
+    只在首次突破阈值或反向突破时提醒。
+    """
     if not cfg['cum_move']['enabled']:
         return None
     pct = q['pct']
     if abs(pct) < cfg['cum_move']['pct']:
         return None
-    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%'}
+    # 涨跌方向标记，用于判断是否首次突破或反向突破
+    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%', 'direction': 1 if pct > 0 else -1}
 
 
 def _spike_fade(q, cfg):
@@ -156,8 +162,30 @@ def _dip_rebound(q, cfg):
 
 
 def _gap_open(q, state, cfg):
-    if not cfg['gap_open']['enabled'] or state.get('gap_fired'):
+    """检测大幅低开/高开。
+    
+    只在开盘后30分钟内检测，且每天只提醒一次。
+    通过 alerts 记录判断是否当天已触发，避免状态丢失后重复提醒。
+    """
+    if not cfg['gap_open']['enabled']:
         return None
+    
+    # 时间窗口检查：只在开盘后30分钟内检测（9:30-10:00 或 13:00-13:30）
+    try:
+        ts = q.get('ts', '')
+        if ts:
+            t = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+            hour, minute = t.hour, t.minute
+            # 只在早盘开盘后30分钟内检测（9:30-10:00）
+            if not (hour == 9 and minute >= 30 or hour == 10 and minute == 0):
+                return None
+    except Exception:
+        pass
+    
+    # 检查是否当天已触发过（通过 alerts 记录）
+    if state.get('gap_fired'):
+        return None
+    
     pc = q['prev_close'] or 0
     if not pc or not q.get('open'):
         return None
@@ -169,6 +197,10 @@ def _gap_open(q, state, cfg):
 
 
 def _amplitude(q, cfg):
+    """振幅过大检测。
+    
+    振幅容易反复触发（振幅只会越来越大），建议设置较长冷却时间。
+    """
     if not cfg['amplitude']['enabled']:
         return None
     pc = q['prev_close'] or 0
@@ -250,8 +282,26 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
     """同 (股票,类型) 在 cooldown_minutes 内是否已推过。
 
     一条推送记录可含多个联动类型(types);命中任一即视为该类型冷却中。
+    
+    特殊处理：
+    - gap_open（低开/高开）类型：当天只提醒一次，不看冷却时间
     """
     now = now or datetime.now()
+    today = now.strftime('%Y-%m-%d')
+    
+    # gap_open 类型：当天只提醒一次
+    if hit_type == 'gap_open':
+        for a in reversed(alerts):
+            if a.get('code') != code:
+                continue
+            types = a.get('types') or [a.get('type')]
+            if hit_type in types:
+                # 只要当天有记录，就认为已触发
+                if a.get('date') == today:
+                    return True
+        return False
+    
+    # 其他类型：按冷却时间判断
     threshold = timedelta(minutes=cooldown_minutes)
     for a in reversed(alerts):
         if a.get('code') != code:
