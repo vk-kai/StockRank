@@ -1001,6 +1001,18 @@ export async function testPushNotification() {
   }
 }
 
+// 测试「消息推送服务」：后端走真实 WebSocket 通道(push_event)发一条测试消息，
+// 前端 notificationManager 收到后会弹桌面通知。与上面 testPushNotification（测飞书/微信）不同。
+export async function testPushService() {
+  try {
+    const response = await apiClient.post('/system/push-test')
+    return response.data
+  } catch (error) {
+    console.error('推送服务测试失败:', error)
+    throw error
+  }
+}
+
 // ============================================================
 // 行业见顶周期分析
 // ============================================================

@@ -108,19 +108,30 @@ def _find_ref(series, win_min):
 
 
 def _rapid_move(q, series, cfg):
-    ref = _find_ref(series, cfg['rapid_rise']['win_min'])
-    if not ref:
-        return None
+    """急涨/急跌：分别用各自配置的窗口找参考点。
+
+    修复：原先两方向都用 rapid_rise.win_min，急跌单独配置的窗口被忽略。
+    """
     prev_close = q['prev_close'] or 0
     if not prev_close:
         return None
     cur_pct = (q['price'] - prev_close) / prev_close * 100
-    ref_pct = (ref['price'] - prev_close) / prev_close * 100
-    delta = cur_pct - ref_pct
-    if delta >= cfg['rapid_rise']['pct'] and cfg['rapid_rise']['enabled']:
-        return {'type': 'rapid_rise', 'label': f'急速拉升 {delta:+.2f}%/{cfg["rapid_rise"]["win_min"]}min'}
-    if delta <= -cfg['rapid_drop']['pct'] and cfg['rapid_drop']['enabled']:
-        return {'type': 'rapid_drop', 'label': f'急速打压 {delta:+.2f}%/{cfg["rapid_drop"]["win_min"]}min'}
+
+    rise_cfg = cfg['rapid_rise']
+    if rise_cfg['enabled']:
+        ref = _find_ref(series, rise_cfg['win_min'])
+        if ref:
+            delta = cur_pct - (ref['price'] - prev_close) / prev_close * 100
+            if delta >= rise_cfg['pct']:
+                return {'type': 'rapid_rise', 'label': f'急速拉升 {delta:+.2f}%/{rise_cfg["win_min"]}min'}
+
+    drop_cfg = cfg['rapid_drop']
+    if drop_cfg['enabled']:
+        ref = _find_ref(series, drop_cfg['win_min'])
+        if ref:
+            delta = cur_pct - (ref['price'] - prev_close) / prev_close * 100
+            if delta <= -drop_cfg['pct']:
+                return {'type': 'rapid_drop', 'label': f'急速打压 {delta:+.2f}%/{drop_cfg["win_min"]}min'}
     return None
 
 
@@ -678,7 +689,13 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
         return []
 
     with _state_lock:
-        state = _stock_state.setdefault(code, {})
+        # 新交易日重置盘中状态（gap_fired / touched_up / touched_down）。
+        # 否则常驻线程跨天后：gap_open 因 gap_fired 残留永久失效；
+        # limit_break 会基于昨日封板状态在今天开盘误报炸板/撬板。
+        state = _stock_state.get(code)
+        if not state or state.get('_date') != date:
+            state = {'_date': date}
+            _stock_state[code] = state
 
     # 在quote中添加code，用于递进检测
     quote_with_code = dict(quote)
@@ -701,7 +718,7 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
     record_alert(code, name, primary, hits, quote, pushed)
     # WebSocket实时推送价格异动到前端
     try:
-        from app import push_event
+        from ws import push_event
         push_event('price_alert', {
             'code': code, 'name': name, 'type': primary['type'],
             'label': primary['label'], 'price': quote.get('price'),

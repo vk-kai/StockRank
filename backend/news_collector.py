@@ -286,7 +286,7 @@ def process_news_with_ai_and_push(news_list):
                         record_pushed(news_item, reason, news_item.get('core_event', ''))
                         # WebSocket实时推送新闻到前端
                         try:
-                            from app import push_event
+                            from ws import push_event
                             push_event('news', news_item)
                         except Exception:
                             pass
@@ -300,7 +300,7 @@ def process_news_with_ai_and_push(news_list):
                                 record_pushed(news_item, analysis.get('reason', ''), analysis.get('core_event', ''))
                                 # WebSocket实时推送新闻到前端
                                 try:
-                                    from app import push_event
+                                    from ws import push_event
                                     push_event('news', news_item)
                                 except Exception:
                                     pass

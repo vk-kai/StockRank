@@ -104,6 +104,18 @@ function sendPriceAlertNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
+function sendTestNotification(data) {
+  // 手动「测试」按钮触发：走真实 WebSocket 通道到达，弹一条桌面通知用于人眼验证。
+  try {
+    const n = new Notification((data && data.title) || '🔔 推送测试', {
+      body: (data && data.body) || 'WebSocket 推送链路正常',
+      icon: ICON,
+      tag: 'push-test'
+    })
+    n.onclick = () => { window.focus(); n.close() }
+  } catch (e) { /* 忽略 */ }
+}
+
 // ==================== WebSocket 推送处理 ====================
 
 function handlePushEvent(msg) {
@@ -112,6 +124,14 @@ function handlePushEvent(msg) {
   // data_update 事件：触发全局自定义事件，让各页面组件自行刷新数据
   if (msg.type === 'data_update') {
     window.dispatchEvent(new CustomEvent('ws-data-update', { detail: msg.data }))
+    return
+  }
+
+  // push_ping：服务监控的静默心跳，立即回 pong，不弹通知、不受通知开关影响
+  if (msg.type === 'push_ping') {
+    if (msg.data && msg.data.nonce && state.socket) {
+      try { state.socket.emit('push_pong', { nonce: msg.data.nonce }) } catch (e) { /* 忽略 */ }
+    }
     return
   }
 
@@ -127,6 +147,9 @@ function handlePushEvent(msg) {
       break
     case 'price_alert':
       if (msg.data) sendPriceAlertNotification(msg.data)
+      break
+    case 'push_test':
+      if (msg.data) sendTestNotification(msg.data)
       break
   }
 }

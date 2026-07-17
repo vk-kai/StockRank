@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+from flask_socketio import emit
 from werkzeug.exceptions import HTTPException
 import threading
 import os
@@ -21,22 +21,18 @@ from Jarvis import SecurityMiddleware
 from Jarvis.middleware import create_security_blueprint
 from Jarvis.config import get_config as get_jarvis_config
 
-# ==================== SocketIO 实例（全局单例） ====================
-socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
-
-def push_event(event_type, data):
-    """向所有已连接的前端客户端推送实时事件。
-    
-    event_type 类型:
-      - 'news'         新新闻
-      - 'anomaly'      资金异动
-      - 'price_alert'  价格异动
-      - 'data_update'  数据刷新（板块资金、大盘指数等）
-    """
-    try:
-        socketio.emit('push', {'type': event_type, 'data': data})
-    except Exception as e:
-        error_logger.warning(f"SocketIO推送失败: {e}")
+# ==================== SocketIO 实例（全局单例，定义在 ws.py） ====================
+# socketio / push_event 由 ws.py 统一提供：保证 `python app.py` 启动时，
+# 后台线程 `from ws import push_event` 拿到的是正在服务的同一实例，
+# 不会因 __main__ 与 app 两个模块各 new 一个 SocketIO 而把推送发到无人连接的影子实例。
+from ws import (
+    socketio,
+    push_event,
+    register_client,
+    unregister_client,
+    record_push_pong,
+    send_push_test,
+)
 
 data_collection_thread = threading.Thread(target=data_collection_func, daemon=True)
 news_collection_thread = threading.Thread(target=news_collection_func, daemon=True)
@@ -88,12 +84,22 @@ def create_app():
     # ==================== SocketIO 事件 ====================
     @socketio.on('connect')
     def on_connect():
+        register_client()
         system_logger.info(f"SocketIO客户端已连接: {request.sid}")
         emit('push', {'type': 'connected', 'data': {'sid': request.sid}})
-    
+
     @socketio.on('disconnect')
     def on_disconnect():
+        unregister_client()
         system_logger.info(f"SocketIO客户端断开: {request.sid}")
+
+    @socketio.on('push_pong')
+    def on_push_pong(data):
+        # 前端对 push_ping 的静默回执（不弹通知）。仅记录 nonce 命中。
+        try:
+            record_push_pong((data or {}).get('nonce'))
+        except Exception:
+            pass
     
     @app.route('/health', methods=['GET', 'POST', 'OPTIONS'])
     def health():
@@ -172,7 +178,19 @@ def create_app():
 
         else:
             return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
-    
+
+    @app.route('/api/system/push-test', methods=['POST', 'OPTIONS'])
+    def push_test():
+        """手动测试消息推送服务：走真实 WebSocket 通道发一条测试消息，前端弹桌面通知。"""
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True})
+        try:
+            send_push_test()
+            return jsonify({'success': True, 'message': '测试消息已通过 WebSocket 发出'})
+        except Exception as e:
+            error_logger.error(f"推送测试失败: {e}")
+            return jsonify({'success': False, 'message': f'推送测试失败: {e}'}), 500
+
     @app.errorhandler(Exception)
     def handle_exception(e):
         if isinstance(e, HTTPException):

@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, testPushService as testPushServiceApi } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -159,14 +159,28 @@ export default {
       return `需求${s.demand_signal} · 宏观${s.macro_signal}`
     },
     healthDisplayItems() {
-      const items = {}
-      if (this.healthStatus.news) {
-        items.news = this.healthStatus.news
+      // 服务监控卡片要展示的行：合并后的「同花顺数据」+「消息推送服务」
+      const rows = []
+      const news = this.healthStatus.news
+      const sector = this.healthStatus.sector
+      if (news || sector) {
+        rows.push({
+          key: 'ths_data',
+          label: '同花顺数据',
+          kind: 'ths',
+          item: this.combineThsHealth(news, sector),
+        })
       }
-      if (this.healthStatus.sector) {
-        items.sector = this.healthStatus.sector
+      const push = this.healthStatus.push
+      if (push) {
+        rows.push({
+          key: 'push',
+          label: '消息推送服务',
+          kind: 'push',
+          item: push,
+        })
       }
-      return items
+      return rows
     },
     healthErrors() {
       const errors = []
@@ -1550,16 +1564,11 @@ export default {
         }
       } catch (err) {
         console.error('获取健康状态失败:', err)
-        if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-          this.healthStatus = {
-            ths_news: { status: 'error', error: '网络超时' },
-            ths_sector: { status: 'error', error: '网络超时' }
-          }
-        } else {
-          this.healthStatus = {
-            ths_news: { status: 'error', error: '网络异常' },
-            ths_sector: { status: 'error', error: '网络异常' }
-          }
+        const msg = (err.code === 'ECONNABORTED' || (err.message && err.message.includes('timeout'))) ? '网络超时' : '网络异常'
+        this.healthStatus = {
+          news: { status: 'error', error: msg },
+          sector: { status: 'error', error: msg },
+          push: { status: 'error', error: msg, clients: (this.healthStatus.push && this.healthStatus.push.clients) || 0 }
         }
       }
     },
@@ -1593,48 +1602,98 @@ export default {
       return this.crawlerStatus[crawlerKey]?.message || ''
     },
 
-    getMonitorRowClass(healthKey, healthItem) {
-      const crawlerStatus = this.getCrawlerStatus(healthKey)
-      if (crawlerStatus === 'checking') {
-        return 'monitor-checking'
+    // 合并 news + sector 为「同花顺数据」的整体健康状态
+    combineThsHealth(news, sector) {
+      const a = news && news.status
+      const b = sector && sector.status
+      let status = 'ok'
+      let error = null
+      if ((a === 'error' || a === 'partial') && (b === 'error' || b === 'partial')) {
+        status = 'error'
+        error = (news && news.error) || (sector && sector.error) || '采集异常'
+      } else if (a === 'error' || a === 'partial' || b === 'error' || b === 'partial') {
+        status = 'partial'
+        error = (a === 'error' || a === 'partial') ? (news && news.error) : (sector && sector.error)
       }
-      if (crawlerStatus === 'failed') {
-        return 'monitor-failed'
+      const lastCheck = (news && sector)
+        ? ((news.last_check || '') >= (sector.last_check || '') ? news.last_check : sector.last_check)
+        : ((news && news.last_check) || (sector && sector.last_check))
+      const rt = (news && sector && news.response_time && sector.response_time)
+        ? Math.max(news.response_time, sector.response_time)
+        : ((news && news.response_time) || (sector && sector.response_time) || null)
+      return { status, error, last_check: lastCheck, response_time: rt }
+    },
+
+    // 「同花顺数据」合并行：news 或 sector_flow 采集器是否处于 failed
+    thsCrawlerFailed() {
+      const news = this.crawlerStatus.news && this.crawlerStatus.news.status === 'failed'
+      const sf = this.crawlerStatus.sector_flow && this.crawlerStatus.sector_flow.status === 'failed'
+      return !!(news || sf)
+    },
+    thsCrawlerChecking() {
+      const news = this.crawlerStatus.news && this.crawlerStatus.news.status === 'checking'
+      const sf = this.crawlerStatus.sector_flow && this.crawlerStatus.sector_flow.status === 'checking'
+      return !!(news || sf)
+    },
+    async resetThsCrawler() {
+      try {
+        if (this.crawlerStatus.news && this.crawlerStatus.news.status === 'failed') {
+          await resetCrawler('news')
+        }
+        if (this.crawlerStatus.sector_flow && this.crawlerStatus.sector_flow.status === 'failed') {
+          await resetCrawler('sector_flow')
+        }
+        await this.fetchHealthStatus()
+      } catch (err) {
+        console.error('重置采集器失败:', err)
       }
-      if (healthItem.status === 'ok') {
-        return 'monitor-ok'
+    },
+    async testPushService() {
+      // 手动测试消息推送服务：后端走真实 WebSocket 发测试消息，前端弹桌面通知作为反馈
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        alert('请先在配置页授权桌面通知权限')
+        return
       }
-      if (healthItem.status === 'partial') {
-        return 'monitor-partial'
+      try {
+        await testPushServiceApi()
+      } catch (err) {
+        console.error('推送服务测试失败:', err)
+        alert('推送测试失败：' + (err.message || err))
       }
-      if (healthItem.status === 'error') {
-        return 'monitor-error'
+    },
+
+    getMonitorRowClass(row) {
+      if (!row || !row.item) return ''
+      if (row.kind === 'ths') {
+        if (this.thsCrawlerChecking()) return 'monitor-checking'
+        if (this.thsCrawlerFailed()) return 'monitor-failed'
       }
+      const st = row.item.status
+      if (st === 'ok') return 'monitor-ok'
+      if (st === 'partial' || st === 'no_client') return 'monitor-partial'
+      if (st === 'error') return 'monitor-error'
+      if (st === 'checking') return 'monitor-checking'
       return 'monitor-unknown'
     },
 
-    getMonitorStatusText(healthKey, healthItem) {
-      if (!healthItem) return '检测中...'
-
-      const crawlerStatus = this.getCrawlerStatus(healthKey)
-      const crawlerMessage = this.getCrawlerMessage(healthKey)
-
-      if (crawlerStatus === 'checking') {
-        return '检测中...'
+    getMonitorStatusText(row) {
+      if (!row || !row.item) return '检测中...'
+      const it = row.item
+      if (row.kind === 'ths') {
+        if (this.thsCrawlerChecking()) return '检测中...'
+        if (this.thsCrawlerFailed()) {
+          const cs = this.crawlerStatus
+          return (cs.sector_flow && cs.sector_flow.message) || (cs.news && cs.news.message) || '已停止'
+        }
+        if (it.status === 'ok') return '正常'
+        if (it.status === 'partial') return '部分异常'
+        return it.error || '异常'
       }
-      if (crawlerStatus === 'failed') {
-        return crawlerMessage || '已停止'
-      }
-      if (healthItem.status === 'ok') {
-        return '正常'
-      }
-      if (healthItem.status === 'partial') {
-        return '板块正常，个股异常'
-      }
-      if (healthItem.status === 'error') {
-        return healthItem.error || '异常'
-      }
-      return '检测中...'
+      // push
+      if (it.status === 'ok') return `正常（${it.clients || 0} 个连接）`
+      if (it.status === 'no_client') return '无连接'
+      if (it.status === 'checking') return '检测中...'
+      return it.error || '异常'
     },
 
     async doHealthCheck() {

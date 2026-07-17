@@ -36,6 +36,13 @@ _health_status = {
         'last_check': None,
         'error': None,
         'response_time': None
+    },
+    'push': {
+        'status': 'checking',
+        'last_check': None,
+        'error': None,
+        'response_time': None,
+        'clients': 0
     }
 }
 
@@ -279,6 +286,43 @@ def run_full_health_check():
 
 # ============ ???? ============
 
+def run_push_health_check(wait_seconds=5):
+    """消息推送服务心跳检测（静默）：发 push_ping，等前端回 push_pong。
+
+    - 无客户端连接 -> no_client（不算故障，只是没人在线）
+    - 有连接且 pong 回来 -> ok
+    - 有连接但 pong 超时 -> error（链路异常，如曾经的影子实例 bug）
+    全程不发任何桌面通知。
+    """
+    from ws import send_push_ping, pong_received_for, get_connected_clients
+    clients = get_connected_clients()
+    now = datetime.now().isoformat()
+    if clients == 0:
+        _health_status['push'] = {
+            'status': 'no_client', 'last_check': now,
+            'error': '无客户端连接（打开网页才会连）',
+            'response_time': None, 'clients': 0,
+        }
+        save_health_status()
+        return _health_status['push']
+    nonce = send_push_ping()
+    ok = False
+    for _ in range(max(1, int(wait_seconds * 10))):
+        if pong_received_for(nonce):
+            ok = True
+            break
+        time.sleep(0.1)
+    _health_status['push'] = {
+        'status': 'ok' if ok else 'error',
+        'last_check': datetime.now().isoformat(),
+        'error': None if ok else '前端未回应心跳（推送链路可能异常）',
+        'response_time': None,
+        'clients': clients,
+    }
+    save_health_status()
+    return _health_status['push']
+
+
 def _periodic_check_loop():
     """定时检测循环：每60秒检查一次请求头是否仍然有效"""
     global _check_running
@@ -288,6 +332,7 @@ def _periodic_check_loop():
     while _check_running:
         try:
             run_full_health_check()
+            run_push_health_check()
         except Exception as e:
             error_logger.error(f"定时健康检测异常: {e}\n{traceback.format_exc()}")
 
