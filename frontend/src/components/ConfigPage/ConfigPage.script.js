@@ -53,6 +53,7 @@ export default {
       // 全局桌面通知设置（与 services/notificationManager 共享 localStorage key）
       notifyEnabled: true,
       notifySoundMode: 'all',
+      notifyNewsLevel: 'all', // 'all' = 全部新闻, 'important' = 仅重要新闻
       notifyPermission: 'default',
       aiConfig: {
         enabled: false,
@@ -183,6 +184,8 @@ export default {
       this.notifyEnabled = localStorage.getItem('newsNotificationEnabled') !== 'false'
       const sm = localStorage.getItem('newsSoundMode')
       this.notifySoundMode = ['none', 'important', 'all'].includes(sm) ? sm : 'all'
+      const nl = localStorage.getItem('newsNotificationLevel')
+      this.notifyNewsLevel = ['all', 'important'].includes(nl) ? nl : 'all'
       if (typeof Notification === 'undefined') this.notifyPermission = 'unsupported'
       else this.notifyPermission = Notification.permission
     },
@@ -203,6 +206,10 @@ export default {
     onNotifySoundChange() {
       localStorage.setItem('newsSoundMode', this.notifySoundMode)
       this.showToast('提醒方式已保存', 'success')
+    },
+    onNotifyNewsLevelChange() {
+      localStorage.setItem('newsNotificationLevel', this.notifyNewsLevel)
+      this.showToast('桌面通知级别已保存', 'success')
     },
     async requestNotifyPermission() {
       if (typeof Notification === 'undefined') {

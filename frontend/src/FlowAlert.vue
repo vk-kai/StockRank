@@ -90,7 +90,7 @@
                 <span v-for="(h, i) in f.hits" :key="i"
                       :class="['fa-hit', `hit-${h.type}`]"
                       :title="hitDetail(h)">
-                  {{ hitIcon(h.type) }} {{ h.label }}
+                  {{ hitIcon(h) }} {{ h.label }}
                   <span class="fa-hit-sub">{{ hitSub(h) }}</span>
                 </span>
               </div>
@@ -271,8 +271,17 @@ export default {
       this.expandedStocks = { ...this.expandedStocks }
     },
     fmt(v) { return (v == null || isNaN(v)) ? '--' : Number(v).toFixed(2) },
-    hitIcon(t) { return (DIM_META[t] || {}).icon || '•' },
+    isReversal(h) { return !!(h && h.sub && String(h.sub).startsWith('reversal')) },
+    hitIcon(t) {
+      // 反转按方向上色：V底(流出减缓/转流入)=红，V顶(流入减缓/转流出)=绿；不再用闪电⚡
+      if (t && typeof t === 'object') {
+        if (this.isReversal(t)) return t.sub === 'reversal_up' ? '🔴' : '🟢'
+        t = t.type
+      }
+      return (DIM_META[t] || {}).icon || '•'
+    },
     hitDetail(h) {
+      if (this.isReversal(h)) return h.detail || this.reversalDesc(h)
       if (h.type === 'surge') return h.sample_sufficient ? `z=${h.z}，历史上榜 ${h.count} 次` : `绝对量级判定（样本 ${h.count || 0} 次）`
       if (h.type === 'spike') return `Δ${h.delta} 亿（vs ${h.prev_time}）`
       if (h.type === 'streak') return `持续 ${h.streak} 段≈${h.minutes}分钟，累计增量 ${h.cum_delta} 亿`
@@ -280,11 +289,40 @@ export default {
       return ''
     },
     hitSub(h) {
+      if (this.isReversal(h)) {
+        // 优先使用后端提供的detail（新格式：距资金流出最低点上升xxx%）
+        if (h.detail) {
+          // detail格式: "距资金流出最低点上升xxx%（最低 x.xx亿 → 现 x.xx亿）"
+          // 提取百分比部分显示
+          const match = h.detail.match(/上升(\d+)%|下降(\d+)%/)
+          if (match) {
+            const pct = match[1] || match[2]
+            const direction = match[1] ? '回升' : '回落'
+            return `${direction}${pct}%`
+          }
+          return h.detail
+        }
+        // 兜底：旧格式
+        const avg = Number(h.avg_delta), cur = Number(h.cur_delta), isUp = h.sub === 'reversal_up'
+        const sameDir = isUp ? cur <= 0 : cur >= 0
+        if (avg > 0 && sameDir) return `减缓${Math.round((avg - Math.abs(cur)) / avg * 100)}%`
+        return isUp ? '转流入' : '转流出'
+      }
       if (h.type === 'surge') return h.z != null ? `z=${h.z}` : `${h.net_flow}亿`
       if (h.type === 'spike') return `${h.delta > 0 ? '+' : ''}${h.delta}亿`
       if (h.type === 'streak') return `${h.minutes}分`
       if (h.type === 'divergence') return `5分钟 价${h.d_change_pct >= 0 ? '+' : ''}${h.d_change_pct}%/量${h.d_net_flow > 0 ? '+' : ''}${h.d_net_flow}亿`
       return ''
+    },
+    reversalDesc(h) {
+      // 后端 detail 缺失时的兜底（旧数据）
+      const avg = Number(h.avg_delta), cur = Number(h.cur_delta), isUp = h.sub === 'reversal_up'
+      const tw = isUp ? '流出' : '流入'
+      if (!(avg > 0)) return h.label || ''
+      const sameDir = isUp ? cur <= 0 : cur >= 0
+      if (sameDir) return `${tw}减缓${Math.round((avg - Math.abs(cur)) / avg * 100)}%：之前约${avg}亿/5min → 现在${Math.abs(cur)}亿/5min`
+      const opp = isUp ? '流入' : '流出'
+      return `${tw}转${opp}：之前约${avg}亿/5min${tw} → 现在${Math.abs(cur)}亿/5min${opp}`
     },
     switchView(v) {
       this.view = v

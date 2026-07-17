@@ -38,10 +38,14 @@ def push_event(event_type, data):
                 / 'push_ping'（静默心跳）/ 'push_test'（手动测试，前端弹通知）
     """
     try:
+        clients = get_connected_clients()
         socketio.emit('push', {'type': event_type, 'data': data})
+        if event_type in ('news', 'anomaly', 'price_alert'):
+            if _log:
+                _log.info(f"SocketIO推送成功: type={event_type}, clients={clients}")
     except Exception as e:
         if _log:
-            _log.warning(f"SocketIO推送失败: {e}")
+            _log.error(f"SocketIO推送失败: type={event_type}, error={e}")
 
 
 # ============================================================================

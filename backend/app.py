@@ -85,13 +85,15 @@ def create_app():
     @socketio.on('connect')
     def on_connect():
         register_client()
-        system_logger.info(f"SocketIO客户端已连接: {request.sid}")
+        # 仅在调试模式下记录连接日志
+        # system_logger.info(f"SocketIO客户端已连接: {request.sid}")
         emit('push', {'type': 'connected', 'data': {'sid': request.sid}})
 
     @socketio.on('disconnect')
     def on_disconnect():
         unregister_client()
-        system_logger.info(f"SocketIO客户端断开: {request.sid}")
+        # 仅在调试模式下记录断开日志
+        # system_logger.info(f"SocketIO客户端断开: {request.sid}")
 
     @socketio.on('push_pong')
     def on_push_pong(data):

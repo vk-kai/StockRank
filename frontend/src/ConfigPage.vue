@@ -606,7 +606,16 @@
               <option value="important">仅重要（含音效）</option>
               <option value="none">静音（只弹窗不响）</option>
             </select>
-            <span class="hint">控制是否播放提示音，不影响是否弹窗。仅作用于“新闻”类通知；资金异动默认带音效。</span>
+            <span class="hint">控制是否播放提示音，不影响是否弹窗。仅作用于"新闻"类通知；资金异动默认带音效。</span>
+          </div>
+
+          <div class="form-group">
+            <label>桌面通知级别</label>
+            <select v-model="notifyNewsLevel" @change="onNotifyNewsLevelChange">
+              <option value="all">全部新闻</option>
+              <option value="important">仅重要新闻</option>
+            </select>
+            <span class="hint">控制哪些新闻会触发桌面通知。<b>此设置独立于飞书/企业微信的推送设置</b>，例如可以设置微信只推送重要新闻，而桌面端推送全部新闻。</span>
           </div>
 
           <div class="form-actions">

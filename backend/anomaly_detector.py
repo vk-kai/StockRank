@@ -57,10 +57,9 @@ DEFAULT_CONFIG = {
     'spike_threshold': 20.0,         # 样本不足时的绝对门槛（亿）
     'spike_z_threshold': 3.0,        # 今日 delta z-score 门槛（相对板块自身节奏，样本充足时生效）
     'spike_min_samples': 10,         # z-score 最小样本数，不足则降级到 spike_threshold
-    # 突变-反转 reversal（V 型：资金趋势减速/掉头）
-    'reversal_min': 3,               # 反转前需连续同向的 delta 步数
-    'reversal_floor': 1.0,           # 参与 reversal 判定的 delta 噪声地板（亿）
-    'reversal_ratio': 0.3,           # 减速判定：当前 |delta| <= 趋势平均量级 × ratio 视为明显减速
+    # 突变-反转 reversal（V 型：资金累计净流入 探底回升 / 冲高回落）
+    'reversal_min': 3,               # 反转前需连续同向的 delta 步数（确立单边趋势）
+    'reversal_floor': 1.0,           # 反向 delta 的噪声地板（亿）：过小视为噪声不计
     # 连续 streak
     'streak_min': 4,                 # 连续同号最少时点数（4=约20分钟）
     'min_net_for_streak': 3.0,       # 参与连续判定的单点最小 |net_flow|（亿）
@@ -339,12 +338,25 @@ def _check_spike(sec, series, cfg, current_time=None):
             'criterion': criterion}
 
 
-def _check_reversal(sec, series, cfg, current_time=None):
-    """突变-反转（V 型）：资金趋势减速/掉头。
+def _reversal_detail(nf, extreme, rebound, is_bottom):
+    """生成反转明细中段（不含"探底回升/冲高回落"前缀，便于与 label 拼接）。
+    返回 (detail, pct)。"""
+    pct = round(abs(rebound) / abs(extreme) * 100) if abs(extreme) >= 1e-9 else None
+    ext_str, nf_str = f"{extreme:.2f}", f"{nf:.2f}"
+    if is_bottom:
+        base = f"距资金流出最低点上升{pct}%" if pct is not None else f"资金净流入回升{rebound:.2f}亿"
+        return f"{base}（最低 {ext_str}亿 → 现 {nf_str}亿）", pct
+    base = f"距资金流入最高点下降{pct}%" if pct is not None else f"资金净流入回落{abs(rebound):.2f}亿"
+    return f"{base}（最高 {ext_str}亿 → 现 {nf_str}亿）", pct
 
-    场景：板块净流入/流出持续单边（连续 K 步同向 delta 且都过噪声地板）后，
-    当前 delta 出现「减速或掉头」——即用户要的"下跌中接近 V 型反转、上升中也是"。
-    防误报：必须先有 K>=reversal_min 步真实同向趋势；防重复：复用同板块+sub 的冷却。
+
+def _check_reversal(sec, series, cfg, current_time=None):
+    """突变-反转（V 型）：资金累计净流入 探底回升 / 冲高回落。
+
+    判据：前 K 步 delta 连续同向且都过噪声地板（确立单边趋势）后，当前 delta **反向**
+    ——真正的 V 型反转（"接近"=允许反向幅度不大，但需过 reversal_floor）。
+    报告：距窗口内资金净流入最低点(探底回升)/最高点(冲高回落)回升/回落的百分比。
+    防误报：必须先有 K 步真实同向趋势 + 当前反向且过地板；防重复：复用同板块+sub 的冷却。
     """
     nf = float(sec.get('net_flow', 0) or 0)
     if not series:
@@ -362,28 +374,35 @@ def _check_reversal(sec, series, cfg, current_time=None):
         return None
     floor = float(cfg.get('reversal_floor', 1.0))
     signs = [1 if d > 0 else -1 for d in prior]
-    if len(set(signs)) != 1:                      # 前 K 步必须同号
+    if len(set(signs)) != 1:                       # 前 K 步必须同号
         return None
-    if any(abs(d) < floor for d in prior):        # 且都过噪声地板（排除抖动）
+    if any(abs(d) < floor for d in prior):         # 且都过噪声地板（排除抖动）
         return None
     trend_sign = signs[0]
-    avg_mag = sum(abs(d) for d in prior) / K
-    ratio = float(cfg.get('reversal_ratio', 0.3))
-    reversed_sign = (cur * trend_sign) < 0         # 当前 delta 与趋势反向
-    decelerated = (cur * trend_sign > 0) and (abs(cur) <= avg_mag * ratio)  # 同向但明显减速
-    if reversed_sign and abs(cur) < floor:         # 反向但量级太小 -> 视为噪声
+    if (cur * trend_sign) >= 0:                    # 当前 delta 未反向 -> 不是 V 型反转
         return None
-    if not (reversed_sign or decelerated):
+    if abs(cur) < floor:                           # 反向但量级太小 -> 噪声
         return None
-    is_bottom = trend_sign < 0   # 前段持续流出 -> V 底
+    is_bottom = trend_sign < 0                     # 前段持续流出 -> 探底回升
+    # 窗口内累计净流入的极值：V底取最低(最负)，V顶取最高(最正)
+    window = [p['net_flow'] for p in points[-(K + 1):]]
+    extreme = min(window) if is_bottom else max(window)
+    rebound = nf - extreme                          # V底>0(回升)，V顶<0(回落)
+    if (is_bottom and rebound <= 0) or (not is_bottom and rebound >= 0):
+        return None                                # 未实际回升/回落，不报
+    detail, pct = _reversal_detail(nf, extreme, rebound, is_bottom)
     return {
-        'type': 'spike',         # 归到「突变」大类下展示
+        'type': 'spike',          # 归到「突变」大类下展示
         'sub': 'reversal_up' if is_bottom else 'reversal_down',
-        'label': '流出减速/V底' if is_bottom else '流入减速/V顶',
+        'label': '探底回升' if is_bottom else '冲高回落',
         'trend_steps': K,
-        'avg_delta': round(avg_mag, 2),
+        'avg_delta': round(sum(abs(d) for d in prior) / K, 2),
         'cur_delta': round(cur, 2),
         'net_flow': round(nf, 2),
+        'extreme': round(extreme, 2),
+        'rebound': round(rebound, 2),
+        'rebound_pct': pct,
+        'detail': detail,
     }
 
 
@@ -610,6 +629,11 @@ def _push_findings(findings, cfg):
             'pushed': pushed,
             'timestamp': now.isoformat(),
         }
+        # 反转(探底回升/冲高回落)带上"距极值点 X%"明细，供桌面通知等只拿到 record 的消费方展示
+        rev_hit = next((h for h in f['hits'] if str(h.get('sub', '')).startswith('reversal')), None)
+        if rev_hit:
+            record['reversal_detail'] = f"{rev_hit['label']}，{rev_hit.get('detail', '')}"
+            record['reversal_dir'] = rev_hit['sub']
         alerts.append(record)
         new_records.append(record)
 
@@ -631,8 +655,16 @@ def _format_message(f):
     sector = f['sector']
     nf = f['net_flow']
     chg = f['change_pct']
-    arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
-    flow_color = 'warning' if nf >= 0 else 'info'
+    # 颜色：默认按净流入正负（红=流入/涨，绿=流出/跌）；
+    # 若命中反转，则按反转方向整体着色——V底(流出减缓/转流入)=红/看涨，V顶(流入减缓/转流出)=绿/看跌，一眼可辨。
+    rev_sub = next((str(h.get('sub', '')) for h in f['hits'] if str(h.get('sub', '')).startswith('reversal')), '')
+    if rev_sub == 'reversal_up':
+        arrow, flow_color = '🔴', 'warning'
+    elif rev_sub == 'reversal_down':
+        arrow, flow_color = '🟢', 'info'
+    else:
+        arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
+        flow_color = 'warning' if nf >= 0 else 'info'
     lines = []
     lines.append(f"> 时间：**{f['date']} {f['time']}**")
     lines.append(f"> 净流入：<font color=\"{flow_color}\">{nf:+.2f} 亿</font>")
@@ -652,7 +684,7 @@ def _format_message(f):
                 detail = f"（历史上榜样本 {h.get('count',0)} 次不足，按绝对量级判定）"
         elif h['type'] == 'spike':
             if str(h.get('sub', '')).startswith('reversal'):
-                detail = f"（前{h.get('trend_steps', 3)}步均量{h.get('avg_delta', 0):+.2f}亿 → 本步{h.get('cur_delta', 0):+.2f}亿，趋势减速/掉头）"
+                detail = f"：{h.get('detail', '')}"
             else:
                 detail = f"（相比 {h['prev_time']} 变化 {h['delta']:+.2f}亿）"
         elif h['type'] == 'streak':
