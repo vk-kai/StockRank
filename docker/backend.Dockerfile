@@ -22,9 +22,6 @@ ENV PYTHONUNBUFFERED=1
 
 RUN mkdir -p /app/backend /app/config /app/data /app/logs /app/data/daily /app/data/realtime
 
-RUN pip install --no-cache-dir --timeout 60 --retries 5 \
-    -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip
-
 # 重型稳定依赖单独一层：后续加小依赖（改 requirements.txt）时这层缓存命中，不重装 akshare/pandas/numpy
 COPY requirements-base.txt ./backend/
 RUN pip install --no-cache-dir --progress-bar on --timeout 60 --retries 5 \
