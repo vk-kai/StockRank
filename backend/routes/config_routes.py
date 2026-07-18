@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app, session
 import json
 import os
 import requests
@@ -17,6 +17,13 @@ from config import (
 from data_processor import error_logger
 from logger import get_logger
 from .auth_routes import verify_password
+from otp_service import (
+    load_otp_config, save_otp_config, is_otp_enabled,
+    generate_secret, build_provisioning_uri, build_qr_data_url, verify_code,
+)
+from session_secret import rotate_session_secret
+from daily_password import BEIJING_TZ
+from datetime import datetime
 
 config_bp = Blueprint('config', __name__, url_prefix='/api/config')
 system_logger = get_logger('system')
@@ -792,4 +799,120 @@ def test_push_notification():
         'feishu': feishu_ok,
         'wechat': wechat_ok
     })
+
+
+# ==================== OTP 动态口令（TOTP）二次验证 ====================
+def _now_beijing_str():
+    """当前北京时间字符串，用于 enrolled_at 展示。"""
+    try:
+        return datetime.now(BEIJING_TZ).strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return ''
+
+
+@config_bp.route('/otp/status', methods=['GET'])
+def otp_status():
+    """查询 OTP 开启状态（已登录即可访问）。"""
+    cfg = load_otp_config()
+    return jsonify({
+        'success': True,
+        'data': {
+            'enabled': bool(cfg.get('enabled')),
+            'enrolled_at': cfg.get('enrolled_at', ''),
+        }
+    })
+
+
+@config_bp.route('/otp/setup', methods=['GET'])
+def otp_setup():
+    """生成一个待绑定的密钥 + 二维码。
+
+    返回的 secret 此刻并未落库；只有 /otp/enable 验证通过后才写入 otp_config.json。
+    前端需把返回的 secret 一并回传给 /otp/enable。
+    """
+    try:
+        secret = generate_secret()
+        uri = build_provisioning_uri(secret)
+        qr = build_qr_data_url(uri)
+        return jsonify({
+            'success': True,
+            'data': {
+                'secret': secret,
+                'otpauth_uri': uri,
+                'qr_data_url': qr,
+            }
+        })
+    except Exception as e:
+        error_logger.error(f"OTP setup 失败: {e}")
+        return jsonify({'success': False, 'message': str(e) or '生成二维码失败'}), 500
+
+
+@config_bp.route('/otp/enable', methods=['POST'])
+def otp_enable():
+    """开启 OTP：校验日密码 + 校验用户当场输入的动态口令（确认手机已正确添加）。
+
+    成功后：
+      1) 把 secret 落库，enabled=true；
+      2) 旋转会话签名密钥 → 所有旧登录态立即失效，强制重新登录（含当前管理员）。
+    """
+    try:
+        data = request.json or {}
+
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+
+        secret = str(data.get('secret') or '').strip()
+        otp_code = str(data.get('otp_code') or '').strip()
+
+        if not secret:
+            return jsonify({'success': False, 'message': '请先获取二维码'}), 400
+        if not verify_code(secret, otp_code):
+            return jsonify({'success': False, 'message': '动态口令错误，请确认手机已正确添加并输入最新 6 位数字'}), 400
+
+        save_otp_config({
+            'enabled': True,
+            'secret': secret,
+            'enrolled_at': _now_beijing_str(),
+        })
+
+        # 强制重登录：旋转持久化会话密钥 → 所有旧会话 Cookie 验签失败；
+        # 同时清空当前请求会话，避免 Flask 用新密钥重新签发一个仍登录的 Cookie。
+        try:
+            rotate_session_secret(current_app)
+            session.clear()
+        except Exception as e:
+            error_logger.error(f"旋转会话密钥失败（OTP 已开启但未踢出旧会话）: {e}")
+
+        return jsonify({
+            'success': True,
+            'message': 'OTP 动态口令已开启，所有设备需要重新登录（账号密码不变，登录时多输入一次动态口令）'
+        })
+    except Exception as e:
+        error_logger.error(f"开启 OTP 失败: {e}")
+        error_logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': '开启 OTP 失败'}), 500
+
+
+@config_bp.route('/otp/disable', methods=['POST'])
+def otp_disable():
+    """关闭 OTP：需日密码 + 当前动态口令（防止他人误关）。"""
+    try:
+        data = request.json or {}
+
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+
+        cfg = load_otp_config()
+        if not cfg.get('enabled'):
+            return jsonify({'success': True, 'message': 'OTP 未开启'})
+
+        if not verify_code(cfg.get('secret', ''), str(data.get('otp_code') or '').strip()):
+            return jsonify({'success': False, 'message': '动态口令错误'}), 400
+
+        save_otp_config({'enabled': False, 'secret': '', 'enrolled_at': ''})
+        return jsonify({'success': True, 'message': 'OTP 动态口令已关闭'})
+    except Exception as e:
+        error_logger.error(f"关闭 OTP 失败: {e}")
+        error_logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': '关闭 OTP 失败'}), 500
 

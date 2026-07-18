@@ -23,7 +23,11 @@ import {
   rebuildAnomalyBaseline,
   getDatasourceConfig,
   saveDatasourceConfig,
-  testDatasource
+  testDatasource,
+  getOtpStatus,
+  getOtpSetup,
+  enableOtp,
+  disableOtp
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -47,6 +51,7 @@ export default {
         { id: 'prompt', name: 'AI提示词', icon: '💬' },
         { id: 'daily-prompt', name: '首页AI分析提示词', icon: '📊' },
         { id: 'security', name: 'IP黑名单', icon: '🛡️' },
+        { id: 'otp', name: '动态口令', icon: '🔑' },
         { id: 'anomaly', name: '异动检测', icon: '🚨' },
         { id: 'notify', name: '桌面通知', icon: '🔔' }
       ],
@@ -146,7 +151,12 @@ export default {
       anomalyRebuilding: false,
       datasourceList: [],
       datasourceTestResults: {},
-      datasourceTesting: false
+      datasourceTesting: false,
+      // OTP 动态口令（TOTP）二次验证
+      otpConfig: { enabled: false, enrolled_at: '' },
+      otpSetup: { secret: '', qr_data_url: '', otpauth_uri: '' },
+      otpCodeInput: '',
+      otpLoading: false
     }
   },
   mounted() {
@@ -154,6 +164,7 @@ export default {
     this.loadAnomalyConfig()
     this.loadNotifySettings()
     this.loadDatasourceConfig()
+    this.loadOtpStatus()
   },
   computed: {
     datasourceGroups() {
@@ -785,6 +796,102 @@ export default {
       setTimeout(() => {
         this.toast.show = false
       }, 3000)
+    },
+
+    // ===== OTP 动态口令（TOTP）二次验证 =====
+    async loadOtpStatus() {
+      try {
+        const res = await getOtpStatus()
+        if (res && res.success) {
+          this.otpConfig = { enabled: !!res.data?.enabled, enrolled_at: res.data?.enrolled_at || '' }
+        }
+      } catch (e) {
+        // 静默失败：不影响其他配置加载
+      }
+    },
+    async startOtpSetup() {
+      if (this.otpLoading) return
+      this.otpLoading = true
+      this.otpCodeInput = ''
+      try {
+        const res = await getOtpSetup()
+        if (res && res.success && res.data) {
+          this.otpSetup = {
+            secret: res.data.secret || '',
+            qr_data_url: res.data.qr_data_url || '',
+            otpauth_uri: res.data.otpauth_uri || ''
+          }
+          this.showToast('请用手机 Authenticator 扫描二维码', 'info')
+        } else {
+          this.showToast(res?.message || '生成二维码失败', 'error')
+        }
+      } catch (e) {
+        this.showToast(e.response?.data?.message || '生成二维码失败', 'error')
+      } finally {
+        this.otpLoading = false
+      }
+    },
+    cancelOtpSetup() {
+      this.otpSetup = { secret: '', qr_data_url: '', otpauth_uri: '' }
+      this.otpCodeInput = ''
+    },
+    confirmEnableOtpClick() {
+      // 先校验前端输入，再走密码弹窗收集日密码
+      if (!this.otpSetup.secret) {
+        this.showToast('请先点击「生成二维码」', 'error')
+        return
+      }
+      if (!this.otpCodeInput || this.otpCodeInput.length < 6) {
+        this.showToast('请输入手机上显示的 6 位动态口令', 'error')
+        return
+      }
+      this.showPasswordModal((password) => this.confirmEnableOtp(password))
+    },
+    async confirmEnableOtp(password) {
+      if (this.otpLoading) return
+      this.otpLoading = true
+      try {
+        const res = await enableOtp(password, this.otpSetup.secret, this.otpCodeInput)
+        if (res && res.success) {
+          this.showToast(res.message || 'OTP 已开启，需要重新登录', 'success')
+          this.cancelOtpSetup()
+          // 开启后后端已旋转密钥并清空会话：此处刷新状态会 401，
+          // 触发全局 auth-required 事件 → 自动唤起带 OTP 输入框的登录弹窗。
+          await this.loadOtpStatus()
+        } else {
+          this.showToast(res?.message || '开启失败', 'error')
+        }
+      } catch (e) {
+        this.showToast(e.response?.data?.message || '开启失败', 'error')
+      } finally {
+        this.otpLoading = false
+      }
+    },
+    confirmDisableOtpClick() {
+      if (!this.otpConfig.enabled) return
+      if (!this.otpCodeInput || this.otpCodeInput.length < 6) {
+        this.showToast('请输入当前手机上显示的 6 位动态口令', 'error')
+        return
+      }
+      this.showPasswordModal((password) => this.doDisableOtp(password))
+    },
+    async doDisableOtp(password) {
+      if (this.otpLoading) return
+      this.otpLoading = true
+      try {
+        const res = await disableOtp(password, this.otpCodeInput)
+        if (res && res.success) {
+          this.showToast(res.message || 'OTP 已关闭', 'success')
+          this.otpCodeInput = ''
+          await this.loadOtpStatus()
+        } else {
+          this.showToast(res?.message || '关闭失败', 'error')
+        }
+      } catch (e) {
+        this.showToast(e.response?.data?.message || '关闭失败', 'error')
+      } finally {
+        this.otpLoading = false
+      }
     },
 
     showPasswordModal(callback) {

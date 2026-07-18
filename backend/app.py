@@ -14,6 +14,7 @@ from margin_collector import margin_collection_thread as margin_collection_func
 from health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
 from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp
 from routes.auth_routes import install_auth_guard
+from session_secret import load_session_secret
 from thread_monitor import get_all_status, register_thread
 from monitor import monitor_loop
 from market_map_snapshot import market_map_snapshot_thread
@@ -45,7 +46,9 @@ mm_snapshot_thread = threading.Thread(target=market_map_snapshot_thread, daemon=
 
 def create_app():
     app = Flask(__name__)
-    app.secret_key = os.environ.get('STOCKRANK_SECRET_KEY', 'stockrank-vk-local-session')
+    # 会话密钥：优先用持久化文件（开启 OTP 时旋转过），其次环境变量，最后默认值。
+    # 旋转持久化密钥可让所有已登录会话立即失效（强制重新登录）。
+    app.secret_key = load_session_secret('stockrank-vk-local-session')
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',

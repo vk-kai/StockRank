@@ -33,6 +33,15 @@
               type="password"
               :disabled="loading"
             />
+            <input
+              v-if="otpRequired"
+              v-model="otpCode"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="动态口令（6位数字）"
+              :disabled="loading"
+            />
             <button type="submit" :disabled="loading">
               {{ loading ? '登录中...' : '登录' }}
             </button>
@@ -45,7 +54,7 @@
 </template>
 
 <script>
-import { getAuthSession, login, logout } from './services/apiService'
+import { getAuthSession, getOtpRequired, login, logout } from './services/apiService'
 
 export default {
   name: 'Root',
@@ -55,6 +64,8 @@ export default {
       showLogin: false,
       username: '',
       password: '',
+      otpCode: '',
+      otpRequired: false,
       loading: false,
       message: ''
     }
@@ -92,29 +103,53 @@ export default {
     openLogin() {
       this.message = ''
       this.showLogin = true
+      // 预判是否需要 OTP 输入框（OTP 未开启时不显示）
+      this.refreshOtpRequired()
+    },
+    async refreshOtpRequired() {
+      try {
+        const res = await getOtpRequired()
+        this.otpRequired = !!(res && res.otp_required)
+      } catch (e) {
+        this.otpRequired = false
+      }
     },
     closeLogin() {
       this.showLogin = false
       this.password = ''
+      this.otpCode = ''
       this.message = ''
     },
     async submitLogin() {
       this.loading = true
       this.message = ''
       try {
-        const res = await login(this.username.trim(), this.password)
+        const res = await login(this.username.trim(), this.password, this.otpCode || '')
         if (res && res.authenticated) {
           this.authenticated = true
           this.showLogin = false
           this.password = ''
+          this.otpCode = ''
           this.message = ''
           // 通知所有页面：已登录，重新加载数据
           window.dispatchEvent(new CustomEvent('auth-login-success'))
+        } else if (res && res.error === 'otp_required') {
+          this.otpRequired = true
+          this.message = res.message || '请输入动态口令'
+        } else {
+          this.message = (res && res.message) || '账号或密码错误'
+        }
+      } catch (err) {
+        // 后端返回 401 时 axios 抛错；区分 OTP 缺失与其他错误
+        const data = err && err.response && err.response.data
+        if (data && data.error === 'otp_required') {
+          this.otpRequired = true
+          this.message = data.message || '请输入动态口令'
+        } else if (data && data.error === 'invalid_credentials') {
+          this.message = data.message || '账号或密码错误'
         } else {
           this.message = '账号或密码错误'
         }
-      } catch (err) {
-        this.message = '账号或密码错误'
       } finally {
         this.loading = false
       }
@@ -124,6 +159,7 @@ export default {
       this.authenticated = false
       this.username = ''
       this.password = ''
+      this.otpCode = ''
       // 通知所有页面：已登出，回到登录提示态
       window.dispatchEvent(new CustomEvent('auth-logout'))
     },
