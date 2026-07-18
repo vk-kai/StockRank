@@ -3,7 +3,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
-from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache
+from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache, summarize_daily_news
 from notification_pusher import (
     ALL_AI_FILTER,
     ALL_DIRECT,
@@ -26,6 +26,7 @@ ai_logger = get_logger('ai')
 cleanup_logger = get_logger('cleanup_news')
 
 _last_cleanup_date = None
+_last_news_summary_date = None
 
 
 def _get_pushed_channels(news_item):
@@ -278,17 +279,18 @@ def process_news_with_ai_and_push(news_list):
                         else:
                             record_ignored(news_item, 'AI未开启，无法执行全部新闻AI筛选', '未分析')
 
+                # WebSocket实时推送：所有新闻都推送到前端，前端根据设置过滤
+                try:
+                    from ws import push_event
+                    push_event('news', news_item)
+                except Exception:
+                    pass
+
                 if direct_channels:
                     reason = '全部新闻直接推送' if any(channel['mode'] == ALL_DIRECT for channel in direct_channels) else '重要新闻直接推送'
                     results = send_news_item_to_channels(news_item, None, direct_channels)
                     if _record_push_results(news_item, results):
                         record_pushed(news_item, reason, news_item.get('core_event', ''))
-                        # WebSocket实时推送新闻到前端
-                        try:
-                            from app import push_event
-                            push_event('news', news_item)
-                        except Exception:
-                            pass
 
                 if ai_channels:
                     news_item['ai_analyzed'] = True
@@ -297,12 +299,6 @@ def process_news_with_ai_and_push(news_list):
                             results = send_news_item_to_channels(news_item, analysis, ai_channels)
                             if _record_push_results(news_item, results):
                                 record_pushed(news_item, analysis.get('reason', ''), analysis.get('core_event', ''))
-                                # WebSocket实时推送新闻到前端
-                                try:
-                                    from app import push_event
-                                    push_event('news', news_item)
-                                except Exception:
-                                    pass
                         else:
                             record_ignored(news_item, analysis.get('reason', ''), analysis.get('level', ''))
                     else:
@@ -374,10 +370,114 @@ def _background_analyze_news(new_items):
         set_busy('news_collector', False)
 
 
+def _run_news_summary(auto=False):
+    """执行新闻热点总结（同步，在后台线程中调用）"""
+    from config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
+    import json as _json
+
+    now = datetime.now()
+    today = now.strftime('%Y-%m-%d')
+
+    # 加载所有本地保存的新闻
+    all_news_result = get_recent_news(1, 10000)
+    news_items = all_news_result.get('news', [])
+
+    if not news_items:
+        ai_logger.info("新闻热点总结：无新闻可总结")
+        return
+
+    ai_logger.info(f"新闻热点总结：开始总结 {len(news_items)} 条新闻（{'自动' if auto else '手动'}）")
+
+    # 保存运行状态
+    status_data = {
+        'status': 'running',
+        'start_time': now.astimezone().isoformat(),
+        'date': today,
+        'auto': auto
+    }
+    try:
+        with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
+            _json.dump(status_data, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+    result = summarize_daily_news(news_items)
+
+    if result.get('success') and result.get('analysis'):
+        # 保存总结结果（只保留最近一次）
+        try:
+            with open(AI_NEWS_SUMMARY_RESULT_FILE, 'w', encoding='utf-8') as f:
+                f.write(result['analysis'])
+        except Exception as e:
+            error_logger.error(f"保存新闻总结结果失败: {e}")
+
+        # 保存完成状态
+        status_data = {
+            'status': 'completed',
+            'end_time': datetime.now().astimezone().isoformat(),
+            'date': today,
+            'auto': auto
+        }
+        try:
+            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
+                _json.dump(status_data, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+        ai_logger.info(f"新闻热点总结完成（{'自动' if auto else '手动'}），日期: {today}")
+
+        # 推送到飞书/微信
+        try:
+            _push_news_summary(result['analysis'], today)
+        except Exception as e:
+            error_logger.error(f"新闻总结推送失败: {e}")
+    else:
+        # 保存失败状态
+        status_data = {
+            'status': 'failed',
+            'message': result.get('message', '总结失败'),
+            'end_time': datetime.now().astimezone().isoformat(),
+            'date': today,
+            'auto': auto
+        }
+        try:
+            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
+                _json.dump(status_data, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+        ai_logger.error(f"新闻热点总结失败: {result.get('message', '未知错误')}")
+
+
+def _push_news_summary(analysis_content, date_str):
+    """将新闻总结推送到飞书和微信"""
+    from feishu_pusher import send_feishu_message
+    from wechat_pusher import send_wechat_message
+
+    title = f"明日热点前瞻（{date_str}）"
+
+    # 截取前2000字符作为推送内容（避免过长）
+    content = analysis_content[:2000] if len(analysis_content) > 2000 else analysis_content
+
+    # 推送飞书
+    try:
+        send_feishu_message(title, content)
+        ai_logger.info("新闻总结已推送到飞书")
+    except Exception as e:
+        error_logger.error(f"新闻总结推送飞书失败: {e}")
+
+    # 推送微信
+    try:
+        send_wechat_message(title, content)
+        ai_logger.info("新闻总结已推送到微信")
+    except Exception as e:
+        error_logger.error(f"新闻总结推送微信失败: {e}")
+
+
 def news_collection_thread():
-    global _last_cleanup_date
+    global _last_cleanup_date, _last_news_summary_date
     register_thread('news_collector')
-    
+
     while True:
         try:
             heartbeat('news_collector')
@@ -385,7 +485,16 @@ def news_collection_thread():
             today = now.strftime('%Y-%m-%d')
             current_hour = now.hour
             current_minute = now.minute
-            
+
+            # 每晚8点自动触发新闻热点总结
+            if current_hour == 20 and current_minute == 0:
+                if _last_news_summary_date != today:
+                    _last_news_summary_date = today
+                    try:
+                        _run_news_summary(auto=True)
+                    except Exception as e:
+                        error_logger.error(f"每晚11点自动新闻总结失败: {e}")
+
             if current_hour == 0 and current_minute == 0:
                 if _last_cleanup_date != today:
                     cleanup_logger.info("开始执行每日清理任务...")

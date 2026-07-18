@@ -1035,6 +1035,18 @@ export async function testPushNotification() {
   }
 }
 
+// 测试「消息推送服务」：后端走真实 WebSocket 通道(push_event)发一条测试消息，
+// 前端 notificationManager 收到后会弹桌面通知。与上面 testPushNotification（测飞书/微信）不同。
+export async function testPushService() {
+  try {
+    const response = await apiClient.post('/system/push-test')
+    return response.data
+  } catch (error) {
+    console.error('推送服务测试失败:', error)
+    throw error
+  }
+}
+
 // ============================================================
 // 行业见顶周期分析
 // ============================================================
@@ -1125,6 +1137,28 @@ export async function getIndustryCycleSingleScore(industry) {
     return response.data
   } catch (error) {
     console.error('获取单个行业周期诊断结果失败:', error)
+    throw error
+  }
+}
+
+/** 手动触发新闻热点总结 */
+export async function startNewsSummary() {
+  try {
+    const response = await apiClient.post('/news/summary/start')
+    return response.data
+  } catch (error) {
+    console.error('触发新闻总结失败:', error)
+    throw error
+  }
+}
+
+/** 查询新闻热点总结状态和结果 */
+export async function getNewsSummaryStatus() {
+  try {
+    const response = await apiClient.get('/news/summary/status')
+    return response.data
+  } catch (error) {
+    console.error('查询新闻总结状态失败:', error)
     throw error
   }
 }

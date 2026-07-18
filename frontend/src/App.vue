@@ -126,21 +126,24 @@
         </button>
       </div>
       <div class="monitor-card-body">
-        <div 
-          v-for="(item, key) in healthDisplayItems" 
-          :key="key" 
+        <div
+          v-for="row in healthDisplayItems"
+          :key="row.key"
           class="monitor-card-row"
-          :class="getMonitorRowClass(key, item)"
+          :class="getMonitorRowClass(row)"
         >
           <span class="monitor-dot"></span>
-          <span class="monitor-name">{{ getHealthLabel(key) }}</span>
-          <span class="monitor-text">{{ getMonitorStatusText(key, item) }}</span>
-          <span class="monitor-time" v-if="item.response_time && item.status === 'ok'">{{ item.response_time }}ms</span>
-            <button class="monitor-retry-btn" v-if="getCrawlerStatus(key) === 'failed'" @click.stop="resetCrawlerStatus(getCrawlerKey(key))">
+          <span class="monitor-name">{{ row.label }}</span>
+          <span class="monitor-text">{{ getMonitorStatusText(row) }}</span>
+          <span class="monitor-time" v-if="row.item.response_time && row.item.status === 'ok'">{{ row.item.response_time }}ms</span>
+          <button class="monitor-retry-btn" v-if="row.kind === 'ths' && thsCrawlerFailed()" @click.stop="resetThsCrawler">
             重试
           </button>
+          <button class="monitor-retry-btn" v-if="row.kind === 'push'" @click.stop="testPushService">
+            测试
+          </button>
         </div>
-        <div v-if="Object.keys(healthDisplayItems).length === 0" class="monitor-card-row monitor-loading">
+        <div v-if="healthDisplayItems.length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
         </div>

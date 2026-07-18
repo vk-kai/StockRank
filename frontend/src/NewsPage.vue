@@ -41,6 +41,13 @@
       <div class="countdown">
         下次刷新: {{ countdownSeconds }}秒
       </div>
+      <button
+        class="summary-btn"
+        @click="openSummaryModal"
+        title="AI热点总结"
+      >
+        🔥 热点总结
+      </button>
     </div>
 
     <!-- 今日利好利空分布图 -->
@@ -188,6 +195,43 @@
     </div>
 
     <SecurityAlert />
+
+    <!-- 新闻热点总结弹窗 -->
+    <div class="news-ai-modal-overlay" v-if="showSummaryModal" @click.self="closeSummaryModal">
+      <div class="news-ai-modal summary-modal">
+        <div class="news-ai-modal-header">
+          <h3>🔥 明日热点前瞻</h3>
+          <div class="news-ai-header-right">
+            <button class="news-ai-close" @click="closeSummaryModal">✕</button>
+          </div>
+        </div>
+        <div class="news-ai-modal-body">
+          <div v-if="summaryStatus === 'running'" class="news-ai-loading">
+            <div class="spinner"></div>
+            <p>AI正在分析新闻，生成热点前瞻...</p>
+            <p class="loading-hint">通常需要30-60秒</p>
+          </div>
+          <div v-else-if="summaryStatus === 'failed'" class="news-ai-error">
+            <p>{{ summaryError || '总结失败' }}</p>
+            <button @click="triggerSummary" class="retry-btn">重新总结</button>
+          </div>
+          <div v-else-if="summaryStatus === 'completed' && summaryResult" class="news-ai-analysis-content" v-html="renderedSummary"></div>
+          <div v-else class="summary-idle">
+            <p>点击下方按钮，AI将总结今日新闻，提炼明日热点方向</p>
+            <p class="summary-hint">每晚11点自动总结，也可手动触发</p>
+          </div>
+        </div>
+        <div class="summary-modal-footer" v-if="summaryStatus !== 'running'">
+          <button
+            class="summary-trigger-btn"
+            @click="triggerSummary"
+            :disabled="summaryStatus === 'running'"
+          >
+            {{ summaryStatus === 'completed' ? '重新总结' : '开始总结' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 

@@ -78,7 +78,13 @@ DEFAULT_ALERTS_CFG = {
 
 
 def _find_ref(series, win_min):
-    """取距今最接近 win_min 分钟(及以前)的一个历史采样,作急涨急跌比较点。"""
+    """取距今最接近 win_min 分钟(及以前)的一个历史采样,作急涨急跌比较点。
+
+    Returns:
+        dict or None: 返回参考采样点，如果数据不足则返回 None
+
+    注意：必须返回一个时间 <= cutoff 的采样点，避免开盘初期误用第一个点。
+    """
     if len(series) < 2:
         return None
     try:
@@ -87,77 +93,198 @@ def _find_ref(series, win_min):
         return None
     cutoff = cur - timedelta(minutes=win_min)
     ref = None
+    # 从旧到新遍历，找到 cutoff 时间前最近的一个采样点
     for s in series[:-1]:
         try:
             t = datetime.strptime(s['ts'], '%Y-%m-%d %H:%M:%S')
         except Exception:
             continue
         if t <= cutoff:
-            ref = s
+            ref = s  # 持续更新，直到遇到第一个 > cutoff 的点
         else:
-            break
-    return ref or series[0]
+            break  # 遇到 > cutoff 的点，停止
+    # 必须有一个时间 <= cutoff 的采样点，否则返回 None（数据不足）
+    return ref
 
 
 def _rapid_move(q, series, cfg):
-    ref = _find_ref(series, cfg['rapid_rise']['win_min'])
-    if not ref:
-        return None
+    """急涨/急跌：分别用各自配置的窗口找参考点。
+
+    修复：原先两方向都用 rapid_rise.win_min，急跌单独配置的窗口被忽略。
+    """
     prev_close = q['prev_close'] or 0
     if not prev_close:
         return None
     cur_pct = (q['price'] - prev_close) / prev_close * 100
-    ref_pct = (ref['price'] - prev_close) / prev_close * 100
-    delta = cur_pct - ref_pct
-    if delta >= cfg['rapid_rise']['pct'] and cfg['rapid_rise']['enabled']:
-        return {'type': 'rapid_rise', 'label': f'急速拉升 {delta:+.2f}%/{cfg["rapid_rise"]["win_min"]}min'}
-    if delta <= -cfg['rapid_drop']['pct'] and cfg['rapid_drop']['enabled']:
-        return {'type': 'rapid_drop', 'label': f'急速打压 {delta:+.2f}%/{cfg["rapid_drop"]["win_min"]}min'}
+
+    rise_cfg = cfg['rapid_rise']
+    if rise_cfg['enabled']:
+        ref = _find_ref(series, rise_cfg['win_min'])
+        if ref:
+            delta = cur_pct - (ref['price'] - prev_close) / prev_close * 100
+            if delta >= rise_cfg['pct']:
+                return {'type': 'rapid_rise', 'label': f'急速拉升 {delta:+.2f}%/{rise_cfg["win_min"]}min'}
+
+    drop_cfg = cfg['rapid_drop']
+    if drop_cfg['enabled']:
+        ref = _find_ref(series, drop_cfg['win_min'])
+        if ref:
+            delta = cur_pct - (ref['price'] - prev_close) / prev_close * 100
+            if delta <= -drop_cfg['pct']:
+                return {'type': 'rapid_drop', 'label': f'急速打压 {delta:+.2f}%/{drop_cfg["win_min"]}min'}
     return None
 
 
-def _cum_move(q, cfg):
+# --------------------------------------------------------------------------
+# 辅助函数：获取上次推送的参考值（用于递进检测）
+# --------------------------------------------------------------------------
+def _get_last_ref_value(code, hit_type, alerts, today):
+    """获取上次推送的参考值，用于递进检测。
+
+    返回：(ref_value, should_check)
+    - ref_value: 上次推送时的参考值（低点/高点/涨跌幅/振幅），无记录时返回 None
+    - should_check: 是否需要继续检测（如果当天没有记录或冷却期已过，返回 True）
+    """
+    if not alerts:
+        return None, True
+    # 从最新记录开始查找
+    for a in reversed(alerts):
+        if a.get('code') != code or a.get('type') != hit_type:
+            continue
+        # 只看当天的记录
+        if a.get('date') != today:
+            return None, True
+        # 找到最近一条同类型记录
+        if hit_type == 'dip_rebound':
+            return a.get('ref_low'), True
+        elif hit_type == 'spike_fade':
+            return a.get('ref_high'), True
+        elif hit_type == 'cum_move':
+            return a.get('ref_pct'), True
+        elif hit_type == 'amplitude':
+            return a.get('ref_amp'), True
+    return None, True
+
+
+def _cum_move(q, cfg, alerts=None, today=None):
+    """累计涨跌检测（递进）。
+
+    只有涨跌幅比上次推送时更极端（涨得更多或跌得更多），才会触发。
+    避免持续涨跌时反复推送。
+    """
     if not cfg['cum_move']['enabled']:
         return None
     pct = q['pct']
     if abs(pct) < cfg['cum_move']['pct']:
         return None
-    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%'}
+
+    # 递进检测：只有涨跌幅更极端才触发
+    if alerts and today:
+        last_pct, _ = _get_last_ref_value(q.get('_code', ''), 'cum_move', alerts, today)
+        if last_pct is not None:
+            # 判断方向是否一致
+            same_direction = (pct > 0 and last_pct > 0) or (pct < 0 and last_pct < 0)
+            if same_direction:
+                # 如果是同向，只有更极端才触发（涨得更多或跌得更多）
+                if abs(pct) <= abs(last_pct):
+                    return None
+            # 如果方向相反（从涨到跌或从跌到涨），允许触发
+
+    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%', 'direction': 1 if pct > 0 else -1}
 
 
-def _spike_fade(q, cfg):
+def _spike_fade(q, cfg, alerts=None, today=None):
+    """冲高回落检测（递进）。
+
+    只有出现比上次推送时更高的新高点并回落，才会触发。
+    避免重复上报同一高点的回落。
+    """
     if not cfg['spike_fade']['enabled']:
         return None
     pc = q['prev_close'] or 0
     if not pc or not q.get('high'):
         return None
+
     peak_pct = (q['high'] - pc) / pc * 100
     if peak_pct < cfg['spike_fade']['peak']:
         return None
+
     back = (q['high'] - q['price']) / q['high'] * 100
-    if back >= cfg['spike_fade']['back']:
-        return {'type': 'spike_fade', 'label': f'冲高回落 从高点 -{back:.2f}%'}
-    return None
+    if back < cfg['spike_fade']['back']:
+        return None
+
+    # 递进检测：只有出现新高点才触发
+    if alerts and today:
+        last_high, _ = _get_last_ref_value(q.get('_code', ''), 'spike_fade', alerts, today)
+        if last_high is not None:
+            # 如果当前高点没有创新高（即当前高点 <= 上次推送时的高点），不触发
+            if q['high'] <= last_high:
+                return None
+
+    return {'type': 'spike_fade', 'label': f'冲高回落 从高点 -{back:.2f}%'}
 
 
-def _dip_rebound(q, cfg):
+def _dip_rebound(q, cfg, alerts=None, today=None):
+    """探底回升检测（递进）。
+
+    只有出现比上次推送时更低的新低点并反弹，才会触发。
+    避免重复上报同一低点的反弹。
+
+    逻辑：
+    1. 首先检测是否满足基本条件（跌超过阈值+反弹超过阈值）
+    2. 如果当天已推送过，检查是否出现新低点
+    3. 只有新低点比上次推送时的低点更低，才触发
+    """
     if not cfg['dip_rebound']['enabled']:
         return None
     pc = q['prev_close'] or 0
     if not pc or not q.get('low'):
         return None
+
     trough_pct = (pc - q['low']) / pc * 100
     if trough_pct < cfg['dip_rebound']['trough']:
         return None
+
     reb = (q['price'] - q['low']) / q['low'] * 100
-    if reb >= cfg['dip_rebound']['back']:
-        return {'type': 'dip_rebound', 'label': f'探底回升 从低点 +{reb:.2f}%'}
-    return None
+    if reb < cfg['dip_rebound']['back']:
+        return None
+
+    # 递进检测：只有出现新低点才触发
+    if alerts and today:
+        last_low, _ = _get_last_ref_value(q.get('_code', ''), 'dip_rebound', alerts, today)
+        if last_low is not None:
+            # 如果当前低点没有创新低（即当前低点 >= 上次推送时的低点），不触发
+            if q['low'] >= last_low:
+                return None
+
+    return {'type': 'dip_rebound', 'label': f'探底回升 从低点 +{reb:.2f}%'}
 
 
 def _gap_open(q, state, cfg):
-    if not cfg['gap_open']['enabled'] or state.get('gap_fired'):
+    """检测大幅低开/高开。
+    
+    只在开盘后30分钟内检测，且每天只提醒一次。
+    通过 alerts 记录判断是否当天已触发，避免状态丢失后重复提醒。
+    """
+    if not cfg['gap_open']['enabled']:
         return None
+    
+    # 时间窗口检查：只在开盘后30分钟内检测（9:30-10:00 或 13:00-13:30）
+    try:
+        ts = q.get('ts', '')
+        if ts:
+            t = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+            hour, minute = t.hour, t.minute
+            # 只在早盘开盘后30分钟内检测（9:30-10:00）
+            if not (hour == 9 and minute >= 30 or hour == 10 and minute == 0):
+                return None
+    except Exception:
+        pass
+    
+    # 检查是否当天已触发过（通过 alerts 记录）
+    if state.get('gap_fired'):
+        return None
+    
     pc = q['prev_close'] or 0
     if not pc or not q.get('open'):
         return None
@@ -168,16 +295,31 @@ def _gap_open(q, state, cfg):
     return None
 
 
-def _amplitude(q, cfg):
+def _amplitude(q, cfg, alerts=None, today=None):
+    """振幅过大检测（递进）。
+
+    只有振幅比上次推送时更大，才会触发。
+    避免振幅持续增大时反复推送。
+    """
     if not cfg['amplitude']['enabled']:
         return None
     pc = q['prev_close'] or 0
     if not pc or q.get('high') is None or q.get('low') is None:
         return None
+
     amp = (q['high'] - q['low']) / pc * 100
-    if amp >= cfg['amplitude']['pct']:
-        return {'type': 'amplitude', 'label': f'振幅过大 {amp:.2f}%'}
-    return None
+    if amp < cfg['amplitude']['pct']:
+        return None
+
+    # 递进检测：只有振幅更大才触发
+    if alerts and today:
+        last_amp, _ = _get_last_ref_value(q.get('_code', ''), 'amplitude', alerts, today)
+        if last_amp is not None:
+            # 如果振幅没有扩大，不触发
+            if amp <= last_amp:
+                return None
+
+    return {'type': 'amplitude', 'label': f'振幅过大 {amp:.2f}%'}
 
 
 def _limit_break(q, limit, state, cfg):
@@ -194,8 +336,13 @@ def _limit_break(q, limit, state, cfg):
     return None
 
 
-def detect_hits(q, series, state, alerts_cfg, limit, name):
-    """对一只票跑全部启用的检测,返回 hits 列表(一次报价可能命中多条)。"""
+def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=None):
+    """对一只票跑全部启用的检测,返回 hits 列表(一次报价可能命中多条)。
+
+    Args:
+        alerts: 历史告警记录，用于递进检测
+        today: 当前日期字符串，用于查询当天记录
+    """
     hits = []
     if alerts_cfg['limit_up']['enabled'] and q['pct'] >= limit * 0.995:
         hits.append({'type': 'limit_up', 'label': '触及涨停'})
@@ -204,10 +351,10 @@ def detect_hits(q, series, state, alerts_cfg, limit, name):
 
     checkers = (
         lambda: _rapid_move(q, series, alerts_cfg),
-        lambda: _cum_move(q, alerts_cfg),
-        lambda: _spike_fade(q, alerts_cfg),
-        lambda: _dip_rebound(q, alerts_cfg),
-        lambda: _amplitude(q, alerts_cfg),
+        lambda: _cum_move(q, alerts_cfg, alerts, today),
+        lambda: _spike_fade(q, alerts_cfg, alerts, today),
+        lambda: _dip_rebound(q, alerts_cfg, alerts, today),
+        lambda: _amplitude(q, alerts_cfg, alerts, today),
     )
     for fn in checkers:
         try:
@@ -250,8 +397,26 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
     """同 (股票,类型) 在 cooldown_minutes 内是否已推过。
 
     一条推送记录可含多个联动类型(types);命中任一即视为该类型冷却中。
+    
+    特殊处理：
+    - gap_open（低开/高开）类型：当天只提醒一次，不看冷却时间
     """
     now = now or datetime.now()
+    today = now.strftime('%Y-%m-%d')
+    
+    # gap_open 类型：当天只提醒一次
+    if hit_type == 'gap_open':
+        for a in reversed(alerts):
+            if a.get('code') != code:
+                continue
+            types = a.get('types') or [a.get('type')]
+            if hit_type in types:
+                # 只要当天有记录，就认为已触发
+                if a.get('date') == today:
+                    return True
+        return False
+    
+    # 其他类型：按冷却时间判断
     threshold = timedelta(minutes=cooldown_minutes)
     for a in reversed(alerts):
         if a.get('code') != code:
@@ -268,7 +433,14 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
 
 
 def record_alert(code, name, primary_hit, all_hits, quote, pushed, now=None):
-    """记录一条异动推送(含本次全部联动类型,供去重冷却用)。"""
+    """记录一条异动推送(含本次全部联动类型,供去重冷却用)。
+
+    同时记录关键数据用于递进检测：
+    - dip_rebound: 记录低点价格
+    - spike_fade: 记录高点价格
+    - cum_move: 记录涨跌幅
+    - amplitude: 记录振幅
+    """
     now = now or datetime.now()
     alerts = _load_alerts()
     rec = {
@@ -282,6 +454,18 @@ def record_alert(code, name, primary_hit, all_hits, quote, pushed, now=None):
         'date': (quote.get('ts', '') or now.strftime('%Y-%m-%d'))[:10],
         'pushed': pushed, 'timestamp': now.isoformat(),
     }
+    # 记录关键数据用于递进检测
+    if primary_hit['type'] == 'dip_rebound':
+        rec['ref_low'] = quote.get('low')  # 记录低点
+    elif primary_hit['type'] == 'spike_fade':
+        rec['ref_high'] = quote.get('high')  # 记录高点
+    elif primary_hit['type'] == 'cum_move':
+        rec['ref_pct'] = quote.get('pct')  # 记录涨跌幅
+    elif primary_hit['type'] == 'amplitude':
+        # 记录振幅
+        pc = quote.get('prev_close') or 0
+        if pc and quote.get('high') is not None and quote.get('low') is not None:
+            rec['ref_amp'] = (quote['high'] - quote['low']) / pc * 100
     alerts.append(rec)
     _save_alerts(alerts)
     return rec
@@ -505,12 +689,23 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
         return []
 
     with _state_lock:
-        state = _stock_state.setdefault(code, {})
-    hits = detect_hits(quote, series, state, alerts_cfg, limit, name)
+        # 新交易日重置盘中状态（gap_fired / touched_up / touched_down）。
+        # 否则常驻线程跨天后：gap_open 因 gap_fired 残留永久失效；
+        # limit_break 会基于昨日封板状态在今天开盘误报炸板/撬板。
+        state = _stock_state.get(code)
+        if not state or state.get('_date') != date:
+            state = {'_date': date}
+            _stock_state[code] = state
+
+    # 在quote中添加code，用于递进检测
+    quote_with_code = dict(quote)
+    quote_with_code['_code'] = code
+
+    alerts = _load_alerts()
+    hits = detect_hits(quote_with_code, series, state, alerts_cfg, limit, name, alerts, date)
     if not hits:
         return []
 
-    alerts = _load_alerts()
     cooldown = cfg.get('cooldown_minutes', 30)
     # 本次所有命中类型都还在冷却内 -> 不重复推
     if all(is_in_cooldown(code, h['type'], alerts, cooldown) for h in hits):
@@ -523,7 +718,7 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
     record_alert(code, name, primary, hits, quote, pushed)
     # WebSocket实时推送价格异动到前端
     try:
-        from app import push_event
+        from ws import push_event
         push_event('price_alert', {
             'code': code, 'name': name, 'type': primary['type'],
             'label': primary['label'], 'price': quote.get('price'),

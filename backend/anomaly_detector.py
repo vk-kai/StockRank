@@ -54,7 +54,12 @@ DEFAULT_CONFIG = {
     'divergence_change': 0.002,      # 5分钟价格变化门槛（小数，0.002=0.2%）
     'min_net_for_divergence': 2.0,   # 背离判定的5分钟最小反向 |Δnet_flow|（亿）
     # 突变 spike
-    'spike_threshold': 20.0,         # 相邻时点 |Δnet_flow| 门槛（亿）
+    'spike_threshold': 20.0,         # 样本不足时的绝对门槛（亿）
+    'spike_z_threshold': 3.0,        # 今日 delta z-score 门槛（相对板块自身节奏，样本充足时生效）
+    'spike_min_samples': 10,         # z-score 最小样本数，不足则降级到 spike_threshold
+    # 突变-反转 reversal（V 型：资金累计净流入 探底回升 / 冲高回落）
+    'reversal_min': 3,               # 反转前需连续同向的 delta 步数（确立单边趋势）
+    'reversal_floor': 1.0,           # 反向 delta 的噪声地板（亿）：过小视为噪声不计
     # 连续 streak
     'streak_min': 4,                 # 连续同号最少时点数（4=约20分钟）
     'min_net_for_streak': 3.0,       # 参与连续判定的单点最小 |net_flow|（亿）
@@ -280,8 +285,40 @@ def _check_divergence(sec, series, cfg, current_time=None):
 
 
 # --------------------------------------------------------------------------
-# 维度 2：突变（相邻时点 Δnet_flow）
+# 维度 2：突变（相邻时点 Δnet_flow）—— 自适应门槛 + 反转子类
 # --------------------------------------------------------------------------
+def _delta_series(points, current_time):
+    """由累计值序列构造增量序列（仅保留真正相邻5分钟的步长，其余记 None）。"""
+    deltas = []
+    for i in range(1, len(points)):
+        if current_time and not _is_adjacent_five_minutes(points[i - 1]['time'], points[i]['time']):
+            deltas.append(None)
+        else:
+            deltas.append(points[i]['net_flow'] - points[i - 1]['net_flow'])
+    return deltas
+
+
+def _spike_fired(delta, series, cfg):
+    """单步 delta 是否构成「突变」。优先用今日该板块 delta 序列的 z-score（不含当前点），
+    样本不足降级绝对阈值。比一刀切 20亿 更贴板块自身活跃度。返回 (是否触发, 判据)。"""
+    abs_d = abs(delta)
+    hist = []
+    for i in range(1, len(series)):
+        if _is_adjacent_five_minutes(series[i - 1]['time'], series[i]['time']):
+            hist.append(abs(series[i]['net_flow'] - series[i - 1]['net_flow']))
+    if len(hist) >= int(cfg.get('spike_min_samples', 10)):
+        mean = sum(hist) / len(hist)
+        var = sum((v - mean) ** 2 for v in hist) / len(hist)
+        std = math.sqrt(var) or 1e-9
+        z = (abs_d - mean) / std
+        if z >= float(cfg.get('spike_z_threshold', 3.0)):
+            return True, f'z={z:.1f}'
+        return False, ''
+    if abs_d >= float(cfg.get('spike_threshold', 20.0)):
+        return True, '绝对量级'
+    return False, ''
+
+
 def _check_spike(sec, series, cfg, current_time=None):
     if len(series) < 1:
         return None
@@ -291,12 +328,82 @@ def _check_spike(sec, series, cfg, current_time=None):
         return None
     prev_time, prev_nf = prev['time'], prev['net_flow']
     delta = nf - prev_nf
-    if abs(delta) < cfg['spike_threshold']:
+    fired, criterion = _spike_fired(delta, series, cfg)
+    if not fired:
         return None
     return {'type': 'spike', 'sub': 'spike_in' if delta > 0 else 'spike_out',
             'label': '加速流入' if delta > 0 else '加速流出',
             'delta': round(delta, 2), 'net_flow': round(nf, 2),
-            'prev_time': prev_time, 'prev_net_flow': round(prev_nf, 2)}
+            'prev_time': prev_time, 'prev_net_flow': round(prev_nf, 2),
+            'criterion': criterion}
+
+
+def _reversal_detail(nf, extreme, rebound, is_bottom):
+    """生成反转明细中段（不含"探底回升/冲高回落"前缀，便于与 label 拼接）。
+    返回 (detail, pct)。"""
+    pct = round(abs(rebound) / abs(extreme) * 100) if abs(extreme) >= 1e-9 else None
+    ext_str, nf_str = f"{extreme:.2f}", f"{nf:.2f}"
+    if is_bottom:
+        base = f"距资金流出最低点上升{pct}%" if pct is not None else f"资金净流入回升{rebound:.2f}亿"
+        return f"{base}（最低 {ext_str}亿 → 现 {nf_str}亿）", pct
+    base = f"距资金流入最高点下降{pct}%" if pct is not None else f"资金净流入回落{abs(rebound):.2f}亿"
+    return f"{base}（最高 {ext_str}亿 → 现 {nf_str}亿）", pct
+
+
+def _check_reversal(sec, series, cfg, current_time=None):
+    """突变-反转（V 型）：资金累计净流入 探底回升 / 冲高回落。
+
+    判据：前 K 步 delta 连续同向且都过噪声地板（确立单边趋势）后，当前 delta **反向**
+    ——真正的 V 型反转（"接近"=允许反向幅度不大，但需过 reversal_floor）。
+    报告：距窗口内资金净流入最低点(探底回升)/最高点(冲高回落)回升/回落的百分比。
+    防误报：必须先有 K 步真实同向趋势 + 当前反向且过地板；防重复：复用同板块+sub 的冷却。
+    """
+    nf = float(sec.get('net_flow', 0) or 0)
+    if not series:
+        return None
+    points = list(series) + [{'time': current_time, 'net_flow': nf}]
+    deltas = _delta_series(points, current_time)
+    if not deltas or deltas[-1] is None:
+        return None
+    cur = deltas[-1]
+    K = int(cfg.get('reversal_min', 3))
+    if len(deltas) < K + 1:
+        return None
+    prior = deltas[-(K + 1):-1]
+    if any(d is None for d in prior):
+        return None
+    floor = float(cfg.get('reversal_floor', 1.0))
+    signs = [1 if d > 0 else -1 for d in prior]
+    if len(set(signs)) != 1:                       # 前 K 步必须同号
+        return None
+    if any(abs(d) < floor for d in prior):         # 且都过噪声地板（排除抖动）
+        return None
+    trend_sign = signs[0]
+    if (cur * trend_sign) >= 0:                    # 当前 delta 未反向 -> 不是 V 型反转
+        return None
+    if abs(cur) < floor:                           # 反向但量级太小 -> 噪声
+        return None
+    is_bottom = trend_sign < 0                     # 前段持续流出 -> 探底回升
+    # 窗口内累计净流入的极值：V底取最低(最负)，V顶取最高(最正)
+    window = [p['net_flow'] for p in points[-(K + 1):]]
+    extreme = min(window) if is_bottom else max(window)
+    rebound = nf - extreme                          # V底>0(回升)，V顶<0(回落)
+    if (is_bottom and rebound <= 0) or (not is_bottom and rebound >= 0):
+        return None                                # 未实际回升/回落，不报
+    detail, pct = _reversal_detail(nf, extreme, rebound, is_bottom)
+    return {
+        'type': 'spike',          # 归到「突变」大类下展示
+        'sub': 'reversal_up' if is_bottom else 'reversal_down',
+        'label': '探底回升' if is_bottom else '冲高回落',
+        'trend_steps': K,
+        'avg_delta': round(sum(abs(d) for d in prior) / K, 2),
+        'cur_delta': round(cur, 2),
+        'net_flow': round(nf, 2),
+        'extreme': round(extreme, 2),
+        'rebound': round(rebound, 2),
+        'rebound_pct': pct,
+        'detail': detail,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -406,7 +513,7 @@ def detect_for_snapshot(date_str, minute_key, push=False, realtime_data=None):
             continue
         series = _sector_series(realtime_data, name, up_to_key=minute_key)
         hits = []
-        for checker in (_check_divergence, _check_spike, _check_streak):
+        for checker in (_check_divergence, _check_spike, _check_reversal, _check_streak):
             try:
                 r = checker(sec, series, cfg, minute_key)
             except Exception as e:
@@ -414,6 +521,10 @@ def detect_for_snapshot(date_str, minute_key, push=False, realtime_data=None):
                 r = None
             if r:
                 hits.append(r)
+        # 同一步若同时命中普通 spike 与 reversal，保留信息量更高的 reversal，去重避免重复告警
+        sub_types = {h.get('sub') for h in hits}
+        if any(str(s).startswith('reversal') for s in sub_types) and any(s in ('spike_in', 'spike_out') for s in sub_types):
+            hits = [h for h in hits if not (h['type'] == 'spike' and h.get('sub') in ('spike_in', 'spike_out'))]
         # 巨量（辅助）
         try:
             r = _check_surge(sec, baseline, cfg, minute_key)
@@ -518,6 +629,11 @@ def _push_findings(findings, cfg):
             'pushed': pushed,
             'timestamp': now.isoformat(),
         }
+        # 反转(探底回升/冲高回落)带上"距极值点 X%"明细，供桌面通知等只拿到 record 的消费方展示
+        rev_hit = next((h for h in f['hits'] if str(h.get('sub', '')).startswith('reversal')), None)
+        if rev_hit:
+            record['reversal_detail'] = f"{rev_hit['label']}，{rev_hit.get('detail', '')}"
+            record['reversal_dir'] = rev_hit['sub']
         alerts.append(record)
         new_records.append(record)
 
@@ -527,7 +643,7 @@ def _push_findings(findings, cfg):
         logger.info(f"异动推送 {len(new_records)} 条")
         # WebSocket实时推送异动到前端
         try:
-            from app import push_event
+            from ws import push_event
             for record in new_records:
                 push_event('anomaly', record)
         except Exception:
@@ -539,8 +655,16 @@ def _format_message(f):
     sector = f['sector']
     nf = f['net_flow']
     chg = f['change_pct']
-    arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
-    flow_color = 'warning' if nf >= 0 else 'info'
+    # 颜色：默认按净流入正负（红=流入/涨，绿=流出/跌）；
+    # 若命中反转，则按反转方向整体着色——V底(流出减缓/转流入)=红/看涨，V顶(流入减缓/转流出)=绿/看跌，一眼可辨。
+    rev_sub = next((str(h.get('sub', '')) for h in f['hits'] if str(h.get('sub', '')).startswith('reversal')), '')
+    if rev_sub == 'reversal_up':
+        arrow, flow_color = '🔴', 'warning'
+    elif rev_sub == 'reversal_down':
+        arrow, flow_color = '🟢', 'info'
+    else:
+        arrow = '🔴' if nf >= 0 else '🟢'  # 红涨绿跌（A股习惯：红=流入/涨）
+        flow_color = 'warning' if nf >= 0 else 'info'
     lines = []
     lines.append(f"> 时间：**{f['date']} {f['time']}**")
     lines.append(f"> 净流入：<font color=\"{flow_color}\">{nf:+.2f} 亿</font>")
@@ -559,7 +683,10 @@ def _format_message(f):
             else:
                 detail = f"（历史上榜样本 {h.get('count',0)} 次不足，按绝对量级判定）"
         elif h['type'] == 'spike':
-            detail = f"（相比 {h['prev_time']} 变化 {h['delta']:+.2f}亿）"
+            if str(h.get('sub', '')).startswith('reversal'):
+                detail = f"：{h.get('detail', '')}"
+            else:
+                detail = f"（相比 {h['prev_time']} 变化 {h['delta']:+.2f}亿）"
         elif h['type'] == 'streak':
             detail = f"（连续 {h['streak']} 个时点≈{h['minutes']}分钟，累计 {h['cum_delta']:+.2f}亿）"
         elif h['type'] == 'divergence':

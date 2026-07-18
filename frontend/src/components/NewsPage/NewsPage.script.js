@@ -1,4 +1,4 @@
-import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary, getNewsScoreTrend } from '../../services/apiService'
+import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary, getNewsScoreTrend, startNewsSummary, getNewsSummaryStatus } from '../../services/apiService'
 import { marked } from 'marked'
 import * as echarts from 'echarts'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -48,7 +48,13 @@ export default {
       activeBucket: null,
       bucketTotal: 0,
       _chartLastClick: { idx: -1, t: 0 },
-      _currentXAxis: []
+      _currentXAxis: [],
+      // 新闻热点总结
+      showSummaryModal: false,
+      summaryResult: null,
+      summaryError: null,
+      summaryStatus: 'idle',  // idle, running, completed, failed
+      summaryPollTimer: null
     }
   },
   computed: {
@@ -70,6 +76,10 @@ export default {
     renderedNewsAnalysis() {
       if (!this.newsAnalysisResult) return ''
       return marked.parse(this.newsAnalysisResult)
+    },
+    renderedSummary() {
+      if (!this.summaryResult) return ''
+      return marked.parse(this.summaryResult)
     },
     tendencyClass() {
       const tendency = this.filteredTendency
@@ -131,6 +141,9 @@ export default {
     }
     if (this.searchTimer) {
       clearTimeout(this.searchTimer)
+    }
+    if (this.summaryPollTimer) {
+      clearInterval(this.summaryPollTimer)
     }
     
     // 移除滚动监听
@@ -1030,6 +1043,83 @@ export default {
       if (score >= 55) return '利好'
       if (score <= 45) return '利空'
       return '中性'
+    },
+
+    // ===== 新闻热点总结 =====
+    async openSummaryModal() {
+      this.showSummaryModal = true
+      this.summaryError = null
+
+      // 先查询是否有已有结果
+      try {
+        const response = await getNewsSummaryStatus()
+        if (response.status === 'completed' && response.analysis) {
+          this.summaryResult = response.analysis
+          this.summaryStatus = 'completed'
+        } else if (response.status === 'running') {
+          this.summaryStatus = 'running'
+          this.startSummaryPolling()
+        } else {
+          this.summaryStatus = 'idle'
+          this.summaryResult = null
+        }
+      } catch (err) {
+        console.error('查询总结状态失败:', err)
+        this.summaryStatus = 'idle'
+      }
+    },
+
+    closeSummaryModal() {
+      this.showSummaryModal = false
+      if (this.summaryPollTimer) {
+        clearInterval(this.summaryPollTimer)
+        this.summaryPollTimer = null
+      }
+    },
+
+    async triggerSummary() {
+      if (this.summaryStatus === 'running') return
+
+      this.summaryStatus = 'running'
+      this.summaryError = null
+
+      try {
+        const response = await startNewsSummary()
+        if (response.success) {
+          this.startSummaryPolling()
+        } else {
+          this.summaryStatus = 'failed'
+          this.summaryError = response.message || '启动总结失败'
+        }
+      } catch (err) {
+        this.summaryStatus = 'failed'
+        this.summaryError = '请求失败: ' + (err.message || '未知错误')
+      }
+    },
+
+    startSummaryPolling() {
+      if (this.summaryPollTimer) {
+        clearInterval(this.summaryPollTimer)
+      }
+
+      this.summaryPollTimer = setInterval(async () => {
+        try {
+          const response = await getNewsSummaryStatus()
+          if (response.status === 'completed' && response.analysis) {
+            this.summaryResult = response.analysis
+            this.summaryStatus = 'completed'
+            clearInterval(this.summaryPollTimer)
+            this.summaryPollTimer = null
+          } else if (response.status === 'failed') {
+            this.summaryStatus = 'failed'
+            this.summaryError = response.message || '总结失败'
+            clearInterval(this.summaryPollTimer)
+            this.summaryPollTimer = null
+          }
+        } catch (err) {
+          console.error('轮询总结状态失败:', err)
+        }
+      }, 3000)
     }
   }
 }

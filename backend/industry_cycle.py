@@ -442,8 +442,9 @@ def _parse_industry_result(content, industry_name):
     """解析AI返回的JSON结果"""
     import re
 
-    # 第1步：尝试从markdown代码块中提取JSON（贪婪匹配，确保拿到完整内容）
-    json_match = re.search(r'```(?:json)?\s*([\s\S]*)\s*```', content)
+    # 第1步：尝试从markdown代码块中提取JSON（非贪婪匹配）
+    # 匹配 ```json 或 ``` 包裹的内容
+    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
     extracted = None
     if json_match:
         extracted = json_match.group(1).strip()
@@ -489,8 +490,8 @@ def _parse_industry_result(content, industry_name):
                 # 用服务器当前时间覆盖 analyze_time，确保时间正确
                 result['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
                 return result
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError) as e:
+            info_logger.warning(f"JSON解析失败: {e}")
         return None
 
     # 尝试1：从代码块中提取
@@ -505,7 +506,7 @@ def _parse_industry_result(content, industry_name):
             if result:
                 return result
 
-    # 尝试2：从全文提取JSON对象
+    # 尝试2：直接从全文提取JSON对象（跳过markdown标记）
     json_obj = extract_json_object(content)
     if json_obj:
         result = try_parse(json_obj)

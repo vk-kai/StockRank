@@ -26,6 +26,10 @@ function getSoundMode() {
   const s = localStorage.getItem('newsSoundMode')
   return ['none', 'important', 'all'].includes(s) ? s : 'all'
 }
+function getNewsLevel() {
+  const level = localStorage.getItem('newsNotificationLevel')
+  return level === 'important' ? 'important' : 'all' // 默认全部
+}
 function canNotify() {
   return typeof Notification !== 'undefined' && Notification.permission === 'granted'
 }
@@ -66,13 +70,20 @@ function sendAnomalyNotification(a) {
   try {
     const topLabel = (a.labels && a.labels.length) ? a.labels[0] : ''
     const nf = a.net_flow != null ? Number(a.net_flow) : 0
-    const arrow = nf >= 0 ? '🔴' : '🟢'
+    const subs = a.subs || []
+    const isRevUp = subs.some(s => String(s) === 'reversal_up')
+    const isRevDown = subs.some(s => String(s) === 'reversal_down')
+    // 颜色：反转按方向（V底=流出减缓/转流入=红/看涨，V顶=流入减缓/转流出=绿/看跌）；否则按净流入正负
+    const arrow = isRevUp ? '🔴' : isRevDown ? '🟢' : (nf >= 0 ? '🔴' : '🟢')
     const nfStr = `净流入${nf >= 0 ? '+' : ''}${nf.toFixed(2)}亿`
     const chg = a.change_pct != null ? ` ${a.change_pct >= 0 ? '+' : ''}${Number(a.change_pct).toFixed(2)}%` : ''
     const lead = a.lead_stock ? ` 龙头${a.lead_stock}` : ''
-    // 标题直接关键信息，不加"资金异动"前缀
+    // 有反转明细时优先展示"之前→现在/减缓%"，更直观
+    const body = a.reversal_detail
+      ? `${a.reversal_detail}｜${chg}${lead}`
+      : `${(a.labels || []).join('、')}｜${chg}${lead}`
     const n = new Notification(`${arrow} ${a.sector}${topLabel} ${nfStr}`, {
-      body: `${(a.labels || []).join('、')}｜${chg}${lead}`,
+      body,
       icon: ICON,
       tag: `${a.date}-${a.time}-${a.sector}`,
       requireInteraction: true
@@ -104,6 +115,18 @@ function sendPriceAlertNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
+function sendTestNotification(data) {
+  // 手动「测试」按钮触发：走真实 WebSocket 通道到达，弹一条桌面通知用于人眼验证。
+  try {
+    const n = new Notification((data && data.title) || '🔔 推送测试', {
+      body: (data && data.body) || 'WebSocket 推送链路正常',
+      icon: ICON,
+      tag: 'push-test'
+    })
+    n.onclick = () => { window.focus(); n.close() }
+  } catch (e) { /* 忽略 */ }
+}
+
 // ==================== WebSocket 推送处理 ====================
 
 function handlePushEvent(msg) {
@@ -115,12 +138,26 @@ function handlePushEvent(msg) {
     return
   }
 
+  // push_ping：服务监控的静默心跳，立即回 pong，不弹通知、不受通知开关影响
+  if (msg.type === 'push_ping') {
+    if (msg.data && msg.data.nonce && state.socket) {
+      try { state.socket.emit('push_pong', { nonce: msg.data.nonce }) } catch (e) { /* 忽略 */ }
+    }
+    return
+  }
+
   // 以下事件需要检查通知开关和权限
   if (!isEnabled() || !canNotify()) return
 
   switch (msg.type) {
     case 'news':
-      if (msg.data) sendNewsNotification(msg.data)
+      // 根据桌面通知级别设置过滤新闻
+      if (msg.data) {
+        const newsLevel = getNewsLevel()
+        if (newsLevel === 'all' || isNewsImportant(msg.data)) {
+          sendNewsNotification(msg.data)
+        }
+      }
       break
     case 'anomaly':
       if (msg.data) sendAnomalyNotification(msg.data)
@@ -128,19 +165,34 @@ function handlePushEvent(msg) {
     case 'price_alert':
       if (msg.data) sendPriceAlertNotification(msg.data)
       break
+    case 'push_test':
+      if (msg.data) sendTestNotification(msg.data)
+      break
   }
 }
 
 // ==================== WebSocket 连接管理 ====================
 
 function connectSocket() {
-  if (state.socket && state.socket.connected) return
+  // 如果已有连接且正常，直接返回
+  if (state.socket && state.socket.connected) {
+    console.log('[WS] 已有连接，跳过创建')
+    return
+  }
+
+  // 如果有旧连接但已断开，先清理
+  if (state.socket && !state.socket.connected) {
+    console.log('[WS] 清理旧连接')
+    state.socket.disconnect()
+    state.socket = null
+  }
 
   // 自动检测WebSocket地址（同源或显式指定）
   const wsUrl = window.location.protocol === 'https:'
     ? `https://${window.location.host}`
     : `http://${window.location.hostname}:5000`
 
+  console.log('[WS] 创建新连接:', wsUrl)
   const socket = io(wsUrl, {
     transports: ['websocket', 'polling'],
     reconnection: true,
