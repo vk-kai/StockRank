@@ -5,7 +5,6 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/backend.Dockerfile
-      network: host          # 构建期用宿主机网络：绕开 BuildKit bridge 的 DNS/IPv6 不通，解决 pip 连阿里源卡死
     container_name: a-stock-backend
     ports:
       - "5000:5000"
