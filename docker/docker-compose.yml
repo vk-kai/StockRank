@@ -6,6 +6,7 @@ services:
       context: ../backend
       dockerfile: ../docker/backend.Dockerfile
     container_name: a-stock-backend
+    network: bridge
     ports:
       - "5000:5000"
     environment:
