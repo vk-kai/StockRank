@@ -17,8 +17,6 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
 
 ENV TZ=Asia/Shanghai
 ENV THS_BROWSER_PATH=/usr/bin/chromium
-# 让 Python/pip 输出不缓冲：配合 `docker build --progress=plain` 可实时看到 pip 下载进度
-ENV PYTHONUNBUFFERED=1
 
 RUN mkdir -p /app/backend /app/config /app/data /app/logs /app/data/daily /app/data/realtime
 
