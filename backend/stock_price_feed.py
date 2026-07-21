@@ -8,7 +8,7 @@
 """
 import re
 
-from logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger('stock_feed')
 
@@ -79,7 +79,7 @@ def parse_tencent(text, codes):
 
 def _default_sina_fetch(codes):
     import requests
-    from config import get_random_user_agent
+    from core.config import get_random_user_agent
     try:
         resp = requests.get(SINA_URL.format(codes=','.join(codes)), headers={
             'User-Agent': get_random_user_agent(),
@@ -94,7 +94,7 @@ def _default_sina_fetch(codes):
 
 def _default_tencent_fetch(codes):
     import requests
-    from config import get_random_user_agent
+    from core.config import get_random_user_agent
     try:
         resp = requests.get(TENCENT_URL.format(codes=','.join(codes)), headers={
             'User-Agent': get_random_user_agent(),

@@ -20,10 +20,10 @@ import time
 import threading
 import traceback
 
-from config import CONFIG_DIR, INDUSTRY_CYCLE_SCORES_DIR, INDUSTRY_CYCLE_SCORES_FILE, INDUSTRY_CYCLE_BATCH_STATUS_FILE
+from core.config import CONFIG_DIR, INDUSTRY_CYCLE_SCORES_DIR, INDUSTRY_CYCLE_SCORES_FILE, INDUSTRY_CYCLE_BATCH_STATUS_FILE
 from ai_analyzer import load_ai_config, call_ai_api
 from data_processor import error_logger
-from logger import get_logger
+from core.logger import get_logger
 
 info_logger = get_logger('ai')
 

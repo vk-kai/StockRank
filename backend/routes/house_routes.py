@@ -6,10 +6,10 @@ import os
 import json
 import uuid
 from datetime import datetime
-from logger import get_logger
+from core.logger import get_logger
 
 try:
-    from config import DAILY_DIR
+    from core.config import DAILY_DIR
 except Exception:
     DAILY_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'daily'))
 

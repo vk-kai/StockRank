@@ -13,7 +13,7 @@ import time
 import threading
 from datetime import datetime
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 from data_processor import get_market_map_tree, error_logger, system_logger
 from data_collector import is_trading_day
 

@@ -4,8 +4,8 @@ import hmac
 import hashlib
 import base64
 import requests
-from config import FEISHU_CONFIG_FILE
-from logger import get_logger
+from core.config import FEISHU_CONFIG_FILE
+from core.logger import get_logger
 
 error_logger = get_logger('error')
 

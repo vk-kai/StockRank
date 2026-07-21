@@ -5,8 +5,8 @@ import traceback
 import json
 from datetime import datetime
 
-from config import LOG_DIR, DATA_DIR
-from logger import get_log_modules, get_logger
+from core.config import LOG_DIR, DATA_DIR
+from core.logger import get_log_modules, get_logger
 
 log_bp = Blueprint('log', __name__, url_prefix='/api/log')
 system_logger = get_logger('system')

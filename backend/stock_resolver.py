@@ -8,7 +8,7 @@
   - 主板(sh 600/601/603/605;sz 000/001/002/003) ±10%
   - ST/*ST ±5% 仅对主板生效(注册制板块与北交所无 5% ST 档)
 """
-from logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger('stock_resolver')
 
@@ -154,14 +154,14 @@ _default_cache_instance = None
 def _default_cache():
     global _default_cache_instance
     if _default_cache_instance is None:
-        from config import CONFIG_DIR
+        from core.config import CONFIG_DIR
         _default_cache_instance = NameCodeCache(path=os.path.join(CONFIG_DIR, 'name_code_cache.json'))
     return _default_cache_instance
 
 
 def _default_fetcher(keyword):
     import requests
-    from config import get_random_user_agent
+    from core.config import get_random_user_agent
     try:
         url = SUGGEST_URL.format(kw=keyword)
         resp = requests.get(url, headers={

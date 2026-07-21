@@ -4,8 +4,8 @@ import requests
 import time
 import re
 import threading
-from config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, AI_NEWS_SUMMARY_PROMPT_FILE, AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE, NEWS_ANALYSIS_CACHE_FILE
-from logger import get_logger
+from core.config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, AI_NEWS_SUMMARY_PROMPT_FILE, AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE, NEWS_ANALYSIS_CACHE_FILE
+from core.logger import get_logger
 from news_score_thresholds import get_score_label as classify_score_label
 
 error_logger = get_logger('error')

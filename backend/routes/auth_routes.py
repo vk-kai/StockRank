@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 
-from daily_password import verify_password as _verify_daily_password
-from otp_service import is_otp_enabled, load_otp_config, verify_code
+from core.daily_password import verify_password as _verify_daily_password
+from core.otp_service import is_otp_enabled, load_otp_config, verify_code
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 

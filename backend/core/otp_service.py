@@ -11,7 +11,7 @@ import json
 import io
 import base64
 
-from config import OTP_CONFIG_FILE, CONFIG_DIR
+from core.config import OTP_CONFIG_FILE, CONFIG_DIR
 
 # 兜底导入 qrcode/pyotp：若运行环境未安装依赖，仍保证后端可启动（仅 OTP 接口报错）
 try:

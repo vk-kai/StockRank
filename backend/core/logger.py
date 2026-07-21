@@ -2,7 +2,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
-from config import LOG_DIR, is_dev_mode
+from core.config import LOG_DIR, is_dev_mode
 
 _loggers = {}
 

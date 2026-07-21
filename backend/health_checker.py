@@ -4,8 +4,8 @@ import time
 import threading
 import traceback
 from datetime import datetime
-from logger import get_logger
-from config import DATA_DIR, THS_SECTOR_URL, THS_SECTOR_NET_OUT_URL
+from core.logger import get_logger
+from core.config import DATA_DIR, THS_SECTOR_URL, THS_SECTOR_NET_OUT_URL
 import requests
 from bs4 import BeautifulSoup
 

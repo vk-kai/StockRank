@@ -12,8 +12,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from bs4 import BeautifulSoup
-from config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent, get_eastmoney_headers, em_request
-from logger import get_logger
+from core.config import DAILY_DIR, REALTIME_DIR, MAX_DAYS, DATA_URL, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL, USE_PROXY, get_random_user_agent, get_eastmoney_headers, em_request
+from core.logger import get_logger
 
 error_logger = get_logger('error')
 data_logger = get_logger('data')
@@ -1816,7 +1816,7 @@ def refresh_market_map_cache():
     session = requests.Session()
     session.headers.update(get_eastmoney_headers())
     # 检测直连是否可达，不可达则启用代理
-    from config import EM_PROXY_ENABLED, EM_PROXY_POOL, load_em_proxy_pool
+    from core.config import EM_PROXY_ENABLED, EM_PROXY_POOL, load_em_proxy_pool
     _use_proxy_for_session = False
     _session_proxies = None
     try:

@@ -3,7 +3,7 @@ import os
 import threading
 from datetime import datetime
 
-from config import DATA_DIR
+from core.config import DATA_DIR
 
 PUSH_STATE_DIR = os.path.join(DATA_DIR, 'market_map_push')
 PUSH_STATE_FILE = os.path.join(PUSH_STATE_DIR, 'latest.json')

@@ -1,7 +1,7 @@
 import unittest
 
 from app import create_app
-from daily_password import get_daily_password
+from core.daily_password import get_daily_password
 
 
 class AuthGuardTests(unittest.TestCase):

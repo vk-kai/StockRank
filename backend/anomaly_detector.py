@@ -31,9 +31,9 @@ import threading
 import math
 from datetime import datetime, timedelta
 
-from config import REALTIME_DIR, CONFIG_DIR, DATA_DIR
+from core.config import REALTIME_DIR, CONFIG_DIR, DATA_DIR
 from data_processor import load_realtime_data, error_logger
-from logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger('anomaly')
 

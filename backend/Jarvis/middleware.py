@@ -8,7 +8,7 @@ from flask import request, jsonify, g
 import time
 import ipaddress
 
-from daily_password import verify_password as _verify_daily_password
+from core.daily_password import verify_password as _verify_daily_password
 
 class SecurityMiddleware:
     def __init__(self, app=None, config=None):

@@ -14,7 +14,7 @@ from notification_pusher import (
     send_news_item_to_channels,
 )
 from stock_monitor import should_push_news
-from logger import get_logger, cleanup_old_logs
+from core.logger import get_logger, cleanup_old_logs
 from thread_monitor import heartbeat, register_thread, set_busy
 import json
 
@@ -372,7 +372,7 @@ def _background_analyze_news(new_items):
 
 def _run_news_summary(auto=False):
     """执行新闻热点总结（同步，在后台线程中调用）"""
-    from config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
+    from core.config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
     import json as _json
 
     now = datetime.now()

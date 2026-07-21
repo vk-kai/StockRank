@@ -2,9 +2,9 @@ import time
 import requests
 import os
 from datetime import datetime
-from logger import get_logger
-from config import load_monitor_config
-from daily_password import get_daily_password
+from core.logger import get_logger
+from core.config import load_monitor_config
+from core.daily_password import get_daily_password
 
 error_logger = get_logger('error')
 system_logger = get_logger('monitor')

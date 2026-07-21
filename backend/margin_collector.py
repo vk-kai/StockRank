@@ -18,8 +18,8 @@ import time
 import threading
 from datetime import datetime, timedelta
 
-from config import REALTIME_DIR
-from logger import get_logger
+from core.config import REALTIME_DIR
+from core.logger import get_logger
 from thread_monitor import heartbeat, register_thread, set_busy
 
 system_logger = get_logger('system')

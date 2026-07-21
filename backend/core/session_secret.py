@@ -13,7 +13,7 @@ import os
 import json
 import secrets
 
-from config import SESSION_SECRET_FILE, CONFIG_DIR
+from core.config import SESSION_SECRET_FILE, CONFIG_DIR
 
 
 def load_session_secret(default):

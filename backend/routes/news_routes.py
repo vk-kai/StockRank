@@ -6,8 +6,8 @@ from news_processor import get_recent_news, search_news, NEWS_DIR
 from ai_analyzer import load_news_analysis_cache
 from news_score_thresholds import classify_score, is_directional_score, compute_overall_score
 from data_processor import error_logger
-from config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
-from logger import get_logger
+from core.config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
+from core.logger import get_logger
 import os
 import json
 

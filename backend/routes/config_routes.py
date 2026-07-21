@@ -8,21 +8,21 @@ import hashlib
 import base64
 import traceback
 
-from config import (
+from core.config import (
     AI_CONFIG_FILE, FEISHU_CONFIG_FILE, WECHAT_CONFIG_FILE,
     STOCK_MONITOR_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE,
     STOCK_SCORE_PROMPT_FILE, DATASOURCE_CONFIG_FILE, DEFAULT_DATASOURCES,
     get_random_user_agent, get_eastmoney_headers
 )
 from data_processor import error_logger
-from logger import get_logger
+from core.logger import get_logger
 from .auth_routes import verify_password
-from otp_service import (
+from core.otp_service import (
     load_otp_config, save_otp_config, is_otp_enabled,
     generate_secret, build_provisioning_uri, build_qr_data_url, verify_code,
 )
-from session_secret import rotate_session_secret
-from daily_password import BEIJING_TZ
+from core.session_secret import rotate_session_secret
+from core.daily_password import BEIJING_TZ
 from datetime import datetime
 
 config_bp = Blueprint('config', __name__, url_prefix='/api/config')
@@ -518,7 +518,7 @@ def update_stock_monitor_config():
 
         # 如果 watchlist 非空且 enabled，打日志确认
         try:
-            from logger import get_logger
+            from core.logger import get_logger
             _sys_logger = get_logger('system')
             wl = config_data.get('watchlist', [])
             enabled = config_data.get('enabled', False)
@@ -736,7 +736,7 @@ def test_datasource():
             try:
                 if '东方财富' in provider:
                     # 使用em_request支持代理自动切换
-                    from config import em_request
+                    from core.config import em_request
                     resp = em_request(test_url, headers=headers, timeout=10)
                     latency = int((_t.time() - start) * 1000)
                     if resp is None:

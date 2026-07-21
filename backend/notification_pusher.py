@@ -3,7 +3,7 @@ from feishu_pusher import (
     push_daily_summary_feishu,
     send_feishu_message,
 )
-from logger import get_logger
+from core.logger import get_logger
 from wechat_pusher import (
     load_wechat_config,
     push_daily_summary_wechat,

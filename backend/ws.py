@@ -22,7 +22,7 @@ from datetime import datetime
 from flask_socketio import SocketIO
 
 try:
-    from logger import get_logger
+    from core.logger import get_logger
     _log = get_logger('error')
 except Exception:  # 极端情况下日志不可用也不能影响推送
     _log = None

@@ -1,8 +1,8 @@
 import json
 import time
 import os
-from config import STOCK_MONITOR_CONFIG_FILE
-from logger import get_logger
+from core.config import STOCK_MONITOR_CONFIG_FILE
+from core.logger import get_logger
 
 error_logger = get_logger('error')
 

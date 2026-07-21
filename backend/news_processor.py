@@ -2,8 +2,8 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
-from config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, is_dev_mode, DEV_NEWS_URL, get_random_user_agent
-from logger import get_logger
+from core.config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, is_dev_mode, DEV_NEWS_URL, get_random_user_agent
+from core.logger import get_logger
 
 error_logger = get_logger('error')
 info_logger = get_logger('news')

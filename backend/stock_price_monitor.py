@@ -10,8 +10,8 @@ import time
 import threading
 from datetime import datetime, timedelta
 
-from config import REALTIME_DIR, STOCK_MONITOR_CONFIG_FILE
-from logger import get_logger
+from core.config import REALTIME_DIR, STOCK_MONITOR_CONFIG_FILE
+from core.logger import get_logger
 
 logger = get_logger('stock_price')
 error_logger = get_logger('error')

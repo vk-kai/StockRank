@@ -1,5 +1,5 @@
 import time
-from logger import get_logger
+from core.logger import get_logger
 
 error_logger = get_logger('error')
 system_logger = get_logger('monitor')
