@@ -22,6 +22,9 @@ yarn-error.log*
 /data/
 # logs 全部忽略（均为运行时日志：根 logs/ 与 backend/logs/ 都不提交）
 logs/
+# backend 运行时数据子目录（本地 import app 副产物；backend/data/ 仅保留 .py 代码，
+# 忽略运行时生成的 jarvis/health/daily/realtime 等，生产由 docker 数据卷管理）
+backend/data/*/
 config/ai_config.json
 config/feishu_config.json
 config/wechat_config.json

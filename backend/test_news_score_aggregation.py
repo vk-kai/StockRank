@@ -1,6 +1,6 @@
 import unittest
 
-from news_score_thresholds import compute_overall_score
+from analysis.news_score_thresholds import compute_overall_score
 
 
 class NewsScoreAggregationTests(unittest.TestCase):

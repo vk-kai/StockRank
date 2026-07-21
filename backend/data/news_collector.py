@@ -3,8 +3,8 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from data.news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
-from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache, summarize_daily_news
-from notification_pusher import (
+from analysis.ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache, summarize_daily_news
+from pushers.notification_pusher import (
     ALL_AI_FILTER,
     ALL_DIRECT,
     IMPORTANT_AI_FILTER,
@@ -13,9 +13,9 @@ from notification_pusher import (
     is_push_enabled,
     send_news_item_to_channels,
 )
-from stock_monitor import should_push_news
+from monitors.stock_monitor import should_push_news
 from core.logger import get_logger, cleanup_old_logs
-from thread_monitor import heartbeat, register_thread, set_busy
+from monitors.thread_monitor import heartbeat, register_thread, set_busy
 import json
 
 error_logger = get_logger('error')
@@ -104,7 +104,7 @@ def load_all_news_status():
 
 def process_news_with_ai_and_push(news_list):
     try:
-        from ai_analyzer import load_ai_config
+        from analysis.ai_analyzer import load_ai_config
         
         ai_config = load_ai_config()
         ai_enabled = ai_config and ai_config.get('enabled', False)
@@ -335,7 +335,7 @@ def _background_analyze_news(new_items):
     try:
         set_busy('news_collector', True)
         
-        from ai_analyzer import clean_text, truncate_text
+        from analysis.ai_analyzer import clean_text, truncate_text
         
         for item in new_items:
             news_id = item.get('id')
@@ -451,8 +451,8 @@ def _run_news_summary(auto=False):
 
 def _push_news_summary(analysis_content, date_str):
     """将新闻总结推送到飞书和微信"""
-    from feishu_pusher import send_feishu_message
-    from wechat_pusher import send_wechat_message
+    from pushers.feishu_pusher import send_feishu_message
+    from pushers.wechat_pusher import send_wechat_message
 
     title = f"明日热点前瞻（{date_str}）"
 
@@ -587,7 +587,7 @@ def news_collection_thread():
             
             # 有新新闻时，触发后台AI分析（所有新增新闻，含重要新闻）
             if actual_new_count > 0 and all_new_items:
-                from ai_analyzer import load_ai_config
+                from analysis.ai_analyzer import load_ai_config
                 ai_config = load_ai_config()
                 if ai_config and ai_config.get('enabled'):
                     import threading as _threading

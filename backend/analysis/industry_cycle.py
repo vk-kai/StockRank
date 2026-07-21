@@ -21,7 +21,7 @@ import threading
 import traceback
 
 from core.config import CONFIG_DIR, INDUSTRY_CYCLE_SCORES_DIR, INDUSTRY_CYCLE_SCORES_FILE, INDUSTRY_CYCLE_BATCH_STATUS_FILE
-from ai_analyzer import load_ai_config, call_ai_api
+from analysis.ai_analyzer import load_ai_config, call_ai_api
 from data.data_processor import error_logger
 from core.logger import get_logger
 

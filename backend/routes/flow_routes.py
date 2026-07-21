@@ -15,18 +15,18 @@ from data.data_processor import (
     get_market_map_sectors, get_market_map_stocks, get_market_map_all, get_market_map_tree, refresh_market_map_cache
 )
 from data.data_collector import is_trading_day, is_trading_time, is_morning_close, is_afternoon_close
-from anomaly_detector import (
+from analysis.anomaly_detector import (
     detect_for_snapshot, detect_full_day, list_alerts,
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
 from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow
-from ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
-from industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
-from intraday_timeline import get_stock_hover_summary
+from analysis.ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
+from analysis.industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
+from analysis.intraday_timeline import get_stock_hover_summary
 from data.market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from data.market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
-import stock_scorer
+from analysis import stock_scorer
 from core.logger import get_logger
 
 flow_bp = Blueprint('flow', __name__, url_prefix='/api/flow')
@@ -1009,7 +1009,7 @@ def analyze_single_news():
         
         # 分析成功则缓存
         if result.get('success') and result.get('analysis') and news_id:
-            from ai_analyzer import save_news_analysis
+            from analysis.ai_analyzer import save_news_analysis
             save_news_analysis(news_id, result['analysis'], result.get('duration', 0))
         
         return jsonify(result)
@@ -1059,7 +1059,7 @@ def anomaly_run():
 
         # 合并自选股价格异动(同一异动流展示)
         try:
-            from stock_price_monitor import list_alerts as list_stock_alerts
+            from monitors.stock_price_monitor import list_alerts as list_stock_alerts
             stock_date = snapshot.get('date') or date_str
             stock_alerts = list_stock_alerts(date_str=stock_date, limit=500) if stock_date else []
         except Exception as _e:
@@ -1099,7 +1099,7 @@ def anomaly_alerts():
 def stock_price_run():
     """自选股价格异动当日命中(供异动预警页合并展示)。"""
     try:
-        from stock_price_monitor import list_alerts as list_stock_alerts
+        from monitors.stock_price_monitor import list_alerts as list_stock_alerts
         from datetime import datetime
         date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
         alerts = list_stock_alerts(date_str=date_str, limit=500)
@@ -1113,7 +1113,7 @@ def stock_price_run():
 def stock_price_alerts():
     """价格异动已推送记录。"""
     try:
-        from stock_price_monitor import list_alerts as list_stock_alerts
+        from monitors.stock_price_monitor import list_alerts as list_stock_alerts
         date_str = request.args.get('date')
         alerts = list_stock_alerts(date_str=date_str)
         return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})

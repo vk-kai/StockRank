@@ -5,9 +5,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 
-import stock_price_monitor as m
-
-
+from monitors import stock_price_monitor as m
 def _q(price, prev_close, high=None, low=None, pct=None):
     high = price if high is None else high
     low = price if low is None else low

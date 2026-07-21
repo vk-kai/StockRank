@@ -28,7 +28,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-import stock_scorer
+from analysis import stock_scorer
 from data.data_processor import refresh_market_map_cache, get_all_market_map_stocks
 
 

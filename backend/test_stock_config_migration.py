@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from stock_price_monitor import migrate_legacy_config, DEFAULT_ALERTS_CFG
+from monitors.stock_price_monitor import migrate_legacy_config, DEFAULT_ALERTS_CFG
 
 
 class MigrationTests(unittest.TestCase):

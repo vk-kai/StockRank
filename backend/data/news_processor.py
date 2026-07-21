@@ -9,7 +9,7 @@ error_logger = get_logger('error')
 info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_news_headers
+    from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_news_headers
     
     dev_mode = is_dev_mode()
     api_url = DEV_NEWS_URL if dev_mode else NEWS_URL

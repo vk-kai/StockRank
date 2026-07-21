@@ -27,7 +27,7 @@ from core.config import (
     AI_CONFIG_FILE, STOCK_SCORE_PROMPT_FILE,
     STOCK_SCORES_FILE, STOCK_SCORE_STATUS_FILE, STOCK_SCORES_DIR,
 )
-from ai_analyzer import load_ai_config, call_ai_api, parse_ai_response
+from analysis.ai_analyzer import load_ai_config, call_ai_api, parse_ai_response
 from data.data_processor import get_all_market_map_stocks, error_logger
 from core.logger import get_logger
 

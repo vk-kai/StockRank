@@ -248,7 +248,7 @@ def parse_ths_sector_html(html_content, request_url=''):
     return sectors
 
 def get_sector_flow_data():
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
+    from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
     
     crawler_status = get_crawler_status()
     if crawler_status.get('sector_flow', {}).get('status') == 'failed':
@@ -478,7 +478,7 @@ def get_sector_stocks(sector_url):
     if _cached and _time.time() - _cached[0] < 300:
         return _cached[1]
 
-    from health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
+    from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
 
     if not sector_url:
         error_logger.error("板块URL为空")

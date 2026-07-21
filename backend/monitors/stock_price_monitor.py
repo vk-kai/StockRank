@@ -655,7 +655,7 @@ def _select_primary_hit(code, hits, alerts, cooldown):
 
 def _default_pusher(title, content):
     try:
-        from notification_pusher import send_news_message, is_push_enabled
+        from pushers.notification_pusher import send_news_message, is_push_enabled
         if not is_push_enabled():
             error_logger.warning(f'价格异动推送跳过: 无已启用的推送通道(飞书/企业微信)')
             return False

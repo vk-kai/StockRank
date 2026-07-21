@@ -1,6 +1,6 @@
 import unittest
 
-from news_score_thresholds import classify_score, get_score_label, is_directional_score
+from analysis.news_score_thresholds import classify_score, get_score_label, is_directional_score
 
 
 class NewsScoreThresholdTests(unittest.TestCase):

@@ -1,10 +1,10 @@
-from feishu_pusher import (
+from pushers.feishu_pusher import (
     load_feishu_config,
     push_daily_summary_feishu,
     send_feishu_message,
 )
 from core.logger import get_logger
-from wechat_pusher import (
+from pushers.wechat_pusher import (
     load_wechat_config,
     push_daily_summary_wechat,
     send_wechat_message,

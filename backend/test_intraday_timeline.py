@@ -1,9 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-import intraday_timeline
-
-
+from analysis import intraday_timeline
 class IntradayTimelineTests(unittest.TestCase):
     def test_build_timeline_events_detects_sector_rank_changes_and_news(self):
         realtime_data = {

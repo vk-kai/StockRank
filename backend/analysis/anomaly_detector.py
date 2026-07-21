@@ -596,7 +596,7 @@ def _is_in_cooldown(alerts, sector, sub, cfg, now_ts):
 def _push_findings(findings, cfg):
     """合并同板块异动 → 去重 → 推送 → 入库。"""
     try:
-        from notification_pusher import send_news_message
+        from pushers.notification_pusher import send_news_message
     except Exception as e:
         logger.error(f"无法导入推送模块: {e}")
         return

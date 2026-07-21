@@ -487,7 +487,7 @@ def stock_search():
 @config_bp.route('/stock-monitor', methods=['GET'])
 def get_stock_monitor_config():
     try:
-        from stock_price_monitor import load_config as load_stock_monitor_config
+        from monitors.stock_price_monitor import load_config as load_stock_monitor_config
         return jsonify({'success': True, 'data': load_stock_monitor_config()})
     except Exception as e:
         error_logger.error(f"获取股票监控配置失败: {e}")
@@ -509,8 +509,8 @@ def update_stock_monitor_config():
 
         # 清除 stock_monitor.py 的配置缓存，让后台监控线程下次循环读到新配置
         try:
-            from stock_monitor import _cached_config, _cache_time
-            import stock_monitor as _sm
+            from monitors.stock_monitor import _cached_config, _cache_time
+            from monitors import stock_monitor as _sm
             _sm._cached_config = None
             _sm._cache_time = 0
         except Exception:
@@ -764,7 +764,7 @@ def test_datasource():
 @config_bp.route('/push/test', methods=['POST'])
 def test_push_notification():
     """测试推送：同时发送飞书+微信，使用真实格式"""
-    from notification_pusher import is_push_enabled, send_feishu_message, send_wechat_message
+    from pushers.notification_pusher import is_push_enabled, send_feishu_message, send_wechat_message
     feishu_ok = False
     wechat_ok = False
     

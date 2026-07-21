@@ -5,7 +5,7 @@ from datetime import datetime
 import requests
 
 from core.config import WECHAT_CONFIG_FILE
-from feishu_pusher import format_change_value, format_flow_value, build_ai_chain_env_lines
+from pushers.feishu_pusher import format_change_value, format_flow_value, build_ai_chain_env_lines
 from core.logger import get_logger
 
 error_logger = get_logger('error')
