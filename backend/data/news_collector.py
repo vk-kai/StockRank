@@ -61,7 +61,31 @@ def ai_heartbeat():
 
 set_heartbeat_callback(ai_heartbeat)
 
-def load_all_news_status():
+# —— load_all_news_status 的 mtime 缓存 ——
+# news_collection_thread 每 30 秒调用一次，原实现每次全量遍历解析 NEWS_DIR 下所有 JSON，
+# 新闻文件多时 IO 开销显著。改为按目录签名(max_mtime, 文件数)缓存：签名不变即命中。
+_news_status_cache = None
+_news_status_signature = None
+
+
+def _news_dir_signature():
+    """返回 NEWS_DIR 的变更签名 (max_mtime, file_count)；目录无效/为空返回 (0, 0)。"""
+    try:
+        if not os.path.exists(NEWS_DIR):
+            return (0, 0)
+        files = [f for f in os.listdir(NEWS_DIR)
+                 if f.endswith('.json')
+                 and os.path.getsize(os.path.join(NEWS_DIR, f)) > 0]
+        if not files:
+            return (0, 0)
+        max_mtime = max(os.path.getmtime(os.path.join(NEWS_DIR, f)) for f in files)
+        return (max_mtime, len(files))
+    except Exception:
+        return (0, 0)
+
+
+def _load_all_news_status_from_disk():
+    """全量遍历 NEWS_DIR 所有 JSON，合并去重得到 {news_key: status}。"""
     all_status = {}
     try:
         if not os.path.exists(NEWS_DIR):
@@ -100,6 +124,22 @@ def load_all_news_status():
                     continue
     except Exception as e:
         error_logger.error(f"加载所有新闻状态失败: {e}")
+    return all_status
+
+
+def load_all_news_status(force_reload=False):
+    """获取所有新闻的去重状态(被推送/AI分析标记)。
+
+    带目录签名缓存：NEWS_DIR 文件 mtime/数量不变时直接返回缓存，避免每 30 秒全量重读。
+    force_reload=True 时绕过缓存强制读盘（用于主动写入后立即可见）。
+    """
+    global _news_status_cache, _news_status_signature
+    sig = _news_dir_signature()
+    if not force_reload and _news_status_cache is not None and sig == _news_status_signature:
+        return _news_status_cache
+    all_status = _load_all_news_status_from_disk()
+    _news_status_cache = all_status
+    _news_status_signature = sig
     return all_status
 
 def process_news_with_ai_and_push(news_list):
