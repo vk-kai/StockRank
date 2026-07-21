@@ -5,7 +5,9 @@ import json
 import requests
 from datetime import timedelta
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# config.py 位于 backend/core/ 子目录，需三层 dirname 才能回到项目根(StockRank/)
+# (重构前在 backend/ 时是两层；移到 core/ 后若不改，BASE_DIR 会错指到 backend/)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 if BASE_DIR == '/':
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
