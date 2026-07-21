@@ -2,7 +2,7 @@
 
 - 日期：2026-07-21
 - 涉及：backend/data/data_processor.py（2632 行，~60 函数）
-- 状态：待执行
+- 状态：已完成（2026-07-21，7 步全部落地 + 收尾）
 - 前置：backend 目录重构 + config BASE_DIR 修复 + 性能优化（均已完成验证）
 
 ## 1. 问题
@@ -74,17 +74,36 @@ data/data_processor/
 
 ## 9. 执行进度（新窗口接续指引）
 
-**已完成（本会话）**：
-- ✅ 步骤1 单文件→包转换：`data_processor.py` → `data_processor/` 包，`_legacy.py` 承载原内容，`__init__.py` facade 全量 re-export。功能零变化。（commit: `refactor(data_processor): 步骤1 单文件→包转换 + facade`）
-- ✅ 步骤2 抽出 `ai_chain.py`（G6，6 函数 + 3 全局，321 行）。_legacy 2632→2311 行。（commit: `refactor(data_processor): 步骤2 抽出 ai_chain 子模块`）
+**全部完成（2026-07-21）**：
 
-**剩余（新窗口续，按此顺序）**：
-- ⏳ 步骤3 `market_map.py`（G7，~430 行，自洽，类似 ai_chain 难度）
-- ⏳ 步骤4 `_common.py`（loggers + 解析工具 _safe_float/_parse_json_or_jsonp/_parse_ths_* + 跨组 URL 常量 + GLOBAL_INDICES_CACHE_FILE）。抽出后 ai_chain.py 等子模块的 `from ._legacy import _safe_float` 改为 `from ._common import _safe_float`
-- ⏳ 步骤5 `ths_client.py`（THS 全套：PROXY_POOL/cookie锁/headers/板块资金 get_sector_flow_data/板块个股 get_sector_stocks + latest_data）。**在此步做 latest_data accessor 修复**：ths_client 内 `_state={'latest_data':[]}` + `get_latest_data()`；flow_routes.py 4 处（426/429/475/478）改用 `get_latest_data()`；facade re-export `get_latest_data`（不再 re-export 裸 `latest_data` 变量）。注意 get_sector_flow_data 内 3 个闭包整体迁移；get_sector_stocks 函数属性缓存迁移无功能影响
-- ⏳ 步骤6 `storage.py`（G3 文件IO + G4 日报聚合 + G9 TOP5，22 函数，强耦合合并）
-- ⏳ 步骤7 `market_index.py`（G5 大盘指数 + G8 大盘摘要，`latest_market_data` 共享 dict 必须同模块；含 get_stock_statistics 虽在远处但写 latest_market_data['stats']）
-- ⏳ 收尾：_legacy 清空删除；全验证含真实启动 `python app.py` + curl /health
+| 步骤 | 子模块 | commit |
+|---|---|---|
+| 1 | 单文件→包转换 + facade | `14ee8a1` |
+| 2 | `ai_chain.py`（G6） | `f29aa1a` |
+| 3 | `market_map.py`（G7，11 函数 + SW_L2_TO_L1） | `2c4eea2` |
+| 4 | `_common.py`（4 logger + 解析工具 + MARKET_INDEX_URL/GLOBAL_INDICES_CACHE_FILE；删死代码 cleanup_logger） | `2c4eea2` |
+| 5 | `ths_client.py`（THS 全套 + **latest_data accessor 修复** + flow_routes 4 处改造） | `987bdf0` |
+| 6 | `storage.py`（G3 文件IO + G4 日报 + G9 TOP5，16 公共函数） | `3ab5af3` |
+| 7 | `market_index.py`（G5 大盘指数 + G8 摘要 + get_stock_statistics；latest_market_data 共享态） | `c6a7b5b` |
+| 收尾 | 删 `_legacy.py` + facade 去 `from ._legacy import *` | `bc817ad` |
+
+**最终结构**（原 2632 行单文件 → 7 文件）：
+`__init__.py`(facade) / `_common` / `ths_client` / `storage` / `market_index` / `ai_chain` / `market_map`
+
+**额外修复**（步骤3 commit `2c4eea2`）：发现 `.gitignore` 的 `backend/data/*/` 规则在 data_processor 由单文件改为包后被误忽略，
+导致步骤1/2 的 `__init__.py`/`ai_chain.py` 从未入库（origin/main 实际不可用）。改为 `backend/data/*/*` + `!backend/data/data_processor/*.py`，
+已 `git check-ignore` 验证代码包放行、运行时数据/jarvis/health/daily/realtime 仍忽略。
+
+**latest_data bug 修复**（步骤5）：原 `get_sector_flow_data` 用 `global latest_data; latest_data = sectors` 重绑定，
+flow_routes 导入时捕获的空 list 永不更新 → 非交易时间接口总走 fallback。改为 ths_client 内 `_state={'latest_data':[]}` + `get_latest_data()` accessor，
+flow_routes 4 处改用 accessor，facade 不再暴露裸变量。
+
+**全验证**：每步 `compileall` + `import app` + 公共 API 溯源；最终 `import app` + 全部 consumer 模块
+(routes/analysis/monitors/pushers/data) + `unittest` 53 测试（2 预存失败 test_auth_guard/test_stock_price_monitor，与拆分无关）
++ 真实启动 `python app.py` + `curl /health` → **200**。
+
+**部署提醒**：线上 docker 跑旧镜像，需服务器重新构建部署才生效（见 [[stockrank-deployed-on-server]]）。
+步骤1/2 的 broken 中间 commit 已留在历史，但 origin/main 末端（本次推送后）完整可用。
 
 **抽取范式（以已完成的 ai_chain.py 为标准模板）**：
 1. `grep -n "^def \|^# ===\|^[A-Z_]* ="` _legacy.py 定位目标区行号（注意：每删一个子模块，后续行号前移，每步重新 grep）
