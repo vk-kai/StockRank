@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from stock_price_feed import parse_sina, parse_tencent, get_quotes
+from data.stock_price_feed import parse_sina, parse_tencent, get_quotes
 
 
 # 新浪字段顺序:0 名称,1 今开,2 昨收,3 现价,4 最高,5 最低,...

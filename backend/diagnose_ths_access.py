@@ -5,7 +5,7 @@ import time
 import requests
 
 from core.config import THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL
-from data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
+from data.data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
 
 
 TEST_URLS = [

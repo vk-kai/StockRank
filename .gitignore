@@ -18,7 +18,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # 项目特定
-data/
+# data 锚定根目录：只忽略仓库根数据目录，保留 backend/data/ 代码包
+/data/
+# logs 全部忽略（均为运行时日志：根 logs/ 与 backend/logs/ 都不提交）
 logs/
 config/ai_config.json
 config/feishu_config.json

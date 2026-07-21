@@ -2,7 +2,7 @@ import os
 import time
 import traceback
 from datetime import datetime, timedelta
-from news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
+from data.news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
 from ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache, summarize_daily_news
 from notification_pusher import (
     ALL_AI_FILTER,

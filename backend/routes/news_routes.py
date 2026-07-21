@@ -2,10 +2,10 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 import traceback
 import threading
-from news_processor import get_recent_news, search_news, NEWS_DIR
+from data.news_processor import get_recent_news, search_news, NEWS_DIR
 from ai_analyzer import load_news_analysis_cache
 from news_score_thresholds import classify_score, is_directional_score, compute_overall_score
-from data_processor import error_logger
+from data.data_processor import error_logger
 from core.config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
 from core.logger import get_logger
 import os
@@ -455,7 +455,7 @@ def start_news_summary():
         with _news_summary_lock:
             _news_summary_running = True
         try:
-            from news_collector import _run_news_summary
+            from data.news_collector import _run_news_summary
             _run_news_summary(auto=False)
         except Exception as e:
             error_logger.error(f"手动新闻总结后台任务异常: {e}")

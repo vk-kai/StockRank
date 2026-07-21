@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-import margin_collector
+from data import margin_collector
 
 
 class MarginSeriesBalanceTests(unittest.TestCase):

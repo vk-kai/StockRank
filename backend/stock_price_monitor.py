@@ -734,9 +734,9 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
 # 后台轮询线程:交易时段每 poll_interval_seconds 秒批量拉报价 → 逐票 process_tick
 # --------------------------------------------------------------------------
 def stock_price_loop():
-    from data_collector import is_trading_day, is_trading_time
-    from stock_price_feed import get_quotes
-    from stock_resolver import resolve_identifier, get_limit_pct
+    from data.data_collector import is_trading_day, is_trading_time
+    from data.stock_price_feed import get_quotes
+    from data.stock_resolver import resolve_identifier, get_limit_pct
     logger.info('价格异动监控线程启动')
     _log_skip_count = 0  # 抑制重复日志
     while True:

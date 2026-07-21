@@ -355,7 +355,7 @@ def get_sector_flow_data():
                 # 请求成功
                 global latest_data
                 latest_data = sectors
-                from data_collector import is_trading_day, is_trading_time
+                from data.data_collector import is_trading_day, is_trading_time
                 from datetime import datetime
                 now = datetime.now()
                 if is_trading_day(now) and is_trading_time(now):

@@ -29,7 +29,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 import stock_scorer
-from data_processor import refresh_market_map_cache, get_all_market_map_stocks
+from data.data_processor import refresh_market_map_cache, get_all_market_map_stocks
 
 
 def poll_until_done(label=''):

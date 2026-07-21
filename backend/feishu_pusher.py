@@ -166,7 +166,7 @@ def build_ai_chain_env_lines():
     """构建"AI产业链外部环境"文本行，用于每日早间(上午)飞书汇总卡头部。
     数据来自 data_processor.get_ai_chain_indicators()；任一失败返回空列表，绝不影响主汇总推送。"""
     try:
-        from data_processor import get_ai_chain_indicators
+        from data.data_processor import get_ai_chain_indicators
         data = get_ai_chain_indicators()
         if not data:
             return []

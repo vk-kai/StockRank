@@ -95,7 +95,7 @@ def get_news_headers():
 def get_sector_headers():
     """获取板块API请求头：优先使用共享请求头"""
     shared = get_shared_headers()
-    from data_processor import generate_random_headers, normalize_ths_sector_headers
+    from data.data_processor import generate_random_headers, normalize_ths_sector_headers
     if shared:
         return normalize_ths_sector_headers(shared)
     return normalize_ths_sector_headers(generate_random_headers())
@@ -121,7 +121,7 @@ def _verify_headers_with_url(url, headers, timeout=10):
     start_time = time.time()
     try:
         if '10jqka.com.cn' in url and ('funds/hyzjl' in url or '/thshy/' in url):
-            from data_processor import normalize_ths_sector_headers
+            from data.data_processor import normalize_ths_sector_headers
             headers = normalize_ths_sector_headers(headers)
 
         session = requests.Session()
@@ -200,7 +200,7 @@ def _test_sector_with_headers(headers):
 
 def _acquire_headers(max_attempts=9):
     """尝试获取可用请求头，最多max_attempts次。返回 (headers, 成功)"""
-    from data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
+    from data.data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
 
     last_time = 0
     for attempt in range(max_attempts):
@@ -219,7 +219,7 @@ def _acquire_headers(max_attempts=9):
     return None, False, last_time
 
 def _acquire_news_headers(max_attempts=5):
-    from data_processor import generate_random_headers
+    from data.data_processor import generate_random_headers
 
     for attempt in range(max_attempts):
         headers = generate_random_headers(host='news.10jqka.com.cn', referer='https://news.10jqka.com.cn/')

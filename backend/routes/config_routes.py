@@ -14,7 +14,7 @@ from core.config import (
     STOCK_SCORE_PROMPT_FILE, DATASOURCE_CONFIG_FILE, DEFAULT_DATASOURCES,
     get_random_user_agent, get_eastmoney_headers
 )
-from data_processor import error_logger
+from data.data_processor import error_logger
 from core.logger import get_logger
 from .auth_routes import verify_password
 from core.otp_service import (
@@ -476,7 +476,7 @@ def stock_search():
         kw = (request.args.get('kw') or request.args.get('q') or '').strip()
         if not kw:
             return jsonify({'success': True, 'data': []})
-        from stock_resolver import search_candidates
+        from data.stock_resolver import search_candidates
         data = search_candidates(kw, limit=10)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
@@ -695,7 +695,7 @@ def test_datasource():
             elif '同花顺' in provider:
                 # 使用与业务请求相同的cookie生成逻辑
                 try:
-                    from data_processor import attach_fresh_ths_cookie, generate_random_headers, normalize_ths_sector_headers
+                    from data.data_processor import attach_fresh_ths_cookie, generate_random_headers, normalize_ths_sector_headers
                     host = 'data.10jqka.com.cn'
                     if 'q.10jqka' in test_url:
                         host = 'q.10jqka.com.cn'

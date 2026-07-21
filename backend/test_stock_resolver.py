@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from stock_resolver import (
+from data.stock_resolver import (
     classify_board, get_limit_pct,
     parse_sina_suggest, resolve_identifier, NameCodeCache,
 )

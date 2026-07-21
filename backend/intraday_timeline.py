@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from data_processor import get_market_map_stocks, load_market_summary_cache, load_realtime_data
-from margin_collector import get_stock_margin_series
-from news_processor import get_recent_news
+from data.data_processor import get_market_map_stocks, load_market_summary_cache, load_realtime_data
+from data.margin_collector import get_stock_margin_series
+from data.news_processor import get_recent_news
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
