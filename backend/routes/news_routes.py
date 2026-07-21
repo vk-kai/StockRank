@@ -323,7 +323,6 @@ def get_news_score_trend():
                 direction = classify_score(score)
                 # 中性新闻（46-54）只计入中性计数，不参与综合总分计算
                 if is_directional_score(score):
-                    all_scores.append(score)
                     # 同时记录每个桶的评分
                     if 'scores' not in bucket_stats[bucket]:
                         bucket_stats[bucket]['scores'] = []
