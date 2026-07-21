@@ -16,6 +16,7 @@ from datetime import datetime
 from core.config import DATA_DIR
 from data.data_processor import get_market_map_tree, error_logger, system_logger
 from data.data_collector import is_trading_day
+from monitors.thread_monitor import register_thread, heartbeat
 
 # 10 个半小时整点（升序）
 SNAPSHOT_TIMES = ['09:30', '10:00', '10:30', '11:00', '11:30',
@@ -117,9 +118,11 @@ def _match_mark(now, captured):
 
 def market_map_snapshot_thread():
     """每分钟检查：交易日 + 命中未抓取整点 → 抓取完整云图并存盘。"""
+    register_thread('market_map_snapshot')
     system_logger.info("大盘云图快照线程已启动")
     while True:
         try:
+            heartbeat('market_map_snapshot')
             now = datetime.now()
             if is_trading_day(now):
                 date_str = _today_str(now)

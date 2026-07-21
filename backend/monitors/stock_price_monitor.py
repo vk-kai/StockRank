@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from core.config import REALTIME_DIR, STOCK_MONITOR_CONFIG_FILE
 from core.logger import get_logger
+from monitors.thread_monitor import register_thread, heartbeat
 
 logger = get_logger('stock_price')
 error_logger = get_logger('error')
@@ -737,10 +738,12 @@ def stock_price_loop():
     from data.data_collector import is_trading_day, is_trading_time
     from data.stock_price_feed import get_quotes
     from data.stock_resolver import resolve_identifier, get_limit_pct
+    register_thread('stock_price_monitor')
     logger.info('价格异动监控线程启动')
     _log_skip_count = 0  # 抑制重复日志
     while True:
         try:
+            heartbeat('stock_price_monitor')
             now = datetime.now()
             cfg = load_config()
             interval = cfg.get('poll_interval_seconds', 25)
