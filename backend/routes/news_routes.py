@@ -4,7 +4,7 @@ import traceback
 import threading
 from news_processor import get_recent_news, search_news, NEWS_DIR
 from ai_analyzer import load_news_analysis_cache
-from news_score_thresholds import classify_score, is_directional_score
+from news_score_thresholds import classify_score, is_directional_score, compute_overall_score
 from data_processor import error_logger
 from config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
 from logger import get_logger
@@ -283,7 +283,8 @@ def get_news_score_trend():
         
         # 按时间桶分组统计（只统计今天）
         bucket_stats = {}  # {bucket_label: {'positive': n, 'negative': n, 'neutral': n, 'scores': []}}
-        all_scores = []  # 收集今日所有评分
+        pos_scores = []  # 今日所有利好评分（算总分/均分用）
+        neg_scores = []  # 今日所有利空评分（算总分/均分用）
         for item in all_news:
             news_id = str(item.get('id', ''))
             time_str = item.get('time', '')
@@ -330,8 +331,10 @@ def get_news_score_trend():
                 
                 if direction == 'positive':
                     bucket_stats[bucket]['positive'] += 1
+                    pos_scores.append(score)
                 elif direction == 'negative':
                     bucket_stats[bucket]['negative'] += 1
+                    neg_scores.append(score)
                 else:
                     bucket_stats[bucket]['neutral'] += 1
         
@@ -369,11 +372,9 @@ def get_news_score_trend():
         total_neutral = sum(s.get('neutral', 0) for s in bucket_stats.values())
         total_analyzed = total_positive + total_negative + total_neutral
         
-        # 综合情绪评分（0-100，50为中性）：仅由利好/利空评分平均得出，中性不计入
-        if all_scores:
-            overall_score = round(sum(all_scores) / len(all_scores))
-        else:
-            overall_score = 50
+        # 综合情绪评分（0-100，50为中性）：条数净占比法，让多空数量对比明显反映到总分
+        # 方向性新闻 >= MIN_DIRECTIONAL_SAMPLES 用条数占比，不足回退强度平均（见 compute_overall_score）
+        overall_score = compute_overall_score(pos_scores, neg_scores)
         
         # 倾向判断（基于综合评分）
         if total_analyzed == 0:
@@ -411,6 +412,8 @@ def get_news_score_trend():
                     'total_neutral': total_neutral,
                     'total_analyzed': total_analyzed,
                     'overall_score': overall_score,
+                    'avg_positive_score': round(sum(pos_scores) / len(pos_scores)) if pos_scores else None,
+                    'avg_negative_score': round(sum(neg_scores) / len(neg_scores)) if neg_scores else None,
                     'tendency': tendency
                 }
             },

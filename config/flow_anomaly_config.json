@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "z_threshold": 2,
+  "min_samples": 8,
+  "abs_threshold": 50,
+  "divergence_change": 0.002,
+  "min_net_for_divergence": 2,
+  "spike_threshold": 20,
+  "streak_min": 4,
+  "min_net_for_streak": 3,
+  "cooldown_minutes": 5,
+  "baseline_days": 20,
+  "rank_top_net": 30
+}

@@ -553,6 +553,12 @@ export default {
       const overallScore = this.scoreTrendData.summary?.overall_score ?? 50
       const scoreColor = overallScore >= 55 ? '#ef4444' : (overallScore <= 45 ? '#22c55e' : '#eab308')
       const scoreLabel = overallScore >= 55 ? '偏利好' : (overallScore <= 45 ? '偏利空' : '多空均衡')
+      // 强度辅助指标：条数占比法不携带强度，这里补一行利好/利空平均分
+      const avgPos = this.scoreTrendData.summary?.avg_positive_score
+      const avgNeg = this.scoreTrendData.summary?.avg_negative_score
+      const avgLine = (avgPos != null && avgNeg != null)
+        ? '\n{avg|利好均' + avgPos + ' · 利空均' + avgNeg + '}'
+        : ''
 
       const option = {
         tooltip: {
@@ -564,7 +570,7 @@ export default {
           textStyle: { color: '#ccc', fontSize: 11 }
         },
         title: {
-          text: '{val|' + overallScore + '}\n{label|' + scoreLabel + '}',
+          text: '{val|' + overallScore + '}\n{label|' + scoreLabel + '}' + avgLine,
           left: '55%',
           top: 'center',
           textAlign: 'center',
@@ -581,6 +587,12 @@ export default {
               label: {
                 fontSize: 11,
                 color: '#888',
+                align: 'center'
+              },
+              avg: {
+                fontSize: 10,
+                color: '#666',
+                lineHeight: 14,
                 align: 'center'
               }
             }
