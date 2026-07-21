@@ -8,7 +8,7 @@ import re
 from core.config import DAILY_DIR, REALTIME_DIR, AI_DAILY_RESULT_FILE, AI_DAILY_STATUS_FILE
 from data.data_processor import (
     load_recent_daily_data, load_recent_realtime_data,
-    load_recent_daily_data_with_accumulation, latest_data, load_daily_data, 
+    load_recent_daily_data_with_accumulation, get_latest_data, load_daily_data,
     load_realtime_data, error_logger, get_market_overview, get_accumulated_top_sectors,
     get_top5_comparison_data, get_sector_stocks, load_market_summary_cache,
     refresh_market_summary_cache, is_market_summary_complete, get_global_market_indices, get_ai_chain_indicators,
@@ -423,10 +423,10 @@ def get_current_flow():
                     'message': f'{period_msg}返回今日最新数据'
                 })
             
-            if latest_data:
+            if get_latest_data():
                 return jsonify({
                     'success': True,
-                    'data': latest_data,
+                    'data': get_latest_data(),
                     'timestamp': datetime.now().astimezone().isoformat(),
                     'message': '非交易时间，返回缓存数据'
                 })
@@ -472,10 +472,10 @@ def get_current_flow():
                     'message': '交易时间，返回今日汇总数据'
                 })
             
-            if latest_data:
+            if get_latest_data():
                 return jsonify({
                     'success': True,
-                    'data': latest_data,
+                    'data': get_latest_data(),
                     'timestamp': datetime.now().astimezone().isoformat(),
                     'message': '交易时间，返回缓存数据'
                 })

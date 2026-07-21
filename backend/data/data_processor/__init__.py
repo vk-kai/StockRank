@@ -12,4 +12,9 @@ from .market_map import (  # noqa: F401  (已从 _legacy 抽出到独立子模�
     get_market_map_tree, get_market_map_all, get_market_map_sectors,
     get_market_map_stocks, get_all_market_map_stocks, refresh_market_map_cache,
 )
+from .ths_client import (  # noqa: F401  (已从 _legacy 抽出到独立子模块；含 latest_data accessor)
+    generate_random_headers, normalize_ths_sector_headers,
+    attach_fresh_ths_cookie, refresh_ths_cookie,
+    get_sector_flow_data, get_sector_stocks, get_latest_data,
+)
 from ._common import error_logger, data_logger, system_logger  # noqa: F401  (logger 的规范归属)
