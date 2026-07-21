@@ -1,8 +1,7 @@
-"""AI 产业链外部环境温度计（从 data_processor._legacy 拆分）。
+"""AI 产业链外部环境温度计。
 
 7 个对 AI 产业链（封测/先进封装/AI 硬件，如长电科技）影响显著的领先指标。
-依赖 _legacy 的 _safe_float/error_logger/MARKET_INDEX_URL/GLOBAL_INDICES_CACHE_FILE
-（过渡期；待 _common 抽出后改 import _common）。
+依赖 _common 的 _safe_float/error_logger/MARKET_INDEX_URL/GLOBAL_INDICES_CACHE_FILE。
 """
 import os
 import json

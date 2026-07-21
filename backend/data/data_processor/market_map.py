@@ -1,7 +1,7 @@
 """大盘云图（市场行业地图，从 data_processor._legacy 拆分）。
 
 三级树：申万一级 → 二级 → 个股。行业+市值来自东方财富全A股缓存（低频更新），涨跌幅来自新浪实时行情（高频）。
-依赖 _legacy 的 _safe_float / error_logger（过渡期；待 _common 抽出后改 import _common）。
+依赖 _common 的 _safe_float / error_logger。
 """
 import os
 import json
