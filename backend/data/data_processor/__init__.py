@@ -17,4 +17,13 @@ from .ths_client import (  # noqa: F401  (已从 _legacy 抽出到独立子模�
     attach_fresh_ths_cookie, refresh_ths_cookie,
     get_sector_flow_data, get_sector_stocks, get_latest_data,
 )
+from .storage import (  # noqa: F401  (已从 _legacy 抽出到独立子模块：G3 文件IO + G4 日报 + G9 TOP5)
+    get_daily_file_path, get_realtime_file_path,
+    load_daily_data, save_daily_data, update_push_status, is_pushed,
+    load_realtime_data, save_realtime_data, cleanup_old_data,
+    generate_daily_summary, generate_daily_summary_for_date,
+    load_recent_daily_data, load_recent_daily_data_with_accumulation,
+    get_accumulated_top_sectors, load_recent_realtime_data,
+    get_top5_comparison_data,
+)
 from ._common import error_logger, data_logger, system_logger  # noqa: F401  (logger 的规范归属)
