@@ -111,6 +111,11 @@ AI_NEWS_SUMMARY_STATUS_FILE = os.path.join(CONFIG_DIR, 'ai_news_summary_status.j
 NEWS_ANALYSIS_CACHE_FILE = os.path.join(CONFIG_DIR, 'news_analysis_cache.json')
 MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'monitor_config.json')
 
+# OTP 动态口令（TOTP）二次验证：开关 + 密钥
+OTP_CONFIG_FILE = os.path.join(CONFIG_DIR, 'otp_config.json')
+# 会话签名密钥持久化：开启 OTP 时旋转并落盘，使所有旧会话立即失效（强制重新登录）
+SESSION_SECRET_FILE = os.path.join(CONFIG_DIR, 'session_secret.json')
+
 # AI 批量股票打分（大盘云图）：提示词 + 分数/状态持久化（低频数据，放 data/ 不随每日清理）
 STOCK_SCORE_PROMPT_FILE = os.path.join(CONFIG_DIR, 'stock_score_prompt.txt')
 DATASOURCE_CONFIG_FILE = os.path.join(CONFIG_DIR, 'datasource_config.json')

@@ -20,10 +20,17 @@ ENV THS_BROWSER_PATH=/usr/bin/chromium
 
 RUN mkdir -p /app/backend /app/config /app/data /app/logs /app/data/daily /app/data/realtime
 
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --upgrade pip
+# 重型稳定依赖单独一层：后续加小依赖（改 requirements.txt）时这层缓存命中，不重装 akshare/pandas/numpy
+COPY requirements-base.txt ./backend/
+RUN pip install --progress-bar on --timeout 60 --retries 2 \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    -r ./backend/requirements-base.txt -v
 
+# 易变依赖（新功能小包，如 OTP 的 pyotp/qrcode）：base 缓存命中时这里通常秒级完成
 COPY requirements.txt ./backend/
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r ./backend/requirements.txt
+RUN pip install  --progress-bar on --timeout 60 --retries 2 \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    -r ./backend/requirements.txt -v
 
 COPY start.sh ./backend/
 RUN chmod +x /app/backend/start.sh

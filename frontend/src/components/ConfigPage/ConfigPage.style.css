@@ -1098,3 +1098,77 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
+
+/* ==================== OTP 动态口令 ==================== */
+.otp-bind-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed rgba(111, 142, 190, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.otp-step {
+  margin: 0;
+  color: #c8d6e8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.otp-qr {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.otp-qr img {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+
+.otp-secret {
+  font-family: 'Courier New', Consolas, monospace;
+  letter-spacing: 2px;
+  font-size: 15px;
+  color: #7cc4ff;
+  background: #08111f;
+  border: 1px solid rgba(111, 142, 190, 0.42);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+  word-break: break-all;
+  user-select: all;
+}
+
+.otp-code-input {
+  height: 42px;
+  border-radius: 6px;
+  border: 1px solid rgba(111, 142, 190, 0.42);
+  background: #08111f;
+  color: #e5edf7;
+  padding: 0 14px;
+  font-size: 18px;
+  letter-spacing: 6px;
+  text-align: center;
+  max-width: 240px;
+}
+
+.otp-code-input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
+@media (max-width: 768px) {
+  .otp-qr img {
+    width: 180px;
+    height: 180px;
+  }
+}

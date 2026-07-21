@@ -278,8 +278,8 @@ export async function clearMarketMapPush() {
   }
 }
 
-export async function login(username, password) {
-  const response = await apiClient.post('/auth/login', { username, password })
+export async function login(username, password, otpCode = '') {
+  const response = await apiClient.post('/auth/login', { username, password, otp_code: otpCode })
   return response.data
 }
 
@@ -290,6 +290,40 @@ export async function logout() {
 
 export async function getAuthSession() {
   const response = await apiClient.get('/auth/session')
+  return response.data
+}
+
+export async function getOtpRequired() {
+  // 公开接口：登录时是否需要 OTP 动态口令输入框
+  try {
+    const response = await apiClient.get('/auth/otp-required')
+    return response.data
+  } catch (error) {
+    return { success: false, otp_required: false }
+  }
+}
+
+export async function getOtpStatus() {
+  const response = await apiClient.get('/config/otp/status')
+  return response.data
+}
+
+export async function getOtpSetup() {
+  const response = await apiClient.get('/config/otp/setup')
+  return response.data
+}
+
+export async function enableOtp(password, secret, otpCode) {
+  const response = await apiClient.post('/config/otp/enable', {
+    password, secret, otp_code: otpCode
+  })
+  return response.data
+}
+
+export async function disableOtp(password, otpCode) {
+  const response = await apiClient.post('/config/otp/disable', {
+    password, otp_code: otpCode
+  })
   return response.data
 }
 

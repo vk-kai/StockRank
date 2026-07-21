@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 
 from daily_password import verify_password as _verify_daily_password
+from otp_service import is_otp_enabled, load_otp_config, verify_code
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
@@ -62,22 +63,35 @@ def login():
     data = request.get_json(silent=True) or {}
     username = str(data.get('username') or '').strip()
     password = str(data.get('password') or '')
+    otp_code = str(data.get('otp_code') or '').strip()
 
-    if username == USERNAME and verify_password(password):
-        session['stockrank_user'] = USERNAME
-        session.permanent = True
+    # 1) 账号密码先过（仍是 vk / vk666+月日）
+    if not (username == USERNAME and verify_password(password)):
         return jsonify({
-            'success': True,
-            'authenticated': True,
-            'username': USERNAME,
-        })
+            'success': False,
+            'authenticated': False,
+            'error': 'invalid_credentials',
+            'message': '账号或密码错误'
+        }), 401
 
+    # 2) 若已开启 OTP 动态口令，必须再校验一次口令，缺失/错误一律不建立会话
+    if is_otp_enabled():
+        cfg = load_otp_config()
+        if not verify_code(cfg.get('secret', ''), otp_code):
+            return jsonify({
+                'success': False,
+                'authenticated': False,
+                'error': 'otp_required',
+                'message': '请输入动态口令'
+            }), 401
+
+    session['stockrank_user'] = USERNAME
+    session.permanent = True
     return jsonify({
-        'success': False,
-        'authenticated': False,
-        'error': 'invalid_credentials',
-        'message': '账号或密码错误'
-    }), 401
+        'success': True,
+        'authenticated': True,
+        'username': USERNAME,
+    })
 
 
 @auth_bp.route('/auth/logout', methods=['POST'])
@@ -93,4 +107,15 @@ def auth_session():
         'success': True,
         'authenticated': authed,
         'username': USERNAME if authed else '',
+    })
+
+
+@auth_bp.route('/auth/otp-required', methods=['GET'])
+def auth_otp_required():
+    """公开接口：告诉前端登录时是否需要 OTP 动态口令输入框。
+    位于 /api/auth/ 下，已被 install_auth_guard 放行（无需登录）。
+    """
+    return jsonify({
+        'success': True,
+        'otp_required': is_otp_enabled(),
     })

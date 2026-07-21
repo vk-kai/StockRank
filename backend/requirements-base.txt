@@ -1,0 +1,15 @@
+# 重型 / 稳定依赖：变动极少。
+# 单独成层，缓存命中后即使改 requirements.txt（加小包）也不会重装这些大包。
+# 阿里/清华源安装 pandas/numpy/akshare（依赖极多）通常 2~5 分钟，放这里只装一次。
+flask==3.0.0
+flask-cors==4.0.0
+flask-socketio==5.3.6
+requests==2.31.0
+gunicorn==21.2.0
+pandas
+numpy
+beautifulsoup4
+websocket-client
+python-engineio==4.9.0
+python-socketio==5.11.1
+akshare>=1.14.0

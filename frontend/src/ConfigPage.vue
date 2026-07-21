@@ -623,6 +623,82 @@
           </div>
         </div>
       </div>
+
+      <div v-if="activeTab === 'otp'" class="config-section">
+        <h2>🔑 OTP 动态口令（登录二次验证）</h2>
+        <div class="config-form">
+          <!-- 当前状态 -->
+          <div class="form-group">
+            <label>当前状态</label>
+            <span class="hint">
+              <b :style="{ color: otpConfig.enabled ? '#67c23a' : '#9db0ca' }">
+                {{ otpConfig.enabled ? '✅ 已开启' : '⚪ 未开启' }}
+              </b>
+              <template v-if="otpConfig.enabled && otpConfig.enrolled_at">
+                · 绑定于 {{ otpConfig.enrolled_at }}
+              </template>
+            </span>
+          </div>
+
+          <!-- 未开启：绑定流程 -->
+          <template v-if="!otpConfig.enabled">
+            <div class="form-group" v-if="!otpSetup.qr_data_url">
+              <label>开启 OTP</label>
+              <span class="hint">开启后，所有设备的登录都需要在账号密码之外再输入一次手机生成的 6 位动态口令；并会立即清空所有已登录状态，要求重新登录。</span>
+            </div>
+            <div class="form-actions" v-if="!otpSetup.qr_data_url">
+              <button @click="startOtpSetup" class="btn-primary" :disabled="otpLoading">
+                {{ otpLoading ? '生成中...' : '生成二维码并绑定' }}
+              </button>
+            </div>
+
+            <div v-if="otpSetup.qr_data_url" class="otp-bind-block">
+              <p class="otp-step">① 用手机上的 Google/微软/阿里云 Authenticator 扫描下方二维码：</p>
+              <div class="otp-qr">
+                <img :src="otpSetup.qr_data_url" alt="OTP 二维码" />
+              </div>
+              <p class="otp-step">② 无法扫码？在 App 中手动添加，密钥（Base32）：</p>
+              <div class="otp-secret">{{ otpSetup.secret }}</div>
+              <p class="otp-step">③ 添加成功后，输入手机上当前显示的 6 位数字验证是否绑定成功：</p>
+              <input
+                type="text"
+                v-model="otpCodeInput"
+                inputmode="numeric"
+                maxlength="6"
+                placeholder="6 位动态口令"
+                class="otp-code-input"
+              />
+              <div class="form-actions">
+                <button @click="confirmEnableOtpClick" class="btn-primary" :disabled="otpLoading">
+                  {{ otpLoading ? '验证中...' : '确认绑定' }}
+                </button>
+                <button @click="cancelOtpSetup" class="btn-cancel">取消</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- 已开启：关闭流程 -->
+          <template v-else>
+            <div class="form-group">
+              <label>关闭 OTP</label>
+              <span class="hint">关闭需输入当前手机显示的 6 位动态口令 + 登录密码以确认。</span>
+            </div>
+            <input
+              type="text"
+              v-model="otpCodeInput"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="6 位动态口令"
+              class="otp-code-input"
+            />
+            <div class="form-actions">
+              <button @click="confirmDisableOtpClick" class="btn-cancel" :disabled="otpLoading">
+                {{ otpLoading ? '处理中...' : '关闭 OTP' }}
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
     </div>
 
     <div class="password-modal" v-if="passwordModal.show" @click.self="closePasswordModal">
