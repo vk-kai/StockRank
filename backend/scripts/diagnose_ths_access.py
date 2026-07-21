@@ -1,8 +1,15 @@
 import argparse
+import os
 import sys
 import time
 
 import requests
+
+# 脚本位于 backend/scripts/，把 backend/ 加入 sys.path 以导入各子包
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_BACKEND = os.path.dirname(_HERE)
+if _BACKEND not in sys.path:
+    sys.path.insert(0, _BACKEND)
 
 from core.config import THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL
 from data.data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie

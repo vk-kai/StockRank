@@ -7,12 +7,12 @@
 使用与服务器**完全相同**的评分逻辑和提示词（复用 stock_scorer 模块），
 产出 data/stock_scores/scores.json —— 跑完把这个文件上传替换服务器同名文件即可。
 
-用法（在 backend 目录 或 仓库根目录 都行）：
-    python run_scoring_local.py                       # 全量打分（首次）
-    python run_scoring_local.py --scope missing       # 只补未评分的（超时漏掉的）
-    python run_scoring_local.py --scope insufficient  # 只重评"信息不足"的
-    python run_scoring_local.py --rounds 3            # 全量 + 自动补漏2轮（推荐，对抗超时）
-    python run_scoring_local.py --limit 30            # 只打分前30只（先小批验证提示词效果）
+用法（在 backend 目录运行，脚本位于 scripts/）：
+    python scripts/run_scoring_local.py                       # 全量打分（首次）
+    python scripts/run_scoring_local.py --scope missing       # 只补未评分的（超时漏掉的）
+    python scripts/run_scoring_local.py --scope insufficient  # 只重评"信息不足"的
+    python scripts/run_scoring_local.py --rounds 3            # 全量 + 自动补漏2轮（推荐，对抗超时）
+    python scripts/run_scoring_local.py --limit 30            # 只打分前30只（先小批验证提示词效果）
 
 前提：
     1) config/ai_config.json 已配置好 AI（同服务器配置）
@@ -23,10 +23,11 @@ import sys
 import time
 import argparse
 
-# 让 backend 包内的模块可被导入（支持从仓库根或 backend 目录运行）
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
+# 脚本位于 backend/scripts/，把 backend/ 加入 sys.path 以导入各子包
+_HERE = os.path.dirname(os.path.abspath(__file__))   # .../backend/scripts
+_BACKEND = os.path.dirname(_HERE)                     # .../backend
+if _BACKEND not in sys.path:
+    sys.path.insert(0, _BACKEND)
 
 from analysis import stock_scorer
 from data.data_processor import refresh_market_map_cache, get_all_market_map_stocks
