@@ -26,4 +26,13 @@ from .storage import (  # noqa: F401  (已从 _legacy 抽出到独立子模块�
     get_accumulated_top_sectors, load_recent_realtime_data,
     get_top5_comparison_data,
 )
+from .market_index import (  # noqa: F401  (已从 _legacy 抽出到独立子模块：G5 大盘指数 + G8 摘要)
+    latest_market_data, MARKET_FAST_REFRESH_SECONDS, MARKET_TURNOVER_REFRESH_SECONDS,
+    get_eastmoney_market_index_data, get_sina_market_index_data, get_market_index_data,
+    get_global_market_indices, get_stock_statistics, get_market_overview,
+    get_ths_market_breadth, get_ths_turnover_summary, get_jrj_market_breadth,
+    get_market_summary, get_market_fast_summary, should_refresh_market_turnover,
+    refresh_market_summary_cache, save_market_summary_cache, load_market_summary_cache,
+    is_market_summary_complete,
+)
 from ._common import error_logger, data_logger, system_logger  # noqa: F401  (logger 的规范归属)
