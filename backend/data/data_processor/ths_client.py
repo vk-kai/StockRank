@@ -75,8 +75,15 @@ def _generate_random_string(length):
 def _generate_random_cookie():
     return ''
 
+# ths_cookie_refresh.py 是 data_processor 包的同级脚本(位于 backend/data/)。
+# 包改成目录后 __file__ 落在包内，须取“包父目录”才能定位脚本——用 2 层 dirname，
+# 对函数在包内哪个子模块都稳健（单层 dirname 会错指到包内 → 脚本找不到）。
+_THS_COOKIE_REFRESH_SCRIPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ths_cookie_refresh.py')
+
+
 def refresh_ths_cookie(force=False):
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ths_cookie_refresh.py')
+    script_path = _THS_COOKIE_REFRESH_SCRIPT
     if not os.path.exists(script_path):
         error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
         return ''
