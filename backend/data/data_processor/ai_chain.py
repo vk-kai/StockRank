@@ -45,7 +45,12 @@ def _ai_chain_impact(chain, change_fraction):
 
 
 def _ai_chain_summary(indicators):
-    """综合环境灯：透明可拆，非加权黑箱。按链分别多数表决，再组合。"""
+    """综合环境灯：按总量多数表决（全市场利好总数 vs 利空总数）。
+
+    需求链/宏观链仍分别给出 signal 供展示，但 overall 直接看利好 vs 利空的总数——
+    避免“宏观链 1 个利空就否决需求链 6 个利好”的过度敏感（原宏观一票否决逻辑已弃用）。
+    例：6 利好 / 1 利空 → 偏多（不再因宏观 1 利空而判偏空）。
+    """
     def signal(items):
         bull = sum(1 for i in items if i.get('impact') == '利好')
         bear = sum(1 for i in items if i.get('impact') == '利空')
@@ -59,18 +64,20 @@ def _ai_chain_summary(indicators):
     macro = [i for i in indicators if i.get('chain') == 'macro']
     d_sig, d_bull, d_bear = signal(demand)
     m_sig, m_bull, m_bear = signal(macro)
-    if d_sig == '偏空' or m_sig == '偏空':
-        overall = '偏空'
-    elif d_sig == '偏多' and m_sig != '偏空':
+    total_bull = d_bull + m_bull
+    total_bear = d_bear + m_bear
+    if total_bull > total_bear:
         overall = '偏多'
+    elif total_bear > total_bull:
+        overall = '偏空'
     else:
         overall = '中性'
     return {
         'overall': overall,
         'demand_signal': d_sig,
         'macro_signal': m_sig,
-        'bull_count': d_bull + m_bull,
-        'bear_count': d_bear + m_bear,
+        'bull_count': total_bull,
+        'bear_count': total_bear,
     }
 
 
