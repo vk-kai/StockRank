@@ -7,6 +7,7 @@ import threading
 from core.config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, AI_NEWS_SUMMARY_PROMPT_FILE, AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE, NEWS_ANALYSIS_CACHE_FILE
 from core.logger import get_logger
 from analysis.news_score_thresholds import get_score_label as classify_score_label
+from analysis.ai_json import extract_ai_json
 
 error_logger = get_logger('error')
 info_logger = get_logger('ai')
@@ -82,32 +83,21 @@ def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messa
         raise
 
 def parse_ai_response(content):
-    try:
-        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
-        if json_match:
-            content = json_match.group(1)
-        
-        first_bracket = content.find('[')
-        last_bracket = content.rfind(']')
-        if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
-            content = content[first_bracket:last_bracket + 1]
-        else:
-            first_brace = content.find('{')
-            last_brace = content.rfind('}')
-            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-                content = '[' + content[first_brace:last_brace + 1] + ']'
-        
-        analysis_list = json.loads(content)
-        
-        results = {}
-        for item in analysis_list:
+    """解析 AI 返回的 JSON（容忍 LLM 常见毛病：散文括号、未转义内嵌引号、尾随逗号、代码围栏）。
+
+    返回 {id: item} 字典；提取不到任何 JSON 则返回 None。
+    """
+    obj = extract_ai_json(content, prefer='any')
+    if obj is None:
+        return None
+    items = obj if isinstance(obj, list) else [obj]
+    results = {}
+    for item in items:
+        if isinstance(item, dict):
             item_id = item.get('id', '')
             if item_id:
                 results[item_id] = item
-        
-        return results
-    except json.JSONDecodeError as e:
-        return None
+    return results
 
 def batch_analyze_news(news_items):
     global last_ai_call_time

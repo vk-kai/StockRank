@@ -22,6 +22,7 @@ import traceback
 
 from core.config import CONFIG_DIR, INDUSTRY_CYCLE_SCORES_DIR, INDUSTRY_CYCLE_SCORES_FILE, INDUSTRY_CYCLE_BATCH_STATUS_FILE
 from analysis.ai_analyzer import load_ai_config, call_ai_api
+from analysis.ai_json import parse_with_ai_repair
 from data.data_processor import error_logger
 from core.logger import get_logger
 
@@ -375,7 +376,9 @@ def _run_analysis(industry_name):
             })
 
             # 解析JSON
-            parsed = _parse_industry_result(content, industry_name)
+            parsed = _parse_industry_result(
+                content, industry_name,
+                call_fn=_make_ai_caller(api_url, api_key, model, temperature, max_tokens, timeout))
 
             if parsed:
                 _save_result(parsed)
@@ -438,107 +441,35 @@ def _run_analysis(industry_name):
             _analysis_running = False
 
 
-def _parse_industry_result(content, industry_name):
-    """解析AI返回的JSON结果"""
-    import re
-
-    # 第1步：尝试从markdown代码块中提取JSON（非贪婪匹配）
-    # 匹配 ```json 或 ``` 包裹的内容
-    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-    extracted = None
-    if json_match:
-        extracted = json_match.group(1).strip()
-
-    # 第2步：如果代码块提取失败或解析失败，尝试从全文找最外层的JSON对象
-    # 用括号匹配法找到最外层完整 { ... }
-    def extract_json_object(text):
-        first_brace = text.find('{')
-        if first_brace == -1:
-            return None
-        depth = 0
-        in_string = False
-        escape_next = False
-        for i in range(first_brace, len(text)):
-            c = text[i]
-            if escape_next:
-                escape_next = False
-                continue
-            if c == '\\':
-                escape_next = True
-                continue
-            if c == '"' and not escape_next:
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if c == '{':
-                depth += 1
-            elif c == '}':
-                depth -= 1
-                if depth == 0:
-                    return text[first_brace:i + 1]
-        # 没找到匹配的闭合括号，返回从第一个 { 到末尾
-        return text[first_brace:]
-
-    def try_parse(text):
-        """尝试解析并验证JSON"""
+def _make_ai_caller(api_url, api_key, model, temperature, max_tokens, timeout):
+    """构造 call_ai_fn(messages)->content 适配器，供 _parse_industry_result 的 AI 自修复重试用。"""
+    def _call(messages):
         try:
-            result = json.loads(text)
-            if isinstance(result, dict) and ('signals' in result or 'overall_verdict' in result):
-                if 'industry' not in result:
-                    result['industry'] = industry_name
-                # 用服务器当前时间覆盖 analyze_time，确保时间正确
-                result['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
-                return result
-        except (json.JSONDecodeError, ValueError) as e:
-            info_logger.warning(f"JSON解析失败: {e}")
-        return None
+            r = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
+        except Exception:
+            return None
+        if r is None or getattr(r, 'status_code', 0) != 200:
+            return None
+        try:
+            return r.json().get('choices', [{}])[0].get('message', {}).get('content', '')
+        except Exception:
+            return None
+    return _call
 
-    # 尝试1：从代码块中提取
-    if extracted:
-        result = try_parse(extracted)
-        if result:
-            return result
-        # 代码块内容可能不是完整JSON，尝试从中提取JSON对象
-        json_obj = extract_json_object(extracted)
-        if json_obj:
-            result = try_parse(json_obj)
-            if result:
-                return result
 
-    # 尝试2：直接从全文提取JSON对象（跳过markdown标记）
-    json_obj = extract_json_object(content)
-    if json_obj:
-        result = try_parse(json_obj)
-        if result:
-            return result
+def _parse_industry_result(content, industry_name, call_fn=None):
+    """解析 AI 返回的行业周期 JSON 结果（两轮容错）。
 
-    # 尝试3：移除注释后重试
-    cleaned = content
-    cleaned = re.sub(r'//.*?\n', '\n', cleaned)
-    cleaned = re.sub(r'/\*[\s\S]*?\*/', '', cleaned)
-    json_obj = extract_json_object(cleaned)
-    if json_obj:
-        result = try_parse(json_obj)
-        if result:
-            return result
-
-    # 尝试4：移除尾随逗号（AI常见错误）
-    def fix_trailing_commas(text):
-        # 移除数组/对象中 ] 或 } 前的逗号
-        text = re.sub(r',\s*([}\]])', r'\1', text)
-        return text
-
-    for source_text in [content, extracted, json_obj]:
-        if not source_text:
-            continue
-        fixed = fix_trailing_commas(source_text)
-        json_obj_fixed = extract_json_object(fixed)
-        if json_obj_fixed:
-            result = try_parse(json_obj_fixed)
-            if result:
-                return result
-
+    先本地容错解析（未转义引号/尾逗号/围栏/散文括号/注释）；本地失败且传了 call_fn 时，
+    回喂 AI 修正一次再解析（Tier2）。提取不到含 signals/overall_verdict 的对象则返回 None。
+    """
+    obj = parse_with_ai_repair(content, call_fn, prefer='object', logger=info_logger)
+    if isinstance(obj, dict) and ('signals' in obj or 'overall_verdict' in obj):
+        if 'industry' not in obj:
+            obj['industry'] = industry_name
+        obj['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        return obj
+    info_logger.warning("JSON解析失败：未能从AI返回中提取行业周期结果")
     return None
 
 
@@ -735,7 +666,9 @@ def _run_batch_analysis(industries):
 
                 if response.status_code == 200:
                     content = response.json().get('choices', [{}])[0].get('message', {}).get('content', '')
-                    parsed = _parse_industry_result(content, industry_name)
+                    parsed = _parse_industry_result(
+                content, industry_name,
+                call_fn=_make_ai_caller(api_url, api_key, model, temperature, max_tokens, timeout))
 
                     if parsed:
                         # 合并到持久存储
