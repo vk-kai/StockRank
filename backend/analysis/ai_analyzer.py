@@ -16,6 +16,12 @@ last_ai_call_time = 0
 AI_CALL_INTERVAL = 20
 _heartbeat_callback = None
 
+# response_format 开关：默认 None（关闭，最安全）。
+# GLM coding 端点(/api/coding/paas/v4) 对 json_object 的支持需实测——确认后在 ai_config.json
+# 设 "response_format": "json_object" 开启；若开启后 AI 调用异常，删该行/置 null 即关。
+_UNSET = object()
+_AI_RESPONSE_FORMAT = None
+
 def set_heartbeat_callback(callback):
     global _heartbeat_callback
     _heartbeat_callback = callback
@@ -44,12 +50,15 @@ def truncate_text(text, max_length=1000):
     return text[:max_length] + "..."
 
 def load_ai_config():
+    global _AI_RESPONSE_FORMAT
     try:
         with open(AI_CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            config = json.load(f)
     except Exception as e:
         error_logger.error(f"加载AI配置失败: {e}")
         return None
+    _AI_RESPONSE_FORMAT = config.get('response_format')  # None / "json_object" / ...
+    return config
 
 def load_ai_prompt():
     try:
@@ -59,19 +68,23 @@ def load_ai_prompt():
         error_logger.error(f"加载AI提示词失败: {e}")
         return None
 
-def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages):
+def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages, response_format=_UNSET):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
     }
-    
+
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens
     }
-    
+    # response_format：未显式传则用 load_ai_config 设置的全局开关（默认 None=不开）
+    rf = _AI_RESPONSE_FORMAT if response_format is _UNSET else response_format
+    if rf:
+        payload['response_format'] = {'type': rf} if isinstance(rf, str) else rf
+
     try:
         return requests.post(
             api_url,
