@@ -246,7 +246,7 @@ def load_em_proxy_pool():
         pass
 
 
-def em_request(url, params=None, headers=None, timeout=10, max_retries=2):
+def em_request(url, params=None, headers=None, timeout=3, max_retries=1):
     """东方财富请求：直连失败自动切换代理重试。
 
     典型场景：服务器IP被东方财富WAF封禁(Empty reply / Connection refused)，

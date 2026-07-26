@@ -620,11 +620,15 @@ export default {
         grid: { left: 55, right: 20, top: 20, bottom: 30 },
         tooltip: {
           trigger: 'axis',
+          axisPointer: { type: 'line' },
+          confine: true,
           formatter: (params) => {
             const p = params[0]
+            if (!p) return ''
             const orig = history[p.dataIndex] ? String(history[p.dataIndex].date) : ''
             const full = orig.length === 8 ? orig.slice(0,4)+'-'+orig.slice(4,6)+'-'+orig.slice(6,8) : (p.axisValue || '')
-            return `${full}<br/>融资余额: <b>${toYi(p.value).toFixed(2)}</b> 亿`
+            const yi = p.value == null ? '--' : (p.value / 1e8).toFixed(2)
+            return `${full}<br/>融资余额: <b>${yi}</b> 亿`
           }
         },
         xAxis: { type: 'category', data: history.map(h => fmtDate(h.date)), axisLabel: { color: '#9aa3b2' } },
