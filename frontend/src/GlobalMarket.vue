@@ -60,6 +60,7 @@
 <script>
 import * as echarts from 'echarts'
 import SecurityAlert from './components/SecurityAlert.vue'
+import { getGlobalIndices } from './services/apiService'
 
 // 全球指数配置：展示名 / 东财 secid / 经纬度 / 区域。
 // 快照与分时都在前端直连东财（CORS 已开放），服务器不再碰东财，规避反爬封禁。
@@ -267,7 +268,8 @@ export default {
         const data = await this.fetchSnapshot()
         this.data = data
         this.$nextTick(() => this.renderChart())
-        // 快照更新后，分时也刷新一次（同一批 secid）
+        // 分时:腾讯/新浪仅覆盖 A股(sh)/港股(hk),其余国际指数(美股/日股/韩股/欧股)不得不走东财 trends2(访客 IP)。
+        // 统一走东财,单只失败返回 null 被 filter(Boolean) 滤掉 → 该指数显示无分时 sparkline,不影响其他。
         this.fetchIntraday()
       } catch (e) {
         console.error('获取全球指数失败', e)
@@ -275,35 +277,29 @@ export default {
         this.loading = false
       }
     },
-    // 快照：前端直连东财 ulist.np（已开 CORS），一次性批量取全部指数报价。
-    // 用访客自己的 IP，服务器不碰东财。返回与原后端结构一致：{indices, update_time, source}
+    // 快照：走后端 /api/flow/global-indices(后端:有新浪代码的走新浪主源,无代码的保留东财)。
+    // 前端不再直连东财,规避反爬。返回 {indices, update_time, source}
     async fetchSnapshot() {
-      const secids = GLOBAL_INDICES.map(c => c.secid).join(',')
-      const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f12,f14&secids=${secids}`
-      const body = await jsonp(url)
-      const diff = (body && body.data && body.data.diff) || []
-      const emMap = {}
-      diff.forEach(it => { if (it && it.f12) emMap[it.f12] = it })
+      const resp = await getGlobalIndices()
+      const map = (resp && resp.success && resp.data) || {}
       const indices = []
       for (const c of GLOBAL_INDICES) {
-        const emCode = c.secid.split('.').pop()   // 东财 f12 不含市场前缀
-        const it = emMap[emCode]
-        if (!it) continue
-        const price = parseFloat(it.f2)
-        if (Number.isNaN(price)) continue
-        const chgPct = parseFloat(it.f3)
-        const change = Number.isNaN(chgPct) ? 0 : chgPct / 100   // f3 是百分数，转分数
+        const it = map[c.secid]
+        if (!it || it.price == null || Number.isNaN(Number(it.price))) continue
         indices.push({
-          name: c.name, code: c.secid, price, change,
-          change_amount: parseFloat(it.f4) || 0,
-          lat: c.lat, lng: c.lng, region: c.region, source: 'eastmoney'
+          name: c.name, code: c.secid,
+          price: Number(it.price),
+          change: Number(it.change) || 0,
+          change_amount: Number(it.change_amount) || 0,
+          lat: c.lat, lng: c.lng, region: c.region,
+          source: it.source || 'backend'
         })
       }
       indices.sort((a, b) => b.change - a.change)
       return {
         indices,
         update_time: new Date().toLocaleString('zh-CN', { hour12: false }),
-        source: 'eastmoney'
+        source: 'backend'
       }
     },
     formatChange(change) {

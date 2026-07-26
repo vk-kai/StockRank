@@ -191,6 +191,20 @@ export async function getMarketMapMargin() {
 }
 
 /**
+ * 全市场融资余额合计(首页小字 + 弹窗折线图)。
+ * 返回 { success, data:{ latest_date, latest_total, prev_total, change_pct, history:[{date,total}] } }。
+ */
+export async function getMarketMarginTotal() {
+  try {
+    const response = await apiClient.get('/flow/market-margin-total')
+    return response.data
+  } catch (error) {
+    console.error('获取两融融资余额合计失败:', error)
+    return { success: false }
+  }
+}
+
+/**
  * 大盘云图 AI 打分着色：返回 { success, run_id, scored_at, count, map:{裸6位code:{score,label,reason}}, buckets }。
  * 只读已评分缓存，不触发打分。无打分数据时 count=0、map={}。
  */

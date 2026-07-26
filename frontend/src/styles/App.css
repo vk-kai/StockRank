@@ -148,14 +148,14 @@
 }
 
 .market-summary-panel {
-  width: min(700px, calc(100vw - 820px));
+  width: min(760px, calc(100vw - 780px));
   margin: 0 auto 4px;
   padding: 5px 10px;
   display: grid;
-  grid-template-columns: auto 84px minmax(140px, 1fr) 84px;
+  grid-template-columns: auto 84px minmax(120px, 1fr) 84px auto;
   grid-template-areas:
-    "ts down bar up"
-    "ts limit turnover limit2";
+    "ts down bar up up2"
+    "ts limit turnover limit2 limit3";
   align-items: center;
   gap: 3px 10px;
   background: linear-gradient(135deg, rgba(22, 32, 56, 0.55) 0%, rgba(28, 36, 60, 0.55) 100%);
@@ -260,6 +260,19 @@
 .market-limit-row .market-up {
   grid-area: limit2;
   text-align: right;
+}
+
+.market-limit-row .market-margin-chip {
+  grid-area: limit3;
+  text-align: right;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.market-limit-row .market-margin-chip:hover {
+  background: rgba(79, 157, 255, 0.14);
 }
 
 .market-breadth-bar {

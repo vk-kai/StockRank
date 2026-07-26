@@ -105,6 +105,17 @@
       <div class="market-limit-row">
         <span class="market-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
         <span class="market-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
+        <span
+          v-if="marginTotal && marginTotal.latest_total != null"
+          class="market-margin-chip"
+          @click="openMarginTotalModal"
+          title="点击查看全市场融资余额趋势(口径:融资余额合计)"
+        >
+          融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
+          <span :class="getValueTrendClass(marginTotal.change_pct)">
+            {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
+          </span>
+        </span>
       </div>
 
       <div class="market-turnover-row">
@@ -350,6 +361,19 @@
               <div class="col">{{ stock.volume }}</div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 两融融资余额折线图弹窗 -->
+    <div class="modal-overlay" v-if="marginTotalModalOpen" @click="closeMarginTotalModal">
+      <div class="modal-container" @click.stop>
+        <div class="modal-header">
+          <h3>全市场融资余额趋势</h3>
+          <button class="close-btn" @click="closeMarginTotalModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div ref="marginTotalChartEl" style="width:100%;height:360px;"></div>
         </div>
       </div>
     </div>

@@ -230,22 +230,38 @@ def _parse_sina_global_indices(sina_text, configs):
 
 
 def get_global_market_indices():
-    """获取全球主要股市指数（三源：东方财富 / 新浪 / AKShare 保底）
+    """获取全球主要股市指数(新浪主源 + AKShare 保底;少数无新浪代码的指数保留东财)。
 
-    数据源优先级：
-    - skip_eastmoney=False: 东方财富主源 → 新浪兜底 → AKShare 保底
-    - skip_eastmoney=True:  新浪主源 → AKShare 保底（跳过东方财富）
+    数据源策略(按用户"首选东财才保留"规则):
+    - 有新浪代码的指数(上证/恒生/日经/KOSPI/印度/道琼斯/纳指/标普/巴西/英国):
+      新浪主源 → AKShare 保底(跳过东财,规避反爬)
+    - 无新浪代码的指数(沪深300/台湾加权/德法/马来/印尼/越南/澳洲/荷兰/瑞士/俄罗斯):
+      东财是唯一可行源,保留(新浪无代码,AKShare 底层也是东财)
     """
-    # 拆分 skip_eastmoney 组
-    em_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if not cfg[6]]
-    skip_em_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[6]]
+    # 拆分:有新浪代码(走新浪,不用东财) vs 无新浪代码(只能东财)
+    sina_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[2]]
+    em_only_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if not cfg[2]]
 
     result = {}
-    em_ok = False
 
-    # ---- 源1: 东方财富（skip_eastmoney 的跳过）----
-    if em_configs:
-        secids = ','.join(cfg[1] for cfg in em_configs)
+    # ---- 源1: 新浪(有新浪代码的指数,主源)----
+    if sina_configs:
+        try:
+            sina_codes = ','.join(cfg[2] for cfg in sina_configs)
+            s_headers = {
+                'User-Agent': get_random_user_agent(),
+                'Referer': 'https://finance.sina.com.cn/'
+            }
+            s_resp = requests.get("https://hq.sinajs.cn/list=" + sina_codes, headers=s_headers, timeout=10)
+            s_resp.encoding = 'gbk'
+            sina_result = _parse_sina_global_indices(s_resp.text, sina_configs)
+            result.update(sina_result)
+        except Exception as e:
+            error_logger.warning(f"新浪全球指数获取失败: {e}")
+
+    # ---- 源2: 东方财富(仅无新浪代码的指数——东财是其唯一可行源,保留)----
+    if em_only_configs:
+        secids = ','.join(cfg[1] for cfg in em_only_configs)
         headers = get_eastmoney_headers()
         params = {
             'fltt': 2,
@@ -260,8 +276,8 @@ def get_global_market_indices():
                 data = response.json()
                 diff = data.get('data', {}).get('diff', []) if data.get('data') else []
                 em_map = {item.get('f12'): item for item in diff}
-                for cfg in em_configs:
-                    name, secid, sina_code, lat, lng, region = cfg[:6]
+                for cfg in em_only_configs:
+                    name, secid, _, lat, lng, region = cfg[:6]
                     em_code = secid.split('.')[-1]
                     item = em_map.get(em_code)
                     if item and item.get('f2') not in ('-', None):
@@ -276,29 +292,8 @@ def get_global_market_indices():
                             'region': region,
                             'source': 'eastmoney'
                         }
-                        em_ok = True
         except Exception as e:
-            error_logger.warning(f"东方财富全球指数获取失败，尝试新浪兜底: {e}")
-
-    # ---- 源2: 新浪 ----
-    # (a) skip_eastmoney 组：作为主源，主动请求
-    # (b) 东方财富未取到的：作为兜底
-    sina_primary = skip_em_configs
-    sina_fallback = [cfg for cfg in em_configs if cfg[2] and cfg[1] not in result]
-    sina_needed = sina_primary + sina_fallback
-    if sina_needed:
-        try:
-            sina_codes = ','.join(cfg[2] for cfg in sina_needed)
-            s_headers = {
-                'User-Agent': get_random_user_agent(),
-                'Referer': 'https://finance.sina.com.cn/'
-            }
-            s_resp = requests.get("https://hq.sinajs.cn/list=" + sina_codes, headers=s_headers, timeout=10)
-            s_resp.encoding = 'gbk'
-            sina_result = _parse_sina_global_indices(s_resp.text, sina_needed)
-            result.update(sina_result)
-        except Exception as e:
-            error_logger.warning(f"新浪全球指数获取失败: {e}")
+            error_logger.warning(f"东方财富全球指数(无新浪代码的指数)获取失败: {e}")
 
     # ---- 源3: AKShare 保底（补齐仍未取到的指数）----
     ak_needed = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[1] not in result]

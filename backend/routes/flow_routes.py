@@ -20,7 +20,7 @@ from analysis.anomaly_detector import (
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
-from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow
+from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow, get_market_margin_total
 from analysis.ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from analysis.industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
 from analysis.intraday_timeline import get_stock_hover_summary
@@ -238,6 +238,18 @@ def market_map_margin():
         return jsonify({'success': True, 'latest_date': res['latest_date'], 'map': res['map']})
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-map-margin]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-margin-total', methods=['GET'])
+def market_margin_total():
+    """全市场融资余额合计(聚合个股 b)+ 比昨日变化% + 历史序列(折线图用)。
+    只读 stock_margin.json 缓存,不抓取。返回 {success, data:{latest_date, latest_total, prev_total, change_pct, history}}。"""
+    try:
+        res = get_market_margin_total()
+        return jsonify({'success': True, 'data': res})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-margin-total]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

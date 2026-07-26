@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, testPushService as testPushServiceApi } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi } from '../../services/apiService'
 import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -93,6 +93,10 @@ export default {
       autoGrowSpeed: 200,
       marketSummary: null,
       marketSummaryError: null,
+      kospiIndex: null,
+      marginTotal: null,
+      marginTotalModalOpen: false,
+      marginTotalChart: null,
       marketSummaryInterval: null,
       aiChainSummary: null,
       aiChainInterval: null,
@@ -138,11 +142,15 @@ export default {
         '399006': indices['399006'] || {}
       }
 
-      return [
+      const cards = [
         { ...indexMap['000001'], code: '000001', name: indexMap['000001'].name || '上证指数' },
         { ...indexMap['399001'], code: '399001', name: indexMap['399001'].name || '深证成指' },
         { ...indexMap['399006'], code: '399006', name: indexMap['399006'].name || '创业板' }
       ]
+      if (this.kospiIndex) {
+        cards.push({ ...this.kospiIndex, code: '100.KS11' })
+      }
+      return cards
     },
     aiChainOverallClass() {
       const s = this.aiChainSummary?.overall
@@ -502,13 +510,24 @@ export default {
 
     async fetchMarketSummary() {
       try {
-        const response = await getMarketSummary()
+        // 并发:大盘摘要 + 韩国KOSPI(全球指数接口,后端已用新浪主源 skip 东财) + 两融融资余额合计
+        const [response, globalResp, marginResp] = await Promise.all([
+          getMarketSummary(),
+          getGlobalIndices().catch(() => null),
+          getMarketMarginTotal().catch(() => null)
+        ])
         if (response.success) {
           this.marketSummary = response.data
           this.marketSummaryError = null
         } else {
           this.marketSummaryError = response.message || '获取大盘摘要失败'
         }
+        const kospi = globalResp?.data?.['100.KS11'] || globalResp?.['100.KS11']
+        this.kospiIndex = (kospi && kospi.price != null)
+          ? { price: kospi.price, change: kospi.change, name: kospi.name || '韩国KOSPI' }
+          : null
+        const md = marginResp?.data
+        this.marginTotal = (md && md.latest_total != null) ? md : null
       } catch (err) {
         console.error('获取大盘摘要失败:', err)
         this.marketSummaryError = err.message
@@ -559,6 +578,53 @@ export default {
         }, 60000)
       }
       scheduleNext()
+    },
+
+    openMarginTotalModal() {
+      this.marginTotalModalOpen = true
+      this.$nextTick(() => this.renderMarginTotalChart())
+    },
+    closeMarginTotalModal() {
+      this.marginTotalModalOpen = false
+      if (this.marginTotalChart) {
+        try { this.marginTotalChart.dispose() } catch (e) { /* ignore */ }
+        this.marginTotalChart = null
+      }
+    },
+    renderMarginTotalChart() {
+      if (!this.$refs.marginTotalChartEl || !this.marginTotal || !this.marginTotal.history) return
+      if (!this.marginTotalChart) {
+        this.marginTotalChart = echarts.init(this.$refs.marginTotalChartEl, null, { renderer: 'canvas' })
+      }
+      const history = this.marginTotal.history
+      const toYi = (v) => (v == null ? 0 : v / 1e8)
+      const fmtDate = (d) => {
+        const s = String(d || '')
+        return s.length === 8 ? s.slice(4, 6) + '-' + s.slice(6, 8) : s
+      }
+      this.marginTotalChart.setOption({
+        backgroundColor: 'transparent',
+        grid: { left: 55, right: 20, top: 20, bottom: 30 },
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const p = params[0]
+            return `${p.axisValue}<br/>融资余额: <b>${toYi(p.value).toFixed(2)}</b> 亿`
+          }
+        },
+        xAxis: { type: 'category', data: history.map(h => fmtDate(h.date)), axisLabel: { color: '#9aa3b2' } },
+        yAxis: {
+          type: 'value', scale: true,
+          axisLabel: { color: '#9aa3b2', formatter: (v) => toYi(v).toFixed(0) + '亿' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        series: [{
+          type: 'line', smooth: true, symbol: 'none',
+          data: history.map(h => h.total),
+          lineStyle: { color: '#4f9dff', width: 2 },
+          areaStyle: { color: 'rgba(79,157,255,0.12)' }
+        }]
+      })
     },
 
     initChart() {

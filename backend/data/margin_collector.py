@@ -291,6 +291,49 @@ def get_all_latest_margin_net_inflow():
     return {'latest_date': latest_date, 'map': result}
 
 
+def get_market_margin_total():
+    """全市场融资余额合计(聚合 stock_margin.json 所有个股 b,只读不抓取)。
+
+    返回 {latest_date, latest_total, prev_total, change_pct, history}:
+    - latest_total/prev_total: 最新日 / 上一交易日融资余额合计(元)
+    - change_pct: 比昨日变化%(不足两日则 None)
+    - history: [{date, total}] 按日升序(折线图用)
+    口径=融资余额(不含融券)。注意:早期日期因标的覆盖不全会偏低,近期数据准。
+    """
+    data = _ensure_mem()
+    stocks = data.get('stocks', {})
+    daily = {}
+    for rec in stocks.values():
+        raw = rec.get('s') if isinstance(rec, dict) else None
+        if not raw:
+            continue
+        for r in raw:
+            try:
+                d, b = r[0], r[1]
+            except (IndexError, TypeError):
+                continue
+            if b is None:
+                continue
+            daily[d] = daily.get(d, 0.0) + float(b)
+    if not daily:
+        return {'latest_date': data.get('latest_date', ''), 'latest_total': None,
+                'prev_total': None, 'change_pct': None, 'history': []}
+    sorted_dates = sorted(daily.keys())
+    history = [{'date': d, 'total': round(daily[d], 2)} for d in sorted_dates]
+    latest = history[-1]
+    prev = history[-2] if len(history) >= 2 else None
+    change_pct = None
+    if prev and prev['total']:
+        change_pct = round((latest['total'] - prev['total']) / prev['total'] * 100, 2)
+    return {
+        'latest_date': latest['date'],
+        'latest_total': latest['total'],
+        'prev_total': prev['total'] if prev else None,
+        'change_pct': change_pct,
+        'history': history,
+    }
+
+
 def trigger_ondemand_update_async():
     """弹窗检测到无数据时调用：后台触发一次当日更新（每天最多一次）。
 
