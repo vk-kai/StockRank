@@ -29,6 +29,8 @@ STOCK_MARGIN_CACHE_FILE = os.path.join(REALTIME_DIR, 'stock_margin.json')
 MARKET_MARGIN_TOTAL_FILE = os.path.join(REALTIME_DIR, 'market_margin_total.json')  # 全市场融资余额合计(上交所官方,预计算缓存)
 BACKFILL_CALENDAR_DAYS = 90      # 首次回填的自然日窗口（≈60 交易日，正好喂满"60日"选项）
 KEEP_TRADING_DAYS = 90           # 每只股票保留的最近交易日条数
+MARGIN_MIN_STOCKS = 4000         # 单日融资融券标的数下限(低于此值视为单市失败,需重采)
+MARGIN_FETCH_RETRIES = 3         # 单日采集标的不足时的重试次数
 DAILY_TRIGGER_HOUR = 9
 DAILY_TRIGGER_MINUTE = 5
 
@@ -180,6 +182,17 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name):
         day = fetch_margin_for_date(ds)
         if not day:
             continue  # 非交易日 / 尚未公布 → 不计为已缓存，下次再试
+        # 校验+重试:标的数 < 4000 视为单市采集失败(约一半缺失,如 SSE/SZSE 某接口断连),重采取最多
+        retries = 0
+        while len(day) < MARGIN_MIN_STOCKS and retries < MARGIN_FETCH_RETRIES:
+            retries += 1
+            system_logger.warning(f"融资融券 {ds} 仅 {len(day)} 只(<{MARGIN_MIN_STOCKS},疑似单市失败),重试 {retries}/{MARGIN_FETCH_RETRIES}")
+            time.sleep(2)
+            day2 = fetch_margin_for_date(ds)
+            if day2 and len(day2) > len(day):
+                day = day2
+            if len(day) >= MARGIN_MIN_STOCKS:
+                break
         for code, info in day.items():
             rec = stocks.get(code)
             if rec is None:

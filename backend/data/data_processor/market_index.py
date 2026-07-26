@@ -297,36 +297,10 @@ def get_global_market_indices():
         except Exception as e:
             error_logger.warning(f"东方财富全球指数(无新浪代码的指数)获取失败: {e}")
 
-    # ---- 源3: AKShare 保底（补齐仍未取到的指数）----
-    ak_needed = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[1] not in result]
-    if ak_needed:
-        try:
-            import akshare as ak
-            ak_df = ak.index_global_spot_em()
-            if ak_df is not None and not ak_df.empty:
-                for cfg in ak_needed:
-                    name, secid, _, lat, lng, region = cfg[:6]
-                    em_code = secid.split('.')[-1]
-                    row = ak_df[ak_df['代码'] == em_code]
-                    if row.empty:
-                        continue
-                    row = row.iloc[0]
-                    price = _safe_float(row.get('最新价'), None)
-                    change_pct = _safe_float(row.get('涨跌幅'), None)
-                    if price is not None and change_pct is not None:
-                        result[secid] = {
-                            'name': name,
-                            'code': secid,
-                            'price': round(float(price), 2),
-                            'change': float(change_pct) / 100,
-                            'change_amount': round(float(price) * float(change_pct) / 100, 2),
-                            'lat': lat,
-                            'lng': lng,
-                            'region': region,
-                            'source': 'akshare'
-                        }
-        except Exception as e:
-            error_logger.warning(f"AKShare全球指数保底获取失败: {e}")
+    # ---- 源3: AKShare 保底(已移除)----
+    # 原 akshare index_global_spot_em 底层走东财,且服务器到东财/akshare 连接常被掐
+    # (Connection aborted),快速失败但日志吵。新浪(主源)+ 东财(无新浪代码的)两源已够,
+    # 缺失的指数由下方"兜底缓存"用上次成功值补齐。如需恢复可加回。
 
     # 兜底缓存：东方财富/新浪偶发缺失某指数时(如韩国KOSPI非其交易时段返回'-')，
     # 用本地"上次成功值"补齐，保证全球地图所有国家始终显示。本次实时值同步刷新缓存。
