@@ -295,20 +295,19 @@ def _fetch_ai_chain_us10y():
 
 def get_ai_chain_indicators():
     """AI产业链外部环境温度计：7个领先指标，多源并发+缓存兜底，预算 impact 与综合环境灯。
-    数据源优先级：新浪(美股+KOSPI+美元) > 腾讯财经(韩股) > 东方财富(兜底) > 缓存。
+    数据源优先级：新浪(美股+KOSPI+美元) > 腾讯财经(韩股) > 东方财富(串行兜底) > 缓存。
     返回 {indicators:[...], summary:{...}, update_time, source}，失败返回 None。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from concurrent.futures import TimeoutError as _FutTimeout
-    ex = ThreadPoolExecutor(max_workers=4)
+    ex = ThreadPoolExecutor(max_workers=3)
     fut_map = {
         ex.submit(_fetch_ai_chain_sina): 'sina',        # 美股3 + KOSPI + 美元指数
         ex.submit(_fetch_ai_chain_tencent): 'tencent',   # 韩股2(主源)
-        ex.submit(_fetch_ai_chain_eastmoney): 'em',      # 韩股2(兜底)
         ex.submit(_fetch_ai_chain_us10y): 'us10y',       # 美债10年(日线)
     }
-    results = {'sina': {}, 'tencent': {}, 'em': {}, 'us10y': None}
+    results = {'sina': {}, 'tencent': {}, 'us10y': None}
     try:
-        for fut in as_completed(fut_map, timeout=10):
+        for fut in as_completed(fut_map, timeout=8):
             kind = fut_map[fut]
             try:
                 results[kind] = fut.result()
@@ -319,8 +318,14 @@ def get_ai_chain_indicators():
     ex.shutdown(wait=False)
     sina_data = results['sina'] or {}
     tencent_data = results['tencent'] or {}
-    em_data = results['em'] or {}
     us10y = results['us10y']
+
+    # 串行兜底：腾讯没拿到韩股时才调东方财富（避免东财慢/反爬拖垮整体超时）
+    em_data = {}
+    kr_keys = {c[0] for c in AI_CHAIN_CONFIG if c[4]}  # 有腾讯代码的指标
+    kr_missing = kr_keys - set(tencent_data.keys())
+    if kr_missing:
+        em_data = _fetch_ai_chain_eastmoney() or {}
 
     raw_map = {}
     for k, v in em_data.items():
