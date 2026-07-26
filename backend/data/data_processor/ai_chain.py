@@ -18,18 +18,18 @@ from ._common import _safe_float, error_logger, MARKET_INDEX_URL, GLOBAL_INDICES
 
 # 7个对AI产业链（封测/先进封装/AI硬件，如长电科技）影响显著的领先指标。
 # 上色按"对AI链利好/利空"判定而非单纯涨跌：需求链涨=利好，宏观链涨=利空。
-# 数据源(有新浪优先用新浪)：美股3 + 美元指数 + 韩国KOSPI → 新浪；韩股2(SK海力士/三星) → 东方财富(批量+重试)；
+# 数据源：美股3 + 美元指数 + 韩国KOSPI → 新浪；韩股2(SK海力士/三星) → 腾讯财经(kr代码)；
 #         KOSPI 东财/全球指数缓存兜底；美债10年 → 美国财政部日线CSV(无key, 国内可访问)。
 AI_CHAIN_CONFIG = [
-    # (key, 展示名, 链(demand/macro), 新浪代码, 东财secid, 区域)
-    ('nvda',    '英伟达',     'demand', 'gb_nvda', None,         '美股'),
-    ('soxx',    '费城半导体', 'demand', 'gb_soxx', None,         '美股'),   # SOXX ETF 代理 SOX 指数
-    ('tsm',     '台积电',     'demand', 'gb_tsm',  None,         '美股'),
-    ('skhynix', 'SK海力士',   'demand', None,     '177.000660', '韩股'),
-    ('samsung', '三星电子',   'demand', None,     '177.005930', '韩股'),
-    ('kospi',   '韩国综合',   'demand', 'b_KOSPI','100.KS11',   '韩国'),   # KOSPI(新浪优先, 东财兜底)
-    ('dxy',     '美元指数',   'macro',  'DINIW',  None,         '外汇'),
-    ('us10y',   '美债10年',   'macro',  None,     None,         '美债'),
+    # (key, 展示名, 链(demand/macro), 新浪代码, 腾讯代码, 东财secid(仅兜底), 区域)
+    ('nvda',    '英伟达',     'demand', 'gb_nvda', None,         None,         '美股'),
+    ('soxx',    '费城半导体', 'demand', 'gb_soxx', None,         None,         '美股'),   # SOXX ETF 代理 SOX 指数
+    ('tsm',     '台积电',     'demand', 'gb_tsm',  None,         None,         '美股'),
+    ('skhynix', 'SK海力士',   'demand', None,     'kr000660',   '177.000660', '韩股'),
+    ('samsung', '三星电子',   'demand', None,     'kr005930',   '177.005930', '韩股'),
+    ('kospi',   '韩国综合',   'demand', 'b_KOSPI', None,        '100.KS11',   '韩国'),   # KOSPI(新浪优先, 东财兜底)
+    ('dxy',     '美元指数',   'macro',  'DINIW',   None,        None,         '外汇'),
+    ('us10y',   '美债10年',   'macro',  None,      None,        None,         '美债'),
 ]
 AI_CHAIN_CACHE_FILE = os.path.join(REALTIME_DIR, 'ai_chain_cache.json')
 AI_CHAIN_NEUTRAL_THRESHOLD = 0.0005  # |change|(分数) < 0.05% 视为中性
@@ -143,22 +143,69 @@ def _fetch_ai_chain_sina():
     return out
 
 
-def _fetch_ai_chain_eastmoney():
-    """东方财富批量：韩股(KOSPI + SK海力士 + 三星)。单次批量请求(避免反爬)。
-    东财偶发 RemoteDisconnected(反爬/网络抖动)，故带重试+换完整请求头+指数退避；
-    全部失败时 KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11)。
-    返回 {key: {price, change, change_amount}}"""
+def _fetch_ai_chain_tencent():
+    """腾讯财经批量：韩股(SK海力士 kr000660 + 三星电子 kr005930)。
+    返回 {key: {price, change, change_amount}}
+
+    腾讯港股/韩股格式(352字段)：
+    [3]=昨收 [5]=现价 [31]=涨跌额 [32]=涨跌幅%
+    """
     out = {}
     targets = [c for c in AI_CHAIN_CONFIG if c[4]]
+    if not targets:
+        return out
+    try:
+        codes = ','.join(c[4] for c in targets)
+        resp = requests.get(f'https://qt.gtimg.cn/q={codes}', timeout=6)
+        resp.encoding = 'utf-8'
+        code_to_key = {c[4]: c[0] for c in targets}
+        for line in resp.text.strip().split(';'):
+            line = line.strip()
+            if '="' not in line:
+                continue
+            prefix = line.split('="', 1)[0].split('.')[-1]  # e.g. v_kr000660 -> kr000660
+            # 也可能是 v_kr000660 格式
+            if prefix.startswith('v_'):
+                prefix = prefix[2:]
+            key = code_to_key.get(prefix)
+            if not key:
+                continue
+            content = line.split('="', 1)[1].rstrip('"')
+            fields = content.split('~')
+            if len(fields) < 33:
+                continue
+            try:
+                prev_close = _safe_float(fields[3], None)
+                price = _safe_float(fields[5], None)
+                change_pct = _safe_float(fields[32], None)
+                change_amt = _safe_float(fields[31], None)
+                if price is not None and change_pct is not None:
+                    out[key] = {
+                        'price': price,
+                        'change': change_pct / 100,
+                        'change_amount': change_amt,
+                    }
+            except (ValueError, IndexError):
+                continue
+    except Exception as e:
+        error_logger.warning(f"腾讯财经AI链指标(韩股)获取失败: {e}")
+    return out
+
+
+def _fetch_ai_chain_eastmoney():
+    """东方财富兜底：韩股(SK海力士 + 三星)。仅在腾讯财经失败时调用。
+    返回 {key: {price, change, change_amount}}"""
+    out = {}
+    targets = [c for c in AI_CHAIN_CONFIG if c[5]]
     if not targets:
         return out
     params = {
         'fltt': 2, 'invt': 2,
         'fields': 'f2,f3,f4,f12,f14',
-        'secids': ','.join(c[4] for c in targets)
+        'secids': ','.join(c[5] for c in targets)
     }
     data = None
-    max_retries = 3
+    max_retries = 2
     for attempt in range(max_retries):
         headers = get_eastmoney_headers()
         try:
@@ -169,16 +216,16 @@ def _fetch_ai_chain_eastmoney():
                 break
         except Exception as e:
             if attempt < max_retries - 1:
-                # 指数退避：0.5s, 1.5s，每次换全新请求头
                 backoff = 0.5 * (2 ** attempt) + random.uniform(0, 0.5)
                 time.sleep(backoff)
             else:
-                error_logger.warning(f"东方财富AI链指标(韩股)获取失败(重试{max_retries}次): {e}")
+                error_logger.warning(f"东方财富AI链指标(韩股)兜底获取失败(重试{max_retries}次): {e}")
     if data:
         diff = data.get('data', {}).get('diff', []) if data.get('data') else []
         em_map = {item.get('f12'): item for item in diff}
         for c in targets:
-            key, _, _, _, secid, _ = c
+            key = c[0]
+            secid = c[5]
             item = em_map.get(secid.split('.')[-1])
             if item and item.get('f2') not in ('-', None):
                 out[key] = {
@@ -187,8 +234,7 @@ def _fetch_ai_chain_eastmoney():
                     'change_amount': float(item.get('f4', 0) or 0),
                 }
 
-    # 兜底：东财也失败时，KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11，change 为分数)
-    # （KOSPI 主源已切到新浪 b_KOSPI，见 _fetch_ai_chain_sina；此处仅作最后兜底）
+    # KOSPI 复用"全球股市地图"已缓存的实时值(同源 100.KS11，change 为分数)
     if 'kospi' not in out:
         try:
             if os.path.exists(GLOBAL_INDICES_CACHE_FILE):
@@ -248,18 +294,19 @@ def _fetch_ai_chain_us10y():
 
 
 def get_ai_chain_indicators():
-    """AI产业链外部环境温度计：7个领先指标，三源并发+缓存兜底，预算 impact 与综合环境灯。
-    三源并发拉取,整体最坏 ~10s 内返回(任一源超时即放弃,用已得数据+缓存兜底)。
+    """AI产业链外部环境温度计：7个领先指标，多源并发+缓存兜底，预算 impact 与综合环境灯。
+    数据源优先级：新浪(美股+KOSPI+美元) > 腾讯财经(韩股) > 东方财富(兜底) > 缓存。
     返回 {indicators:[...], summary:{...}, update_time, source}，失败返回 None。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from concurrent.futures import TimeoutError as _FutTimeout
-    ex = ThreadPoolExecutor(max_workers=3)
+    ex = ThreadPoolExecutor(max_workers=4)
     fut_map = {
-        ex.submit(_fetch_ai_chain_sina): 'sina',        # 美股3 + 美元指数
-        ex.submit(_fetch_ai_chain_eastmoney): 'em',     # 韩股2
-        ex.submit(_fetch_ai_chain_us10y): 'us10y',      # 美债10年(日线)
+        ex.submit(_fetch_ai_chain_sina): 'sina',        # 美股3 + KOSPI + 美元指数
+        ex.submit(_fetch_ai_chain_tencent): 'tencent',   # 韩股2(主源)
+        ex.submit(_fetch_ai_chain_eastmoney): 'em',      # 韩股2(兜底)
+        ex.submit(_fetch_ai_chain_us10y): 'us10y',       # 美债10年(日线)
     }
-    results = {'sina': {}, 'em': {}, 'us10y': None}
+    results = {'sina': {}, 'tencent': {}, 'em': {}, 'us10y': None}
     try:
         for fut in as_completed(fut_map, timeout=10):
             kind = fut_map[fut]
@@ -269,23 +316,27 @@ def get_ai_chain_indicators():
                 error_logger.warning(f"AI链数据源({kind})异常: {e}")
     except _FutTimeout:
         error_logger.warning("AI链部分数据源超时,使用已得数据 + 缓存兜底")
-    ex.shutdown(wait=False)   # 不等待仍在跑的线程,尽快返回
+    ex.shutdown(wait=False)
     sina_data = results['sina'] or {}
+    tencent_data = results['tencent'] or {}
     em_data = results['em'] or {}
     us10y = results['us10y']
 
     raw_map = {}
     for k, v in em_data.items():
-        raw_map[k] = (v, 'eastmoney')
+        raw_map[k] = (v, 'eastmoney')     # 东财最低优先级
+    for k, v in tencent_data.items():
+        raw_map[k] = (v, 'tencent')       # 腾讯覆盖东财
     for k, v in sina_data.items():
-        raw_map[k] = (v, 'sina')   # 新浪优先：有新浪数据源优先用新浪，覆盖东财
+        raw_map[k] = (v, 'sina')          # 新浪最高优先级
     if us10y:
         raw_map['us10y'] = (us10y, 'treasury')
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     result = {}
     for cfg in AI_CHAIN_CONFIG:
-        key, name, chain, _sina, _east, region = cfg
+        key, name, chain = cfg[0], cfg[1], cfg[2]
+        region = cfg[6]
         pair = raw_map.get(key)
         if not pair:
             continue
@@ -326,17 +377,17 @@ def get_ai_chain_indicators():
 
     indicators = [result[c[0]] for c in AI_CHAIN_CONFIG if c[0] in result]
     if not indicators:
-        error_logger.error("AI链指标全部获取失败：三源均不可用")
+        error_logger.error("AI链指标全部获取失败：所有数据源均不可用")
         return None
 
-    if em_data and sina_data:
-        source_label = 'eastmoney+sina'
-    elif em_data:
-        source_label = 'eastmoney'
-    elif sina_data:
-        source_label = 'sina'
-    else:
-        source_label = 'cache'
+    sources = []
+    if sina_data:
+        sources.append('sina')
+    if tencent_data:
+        sources.append('tencent')
+    if em_data:
+        sources.append('eastmoney')
+    source_label = '+'.join(sources) if sources else 'cache'
     return {
         'indicators': indicators,
         'summary': _ai_chain_summary(indicators),
