@@ -150,75 +150,142 @@ def get_market_index_data():
     error_logger.error("大盘指数数据获取失败：新浪与东方财富均不可用")
     return None
 
-# 全球主要股市指数配置：(名称, 东方财富secid, 新浪兜底代码, 纬度, 经度, 国家/地区)
+# 全球主要股市指数配置：(名称, 东方财富secid, 新浪代码, 纬度, 经度, 国家/地区, skip_eastmoney)
+# skip_eastmoney=True: 跳过东方财富（被反爬或数据不稳定），直接用新浪作为主源
 # 注意：同一国家多个指数经纬度需错开，避免地图标签重叠
 GLOBAL_INDICES_CONFIG = [
-    ('上证指数', '1.000001', 'sh000001', 31.23, 121.47, '中国'),
-    ('沪深300', '1.000300', None, 39.90, 116.40, '中国'),
-    ('恒生指数', '100.HSI', 'int_hangseng', 22.32, 114.17, '香港'),
-    ('台湾加权', '100.TWII', None, 25.03, 121.57, '台湾'),
-    ('日经225', '100.N225', 'int_nikkei', 35.68, 139.69, '日本'),
-    ('韩国KOSPI', '100.KS11', 'b_KOSPI', 37.57, 126.98, '韩国'),
-    ('富时马来西亚', '100.KLSE', None, 3.14, 101.69, '马来西亚'),
-    ('印尼综合', '100.JKSE', None, -6.21, 106.85, '印尼'),
-    ('越南胡志明', '100.VNINDEX', None, 10.78, 106.70, '越南'),
-    ('印度SENSEX', '100.SENSEX', 'b_SENSEX', 19.08, 72.88, '印度'),
-    ('澳大利亚ASX200', '100.AS51', None, -33.87, 151.21, '澳大利亚'),
-    ('道琼斯', '100.DJIA', 'int_dji', 38.90, -77.04, '美国'),
-    ('纳斯达克', '100.NDX', 'int_nasdaq', 40.71, -74.01, '美国'),
-    ('标普500', '100.SPX', 'int_sp500', 41.80, -87.65, '美国'),
-    ('巴西BOVESPA', '100.BVSP', 'int_bovespa', -23.55, -46.63, '巴西'),
-    ('英国富时100', '100.FTSE', 'int_ftse', 51.51, -0.13, '英国'),
-    ('德国DAX30', '100.GDAXI', None, 50.11, 8.68, '德国'),
-    ('法国CAC40', '100.FCHI', None, 48.86, 2.35, '法国'),
-    ('荷兰AEX', '100.AEX', None, 52.37, 4.90, '荷兰'),
-    ('瑞士SMI', '100.SSMI', None, 47.37, 8.54, '瑞士'),
-    ('俄罗斯RTS', '100.RTS', None, 55.75, 37.62, '俄罗斯'),
+    ('上证指数', '1.000001', 'sh000001', 31.23, 121.47, '中国', False),
+    ('沪深300', '1.000300', None, 39.90, 116.40, '中国', False),
+    ('恒生指数', '100.HSI', 'int_hangseng', 22.32, 114.17, '香港', False),
+    ('台湾加权', '100.TWII', None, 25.03, 121.57, '台湾', False),
+    ('日经225', '100.N225', 'int_nikkei', 35.68, 139.69, '日本', False),
+    ('韩国KOSPI', '100.KS11', 'b_KOSPI', 37.57, 126.98, '韩国', True),
+    ('富时马来西亚', '100.KLSE', None, 3.14, 101.69, '马来西亚', False),
+    ('印尼综合', '100.JKSE', None, -6.21, 106.85, '印尼', False),
+    ('越南胡志明', '100.VNINDEX', None, 10.78, 106.70, '越南', False),
+    ('印度SENSEX', '100.SENSEX', 'b_SENSEX', 19.08, 72.88, '印度', False),
+    ('澳大利亚ASX200', '100.AS51', None, -33.87, 151.21, '澳大利亚', False),
+    ('道琼斯', '100.DJIA', 'int_dji', 38.90, -77.04, '美国', False),
+    ('纳斯达克', '100.NDX', 'int_nasdaq', 40.71, -74.01, '美国', False),
+    ('标普500', '100.SPX', 'int_sp500', 41.80, -87.65, '美国', False),
+    ('巴西BOVESPA', '100.BVSP', 'int_bovespa', -23.55, -46.63, '巴西', False),
+    ('英国富时100', '100.FTSE', 'int_ftse', 51.51, -0.13, '英国', False),
+    ('德国DAX30', '100.GDAXI', None, 50.11, 8.68, '德国', False),
+    ('法国CAC40', '100.FCHI', None, 48.86, 2.35, '法国', False),
+    ('荷兰AEX', '100.AEX', None, 52.37, 4.90, '荷兰', False),
+    ('瑞士SMI', '100.SSMI', None, 47.37, 8.54, '瑞士', False),
+    ('俄罗斯RTS', '100.RTS', None, 55.75, 37.62, '俄罗斯', False),
 ]
 
 
-def get_global_market_indices():
-    """获取全球主要股市指数（双源：东方财富为主，新浪兜底）"""
-    secids = ','.join(cfg[1] for cfg in GLOBAL_INDICES_CONFIG)
-    headers = get_eastmoney_headers()
-    params = {
-        'fltt': 2,
-        'invt': 2,
-        'fields': 'f2,f3,f4,f12,f14',
-        'secids': secids
-    }
-
+def _parse_sina_global_indices(sina_text, configs):
+    """解析新浪全球指数返回数据，返回 {secid: dict}。"""
     result = {}
-    em_ok = False
-    try:
-        response = em_request(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
-        if response is not None:
-            response.raise_for_status()
-            data = response.json()
-            diff = data.get('data', {}).get('diff', []) if data.get('data') else []
-        em_map = {item.get('f12'): item for item in diff}
-        for cfg in GLOBAL_INDICES_CONFIG:
-            name, secid, sina_code, lat, lng, region = cfg
-            em_code = secid.split('.')[-1]
-            item = em_map.get(em_code)
-            if item and item.get('f2') not in ('-', None):
+    for part in sina_text.split(';'):
+        if 'hq_str_' not in part or '="' not in part:
+            continue
+        key = part.split('hq_str_', 1)[1].split('=', 1)[0]
+        values_text = part.split('="', 1)[1].rstrip('"')
+        values = values_text.split(',')
+        if len(values) < 4:
+            continue
+        price = None
+        change = None
+        change_amount = None
+        if key.startswith(('sh', 'sz')):
+            prev_close = _safe_float(values[2], None)
+            p = _safe_float(values[3], None)
+            if p is not None and prev_close not in (None, 0):
+                price = p
+                change_amount = p - prev_close
+                change = change_amount / prev_close
+        else:
+            # 国际指数(int_/b_，4字段格式)：[1]=现价 [2]=涨跌额 [3]=涨跌幅%
+            if not values[1]:
+                continue
+            p = _safe_float(values[1], None)
+            cp = _safe_float(values[3], None)
+            if p is not None and cp is not None:
+                price = p
+                change = cp / 100
+                change_amount = p * cp / 100
+        if price is None:
+            continue
+        for cfg in configs:
+            if cfg[2] == key and cfg[1] not in result:
+                name, secid, _, lat, lng, region = cfg[:6]
                 result[secid] = {
                     'name': name,
                     'code': secid,
-                    'price': float(item.get('f2', 0) or 0),
-                    'change': float(item.get('f3', 0) or 0) / 100,
-                    'change_amount': float(item.get('f4', 0) or 0),
+                    'price': round(price, 2),
+                    'change': change,
+                    'change_amount': round(change_amount or 0, 2),
                     'lat': lat,
                     'lng': lng,
                     'region': region,
-                    'source': 'eastmoney'
+                    'source': 'sina'
                 }
-                em_ok = True
-    except Exception as e:
-        error_logger.warning(f"东方财富全球指数获取失败，尝试新浪兜底: {e}")
+                break
+    return result
 
-    # 新浪兜底：补齐东方财富未取到的指数
-    sina_needed = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[2] and cfg[1] not in result]
+
+def get_global_market_indices():
+    """获取全球主要股市指数（三源：东方财富 / 新浪 / AKShare 保底）
+
+    数据源优先级：
+    - skip_eastmoney=False: 东方财富主源 → 新浪兜底 → AKShare 保底
+    - skip_eastmoney=True:  新浪主源 → AKShare 保底（跳过东方财富）
+    """
+    # 拆分 skip_eastmoney 组
+    em_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if not cfg[6]]
+    skip_em_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[6]]
+
+    result = {}
+    em_ok = False
+
+    # ---- 源1: 东方财富（skip_eastmoney 的跳过）----
+    if em_configs:
+        secids = ','.join(cfg[1] for cfg in em_configs)
+        headers = get_eastmoney_headers()
+        params = {
+            'fltt': 2,
+            'invt': 2,
+            'fields': 'f2,f3,f4,f12,f14',
+            'secids': secids
+        }
+        try:
+            response = em_request(MARKET_INDEX_URL, params=params, headers=headers, timeout=10)
+            if response is not None:
+                response.raise_for_status()
+                data = response.json()
+                diff = data.get('data', {}).get('diff', []) if data.get('data') else []
+                em_map = {item.get('f12'): item for item in diff}
+                for cfg in em_configs:
+                    name, secid, sina_code, lat, lng, region = cfg[:6]
+                    em_code = secid.split('.')[-1]
+                    item = em_map.get(em_code)
+                    if item and item.get('f2') not in ('-', None):
+                        result[secid] = {
+                            'name': name,
+                            'code': secid,
+                            'price': float(item.get('f2', 0) or 0),
+                            'change': float(item.get('f3', 0) or 0) / 100,
+                            'change_amount': float(item.get('f4', 0) or 0),
+                            'lat': lat,
+                            'lng': lng,
+                            'region': region,
+                            'source': 'eastmoney'
+                        }
+                        em_ok = True
+        except Exception as e:
+            error_logger.warning(f"东方财富全球指数获取失败，尝试新浪兜底: {e}")
+
+    # ---- 源2: 新浪 ----
+    # (a) skip_eastmoney 组：作为主源，主动请求
+    # (b) 东方财富未取到的：作为兜底
+    sina_primary = skip_em_configs
+    sina_fallback = [cfg for cfg in em_configs if cfg[2] and cfg[1] not in result]
+    sina_needed = sina_primary + sina_fallback
     if sina_needed:
         try:
             sina_codes = ','.join(cfg[2] for cfg in sina_needed)
@@ -228,54 +295,41 @@ def get_global_market_indices():
             }
             s_resp = requests.get("https://hq.sinajs.cn/list=" + sina_codes, headers=s_headers, timeout=10)
             s_resp.encoding = 'gbk'
-            for part in s_resp.text.split(';'):
-                if 'hq_str_' not in part or '="' not in part:
-                    continue
-                key = part.split('hq_str_', 1)[1].split('=', 1)[0]
-                values_text = part.split('="', 1)[1].rstrip('"')
-                values = values_text.split(',')
-                if len(values) < 4:
-                    continue
-                price = None
-                change = None
-                change_amount = None
-                if key.startswith(('sh', 'sz')):
-                    # 国内指数(34字段格式)：[2]=昨收 [3]=现价
-                    prev_close = _safe_float(values[2], None)
-                    p = _safe_float(values[3], None)
-                    if p is not None and prev_close not in (None, 0):
-                        price = p
-                        change_amount = p - prev_close
-                        change = change_amount / prev_close
-                else:
-                    # 国际指数(int_/b_，4字段格式)：[1]=现价 [2]=涨跌额 [3]=涨跌幅%
-                    if not values[1]:
+            sina_result = _parse_sina_global_indices(s_resp.text, sina_needed)
+            result.update(sina_result)
+        except Exception as e:
+            error_logger.warning(f"新浪全球指数获取失败: {e}")
+
+    # ---- 源3: AKShare 保底（补齐仍未取到的指数）----
+    ak_needed = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[1] not in result]
+    if ak_needed:
+        try:
+            import akshare as ak
+            ak_df = ak.index_global_spot_em()
+            if ak_df is not None and not ak_df.empty:
+                for cfg in ak_needed:
+                    name, secid, _, lat, lng, region = cfg[:6]
+                    em_code = secid.split('.')[-1]
+                    row = ak_df[ak_df['代码'] == em_code]
+                    if row.empty:
                         continue
-                    p = _safe_float(values[1], None)
-                    cp = _safe_float(values[3], None)
-                    if p is not None and cp is not None:
-                        price = p
-                        change = cp / 100
-                        change_amount = p * cp / 100
-                if price is None:
-                    continue
-                for cfg in sina_needed:
-                    if cfg[2] == key and cfg[1] not in result:
-                        name, secid, _, lat, lng, region = cfg
+                    row = row.iloc[0]
+                    price = _safe_float(row.get('最新价'), None)
+                    change_pct = _safe_float(row.get('涨跌幅'), None)
+                    if price is not None and change_pct is not None:
                         result[secid] = {
                             'name': name,
                             'code': secid,
-                            'price': round(price, 2),
-                            'change': change,
-                            'change_amount': round(change_amount or 0, 2),
+                            'price': round(float(price), 2),
+                            'change': float(change_pct) / 100,
+                            'change_amount': round(float(price) * float(change_pct) / 100, 2),
                             'lat': lat,
                             'lng': lng,
                             'region': region,
-                            'source': 'sina'
+                            'source': 'akshare'
                         }
-                        break
         except Exception as e:
-            error_logger.warning(f"新浪全球指数兜底获取失败: {e}")
+            error_logger.warning(f"AKShare全球指数保底获取失败: {e}")
 
     # 兜底缓存：东方财富/新浪偶发缺失某指数时(如韩国KOSPI非其交易时段返回'-')，
     # 用本地"上次成功值"补齐，保证全球地图所有国家始终显示。本次实时值同步刷新缓存。
@@ -299,7 +353,7 @@ def get_global_market_indices():
         error_logger.warning(f"全球指数缓存读写失败: {e}")
 
     if not result:
-        error_logger.error("全球指数数据获取失败：东方财富与新浪均不可用")
+        error_logger.error("全球指数数据获取失败：东方财富/新浪/AKShare 均不可用")
         return None
 
     indices = list(result.values())
