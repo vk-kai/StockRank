@@ -278,10 +278,17 @@ export default {
       }
     },
     // 快照：走后端 /api/flow/global-indices(后端:有新浪代码的走新浪主源,无代码的保留东财)。
-    // 前端不再直连东财,规避反爬。返回 {indices, update_time, source}
+    // 前端不再直连东财,规避反爬。返回 {indices:[...], update_time, source}
     async fetchSnapshot() {
       const resp = await getGlobalIndices()
-      const map = (resp && resp.success && resp.data) || {}
+      const payload = (resp && resp.success && resp.data) || {}
+      // 后端返回 {indices: [{code:secid, ...}, ...], update_time, source}
+      // 转 secid→item 映射以便按 key 查找
+      const list = Array.isArray(payload.indices) ? payload.indices : []
+      const map = {}
+      for (const it of list) {
+        if (it.code) map[it.code] = it
+      }
       const indices = []
       for (const c of GLOBAL_INDICES) {
         const it = map[c.secid]
@@ -298,8 +305,8 @@ export default {
       indices.sort((a, b) => b.change - a.change)
       return {
         indices,
-        update_time: new Date().toLocaleString('zh-CN', { hour12: false }),
-        source: 'backend'
+        update_time: payload.update_time || new Date().toLocaleString('zh-CN', { hour12: false }),
+        source: payload.source || 'backend'
       }
     },
     formatChange(change) {
