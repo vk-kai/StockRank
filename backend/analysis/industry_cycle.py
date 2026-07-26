@@ -469,7 +469,15 @@ def _parse_industry_result(content, industry_name, call_fn=None):
             obj['industry'] = industry_name
         obj['analyze_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
         return obj
-    info_logger.warning("JSON解析失败：未能从AI返回中提取行业周期结果")
+    try:
+        from analysis.ai_analyzer import get_ai_cost_summary
+        _budget = get_ai_cost_summary()
+    except Exception:
+        _budget = None
+    info_logger.warning(
+        f"JSON解析失败：未能从AI返回中提取行业周期结果 | 当前AI预算累计={_budget} | "
+        f"AI原始返回(前1500字):\n{(content or '')[:1500]}"
+    )
     return None
 
 
