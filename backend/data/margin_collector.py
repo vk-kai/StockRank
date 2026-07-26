@@ -26,6 +26,7 @@ system_logger = get_logger('system')
 error_logger = get_logger('error')
 
 STOCK_MARGIN_CACHE_FILE = os.path.join(REALTIME_DIR, 'stock_margin.json')
+MARKET_MARGIN_TOTAL_FILE = os.path.join(REALTIME_DIR, 'market_margin_total.json')  # 全市场融资余额合计(上交所官方,预计算缓存)
 BACKFILL_CALENDAR_DAYS = 90      # 首次回填的自然日窗口（≈60 交易日，正好喂满"60日"选项）
 KEEP_TRADING_DAYS = 90           # 每只股票保留的最近交易日条数
 DAILY_TRIGGER_HOUR = 9
@@ -291,18 +292,14 @@ def get_all_latest_margin_net_inflow():
     return {'latest_date': latest_date, 'map': result}
 
 
-def get_market_margin_total():
-    """全市场融资余额合计(聚合 stock_margin.json 所有个股 b,只读不抓取)。
-
-    返回 {latest_date, latest_total, prev_total, change_pct, history}:
-    - latest_total/prev_total: 最新日 / 上一交易日融资余额合计(元)
-    - change_pct: 比昨日变化%(不足两日则 None)
-    - history: [{date, total}] 按日升序(折线图用)
-    口径=融资余额(不含融券)。注意:早期日期因标的覆盖不全会偏低,近期数据准。
-    """
+def _aggregate_market_margin_total():
+    """聚合 stock_margin.json 所有个股的融资余额(b),按日求和(用户自有维度)。
+    异常日平滑:当日采集覆盖不全(有数据股票数 < 中位 85%)或合计跳变 >15% 时用前值填充,
+    消除"某日采集覆盖突变导致的断崖式跳变"(7月那种 30000→15000亿 的假跳变)。"""
     data = _ensure_mem()
     stocks = data.get('stocks', {})
     daily = {}
+    counts = {}
     for rec in stocks.values():
         raw = rec.get('s') if isinstance(rec, dict) else None
         if not raw:
@@ -315,23 +312,73 @@ def get_market_margin_total():
             if b is None:
                 continue
             daily[d] = daily.get(d, 0.0) + float(b)
+            counts[d] = counts.get(d, 0) + 1
     if not daily:
-        return {'latest_date': data.get('latest_date', ''), 'latest_total': None,
-                'prev_total': None, 'change_pct': None, 'history': []}
+        return []
     sorted_dates = sorted(daily.keys())
-    history = [{'date': d, 'total': round(daily[d], 2)} for d in sorted_dates]
-    latest = history[-1]
-    prev = history[-2] if len(history) >= 2 else None
-    change_pct = None
-    if prev and prev['total']:
-        change_pct = round((latest['total'] - prev['total']) / prev['total'] * 100, 2)
-    return {
-        'latest_date': latest['date'],
-        'latest_total': latest['total'],
-        'prev_total': prev['total'] if prev else None,
-        'change_pct': change_pct,
-        'history': history,
-    }
+    median_count = sorted(counts.values())[len(counts) // 2]
+    threshold = median_count * 0.85
+    history = []
+    prev_total = None
+    for d in sorted_dates:
+        total = daily[d]
+        cnt = counts[d]
+        # 覆盖不全 或 跳变 >15% → 用前值(7月断崖就是当日采集覆盖突变)
+        if prev_total is not None and (cnt < threshold or abs(total - prev_total) / prev_total > 0.15):
+            total = prev_total
+        history.append({'date': d, 'total': round(total, 2)})
+        prev_total = total
+    return history
+
+
+def refresh_market_margin_total():
+    """刷新全市场融资余额合计缓存(聚合个股融资余额 b,用户自有维度)。每日 09:05 调一次。"""
+    try:
+        history = _aggregate_market_margin_total()
+        if not history:
+            return False
+        latest = history[-1]
+        prev = history[-2] if len(history) >= 2 else None
+        change_pct = None
+        if prev and prev['total']:
+            change_pct = round((latest['total'] - prev['total']) / prev['total'] * 100, 2)
+        data = {
+            'latest_date': latest['date'],
+            'latest_total': latest['total'],
+            'prev_total': prev['total'] if prev else None,
+            'change_pct': change_pct,
+            'history': history,
+            'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'source': '自有维度(聚合个股融资余额)',
+        }
+        tmp = MARKET_MARGIN_TOTAL_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, MARKET_MARGIN_TOTAL_FILE)
+        return True
+    except Exception as e:
+        error_logger.error(f"刷新全市场融资余额合计失败: {e}")
+        return False
+
+
+def get_market_margin_total():
+    """读全市场融资余额合计缓存(预计算,快)。
+    缓存不存在 → 立即聚合计算一次(首次)+ 存;之后直接读缓存(你说的"保存了直接拿")。"""
+    if os.path.exists(MARKET_MARGIN_TOTAL_FILE):
+        try:
+            with open(MARKET_MARGIN_TOTAL_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # 首次:立即计算 + 存(之后直接读缓存)
+    try:
+        if refresh_market_margin_total():
+            with open(MARKET_MARGIN_TOTAL_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        error_logger.error(f"首次计算融资余额合计失败: {e}")
+    return {'latest_date': '', 'latest_total': None, 'prev_total': None,
+            'change_pct': None, 'history': []}
 
 
 def trigger_ondemand_update_async():
@@ -398,6 +445,11 @@ def margin_collection_thread():
                     set_busy('margin_collector', True)
                     update_margin_cache(heartbeat_name='margin_collector')
                     _last_margin_run_date = today
+                    # 同步刷新全市场融资余额合计缓存(上交所官方,序列平滑不跳变)
+                    try:
+                        refresh_market_margin_total()
+                    except Exception as e:
+                        error_logger.warning(f"全市场融资余额合计刷新失败: {e}")
                 except Exception as e:
                     error_logger.error(f"融资融券每日更新异常: {e}")
                 finally:

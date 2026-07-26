@@ -509,28 +509,41 @@ export default {
     },
 
     async fetchMarketSummary() {
+      // market-summary 单独请求(同花顺/东财,快),绝不被 KOSPI/融资余额等慢接口拖慢
       try {
-        // 并发:大盘摘要 + 韩国KOSPI(全球指数接口,后端已用新浪主源 skip 东财) + 两融融资余额合计
-        const [response, globalResp, marginResp] = await Promise.all([
-          getMarketSummary(),
-          getGlobalIndices().catch(() => null),
-          getMarketMarginTotal().catch(() => null)
-        ])
+        const response = await getMarketSummary()
         if (response.success) {
           this.marketSummary = response.data
           this.marketSummaryError = null
         } else {
           this.marketSummaryError = response.message || '获取大盘摘要失败'
         }
-        const kospi = globalResp?.data?.['100.KS11'] || globalResp?.['100.KS11']
-        this.kospiIndex = (kospi && kospi.price != null)
-          ? { price: kospi.price, change: kospi.change, name: kospi.name || '韩国KOSPI' }
-          : null
-        const md = marginResp?.data
-        this.marginTotal = (md && md.latest_total != null) ? md : null
       } catch (err) {
         console.error('获取大盘摘要失败:', err)
         this.marketSummaryError = err.message
+      }
+      // KOSPI / 融资余额独立异步获取(各自可能慢或失败,不阻塞 market-summary,互不影响)
+      this.fetchKospi()
+      this.fetchMarginTotal()
+    },
+    async fetchKospi() {
+      try {
+        const resp = await getGlobalIndices()
+        const kospi = resp?.data?.['100.KS11'] || resp?.['100.KS11']
+        this.kospiIndex = (kospi && kospi.price != null)
+          ? { price: kospi.price, change: kospi.change, name: kospi.name || '韩国KOSPI' }
+          : null
+      } catch (e) {
+        this.kospiIndex = null
+      }
+    },
+    async fetchMarginTotal() {
+      try {
+        const resp = await getMarketMarginTotal()
+        const md = resp?.data
+        this.marginTotal = (md && md.latest_total != null) ? md : null
+      } catch (e) {
+        this.marginTotal = null
       }
     },
 
@@ -609,7 +622,9 @@ export default {
           trigger: 'axis',
           formatter: (params) => {
             const p = params[0]
-            return `${p.axisValue}<br/>融资余额: <b>${toYi(p.value).toFixed(2)}</b> 亿`
+            const orig = history[p.dataIndex] ? String(history[p.dataIndex].date) : ''
+            const full = orig.length === 8 ? orig.slice(0,4)+'-'+orig.slice(4,6)+'-'+orig.slice(6,8) : (p.axisValue || '')
+            return `${full}<br/>融资余额: <b>${toYi(p.value).toFixed(2)}</b> 亿`
           }
         },
         xAxis: { type: 'category', data: history.map(h => fmtDate(h.date)), axisLabel: { color: '#9aa3b2' } },
