@@ -57,7 +57,7 @@ export async function getCurrentFlow() {
  */
 export async function getGlobalIndices() {
   try {
-    const response = await apiClient.get('/flow/global-indices')
+    const response = await apiClient.get('/flow/global-indices', { timeout: 60000 })
     return response.data
   } catch (error) {
     console.error('获取全球指数失败:', error)

@@ -621,7 +621,7 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'line' },
-          confine: true,
+          appendTo: document.body,
           formatter: (params) => {
             const p = params[0]
             if (!p) return ''
