@@ -243,6 +243,7 @@ def get_global_market_indices():
     em_only_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if not cfg[2]]
 
     result = {}
+    em_ok = False  # 东财(无新浪代码的指数)是否成功,用于返回的 source 标记
 
     # ---- 源1: 新浪(有新浪代码的指数,主源)----
     if sina_configs:
@@ -292,6 +293,7 @@ def get_global_market_indices():
                             'region': region,
                             'source': 'eastmoney'
                         }
+                        em_ok = True
         except Exception as e:
             error_logger.warning(f"东方财富全球指数(无新浪代码的指数)获取失败: {e}")
 
