@@ -205,7 +205,7 @@ export default {
     await this.fetchData(true)
     this.timer = setInterval(() => this.fetchData(false), 30000)
     this.fetchIntraday()
-    this.intradayTimer = setInterval(() => this.fetchIntraday(), 60000)
+    this.intradayTimer = setInterval(() => this.fetchIntraday(), 300000)
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
@@ -325,30 +325,34 @@ export default {
       if (!list.length) return
       this.intradayLoading = true
       try {
-        // 前端直连东方财富 trends2（该接口已开 CORS：Access-Control-Allow-Origin: *）。
-        // 用访客自己的 IP 抓，服务器 IP 不碰东财，规避反爬封禁。单只失败不影响其它。
-        const fetched = await Promise.all(list.map(async ix => {
+        // 逐个串行请求东方财富 trends2，每个间隔 500ms，避免并发触发 WAF 反爬
+        const fetched = []
+        for (const ix of list) {
           try {
             const url = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(ix.code)}&fields1=f1,f2&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1`
-            const body = await jsonp(url)
+            const body = await jsonp(url, 8000)
             const trends = body && body.data && body.data.trends
-            if (!Array.isArray(trends) || !trends.length) return null
-            const series = []
-            for (const line of trends) {
-              const parts = line.split(',')
-              if (parts.length < 2) continue
-              const price = parseFloat(parts[1])
-              if (Number.isNaN(price)) continue
-              const t = parts[0]
-              series.push({ t: t.length >= 16 ? t.slice(11, 16) : t, price })
+            if (Array.isArray(trends) && trends.length) {
+              const series = []
+              for (const line of trends) {
+                const parts = line.split(',')
+                if (parts.length < 2) continue
+                const price = parseFloat(parts[1])
+                if (Number.isNaN(price)) continue
+                const t = parts[0]
+                series.push({ t: t.length >= 16 ? t.slice(11, 16) : t, price })
+              }
+              if (series.length) {
+                fetched.push({ code: ix.code, name: ix.name, region: ix.region, series })
+              }
             }
-            if (!series.length) return null
-            return { code: ix.code, name: ix.name, region: ix.region, series }
           } catch (e) {
-            return null
+            // 单只失败不影响其它
           }
-        }))
-        this.intraday = fetched.filter(Boolean)
+          // 间隔 500ms，避免触发东财 WAF
+          await new Promise(r => setTimeout(r, 500))
+        }
+        this.intraday = fetched
         this.intradayUpdatedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       } catch (e) {
         console.error('前端获取分时失败', e)
