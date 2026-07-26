@@ -64,7 +64,7 @@ def update_ai_config():
         else:
             config = {}
         
-        for key in ['enabled', 'api_url', 'full_url', 'model', 'temperature', 'max_tokens', 'timeout']:
+        for key in ['enabled', 'api_url', 'full_url', 'model', 'temperature', 'max_tokens', 'timeout', 'hourly_budget', 'daily_budget', 'cost_per_1k_tokens']:
             if key in data:
                 config[key] = data[key]
         

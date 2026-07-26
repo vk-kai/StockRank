@@ -198,14 +198,15 @@ def _test_sector_with_headers(headers):
 
 # ============ 请求头获取 ============
 
-def _acquire_headers(max_attempts=9):
+def _acquire_headers(max_attempts=3):
     """尝试获取可用请求头，最多max_attempts次。返回 (headers, 成功)"""
     from data.data_processor import generate_random_headers, normalize_ths_sector_headers, refresh_ths_cookie
 
     last_time = 0
     for attempt in range(max_attempts):
         headers = normalize_ths_sector_headers(generate_random_headers())
-        cookie = refresh_ths_cookie(force=True)
+        # 首选缓存 cookie(避免拉 Chromium);仅在缓存失败时强刷(attempt>0)
+        cookie = refresh_ths_cookie(force=(attempt > 0))
         if cookie:
             headers['Cookie'] = cookie
         success, response_time, error = _test_sector_with_headers(headers)
@@ -248,7 +249,7 @@ def run_full_health_check():
     news_time = 0
 
     if trading_now:
-        _, found, sector_time = _acquire_headers(9)
+        _, found, sector_time = _acquire_headers(3)
         if found:
             sector_ok = True
             sector_error = None
@@ -357,7 +358,7 @@ def start_health_checker():
     trading_now = _is_trading_now()
     sector_ok = True
     if trading_now:
-        _, sector_ok, sector_time = _acquire_headers(9)
+        _, sector_ok, sector_time = _acquire_headers(3)
 
     news_headers, news_found = _acquire_news_headers(5)
 

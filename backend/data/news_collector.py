@@ -396,7 +396,13 @@ def _background_analyze_news(new_items):
             content_clean = truncate_text(clean_text(content), 1500)
             
             result = analyze_news(title_clean, content_clean)
-            
+
+            # 预算超限时立即停止后续分析(call_ai_api 抛 AIBudgetExceeded → analyze_news 返回失败 message)
+            _msg = str(result.get('message', ''))
+            if '预算' in _msg or 'budget' in _msg.lower():
+                error_logger.warning(f"后台新闻AI分析因预算超限停止: {_msg}")
+                break
+
             if result.get('success') and result.get('analysis'):
                 save_news_analysis(news_id, result['analysis'], result.get('duration', 0))
                 news_add_logger.debug(f"新闻AI分析完成: {title[:30]}")

@@ -68,7 +68,85 @@ def load_ai_prompt():
         error_logger.error(f"加载AI提示词失败: {e}")
         return None
 
-def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages, response_format=_UNSET):
+# ============ AI 预算熔断 + token 统计(防烧钱)============
+_ai_cost_lock = threading.Lock()
+_ai_cost_state = {"hour_bucket": None, "hour_cost": 0.0, "day_bucket": None, "day_cost": 0.0}
+
+
+class AIBudgetExceeded(Exception):
+    """AI 小时/日预算超限,call_ai_api 在发请求前抛出(不发请求=不烧钱)。"""
+
+
+def _ai_budget_keys():
+    return time.strftime("%Y%m%d%H"), time.strftime("%Y%m%d")
+
+
+def _check_ai_budget(config, max_tokens):
+    """发请求前预估:已累计 + 本笔预估 是否超 小时/日 预算。未设预算则不限。"""
+    hourly = float((config or {}).get('hourly_budget', 0) or 0)
+    daily = float((config or {}).get('daily_budget', 0) or 0)
+    if hourly <= 0 and daily <= 0:
+        return True
+    cost_per_1k = float((config or {}).get('cost_per_1k_tokens', 0) or 0)
+    estimate = (max_tokens or 0) * cost_per_1k / 1000.0
+    hour_key, day_key = _ai_budget_keys()
+    with _ai_cost_lock:
+        if _ai_cost_state["hour_bucket"] != hour_key:
+            _ai_cost_state["hour_bucket"] = hour_key
+            _ai_cost_state["hour_cost"] = 0.0
+        if _ai_cost_state["day_bucket"] != day_key:
+            _ai_cost_state["day_bucket"] = day_key
+            _ai_cost_state["day_cost"] = 0.0
+        if hourly > 0 and _ai_cost_state["hour_cost"] + estimate > hourly:
+            return False
+        if daily > 0 and _ai_cost_state["day_cost"] + estimate > daily:
+            return False
+    return True
+
+
+def _record_ai_usage(config, usage):
+    """响应成功后按实际 token 用量累加费用(用于预算累计)。"""
+    if not usage:
+        return
+    cost_per_1k = float((config or {}).get('cost_per_1k_tokens', 0) or 0)
+    if cost_per_1k <= 0:
+        return
+    total = int(usage.get('total_tokens', 0) or 0)
+    if total <= 0:
+        total = int(usage.get('prompt_tokens', 0) or 0) + int(usage.get('completion_tokens', 0) or 0)
+    if total <= 0:
+        return
+    cost = total * cost_per_1k / 1000.0
+    hour_key, day_key = _ai_budget_keys()
+    with _ai_cost_lock:
+        if _ai_cost_state["hour_bucket"] != hour_key:
+            _ai_cost_state["hour_bucket"] = hour_key
+            _ai_cost_state["hour_cost"] = 0.0
+        if _ai_cost_state["day_bucket"] != day_key:
+            _ai_cost_state["day_bucket"] = day_key
+            _ai_cost_state["day_cost"] = 0.0
+        _ai_cost_state["hour_cost"] += cost
+        _ai_cost_state["day_cost"] += cost
+
+
+def get_ai_cost_summary():
+    """供监控/日志查看当前小时/日累计费用(元)。"""
+    with _ai_cost_lock:
+        return {
+            "hour_bucket": _ai_cost_state["hour_bucket"],
+            "hour_cost": round(_ai_cost_state["hour_cost"], 4),
+            "day_bucket": _ai_cost_state["day_bucket"],
+            "day_cost": round(_ai_cost_state["day_cost"], 4),
+        }
+
+
+def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages, response_format=_UNSET, config=None):
+    if config is None:
+        config = load_ai_config() or {}
+    # 预算熔断:发请求前检查,超限直接抛异常(不发请求=不烧钱)
+    if not _check_ai_budget(config, max_tokens):
+        raise AIBudgetExceeded("AI 小时/日预算超限,已拦截本次调用(调高 ai_config.json 的 hourly_budget/daily_budget,或置 0 关闭熔断)")
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
@@ -85,15 +163,19 @@ def call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messa
     if rf:
         payload['response_format'] = {'type': rf} if isinstance(rf, str) else rf
 
+    response = requests.post(
+        api_url,
+        headers=headers,
+        json=payload,
+        timeout=timeout
+    )
+    # 统计实际 token 用量(成功响应才计费)
     try:
-        return requests.post(
-            api_url,
-            headers=headers,
-            json=payload,
-            timeout=timeout
-        )
-    except Exception as e:
-        raise
+        if response.status_code == 200:
+            _record_ai_usage(config, response.json().get('usage'))
+    except Exception:
+        pass
+    return response
 
 def parse_ai_response(content):
     """解析 AI 返回的 JSON（容忍 LLM 常见毛病：散文括号、未转义内嵌引号、尾随逗号、代码围栏）。
@@ -457,12 +539,7 @@ def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
             if _heartbeat_callback:
                 _heartbeat_callback()
             
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json=payload,
-                timeout=timeout
-            )
+            response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
             
             if response.status_code == 200:
                 result = response.json()
@@ -970,12 +1047,7 @@ def summarize_daily_news(news_items):
             if _heartbeat_callback:
                 _heartbeat_callback()
 
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json=payload,
-                timeout=timeout
-            )
+            response = call_ai_api(api_url, api_key, model, temperature, max_tokens, timeout, messages)
 
             if response.status_code == 200:
                 result = response.json()

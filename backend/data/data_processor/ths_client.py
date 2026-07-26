@@ -67,6 +67,9 @@ def get_latest_data():
 
 
 _ths_cookie_lock = threading.Lock()
+# 同花顺 cookie 全局缓存:成功获取后 10 分钟内复用,避免每次采集/健康检查都拉起 Chromium
+_ths_cookie_cache = {"value": "", "ts": 0.0}
+_THS_COOKIE_CACHE_TTL = 600  # 秒(10 分钟)
 
 def _generate_random_string(length):
     chars = string.ascii_letters + string.digits
@@ -83,6 +86,10 @@ _THS_COOKIE_REFRESH_SCRIPT = os.path.join(
 
 
 def refresh_ths_cookie(force=False):
+    # 命中缓存(非强制、未过期)直接返回,避免重复拉起 Chromium
+    if not force and _ths_cookie_cache["value"] and (time.time() - _ths_cookie_cache["ts"]) < _THS_COOKIE_CACHE_TTL:
+        return _ths_cookie_cache["value"]
+
     script_path = _THS_COOKIE_REFRESH_SCRIPT
     if not os.path.exists(script_path):
         error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
@@ -90,6 +97,9 @@ def refresh_ths_cookie(force=False):
 
     try:
         with _ths_cookie_lock:
+            # 双重检查:持锁后再次确认缓存,防多线程并发拉起浏览器
+            if not force and _ths_cookie_cache["value"] and (time.time() - _ths_cookie_cache["ts"]) < _THS_COOKIE_CACHE_TTL:
+                return _ths_cookie_cache["value"]
             result = subprocess.run(
                 [sys.executable, script_path, THS_SECTOR_URL],
                 capture_output=True,
@@ -98,6 +108,8 @@ def refresh_ths_cookie(force=False):
             )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
+            _ths_cookie_cache["value"] = cookie
+            _ths_cookie_cache["ts"] = time.time()
             return cookie
 
         error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
@@ -163,8 +175,8 @@ def normalize_ths_sector_headers(headers=None):
 
     return normalized
 
-def attach_fresh_ths_cookie(headers):
-    cookie = refresh_ths_cookie(force=True)
+def attach_fresh_ths_cookie(headers, force=False):
+    cookie = refresh_ths_cookie(force=force)
     if cookie:
         headers['Cookie'] = cookie
     return headers
@@ -286,7 +298,8 @@ def get_sector_flow_data():
         return response, parse_ths_sector_html(response.text, url)
 
     def refresh_headers_after_auth_error():
-        return attach_fresh_ths_cookie(normalize_ths_sector_headers())
+        # 401/403 认证失败:旧 cookie 已失效,强刷一份新的(绕过缓存)
+        return attach_fresh_ths_cookie(normalize_ths_sector_headers(), force=True)
 
     def build_net_flow_watchlist(inflow_sectors, outflow_sectors):
         selected = []
@@ -317,7 +330,7 @@ def get_sector_flow_data():
 
         return selected
     
-    max_retries = 9
+    max_retries = 3  # cookie 全局缓存后 3 次足够;过多只会徒增 Chromium 启动
     for retry in range(max_retries):
         try:
             proxies = None
