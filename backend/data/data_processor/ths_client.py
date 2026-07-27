@@ -7,9 +7,12 @@
 """
 import os
 import random
+import shutil
+import signal
 import string
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from bs4 import BeautifulSoup
@@ -113,12 +116,42 @@ def refresh_ths_cookie(force=False):
             return cookie
 
         error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         error_logger.error("同花顺动态Cookie刷新超时")
+        # 超时后清理残留的 chromium 进程（子脚本被 kill 时 finally 可能来不及执行）
+        _kill_orphan_chromium()
     except Exception as e:
         error_logger.error(f"同花顺动态Cookie刷新异常: {e}")
 
     return ''
+
+
+def _kill_orphan_chromium():
+    """清理残留的 chromium 孤儿进程（ths-cookie- 临时 profile 关联的进程）。"""
+    try:
+        import glob as _glob
+        # 查找所有 ths-cookie- 开头的临时目录，提取关联的 chromium 进程
+        if os.name == 'nt':
+            # Windows: 用 taskkill 杀 chromium 进程
+            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'],
+                           capture_output=True, timeout=5)
+            subprocess.run(['taskkill', '/F', '/IM', 'msedge.exe'],
+                           capture_output=True, timeout=5)
+        else:
+            # Linux: pkill 匹配 ths-cookie- 的 chromium 进程
+            subprocess.run(
+                ['pkill', '-f', 'ths-cookie-'],
+                capture_output=True, timeout=5
+            )
+        # 清理残留临时目录
+        tmp_dir = tempfile.gettempdir()
+        for d in _glob.glob(os.path.join(tmp_dir, 'ths-cookie-*')):
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception as e:
+        error_logger.error(f"清理残留chromium进程失败: {e}")
 
 def _generate_random_browser_version():
     major = random.randint(120, 148)

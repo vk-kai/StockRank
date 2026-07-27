@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -117,7 +118,12 @@ def main():
     port = free_port()
     profile_dir = tempfile.mkdtemp(prefix='ths-cookie-')
     cmd = browser_command(executable, port, profile_dir)
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    # 启动新进程组，以便能 kill 整个 chromium 子进程树
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+        preexec_fn=os.setsid if os.name != 'nt' else None,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0,
+    )
     stderr_chunks = []
     client = None
 
@@ -171,12 +177,23 @@ def main():
             except Exception:
                 pass
             client.close()
+        # 杀掉整个进程组（chromium 会 fork renderer/GPU 等子进程，只杀主进程会泄漏）
         if proc.poll() is None:
-            proc.terminate()
             try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+                if os.name == 'nt':
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                else:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
         shutil.rmtree(profile_dir, ignore_errors=True)
 
 
