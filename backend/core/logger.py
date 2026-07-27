@@ -27,7 +27,13 @@ MODULE_DISPLAY_NAMES = {
     'cleanup_news': '定时清理—新闻数据',
     'cleanup_flow': '定时清理—资金流向',
     'cleanup_log': '定时清理—日志文件',
-    'error': '错误日志'
+    'error': '错误日志',
+    'push': '实时推送',
+    'anomaly': '资金异动检测',
+    'health': '健康检查',
+    'stock_price': '价格异动监控',
+    'stock_feed': '行情数据',
+    'stock_resolver': '股票代码解析'
 }
 
 class ModuleFormatter(logging.Formatter):

@@ -12,7 +12,7 @@ from datetime import datetime
 import requests
 
 from core.config import REALTIME_DIR, get_random_user_agent, get_eastmoney_headers
-from ._common import _safe_float, error_logger
+from ._common import _safe_float, error_logger, data_logger
 
 
 # 新浪行业板块与个股接口（大盘云图用，避免东方财富反爬）
@@ -209,7 +209,7 @@ def refresh_market_map_cache():
     try:
         with open(MARKET_MAP_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, ensure_ascii=False)
-        error_logger.info(f"大盘云图行业缓存已更新: 本次新抓{len(all_stocks)}只，缓存补齐{filled}只，合计{len(merged)}只")
+        data_logger.info(f"大盘云图行业缓存已更新: 本次新抓{len(all_stocks)}只，缓存补齐{filled}只，合计{len(merged)}只")
     except Exception as e:
         error_logger.warning(f"大盘云图缓存写入失败: {e}")
     return cache_data
@@ -288,7 +288,7 @@ def get_market_map_tree(include_changes=True):
     include_changes=False 时跳过新浪实时请求、涨跌幅全部按0%，用于首屏秒开骨架。"""
     cache = _load_market_map_cache()
     if not cache or not cache.get('stocks'):
-        error_logger.info("大盘云图缓存不存在，自动抓取中...")
+        data_logger.info("大盘云图缓存不存在，自动抓取中...")
         cache = refresh_market_map_cache()
         if not cache:
             return None
@@ -460,7 +460,7 @@ def get_market_map_all():
         # 按市值排序
         tree.sort(key=lambda x: x['value'], reverse=True)
         total_stocks = sum(len(s['children']) for s in tree)
-        error_logger.info(f"大盘云图: {len(tree)}个行业, {total_stocks}只个股")
+        data_logger.info(f"大盘云图: {len(tree)}个行业, {total_stocks}只个股")
         return {
             'tree': tree,
             'total_sectors': len(tree),

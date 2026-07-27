@@ -23,9 +23,11 @@ from flask_socketio import SocketIO
 
 try:
     from core.logger import get_logger
-    _log = get_logger('error')
+    _log = get_logger('push')        # 推送成功/失败均归到"实时推送"分类，按日志级别区分
+    _err_log = get_logger('error')   # 推送失败额外记一条到"错误日志"，便于盘中集中排查
 except Exception:  # 极端情况下日志不可用也不能影响推送
     _log = None
+    _err_log = None
 
 # 全局唯一实例：app.py 负责在 create_app() 里 init_app、在 __main__ 里 run。
 socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
@@ -46,6 +48,8 @@ def push_event(event_type, data):
     except Exception as e:
         if _log:
             _log.error(f"SocketIO推送失败: type={event_type}, error={e}")
+        if _err_log:
+            _err_log.error(f"SocketIO推送失败: type={event_type}, error={e}")
 
 
 # ============================================================================
