@@ -14,10 +14,17 @@
           />
           <span class="mm-search-count" v-show="searchQuery">{{ matchCount ? matchCount + ' 项' : '无匹配' }}</span>
         </div>
+        <button
+          @click="toggleIndustryMode"
+          class="mm-industry-btn"
+          :class="{ active: industryMode }"
+          :title="industryMode ? '当前为行业云图（每个色块=一个二级行业），点击切回个股云图' : '切换为行业云图：每个色块=一个二级行业，按行业总市值定大小、涨跌幅上色'"
+        >{{ industryMode ? '← 个股云图' : '🏢 行业云图' }}</button>
       </div>
       <div class="mm-header-right">
         <span class="mm-stats" v-if="totalSectors">
-          {{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股
+          <template v-if="industryMode">{{ l2Count }} 个二级行业 · {{ totalStocks }} 只个股</template>
+          <template v-else>{{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股</template>
         </span>
         <span class="mm-update" v-if="cacheTime">行业库：{{ cacheTime }}</span>
         <div class="mm-color-mode" :class="{ loading: marginLoading }">
@@ -753,6 +760,8 @@ export default {
       replayTime: '',           // 当前复盘的时间点，如 '10:00'
       replayPlaying: false,     // 是否正在自动播放
       replayPoints: ['09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00'].map(time => ({ time, available: false })),
+      // 行业云图模式：true=只画二级行业色块(扁平,不展开个股)，false=默认三级个股云图
+      industryMode: false,
       // 着色维度：'change'(涨跌幅,默认) | 'margin'(融资净流入) | 'score'(AI打分)
       colorMode: 'change',
       marginMap: {},            // {裸6位code: 最新一日融资净流入额}
@@ -806,6 +815,12 @@ export default {
   computed: {
     hasData() {
       return this.tree.length > 0
+    },
+    // 二级行业总数（行业云图模式统计用）
+    l2Count() {
+      let n = 0
+      for (const l1 of this.tree) n += (l1.children || []).length
+      return n
     },
     // 是否已有 AI 打分数据（决定下拉框是否出现"着色：AI打分"选项）
     hasScores() {
@@ -1114,12 +1129,18 @@ export default {
         if (n.x + n.w > maxX) maxX = n.x + n.w
         if (n.y + n.h > maxY) maxY = n.y + n.h
       }
-      for (const s of this.layout) {
-        if (m.l1s.has(s.name)) expand(s)
-        for (const l2 of s.children) {
-          if (m.l2s.has(l2.name)) expand(l2)
-          for (const st of l2.children) {
-            if (m.stocks.has(st.code)) expand(st)
+      if (this.industryMode) {
+        for (const t of this.layout) {
+          if (t && (m.l2s.has(t.name) || m.l1s.has(t.l1Name))) expand(t)
+        }
+      } else {
+        for (const s of this.layout) {
+          if (m.l1s.has(s.name)) expand(s)
+          for (const l2 of s.children) {
+            if (m.l2s.has(l2.name)) expand(l2)
+            for (const st of l2.children) {
+              if (m.stocks.has(st.code)) expand(st)
+            }
           }
         }
       }
@@ -1171,12 +1192,21 @@ export default {
       const ql = (q || '').trim().toLowerCase()
       if (!ql) return null
       const stocks = new Set(), l1s = new Set(), l2s = new Set()
-      for (const s of this.layout) {
-        if (s.name.toLowerCase().includes(ql)) l1s.add(s.name)
-        for (const l2 of s.children) {
-          if (l2.name.toLowerCase().includes(ql)) l2s.add(l2.name)
-          for (const st of l2.children) {
-            if (st.name.toLowerCase().includes(ql) || (st.code || '').toLowerCase().includes(ql)) stocks.add(st.code)
+      if (this.industryMode) {
+        // 行业云图：layout 为扁平的二级行业色块（无 children）
+        for (const t of this.layout) {
+          if (!t) continue
+          if ((t.name || '').toLowerCase().includes(ql)) l2s.add(t.name)
+          if ((t.l1Name || '').toLowerCase().includes(ql)) l1s.add(t.l1Name)
+        }
+      } else {
+        for (const s of this.layout) {
+          if (s.name.toLowerCase().includes(ql)) l1s.add(s.name)
+          for (const l2 of s.children) {
+            if (l2.name.toLowerCase().includes(ql)) l2s.add(l2.name)
+            for (const st of l2.children) {
+              if (st.name.toLowerCase().includes(ql) || (st.code || '').toLowerCase().includes(ql)) stocks.add(st.code)
+            }
           }
         }
       }
@@ -1406,6 +1436,27 @@ export default {
         return v == null ? NO_CYCLE_COLOR : interpCycleColor(v)
       }
       return interpColor(s.change)
+    },
+    // 行业云图：二级行业色块颜色。周期维度按行业雷达分；其余维度（含涨跌幅/融资/AI打分，
+    // 后两者为个股级数据、行业级暂无聚合）统一按二级行业聚合涨跌幅上色，保证云图可读。
+    industryColor(l2) {
+      if (this.colorMode === 'cycle') {
+        const entry = this.cycleMap[l2.name]
+        const v = entry && typeof entry.overall_score === 'number' ? entry.overall_score : null
+        return v == null ? NO_CYCLE_COLOR : interpCycleColor(v)
+      }
+      return interpColor(l2.change)
+    },
+    toggleIndustryMode() {
+      this.industryMode = !this.industryMode
+      // 行业云图不适用个股级图例筛选/推送过滤，切换时清空，避免整图被错误灰显
+      this.legendSel = []
+      this.legendApplied = []
+      this.view = { k: 1, tx: 0, ty: 0 }
+      this.buildLayout()
+      // 按新布局重算搜索高亮/飞行（保留搜索词）；无搜索词则直接重绘
+      if (this.searchQuery) this.onSearchInput()
+      else this.render()
     },
     async onColorModeChange(mode) {
       if (mode === this.colorMode) return
@@ -1804,9 +1855,31 @@ export default {
       canvas.height = Math.round(h * this.dpr)
     },
 
+    // 行业云图布局：把全部二级行业扁平化为一张 treemap（无一级分组、无标题条）。
+    // 每个色块=一个二级行业，按行业总市值(value)定大小、按 industryColor 上色。
+    buildIndustryLayout() {
+      const tiles = []
+      for (const l1 of this.tree) {
+        for (const l2 of (l1.children || [])) {
+          tiles.push({
+            name: l2.name,
+            change: l2.change,
+            value: l2.value || 0,
+            l1Name: l1.name,
+            l2Name: l2.name,
+            sectorCode: l2.code || '',
+            color: this.industryColor(l2)
+          })
+        }
+      }
+      tiles.sort((a, b) => b.value - a.value)
+      squarify(tiles, 0, 6, this.cssW, this.cssH - 6)
+      this.layout = tiles
+    },
     // 三级嵌套布局：申万一级 → 申万二级 → 个股，每级顶部留一条标题条
     buildLayout() {
       if (!this.tree.length || this.cssW <= 0) { this.layout = null; return }
+      if (this.industryMode) { this.buildIndustryLayout(); return }
       const useMargin = (this.colorMode === 'margin')
       const sectors = this.tree.map(l1 => {
         const children = (l1.children || []).map(l2 => {
@@ -1855,6 +1928,45 @@ export default {
       this.layout = sectors
     },
 
+    // 行业云图渲染：扁平二级行业色块（每个色块=一个二级行业）。
+    renderIndustry(ctx) {
+      const { k, tx, ty } = this.view
+      const cw = this.cssW, ch = this.cssH
+      ctx.lineWidth = 1
+      ctx.strokeStyle = '#070b13'
+      for (const t of this.layout) {
+        const x = t.x * k + tx, y = t.y * k + ty, w = t.w * k, h = t.h * k
+        if (w < 0.5 || h < 0.5) continue
+        if (x >= cw || x + w <= 0 || y >= ch || y + h <= 0) continue
+        ctx.fillStyle = t.color
+        ctx.fillRect(x, y, w, h)
+        if (w >= 2.5 && h >= 2.5) ctx.strokeRect(x, y, w, h)
+        // 标签：大格=名称+涨跌幅(或周期分)，中格=仅名称，小格不显示
+        let metric
+        if (this.colorMode === 'cycle') {
+          const ce = this.cycleMap[t.name]
+          metric = ce && typeof ce.overall_score === 'number' ? `${ce.overall_score}分` : ''
+        } else {
+          metric = fmtPct(t.change)
+        }
+        if (w >= 50 && h >= 26) this.drawStockLabel(ctx, t.name, metric, x, y, w, h, true)
+        else if (w >= 32 && h >= 12) this.drawStockLabel(ctx, t.name, '', x, y, w, h, false)
+      }
+      // 搜索高亮：命中行业（二级名或其一级名）叠加黄色边框
+      if (this._matches) {
+        const { l1s, l2s } = this._matches
+        ctx.save()
+        ctx.strokeStyle = '#FFE100'
+        ctx.lineWidth = 3
+        for (const t of this.layout) {
+          if (!t || (!l2s.has(t.name) && !l1s.has(t.l1Name))) continue
+          const X = t.x * k + tx, Y = t.y * k + ty, W = t.w * k, H = t.h * k
+          if (W >= 1 && H >= 1) ctx.strokeRect(X + 1.5, Y + 1.5, Math.max(1, W - 3), Math.max(1, H - 3))
+        }
+        ctx.restore()
+      }
+    },
+
     render() {
       const canvas = this.$refs.canvasEl
       if (!canvas) return
@@ -1864,6 +1976,7 @@ export default {
       ctx.fillStyle = '#0a1220'
       ctx.fillRect(0, 0, this.cssW, this.cssH)
       if (!this.layout) return
+      if (this.industryMode) { this.renderIndustry(ctx); return }
 
       const pushedSet = this.pushedOnly ? this._pushedCodeSet : null
       const { k, tx, ty } = this.view
@@ -2389,6 +2502,14 @@ export default {
       }, 180)
     },
     hitTest(Lx, Ly) {
+      if (this.industryMode) {
+        // 行业云图：扁平色块，直接命中二级行业
+        for (const t of this.layout) {
+          if (t.w == null || t.h == null) continue
+          if (Lx >= t.x && Lx <= t.x + t.w && Ly >= t.y && Ly <= t.y + t.h) return { node: t }
+        }
+        return null
+      }
       for (const s of this.layout) {
         if (Lx < s.x || Lx > s.x + s.w || Ly < s.y || Ly > s.y + s.h) continue
         if (s.headerH > 0 && Ly < s.y + s.headerH) return { node: s }
@@ -2444,7 +2565,7 @@ export default {
   flex-shrink: 0;
 }
 .mm-header h1 { font-size: 1.05rem; color: #fff; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3); white-space: nowrap; }
-.mm-header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mm-header-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
 .mm-search-wrap { position: relative; display: flex; align-items: center; }
 .mm-search {
   width: 200px;
@@ -2460,6 +2581,9 @@ export default {
 .mm-search:focus { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15); }
 .mm-search::placeholder { color: #5a6b8c; }
 .mm-search-count { position: absolute; right: 8px; font-size: 11px; color: #8ba4c7; pointer-events: none; white-space: nowrap; }
+.mm-industry-btn { padding: 6px 12px; background: linear-gradient(135deg, #13c2c2, #08979c); border: 1px solid #36cfc9; border-radius: 6px; color: #fff; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.3s ease; white-space: nowrap; }
+.mm-industry-btn:hover { background: linear-gradient(135deg, #36cfc9, #13c2c2); transform: translateY(-1px); }
+.mm-industry-btn.active { background: linear-gradient(135deg, #fa8c16, #d4380d); border-color: #ffa940; box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.25); }
 .mm-header-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .mm-push-tag { font-size: 11px; color: #9bdaf0; padding: 4px 8px; border-radius: 999px; background: rgba(69, 183, 209, 0.12); border: 1px solid rgba(69, 183, 209, 0.28); white-space: nowrap; }
 .mm-clear-push-btn { order: 10; padding: 6px 10px; background: rgba(239, 83, 80, 0.14); border: 1px solid rgba(239, 83, 80, 0.38); border-radius: 6px; color: #ffb4b2; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; }
