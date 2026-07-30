@@ -118,6 +118,22 @@ OTP_CONFIG_FILE = os.path.join(CONFIG_DIR, 'otp_config.json')
 # 会话签名密钥持久化：开启 OTP 时旋转并落盘，使所有旧会话立即失效（强制重新登录）
 SESSION_SECRET_FILE = os.path.join(CONFIG_DIR, 'session_secret.json')
 
+# Jarvis 手机管家：免登录共享密钥。手机 app 在请求头带 X-Jarvis-Token，
+# install_auth_guard 匹配成功后直接放行（跳过每日动态密码/OTP）。
+# 文件不入版本库（见 .gitignore），换机器部署需重建并同步到 app 端 Tokens.kt。
+JARVIS_TOKEN_CONFIG_FILE = os.path.join(CONFIG_DIR, 'jarvis_token.json')
+
+
+def load_jarvis_token():
+    """读取 Jarvis app 的共享密钥；文件缺失或为空则返回空串（=关闭免登录，回退常规登录鉴权）。"""
+    try:
+        if os.path.exists(JARVIS_TOKEN_CONFIG_FILE):
+            with open(JARVIS_TOKEN_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return (json.load(f).get('token') or '').strip()
+    except Exception:
+        pass
+    return ''
+
 # AI 批量股票打分（大盘云图）：提示词 + 分数/状态持久化（低频数据，放 data/ 不随每日清理）
 STOCK_SCORE_PROMPT_FILE = os.path.join(CONFIG_DIR, 'stock_score_prompt.txt')
 DATASOURCE_CONFIG_FILE = os.path.join(CONFIG_DIR, 'datasource_config.json')

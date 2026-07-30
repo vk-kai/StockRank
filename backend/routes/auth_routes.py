@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, session
 
 from core.daily_password import verify_password as _verify_daily_password
 from core.otp_service import is_otp_enabled, load_otp_config, verify_code
+from core.config import load_jarvis_token
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
@@ -22,6 +23,17 @@ def is_service_push_request():
     仅对 POST /api/flow/market-map-push 生效；同路径的 GET/DELETE 仍需登录态。
     """
     return request.method == 'POST' and (request.path or '') == '/api/flow/market-map-push'
+
+
+def is_jarvis_request():
+    """Jarvis 手机管家 app 的请求免登录放行：app 在请求头带 X-Jarvis-Token，
+    与 config/jarvis_token.json 的共享密钥匹配则放行（绕过每日密码/OTP）。
+    配置缺失/为空则不启用，回退到常规登录鉴权。"""
+    expected = load_jarvis_token()
+    if not expected:
+        return False
+    provided = (request.headers.get('X-Jarvis-Token') or '').strip()
+    return bool(provided) and provided == expected
 
 
 # 健康检查必须放行：docker healthcheck 用 curl 打 /health 判定容器存活，
@@ -45,6 +57,10 @@ def install_auth_guard(app):
 
         # 放行：量化系统通过共享密钥推送大盘云图股票
         if is_service_push_request():
+            return None
+
+        # 放行：Jarvis 手机管家 app 带 X-Jarvis-Token 共享密钥的请求
+        if is_jarvis_request():
             return None
 
         # 仅 /api/ 开头的业务接口需要登录；静态资源、前端路由等一律不拦截
