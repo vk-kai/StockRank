@@ -77,7 +77,11 @@ while true; do
         LOCAL=$(git rev-parse HEAD 2>/dev/null)
         REMOTE=$(git rev-parse "origin/$GIT_BRANCH" 2>/dev/null)
         if [ -n "$LOCAL" ] && [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-            log "检测到新提交: $LOCAL -> $REMOTE"
+            log "======== 检测到新提交: $LOCAL -> $REMOTE ========"
+            # pull 之前列出本次将合入的提交(pull 后 HEAD..origin 就空了),便于追溯是什么代码触发了重建
+            log "待合入提交列表:"
+            git log --oneline --no-decorate "HEAD..origin/$GIT_BRANCH" >>"$LOG_FILE" 2>&1 || \
+                log "(无法获取提交明细)"
             # --ff-only:仅快进合并,避免本地有意外的分叉提交被合并,失败则不破坏工作区
             if git pull --ff-only origin "$GIT_BRANCH" >>"$LOG_FILE" 2>&1; then
                 log "git pull 成功,代码已更新到磁盘(运行中容器仍用旧代码,需重建生效)"
@@ -95,13 +99,16 @@ while true; do
         if [ "$AVOID_TRADING_HOURS" = "1" ] && is_trading_hours; then
             log "处于交易时段,推迟容器重建到收盘后(已 pull 的代码会在收盘后自动生效)"
         else
-            log "开始重建容器(down + up --build)..."
-            if docker compose -f "$COMPOSE_FILE" down >>"$LOG_FILE" 2>&1 \
-               && docker compose -f "$COMPOSE_FILE" up -d --build >>"$LOG_FILE" 2>&1; then
-                log "容器重建并启动完成,新代码已生效"
+            log "======== 开始重建容器: docker compose down && up -d --build ========"
+            docker compose -f "$COMPOSE_FILE" down >>"$LOG_FILE" 2>&1
+            down_rc=$?
+            docker compose -f "$COMPOSE_FILE" up -d --build >>"$LOG_FILE" 2>&1
+            up_rc=$?
+            if [ "$down_rc" -eq 0 ] && [ "$up_rc" -eq 0 ]; then
+                log "======== 容器重建并启动完成,新代码已生效 ========"
                 PENDING_REBUILD=0
             else
-                log "容器重建失败,保留待重建标志,下一轮重试(详见日志)"
+                log "======== 容器重建失败(down_rc=$down_rc up_rc=$up_rc),保留待重建标志,下一轮重试 ========"
             fi
         fi
     fi
