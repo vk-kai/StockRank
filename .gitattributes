@@ -1,0 +1,7 @@
+# 强制以下部署/脚本文件在所有平台检出时用 LF 换行,
+# 避免在 Windows 编辑后带到 Linux 服务器出现 CRLF(shebang 失效 → systemd 203/EXEC)。
+*.sh        text eol=lf
+*.service   text eol=lf
+*.Dockerfile text eol=lf
+Dockerfile  text eol=lf
+*.py        text eol=lf
