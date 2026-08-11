@@ -106,6 +106,73 @@ class CooldownTests(unittest.TestCase):
         self.assertFalse(m.is_in_cooldown('sh600519', 'rapid_rise', alerts, 30, now=later))
 
 
+class SealStateTests(unittest.TestCase):
+    """涨停/跌停封板状态去重:detect_hits 层验证状态机。
+
+    核心规则:封板期间不重复计入 limit_up/limit_down;明显开板(回落过 limit*0.99)
+    后重新封板才再次计入。limit*0.995(触线) 与 limit*0.99(开板线) 之间为滞回保持带。
+    """
+
+    def _limit_up_q(self, pct=10.0):
+        # prev_close=10,price 按 pct 反推,仅 detect_hits 主要看 pct
+        return _q(round(10 * (1 + pct / 100), 3), 10.0, pct=pct)
+
+    def test_sealed_blocks_rereport(self):
+        state = {}
+        q = self._limit_up_q(10.0)
+        h1 = m.detect_hits(q, [q], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertIn('limit_up', [h['type'] for h in h1])
+        self.assertTrue(state.get('limit_up_sealed'))
+        # 第二、三次仍在涨停价 -> 封板状态抑制,不再命中 limit_up
+        h2 = m.detect_hits(q, [q], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        h3 = m.detect_hits(q, [q], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertNotIn('limit_up', [h['type'] for h in h2])
+        self.assertNotIn('limit_up', [h['type'] for h in h3])
+
+    def test_open_then_reseal_rereports(self):
+        state = {}
+        at_limit = self._limit_up_q(10.0)
+        h1 = m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertIn('limit_up', [h['type'] for h in h1])
+        # 回落到 limit*0.99(=9.9) 以下 = 开板,清除封板标记
+        pulled = self._limit_up_q(9.5)
+        m.detect_hits(pulled, [pulled], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertFalse(state.get('limit_up_sealed'))
+        # 重新封板 -> 再次命中 limit_up
+        h3 = m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertIn('limit_up', [h['type'] for h in h3])
+
+    def test_hold_band_keeps_sealed(self):
+        state = {}
+        at_limit = self._limit_up_q(10.0)
+        m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertTrue(state.get('limit_up_sealed'))
+        # 9.92 落在 [9.9, 9.95) 滞回保持带:既不在涨停价、也不构成开板 -> 封板标记保持
+        hold = self._limit_up_q(9.92)
+        m.detect_hits(hold, [hold], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertTrue(state.get('limit_up_sealed'))
+        # 回到涨停价 -> 期间未真正开板,不再报
+        h3 = m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertNotIn('limit_up', [h['type'] for h in h3])
+
+    def test_limit_down_sealed_symmetric(self):
+        state = {}
+        at_down = _q(9.0, 10.0, pct=-10.0)
+        h1 = m.detect_hits(at_down, [at_down], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertIn('limit_down', [h['type'] for h in h1])
+        self.assertTrue(state.get('limit_down_sealed'))
+        # 仍在跌停价 -> 不再命中
+        h2 = m.detect_hits(at_down, [at_down], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertNotIn('limit_down', [h['type'] for h in h2])
+        # 反弹到 +5%(> -limit*0.99=-9.9) = 开板
+        rebound = _q(10.5, 10.0, pct=5.0)
+        m.detect_hits(rebound, [rebound], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertFalse(state.get('limit_down_sealed'))
+        # 重新跌停 -> 再次命中
+        h3 = m.detect_hits(at_down, [at_down], state, m.DEFAULT_ALERTS_CFG, limit=10.0, name='X')
+        self.assertIn('limit_down', [h['type'] for h in h3])
+
+
 class ProcessTickTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -128,7 +195,7 @@ class ProcessTickTests(unittest.TestCase):
         m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(),
                        limit=10.0, pusher=lambda t, c: pushed.append((t, c)) or True)
         self.assertTrue(pushed)
-        self.assertTrue(pushed[0][0].startswith('📈'))  # 标题以 📈 开头
+        self.assertTrue(pushed[0][0].startswith('🔴'))  # 标题以 🔴 开头(利好=红)
         alerts = m._load_alerts()
         self.assertEqual(len(alerts), 1)            # 一次推送 = 一条记录
         self.assertEqual(alerts[0]['type'], 'limit_up')
@@ -140,6 +207,33 @@ class ProcessTickTests(unittest.TestCase):
         m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(), limit=10.0, pusher=push)
         m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(), limit=10.0, pusher=push)
         self.assertEqual(len(pushed), 1)  # 第二次同票同类型 -> 全部冷却 -> 不再推
+
+    def _limit_up_only_cfg(self):
+        """只开 limit_up、关闭其余检测,便于隔离封板去重逻辑。"""
+        cfg = self._cfg()
+        alerts = json.loads(json.dumps(m.DEFAULT_ALERTS_CFG))
+        for k in alerts:
+            if k != 'limit_up':
+                alerts[k]['enabled'] = False
+        cfg['watchlist'][0]['price_alerts'] = alerts
+        return cfg
+
+    def test_sealed_not_rereported_after_cooldown(self):
+        """封死涨停时,即使原冷却已过期,封板状态仍阻止重复推送(本次修复核心点)。"""
+        pushed = []
+        push = lambda t, c: pushed.append((t, c)) or True
+        cfg = self._limit_up_only_cfg()
+        m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), cfg, limit=10.0, pusher=push)
+        self.assertEqual(len(pushed), 1)
+        # 把已记录告警时间戳后移到 31 分钟前,模拟 30 分钟冷却已过期
+        alerts = m._load_alerts()
+        old_ts = (datetime.now() - timedelta(minutes=31)).isoformat()
+        for a in alerts:
+            a['timestamp'] = old_ts
+        m._save_alerts(alerts)
+        # 再次报价仍在涨停价 -> 封板状态抑制 limit_up,无其它类型可触发 -> 不再推送
+        m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), cfg, limit=10.0, pusher=push)
+        self.assertEqual(len(pushed), 1)
 
 
 if __name__ == '__main__':

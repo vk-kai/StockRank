@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 import calendar
 from data.data_processor import get_sector_flow_data, save_realtime_data, load_realtime_data, cleanup_old_data, generate_daily_summary_for_date, load_daily_data, error_logger, data_logger, system_logger, get_top5_comparison_data, is_pushed, update_push_status, refresh_market_summary_cache, MARKET_FAST_REFRESH_SECONDS
-from monitors.thread_monitor import heartbeat, register_thread
+from monitors.thread_monitor import heartbeat, register_thread, set_busy
 from core.logger import get_logger
 
 _last_morning_summary_date = None
@@ -171,7 +171,14 @@ def data_collection_thread():
             if current_minute % 5 == 0 and _last_sector_collect_key != sector_collect_key:
                 _last_sector_collect_key = sector_collect_key
                 if trading_now:
-                    data = get_sector_flow_data()
+                    # THS 板块采集可能耗时很长(cookie刷新45s + 多次重试最坏约200s),
+                    # 期间打 busy,让 thread_monitor 用 BUSY_TIMEOUT(600s) 而非 DEFAULT_TIMEOUT(120s),
+                    # 否则监控会误判线程"stopped"并触发无意义的 /api/system/restart(还会因鉴权401刷屏)。
+                    set_busy('data_collector', True)
+                    try:
+                        data = get_sector_flow_data()
+                    finally:
+                        set_busy('data_collector', False)
                     if data:
                         minute_key = now.strftime('%H:%M')
                         success = save_realtime_data(today, minute_key, data)

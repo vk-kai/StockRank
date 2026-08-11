@@ -71,7 +71,7 @@ def get_latest_data():
 
 _ths_cookie_lock = threading.Lock()
 # 同花顺 cookie 全局缓存:成功获取后 10 分钟内复用,避免每次采集/健康检查都拉起 Chromium
-_ths_cookie_cache = {"value": "", "ts": 0.0}
+_ths_cookie_cache = {"value": "", "ts": 0.0, "refreshing": False}
 _THS_COOKIE_CACHE_TTL = 600  # 秒(10 分钟)
 
 def _generate_random_string(length):
@@ -88,42 +88,65 @@ _THS_COOKIE_REFRESH_SCRIPT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ths_cookie_refresh.py')
 
 
+def _ths_cache_valid(force):
+    """缓存是否仍可复用:非强制、有值、未过期。"""
+    return (not force
+            and _ths_cookie_cache["value"]
+            and (time.time() - _ths_cookie_cache["ts"]) < _THS_COOKIE_CACHE_TTL)
+
+
 def refresh_ths_cookie(force=False):
     # 命中缓存(非强制、未过期)直接返回,避免重复拉起 Chromium
-    if not force and _ths_cookie_cache["value"] and (time.time() - _ths_cookie_cache["ts"]) < _THS_COOKIE_CACHE_TTL:
+    if _ths_cache_valid(force):
         return _ths_cookie_cache["value"]
 
     script_path = _THS_COOKIE_REFRESH_SCRIPT
     if not os.path.exists(script_path):
         error_logger.error(f"同花顺Cookie刷新脚本不存在: {script_path}")
-        return ''
+        # fail-soft: 返回上次缓存(可能为空),与下方失败分支一致
+        return _ths_cookie_cache["value"]
+
+    # 持锁仅做"缓存二次确认 + refreshing 标志读写";subprocess 在锁外执行。
+    # 否则一次 45s 刷新会把业务采集与健康检查互相串行卡死(锁竞争放大单次超时影响)。
+    with _ths_cookie_lock:
+        if _ths_cache_valid(force):
+            return _ths_cookie_cache["value"]
+        if _ths_cookie_cache["refreshing"]:
+            # 已有线程在拉 Chromium:本次不阻塞排队,尽量复用缓存(哪怕已过期),
+            # 刷新完成后下一次调用即可拿到新值。
+            return _ths_cookie_cache["value"]
+        _ths_cookie_cache["refreshing"] = True
 
     try:
-        with _ths_cookie_lock:
-            # 双重检查:持锁后再次确认缓存,防多线程并发拉起浏览器
-            if not force and _ths_cookie_cache["value"] and (time.time() - _ths_cookie_cache["ts"]) < _THS_COOKIE_CACHE_TTL:
-                return _ths_cookie_cache["value"]
-            result = subprocess.run(
-                [sys.executable, script_path, THS_SECTOR_URL],
-                capture_output=True,
-                text=True,
-                timeout=45
-            )
+        result = subprocess.run(
+            [sys.executable, script_path, THS_SECTOR_URL],
+            capture_output=True,
+            text=True,
+            timeout=45
+        )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
-            _ths_cookie_cache["value"] = cookie
-            _ths_cookie_cache["ts"] = time.time()
+            with _ths_cookie_lock:
+                _ths_cookie_cache["value"] = cookie
+                _ths_cookie_cache["ts"] = time.time()
             return cookie
 
         error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         error_logger.error("同花顺动态Cookie刷新超时")
         # 超时后清理残留的 chromium 进程（子脚本被 kill 时 finally 可能来不及执行）
         _kill_orphan_chromium()
     except Exception as e:
         error_logger.error(f"同花顺动态Cookie刷新异常: {e}")
+    finally:
+        with _ths_cookie_lock:
+            _ths_cookie_cache["refreshing"] = False
 
-    return ''
+    # fail-soft: 刷新失败时优先返回上次成功获取的 cookie(过期也用),
+    # 让业务请求有机会继续成功,避免一次 Chromium 抖动导致整轮采集空数据(折线图缺点)。
+    # 首次启动尚无缓存时返回 ''(由调用方重试逻辑兜底),行为与改造前一致。
+    with _ths_cookie_lock:
+        return _ths_cookie_cache["value"]
 
 
 def _kill_orphan_chromium():

@@ -337,6 +337,16 @@ def _limit_break(q, limit, state, cfg):
     return None
 
 
+# 涨停/跌停的去重由"封板状态"负责(detect_hits 内 state['limit_up_sealed']/['limit_down_sealed']),
+# 不走 is_in_cooldown 的时间冷却——否则开板后冷却未过时重新封板会被误抑制。
+SEAL_DEDUPED_TYPES = ('limit_up', 'limit_down')
+
+
+def _is_seal_deduped(hit_type):
+    """该类型是否由封板状态去重(而非时间冷却)。"""
+    return hit_type in SEAL_DEDUPED_TYPES
+
+
 def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=None):
     """对一只票跑全部启用的检测,返回 hits 列表(一次报价可能命中多条)。
 
@@ -345,10 +355,25 @@ def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=No
         today: 当前日期字符串，用于查询当天记录
     """
     hits = []
+    # 涨停/跌停去重改由"封板状态"负责(state['limit_up_sealed']/['limit_down_sealed']):
+    # 封住期间不重复计入;只有明显开板(回落到 limit*0.99 以下)后重新封板,才再次计入。
+    # limit*0.995 为触线(含涨停价四舍五入容差),limit*0.99 与之构成滞回带,过滤边界报价抖动。
     if alerts_cfg['limit_up']['enabled'] and q['pct'] >= limit * 0.995:
-        hits.append({'type': 'limit_up', 'label': '触及涨停'})
+        state['touched_up'] = True
+        if not state.get('limit_up_sealed'):
+            state['limit_up_sealed'] = True
+            hits.append({'type': 'limit_up', 'label': '触及涨停'})
+    elif q['pct'] < limit * 0.99:
+        # 明显回落=开板,清除封板标记,下次重新封板才能再报
+        state['limit_up_sealed'] = False
+
     if alerts_cfg['limit_down']['enabled'] and q['pct'] <= -limit * 0.995:
-        hits.append({'type': 'limit_down', 'label': '触及跌停'})
+        state['touched_down'] = True
+        if not state.get('limit_down_sealed'):
+            state['limit_down_sealed'] = True
+            hits.append({'type': 'limit_down', 'label': '触及跌停'})
+    elif q['pct'] > -limit * 0.99:
+        state['limit_down_sealed'] = False
 
     checkers = (
         lambda: _rapid_move(q, series, alerts_cfg),
@@ -644,8 +669,9 @@ def _select_primary_hit(code, hits, alerts, cooldown):
         'amplitude': 6,
         'gap_open': 7,
     }
-    # 先筛选不在冷却中的新触发项
-    new_hits = [h for h in hits if not is_in_cooldown(code, h['type'], alerts, cooldown)]
+    # 先筛选"新鲜"触发项:封板驱动类型(涨停/跌停)始终新鲜,其余看时间冷却
+    new_hits = [h for h in hits
+                if _is_seal_deduped(h['type']) or not is_in_cooldown(code, h['type'], alerts, cooldown)]
     if not new_hits:
         # 全部在冷却中但整体不是(all在冷却)说明有部分刚过冷却，取优先级最高的
         new_hits = hits
@@ -708,8 +734,10 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
         return []
 
     cooldown = cfg.get('cooldown_minutes', 30)
-    # 本次所有命中类型都还在冷却内 -> 不重复推
-    if all(is_in_cooldown(code, h['type'], alerts, cooldown) for h in hits):
+    # 跳过条件:所有命中都"被抑制"。封板驱动类型(涨停/跌停)由封板状态去重、视为始终新鲜;
+    # 其余类型走时间冷却。这样开板后重新封板即使原冷却未过也能报。
+    if all((not _is_seal_deduped(h['type'])) and is_in_cooldown(code, h['type'], alerts, cooldown)
+           for h in hits):
         return []
 
     # 选出最重要的新触发原因(只推一条)
@@ -723,7 +751,7 @@ def process_tick(code, name, quote, cfg, limit, pusher=None):
         push_event('price_alert', {
             'code': code, 'name': name, 'type': primary['type'],
             'label': primary['label'], 'price': quote.get('price'),
-            'pct': quote.get('pct'), 'timestamp': _now_iso(),
+            'pct': quote.get('pct'), 'timestamp': datetime.now().isoformat(),
             'pushed': pushed
         })
     except Exception:
