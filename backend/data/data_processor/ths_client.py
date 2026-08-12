@@ -122,7 +122,7 @@ def refresh_ths_cookie(force=False):
             [sys.executable, script_path, THS_SECTOR_URL],
             capture_output=True,
             text=True,
-            timeout=45
+            timeout=90
         )
         cookie = result.stdout.strip()
         if result.returncode == 0 and cookie.startswith('v='):
@@ -132,8 +132,13 @@ def refresh_ths_cookie(force=False):
             return cookie
 
         error_logger.error(f"同花顺动态Cookie刷新失败: {result.stderr.strip() or result.stdout.strip()}")
-    except subprocess.TimeoutExpired:
-        error_logger.error("同花顺动态Cookie刷新超时")
+    except subprocess.TimeoutExpired as e:
+        # 超时时子脚本可能已输出关键诊断信息(chromium报错/页面forbidden/端口未就绪)，
+        # TimeoutExpired.stderr 携带已捕获的输出，必须打出来否则只剩干巴巴的"超时"无法定位。
+        stderr_tail = (e.stderr or '').strip()[-1500:] if isinstance(e.stderr, str) else ''
+        stdout_tail = (e.stdout or '').strip()[-500:] if isinstance(e.stdout, str) else ''
+        detail = stderr_tail or stdout_tail or '(子脚本无输出)'
+        error_logger.error(f"同花顺动态Cookie刷新超时(45s)。子脚本输出: {detail}")
         # 超时后清理残留的 chromium 进程（子脚本被 kill 时 finally 可能来不及执行）
         _kill_orphan_chromium()
     except Exception as e:

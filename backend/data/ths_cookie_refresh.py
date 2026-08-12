@@ -118,33 +118,25 @@ def main():
     port = free_port()
     profile_dir = tempfile.mkdtemp(prefix='ths-cookie-')
     cmd = browser_command(executable, port, profile_dir)
-    # 启动新进程组，以便能 kill 整个 chromium 子进程树
+    # stderr 用 DEVNULL 而非 PIPE：chromium 在容器(无GPU/受限沙箱)里会狂刷警告，
+    # 64KB 管道缓冲区写满后主进程会阻塞在 stderr 写入，导致页面加载停滞、cookie 永远拿不到，
+    # 外层表现为"45秒超时"。stderr 只用于 debug 且 chromium 噪音无价值，直接丢弃。
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid if os.name != 'nt' else None,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0,
     )
-    stderr_chunks = []
     client = None
 
     def debug():
-        if proc.stderr:
-            try:
-                chunk = proc.stderr.read()
-                if chunk:
-                    stderr_chunks.append(chunk)
-            except Exception:
-                pass
         status = proc.poll()
-        stderr_text = ''.join(stderr_chunks)[-4000:]
         return '\n'.join(part for part in [
             'command=' + ' '.join(cmd),
             f'exit={status}' if status is not None else None,
-            stderr_text.strip()
         ] if part)
 
     try:
-        fetch_json(f'http://127.0.0.1:{port}/json/version', timeout=20, debug=debug)
+        fetch_json(f'http://127.0.0.1:{port}/json/version', timeout=40, debug=debug)
         tabs = fetch_json(f'http://127.0.0.1:{port}/json', timeout=10, debug=debug)
         tab = next((item for item in tabs if '10jqka.com.cn' in item.get('url', '')), tabs[0])
         client = CdpClient(tab['webSocketDebuggerUrl'])
@@ -153,7 +145,8 @@ def main():
 
         cookie = ''
         body = ''
-        for _ in range(12):
+        # 轮询窗口放宽到 30 秒(30次×1秒)：同花顺页面重定向+JS生成v cookie 冷加载时较慢
+        for _ in range(30):
             time.sleep(1)
             cookies = client.send('Network.getAllCookies').get('cookies', [])
             v_cookie = next((item for item in cookies if item.get('name') == 'v' and '10jqka.com.cn' in item.get('domain', '')), None)
