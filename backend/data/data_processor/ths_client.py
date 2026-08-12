@@ -242,13 +242,20 @@ def parse_ths_sector_html(html_content, request_url=''):
     """解析同花顺板块资金流向HTML"""
     soup = BeautifulSoup(html_content, 'html.parser')
     sectors = []
-    
+
+    # 同花顺改版可能调整表格 class，按优先级回退：精确 class → 任意 m-table → 行数最多的表格
     table = soup.find('table', class_='m-table J-ajax-table')
+    if not table:
+        table = soup.find('table', class_=lambda c: c and 'm-table' in c)
+    if not table:
+        candidates = soup.find_all('table')
+        if candidates:
+            table = max(candidates, key=lambda t: len(t.find_all('tr')))
     if not table:
         html_preview = html_content[:500] if html_content else '(空响应)'
         error_logger.error(f"未找到板块数据表格，URL: {request_url}，HTML内容预览: {html_preview}")
         return []
-    
+
     tbody = table.find('tbody')
     if not tbody:
         html_preview = html_content[:500] if html_content else '(空响应)'
