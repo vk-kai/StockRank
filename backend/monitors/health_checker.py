@@ -230,13 +230,13 @@ def _acquire_news_headers(max_attempts=5):
         if attempt < max_attempts - 1:
             time.sleep(1)
 
-    health_logger.warning(f"????????????? {max_attempts} ?")
+    health_logger.warning(f"获取新闻请求头失败，已尝试 {max_attempts} 次")
     return None, False
 
 # ============ 健康检测主逻辑 ============
 
 def run_full_health_check():
-    """???????????????????????????"""
+    """运行完整健康检测：检查板块数据源与新闻数据源的可用性"""
     global _health_status
 
     now = datetime.now().isoformat()
@@ -254,16 +254,16 @@ def run_full_health_check():
             sector_ok = True
             sector_error = None
         else:
-            sector_error = '???????????'
+            sector_error = '获取板块请求头失败'
     else:
         sector_ok = True
-        sector_error = '??????????????'
+        sector_error = '非交易时间，跳过板块检测'
 
     news_headers, found = _acquire_news_headers(5)
     if found:
         news_ok, news_time, news_error = _test_news_with_headers(news_headers)
     else:
-        news_error = '????????'
+        news_error = '获取新闻请求头失败'
 
     _health_status['news'] = {
         'status': 'ok' if news_ok else 'error',
@@ -281,11 +281,11 @@ def run_full_health_check():
     save_health_status()
 
     if not news_ok or (trading_now and not sector_ok):
-        health_logger.warning(f"?????????={'??' if news_ok else news_error}???={'??' if sector_ok else sector_error}")
+        health_logger.warning(f"健康检查异常：新闻={'正常' if news_ok else news_error} 板块={'正常' if sector_ok else sector_error}")
 
     return _health_status
 
-# ============ ???? ============
+# ============ 推送检测 ============
 
 def run_push_health_check(wait_seconds=5):
     """消息推送服务心跳检测（静默）：发 push_ping，等前端回 push_pong。
@@ -348,7 +348,7 @@ def _periodic_check_loop():
 # ============ 启动/停止 ============
 
 def start_health_checker():
-    """???????????????????????????"""
+    """启动健康检测：首屏立即检测一次，再开启定时检测循环"""
     global _check_thread, _check_running
 
     if _check_running:
@@ -373,20 +373,20 @@ def start_health_checker():
         _health_status['sector'] = {
             'status': 'ok' if sector_ok else 'error',
             'last_check': now,
-            'error': None if trading_now else '??????????????',
+            'error': None if trading_now else '非交易时间，跳过板块检测',
             'response_time': sector_time if trading_now else None
         }
         save_health_status()
     else:
-        _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '???????????', 'response_time': None}
+        _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '获取新闻请求头失败', 'response_time': None}
         _health_status['sector'] = {
             'status': 'error' if trading_now and not sector_ok else 'ok',
             'last_check': now,
-            'error': '???????????' if trading_now and not sector_ok else '??????????????',
+            'error': '获取板块请求头失败' if trading_now and not sector_ok else '非交易时间，跳过板块检测',
             'response_time': None
         }
         save_health_status()
-        health_logger.warning('??????????????????????????')
+        health_logger.warning('健康检测初始化失败：新闻或板块数据源不可用')
 
     _check_running = True
     _check_thread = threading.Thread(target=_periodic_check_loop, daemon=True)

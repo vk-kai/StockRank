@@ -24,8 +24,8 @@ MAX_NEWS_HOURS = 48
 
 DATA_URL = "https://push2.eastmoney.com/api/qt/clist/get"
 NEWS_URL = "https://news.10jqka.com.cn/tapp/news/push/stock/"
-THS_SECTOR_NET_IN_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/"
-THS_SECTOR_NET_OUT_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/"
+THS_SECTOR_NET_IN_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/"
+THS_SECTOR_NET_OUT_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/ASC/ajax/1/free/1/"
 THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 
 USE_PROXY = False
@@ -175,11 +175,11 @@ DEFAULT_DATASOURCES = [
      'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
      'test_url': 'https://push2.eastmoney.com/api/qt/clist/get', 'provider': '东方财富'},
     {'key': 'ths_sector_net_in', 'name': '同花顺-板块资金净流入', 'category': '板块资金净流入',
-     'role': '主', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/',
-     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/desc/ajax/1/', 'provider': '同花顺'},
+     'role': '主', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/',
+     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/', 'provider': '同花顺'},
     {'key': 'ths_sector_net_out', 'name': '同花顺-板块资金净流出', 'category': '板块资金净流入',
-     'role': '互补', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/',
-     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/', 'provider': '同花顺'},
+     'role': '互补', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/ASC/ajax/1/free/1/',
+     'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/ASC/ajax/1/free/1/', 'provider': '同花顺'},
 
     # --- 大盘指数 ---
     {'key': 'em_market_index', 'name': '东方财富-大盘指数', 'category': '大盘指数',

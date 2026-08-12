@@ -12,7 +12,7 @@ import urllib.request
 import websocket
 
 
-TARGET_URL = sys.argv[1] if len(sys.argv) > 1 else 'https://data.10jqka.com.cn/funds/hyzjl/field/buy/order/DESC/ajax/1/'
+TARGET_URL = sys.argv[1] if len(sys.argv) > 1 else 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/'
 
 
 def browser_path():

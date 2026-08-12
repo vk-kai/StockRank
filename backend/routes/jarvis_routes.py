@@ -9,6 +9,8 @@
 每项数据用 _safe 独立 try/except：单源失败只置 _error 字段，不影响其余数据，
 保证 app 拿到的总是结构完整的响应。
 """
+from datetime import datetime
+
 from flask import Blueprint, jsonify
 
 from core.logger import get_logger
@@ -52,11 +54,12 @@ def digest():
     from analysis.anomaly_detector import list_alerts
     from data.data_collector import is_trading_day, is_trading_time
 
+    now = datetime.now().astimezone()
     payload = {
         'success': True,
         'trading': {
-            'is_trading_day': _safe(is_trading_day, 'is_trading_day'),
-            'is_trading_time': _safe(is_trading_time, 'is_trading_time'),
+            'is_trading_day': _safe(lambda: is_trading_day(now), 'is_trading_day'),
+            'is_trading_time': _safe(lambda: is_trading_time(now), 'is_trading_time'),
         },
         'market_overview': _safe(get_market_overview, 'market_overview'),
         'market_summary': _safe(load_market_summary_cache, 'market_summary'),

@@ -358,8 +358,16 @@ def get_stock_statistics():
         response = em_request(STOCK_STAT_URL, params=params, headers=headers, timeout=10)
         if response is None:
             raise Exception("东方财富个股统计请求失败(直连+代理均不可达)")
-        data = response.json()
-        
+        if response.status_code != 200:
+            raise Exception(f"东方财富个股统计请求失败(HTTP {response.status_code})")
+        text = response.text
+        if not text or len(text) < 10:
+            raise Exception("东方财富个股统计返回空响应(可能被反爬拦截)")
+        try:
+            data = response.json()
+        except ValueError:
+            raise Exception(f"东方财富个股统计返回非JSON(前80字符: {text[:80]!r})")
+
         if 'data' in data and 'diff' in data['data']:
             up_count = 0
             down_count = 0
