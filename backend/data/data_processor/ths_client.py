@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup
 
 import requests
 
-from core.config import USE_PROXY, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_OUT_URL
+from core.config import USE_PROXY, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_IN_URLS, THS_SECTOR_NET_OUT_URL
 from ._common import error_logger, data_logger, system_logger, _parse_ths_number, _parse_ths_int
 
 
@@ -407,11 +407,23 @@ def get_sector_flow_data():
             
             session = requests.Session()
             session.trust_env = False
-            response, inflow_sectors = fetch_sector_page(session, THS_SECTOR_NET_IN_URL, headers, proxies)
-            
-            if response.status_code == 401 or response.status_code == 403:
-                headers = refresh_headers_after_auth_error()
+
+            # 净流入页：遍历候选路由(新版 DESC/free → 旧版 desc)，哪个返回数据用哪个
+            inflow_sectors = None
+            inflow_url_used = None
+            for in_url in THS_SECTOR_NET_IN_URLS:
+                response, inflow_sectors = fetch_sector_page(session, in_url, headers, proxies)
+                if response.status_code == 401 or response.status_code == 403:
+                    headers = refresh_headers_after_auth_error()
+                    inflow_sectors = None
+                    break  # cookie 失效，换 URL 无意义，直接进下一轮 retry
+                if inflow_sectors:
+                    inflow_url_used = in_url
+                    break
+            if response.status_code in (401, 403):
                 continue
+            if not inflow_sectors:
+                error_logger.error(f"所有净流入路由均无数据: {THS_SECTOR_NET_IN_URLS}")
 
             response, outflow_sectors = fetch_sector_page(session, THS_SECTOR_NET_OUT_URL, headers, proxies)
             if response.status_code == 401 or response.status_code == 403:
@@ -444,7 +456,8 @@ def get_sector_flow_data():
                 return sectors
             else:
                 html_preview = response.text[:1000] if response.text else '(空响应)'
-                error_logger.error(f"解析板块数据失败，返回空列表，URL: {THS_SECTOR_NET_IN_URL} / {THS_SECTOR_NET_OUT_URL}，HTML内容预览: {html_preview}")
+                in_url_log = inflow_url_used or THS_SECTOR_NET_IN_URLS
+                error_logger.error(f"解析板块数据失败，返回空列表，流入URL: {in_url_log} / 流出URL: {THS_SECTOR_NET_OUT_URL}，HTML内容预览: {html_preview}")
                 headers = normalize_ths_sector_headers()
         
         except Exception as e:
@@ -466,6 +479,12 @@ def parse_ths_stock_html(html_content, request_url=''):
     stocks = []
     
     table = soup.find('table', class_='m-table m-pager-table')
+    if not table:
+        table = soup.find('table', class_=lambda c: c and 'm-table' in c)
+    if not table:
+        candidates = soup.find_all('table')
+        if candidates:
+            table = max(candidates, key=lambda t: len(t.find_all('tr')))
     if not table:
         html_preview = html_content[:500] if html_content else '(空响应)'
         error_logger.error(f"未找到个股数据表格，URL: {request_url}，HTML内容预览: {html_preview}")
