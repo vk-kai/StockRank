@@ -19,42 +19,14 @@ from bs4 import BeautifulSoup
 
 import requests
 
-from core.config import USE_PROXY, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_IN_URLS, THS_SECTOR_NET_OUT_URL
+from core.config import THS_PROXY_ENABLED, THS_SECTOR_URL, THS_SECTOR_NET_IN_URL, THS_SECTOR_NET_IN_URLS, THS_SECTOR_NET_OUT_URL
 from ._common import error_logger, data_logger, system_logger, _parse_ths_number, _parse_ths_int
 
 
-PROXY_POOL = []
-PROXY_API_URL = "https://proxy.scdn.io/api/get_proxy.php"
-
-# 同花顺请求不复用健康检测 Cookie；业务请求现场生成 Cookie。
-
-def load_proxy_pool():
-    if not USE_PROXY:
-        system_logger.info("代理功能已禁用，跳过代理池加载")
-        return
-    
-    global PROXY_POOL
-    try:
-        response = requests.get(PROXY_API_URL, params={
-            'protocol': 'https',
-            'count': 5,
-            'country_code': 'CN'
-        }, timeout=15)
-        data = response.json()
-        if data.get('code') == 200 and data.get('data', {}).get('proxies'):
-            proxies = data['data']['proxies']
-            PROXY_POOL.clear()
-            for proxy in proxies:
-                proxy_with_protocol = f'https://{proxy}'
-                PROXY_POOL.append(proxy_with_protocol)
-            system_logger.info(f"成功从API获取 {len(PROXY_POOL)} 个HTTPS代理")
-        else:
-            error_logger.warning(f"API返回异常: {data}")
-    except Exception as e:
-        error_logger.error(f"获取代理失败: {e}")
-
-if USE_PROXY:
-    load_proxy_pool()
+# 代理池已迁移至 .proxy_pool(验证式:只有真访问通同花顺的代理才入池)。
+# 旧的 PROXY_POOL / load_proxy_pool() / PROXY_API_URL / USE_PROXY 全局开关已废弃——
+# 原实现拿到 IP 后完全不验证,导致 proxy.scdn.io 返回的路由器管理页等垃圾IP全部入池。
+# 现 get_sector_flow_data(use_proxy=True) 走 proxy_pool.get_verified_proxy()。
 
 # 跨模块共享的“最新板块资金数据”：用 dict 容器承载，避免 global 重绑定导致外部 import 引用失效
 _state = {'latest_data': []}
@@ -332,14 +304,14 @@ def parse_ths_sector_html(html_content, request_url=''):
     
     return sectors
 
-def get_sector_flow_data():
+def get_sector_flow_data(use_proxy=False):
     from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
-    
+
     crawler_status = get_crawler_status()
     if crawler_status.get('sector_flow', {}).get('status') == 'failed':
         error_logger.warning("板块资金获取已停止，跳过本次获取")
         return []
-    
+
     set_crawler_working('sector_flow')
     # 业务采集现场生成 Cookie，不复用健康检测结果。
     headers = normalize_ths_sector_headers()
@@ -364,6 +336,22 @@ def get_sector_flow_data():
                 response.encoding = 'GBK'
 
         return response, parse_ths_sector_html(response.text, url)
+
+    def classify_block(response):
+        """对 401/403 响应分类,辅助运维区分"cookie失效"与"本机IP被风控"。
+
+        同花顺机房IP被Nginx层封禁时返回403且body含 'Nginx forbidden',这种情况下
+        刷cookie完全无效——本机制存在的意义正是为此切代理。
+        """
+        try:
+            body = (response.text or '')[:200].lower()
+        except Exception:
+            body = ''
+        if 'nginx forbidden' in body:
+            return 'ip_blocked_nginx'
+        if response.status_code == 403:
+            return 'http_403_maybe_ip_block'
+        return 'auth_401_cookie'
 
     def refresh_headers_after_auth_error():
         # 401/403 认证失败:旧 cookie 已失效,强刷一份新的(绕过缓存)
@@ -402,14 +390,20 @@ def get_sector_flow_data():
     for retry in range(max_retries):
         try:
             proxies = None
-            proxy = None
-            if USE_PROXY and PROXY_POOL:
-                proxy = random.choice(PROXY_POOL)
-                proxies = {
-                    'http': proxy,
-                    'https': proxy
-                }
-            
+            proxy_url = None
+            if use_proxy and THS_PROXY_ENABLED:
+                # 本机IP疑似被风控:从验证式代理池取一个真正能访问同花顺的代理
+                from .proxy_pool import get_verified_proxy, mark_bad
+                proxy_url = get_verified_proxy()
+                if proxy_url:
+                    proxies = {'http': proxy_url, 'https': proxy_url}
+                    system_logger.info(f"本轮使用代理: {proxy_url}")
+                else:
+                    # 池中无可用代理(免费源多为垃圾):不硬失败,回退直连。
+                    # 直连请求很便宜,可能恰好撞上本机短暂解封。
+                    error_logger.warning("代理池无可用验证代理，本轮回退直连")
+                    use_proxy = False   # 让下游 fetch_sector_page 收到 proxies=None
+
             session = requests.Session()
             session.trust_env = False
 
@@ -419,9 +413,18 @@ def get_sector_flow_data():
             for in_url in THS_SECTOR_NET_IN_URLS:
                 response, inflow_sectors = fetch_sector_page(session, in_url, headers, proxies)
                 if response.status_code == 401 or response.status_code == 403:
+                    block_kind = classify_block(response)
+                    if block_kind == 'ip_blocked_nginx':
+                        error_logger.error(
+                            "疑似本机IP被同花顺风控（响应含 'Nginx forbidden'，状态403）。"
+                            "刷新cookie无效；下一轮将自动启用代理回退。")
+                    if proxy_url and response.status_code == 403:
+                        # 走代理仍403:该代理IP可能也被封,移除后下一轮换别的
+                        mark_bad(proxy_url)
+                        error_logger.warning(f"代理 {proxy_url} 返回403，已从池中移除")
                     headers = refresh_headers_after_auth_error()
                     inflow_sectors = None
-                    break  # cookie 失效，换 URL 无意义，直接进下一轮 retry
+                    break  # cookie 失效/被封，换 URL 无意义，直接进下一轮 retry
                 if inflow_sectors:
                     inflow_url_used = in_url
                     break
@@ -432,6 +435,10 @@ def get_sector_flow_data():
 
             response, outflow_sectors = fetch_sector_page(session, THS_SECTOR_NET_OUT_URL, headers, proxies)
             if response.status_code == 401 or response.status_code == 403:
+                if proxy_url and response.status_code == 403:
+                    from .proxy_pool import mark_bad
+                    mark_bad(proxy_url)
+                    error_logger.warning(f"代理 {proxy_url} 返回403(流出页)，已从池中移除")
                 headers = refresh_headers_after_auth_error()
                 continue
 
@@ -469,8 +476,6 @@ def get_sector_flow_data():
             error_logger.error(f"板块数据获取第 {retry + 1}/{max_retries} 次失败: {e}")
             if retry < max_retries - 1:
                 headers = attach_fresh_ths_cookie(normalize_ths_sector_headers())
-                if USE_PROXY:
-                    load_proxy_pool()
                 import time
                 time.sleep(6)
     
@@ -602,18 +607,10 @@ def get_sector_stocks(sector_url):
     max_retries = 2
     for retry in range(max_retries):
         try:
-            proxies = None
-            proxy = None
-            if USE_PROXY and PROXY_POOL:
-                proxy = random.choice(PROXY_POOL)
-                proxies = {
-                    'http': proxy,
-                    'https': proxy
-                }
-            
+            # 个股钻取保持直连(有5分钟缓存、量低);若后续被封可复用 proxy_pool 的 use_proxy 模式。
             session = requests.Session()
             session.trust_env = False
-            response = session.get(sector_url, headers=headers, proxies=proxies, timeout=15, verify=False, allow_redirects=True)
+            response = session.get(sector_url, headers=headers, proxies=None, timeout=15, verify=False, allow_redirects=True)
             
             if response.status_code == 401 or response.status_code == 403:
                 # 请求头失效，重新获取
@@ -648,8 +645,6 @@ def get_sector_stocks(sector_url):
             error_logger.error(f"获取板块个股第 {retry + 1}/{max_retries} 次失败: {e}")
             if retry < max_retries - 1:
                 headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
-                if USE_PROXY:
-                    load_proxy_pool()
                 import time
                 time.sleep(1)
     

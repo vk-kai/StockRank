@@ -15,6 +15,7 @@ from .ths_client import (  # noqa: F401
     attach_fresh_ths_cookie, refresh_ths_cookie,
     get_sector_flow_data, get_sector_stocks, get_latest_data,
 )
+from .proxy_pool import get_verified_proxy, mark_bad, pool_status  # noqa: F401
 from .storage import (  # noqa: F401
     get_daily_file_path, get_realtime_file_path,
     load_daily_data, save_daily_data, update_push_status, is_pushed,

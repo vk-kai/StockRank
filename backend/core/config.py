@@ -34,7 +34,38 @@ THS_SECTOR_NET_IN_URLS = [
 THS_SECTOR_NET_OUT_URL = "https://data.10jqka.com.cn/funds/hyzjl/field/je/order/asc/ajax/1/free/1/"
 THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 
-USE_PROXY = False
+# ── 同花顺代理兜底配置 ──
+# 根因:服务器机房IP会被同花顺在Nginx层封禁(返回403 Nginx forbidden),
+# 刷cookie无效。本机被风控时,从采集窗口第2轮起自动切到代理重试。
+THS_PROXY_ENABLED = True          # 主开关:本机IP被风控时从第2轮起走代理
+THS_PROXY_VERIFY_URL = THS_SECTOR_NET_IN_URL   # 用净流入主路由验证代理(必须能拿到真实板块表才算可用)
+THS_PROXY_CACHE_TTL = 300         # 验证通过的代理缓存复用5分钟,避免每轮采集都重验
+
+# 可插拔代理源列表。kind 决定如何解析响应成 ["ip:port", ...] / 完整URL:
+#   scdn   → proxy.scdn.io JSON API(占位,实测返回垃圾IP;置 enabled:False 可关)
+#   jhao   → jhao104/proxy_pool 本地实例的 /get 接口
+#   static → 固定 IP:PORT 列表(付费/自建代理直接填这里,最稳)
+# 机制优先,不依赖免费代理可用。付费代理填入 static 源即生效,无需改代码。
+PROXY_SOURCES = [
+    {
+        'name': 'proxy.scdn.io',
+        'kind': 'scdn',
+        'url': 'https://proxy.scdn.io/api/get_proxy.php',
+        'params': {'protocol': 'https', 'count': 5, 'country_code': 'CN'},
+        'enabled': True,         # 占位源(实测返回的多为路由器等垃圾IP),保留以兼容旧行为
+    },
+    {
+        'name': 'jhao_proxy_pool_local',
+        'kind': 'jhao',
+        'url': 'http://127.0.0.1:5010/get',   # 部署 jhao104/proxy_pool 后默认端口
+        'enabled': True,
+    },
+    # 付费/自建代理示例:取消注释、填入完整URL(支持 http://user:pass@host:port)即生效。
+    # {'name': 'paid_static', 'kind': 'static',
+    #  'proxies': ['http://user:pass@paid-host:port'], 'enabled': True},
+]
+
+USE_PROXY = False  # 已弃用:同花顺代理改用上方 THS_PROXY_ENABLED + PROXY_SOURCES(验证式池)。保留定义以防旧脚本引用。
 
 # 东方财富专用代理池（IP被封时自动使用）
 EM_PROXY_POOL = []

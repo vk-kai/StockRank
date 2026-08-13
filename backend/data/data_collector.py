@@ -8,7 +8,14 @@ from core.logger import get_logger
 
 _last_morning_summary_date = None
 _last_afternoon_summary_date = None
-_last_sector_collect_key = None
+# 板块资金采集窗口机制：每个5分钟区间(如 9:40-9:45)内，首轮失败后每分钟再试一次，
+# 每次内部仍尝试3次。只有进入下一个区间，上一个区间才算真正失败。
+_last_sector_window_start = None   # 当前正在重试的区间起点(整5分钟, 'YYYY-MM-DD HH:MM')
+_sector_window_last_attempt = None  # 当前区间内最后一次发起尝试的时间(整分钟, datetime)，用于控制重试节奏
+_sector_window_attempt_count = 0    # 当前区间内已实际发起的尝试轮数(每次真正调用采集后 +1)
+_sector_window_succeeded = False    # 当前区间是否已成功拿到数据
+SECTOR_WINDOW_RETRY_MINUTES = 1     # 同一区间内失败后，隔多少分钟再试
+SECTOR_WINDOW_MAX_ATTEMPTS = 5      # 一个5分钟区间内最多尝试多少轮(含首轮)
 cleanup_logger = get_logger('cleanup_flow')
 data_summary_logger = get_logger('data_summary')
 
@@ -73,9 +80,10 @@ def should_generate_afternoon_summary(now):
     return False
 
 def data_collection_thread():
-    global _last_morning_summary_date, _last_afternoon_summary_date, _last_sector_collect_key
+    global _last_morning_summary_date, _last_afternoon_summary_date
+    global _last_sector_window_start, _sector_window_last_attempt, _sector_window_attempt_count, _sector_window_succeeded
     register_thread('data_collector')
-    system_logger.info("启动数据采集线程，每5分钟采集一次数据...")
+    system_logger.info("启动数据采集线程，每5分钟采集一次数据，区间内失败每隔1分钟重试直到下一个5分钟点...")
     
     trading_now = False
 
@@ -167,41 +175,81 @@ def data_collection_thread():
                 else:
                     data_summary_logger.error(f"生成今日({today})的每日汇总失败")
             
-            sector_collect_key = now.strftime('%Y-%m-%d %H:%M')
-            if current_minute % 5 == 0 and _last_sector_collect_key != sector_collect_key:
-                _last_sector_collect_key = sector_collect_key
-                if trading_now:
-                    # THS 板块采集可能耗时很长(cookie刷新45s + 多次重试最坏约200s),
-                    # 期间打 busy,让 thread_monitor 用 BUSY_TIMEOUT(600s) 而非 DEFAULT_TIMEOUT(120s),
-                    # 否则监控会误判线程"stopped"并触发无意义的 /api/system/restart(还会因鉴权401刷屏)。
-                    set_busy('data_collector', True)
-                    try:
-                        data = get_sector_flow_data()
-                    finally:
-                        set_busy('data_collector', False)
-                    if data:
-                        minute_key = now.strftime('%H:%M')
-                        success = save_realtime_data(today, minute_key, data)
-                        if success:
-                            data_logger.info(f"数据采集成功，获取{len(data)}个板块")
-                            # WebSocket通知前端数据已刷新
-                            try:
-                                from ws import push_event
-                                push_event('data_update', {'type': 'sector_flow', 'date': today, 'time': minute_key, 'count': len(data)})
-                            except Exception:
-                                pass
-                            # 资金异动检测（独立模块，异常绝不影响采集主循环）
-                            try:
-                                from analysis.anomaly_detector import detect_and_push
-                                detect_and_push(today, minute_key, data)
-                            except Exception as _ae:
-                                error_logger.error(f"异动检测调用失败（不影响采集）: {_ae}")
-                        else:
-                            data_logger.error(f"保存实时数据失败")
-                    else:
-                        data_logger.error("获取数据失败")
+            # ── 板块资金采集窗口机制 ──
+            # 当前时间所属的5分钟区间起点(如 9:40-9:45 区间的起点为 9:40)
+            window_start_minute = current_minute - (current_minute % 5)
+            window_start_key = now.replace(minute=window_start_minute, second=0, microsecond=0)
+            window_start_str = window_start_key.strftime('%Y-%m-%d %H:%M')
+
+            # 进入新区间：重置窗口状态，上个区间到此才算真正结束(无论成败)
+            if _last_sector_window_start != window_start_str:
+                _last_sector_window_start = window_start_str
+                _sector_window_last_attempt = None
+                _sector_window_attempt_count = 0
+                _sector_window_succeeded = False
+
+            # 已实际发起的尝试轮数(0 表示尚未在本区间尝试)
+            attempt_index = _sector_window_attempt_count
+            window_exhausted = attempt_index >= SECTOR_WINDOW_MAX_ATTEMPTS
+            should_attempt = trading_now and not _sector_window_succeeded and not window_exhausted
+
+            # 控制重试节奏：首轮立即触发；之后每 SECTOR_WINDOW_RETRY_MINUTES 分钟试一次。
+            # 用「上次尝试时刻 + 间隔」与「当前整分钟」比较，避免被15s轮询误触发。
+            if should_attempt and _sector_window_last_attempt is not None:
+                next_allowed = _sector_window_last_attempt + timedelta(minutes=SECTOR_WINDOW_RETRY_MINUTES)
+                # 对齐到整分钟比较，防止在间隔分钟内反复触发
+                if now.replace(second=0, microsecond=0) < next_allowed.replace(second=0, microsecond=0):
+                    should_attempt = False
+
+            if should_attempt:
+                _sector_window_attempt_count += 1
+                _sector_window_last_attempt = now.replace(second=0, microsecond=0)
+                if attempt_index == 0:
+                    data_logger.info(f"进入板块采集区间 {window_start_str}，开始第1轮获取")
                 else:
-                    data_logger.debug(f"非交易时间，跳过数据采集")
+                    data_logger.info(f"板块采集区间 {window_start_str} 上轮失败，开始第{attempt_index + 1}轮重试")
+                # THS 板块采集可能耗时很长(cookie刷新45s + 多次重试最坏约200s),
+                # 期间打 busy,让 thread_monitor 用 BUSY_TIMEOUT(600s) 而非 DEFAULT_TIMEOUT(120s),
+                # 否则监控会误判线程"stopped"并触发无意义的 /api/system/restart(还会因鉴权401刷屏)。
+                set_busy('data_collector', True)
+                try:
+                    # 第1轮(attempt_index==0)本机直连(含cookie刷新);
+                    # 第2轮起(attempt_index>=1)本机疑似被风控,切代理重试。
+                    use_proxy = (attempt_index >= 1)
+                    if use_proxy:
+                        data_logger.info(f"本轮启用代理回退（本机IP疑似被风控）")
+                    data = get_sector_flow_data(use_proxy=use_proxy)
+                finally:
+                    set_busy('data_collector', False)
+                if data:
+                    _sector_window_succeeded = True
+                    minute_key = now.strftime('%H:%M')
+                    success = save_realtime_data(today, minute_key, data)
+                    if success:
+                        retry_note = f"(区间{window_start_str}第{attempt_index + 1}轮成功)" if attempt_index > 0 else ""
+                        data_logger.info(f"数据采集成功，获取{len(data)}个板块 {retry_note}")
+                        # WebSocket通知前端数据已刷新
+                        try:
+                            from ws import push_event
+                            push_event('data_update', {'type': 'sector_flow', 'date': today, 'time': minute_key, 'count': len(data)})
+                        except Exception:
+                            pass
+                        # 资金异动检测（独立模块，异常绝不影响采集主循环）
+                        try:
+                            from analysis.anomaly_detector import detect_and_push
+                            detect_and_push(today, minute_key, data)
+                        except Exception as _ae:
+                            error_logger.error(f"异动检测调用失败（不影响采集）: {_ae}")
+                    else:
+                        data_logger.error(f"保存实时数据失败")
+                else:
+                    data_logger.error(f"获取数据失败（区间{window_start_str}第{attempt_index + 1}轮）")
+            elif trading_now and _sector_window_succeeded:
+                data_logger.debug(f"板块采集区间 {window_start_str} 已成功，本轮跳过")
+            elif trading_now and window_exhausted and not _sector_window_succeeded:
+                data_logger.debug(f"板块采集区间 {window_start_str} 已尝试{SECTOR_WINDOW_MAX_ATTEMPTS}轮仍失败，等待下一区间")
+            elif not trading_now:
+                data_logger.debug(f"非交易时间，跳过数据采集")
         except Exception as e:
             error_logger.error(f"数据采集线程异常: {e}")
         
