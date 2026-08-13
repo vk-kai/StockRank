@@ -109,7 +109,8 @@ export default {
       aiAnalysisProgress: 0,
       aiAnalysisStep: '',
       aiAnalysisPollTimer: null,
-      needsAuth: false
+      needsAuth: false,
+      isAdmin: false
     }
   },
   computed: {
@@ -340,6 +341,7 @@ export default {
     // 先检查登录态：未登录则不发起数据请求（避免一进首页就触发 401 弹框）
     try {
       const session = await getAuthSession()
+      this.isAdmin = !!(session && session.is_admin)
       if (session && session.authenticated) {
         this.needsAuth = false
         this.bootstrapData()
@@ -394,9 +396,12 @@ export default {
     // 登录态变化回调
     onAuthRequired() {
       this.needsAuth = true
+      this.isAdmin = false
       this.loading = false
     },
     onAuthLogin() {
+      // 登录成功后刷新 admin 标志（vk 登录才显示体验码菜单）
+      this.refreshIsAdmin()
       if (this.needsAuth) {
         this.needsAuth = false
         this.error = null
@@ -405,8 +410,17 @@ export default {
       // 登录后监控卡/新闻条会出现，需重新计算图表高度，避免布局错乱
       this.$nextTick(() => this.updateLayoutHeight())
     },
+    async refreshIsAdmin() {
+      try {
+        const session = await getAuthSession()
+        this.isAdmin = !!(session && session.is_admin)
+      } catch (e) {
+        this.isAdmin = false
+      }
+    },
     onAuthLogout() {
       this.needsAuth = true
+      this.isAdmin = false
       // 清空已有数据，回到登录提示态
       this.currentData = []
       this.accumulatedData = []
@@ -1413,6 +1427,7 @@ export default {
     guardedGoToLogs() { if (this.requireAuthOrPrompt()) return; this.goToLogs() },
     guardedGoToHouseKline() { if (this.requireAuthOrPrompt()) return; this.goToHouseKline() },
     guardedGoToIndustryCycle() { if (this.requireAuthOrPrompt()) return; this.goToIndustryCycle() },
+    guardedGoToRedeemCode() { if (this.requireAuthOrPrompt()) return; this.$router.push('/redeem-code') },
     guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
     guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },

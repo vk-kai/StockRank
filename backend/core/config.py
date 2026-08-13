@@ -164,6 +164,10 @@ SESSION_SECRET_FILE = os.path.join(CONFIG_DIR, 'session_secret.json')
 # 文件不入版本库（见 .gitignore），换机器部署需重建并同步到 app 端 Tokens.kt。
 JARVIS_TOKEN_CONFIG_FILE = os.path.join(CONFIG_DIR, 'jarvis_token.json')
 
+# 兑换码（体验访问）：一次性限时码池，vk 生成后分享给他人免登录体验网站。
+# 结构见 core/redemption_code.py。文件不入版本库（见 .gitignore）。
+REDEMPTION_CODES_FILE = os.path.join(CONFIG_DIR, 'redemption_codes.json')
+
 
 def load_jarvis_token():
     """读取 Jarvis app 的共享密钥；文件缺失或为空则返回空串（=关闭免登录，回退常规登录鉴权）。"""

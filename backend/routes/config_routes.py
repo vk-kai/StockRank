@@ -16,13 +16,14 @@ from core.config import (
 )
 from data.data_processor import error_logger
 from core.logger import get_logger
-from .auth_routes import verify_password
+from .auth_routes import verify_password, is_authenticated
 from core.otp_service import (
     load_otp_config, save_otp_config, is_otp_enabled,
     generate_secret, build_provisioning_uri, build_qr_data_url, verify_code,
 )
 from core.session_secret import rotate_session_secret
 from core.daily_password import BEIJING_TZ
+from core import redemption_code
 from datetime import datetime
 
 config_bp = Blueprint('config', __name__, url_prefix='/api/config')
@@ -915,4 +916,115 @@ def otp_disable():
         error_logger.error(f"关闭 OTP 失败: {e}")
         error_logger.error(traceback.format_exc())
         return jsonify({'success': False, 'message': '关闭 OTP 失败'}), 500
+
+
+# ==================== 兑换码（体验访问）管理 ====================
+# 仅 vk 登录态（is_authenticated）可操作；兑换码会话（体验者）一律 401。
+# 仿 OTP enable/disable 的密码门：每次写操作都要 verify_password。
+
+
+def _require_admin():
+    """兑换码管理仅限 vk 登录态。返回 (response_or_None)。"""
+    if not is_authenticated():
+        return jsonify({'success': False, 'error': 'auth_required', 'message': '仅管理员可操作'}), 401
+    return None
+
+
+@config_bp.route('/redeem/list', methods=['GET'])
+def redeem_list():
+    """列出当前可用码(active) + 历史(used)。仅 vk。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        return jsonify({'success': True, **redemption_code.get_pool_status()})
+    except Exception as e:
+        error_logger.error(f"兑换码列表失败: {e}")
+        return jsonify({'success': False, 'message': '获取兑换码列表失败'}), 500
+
+
+@config_bp.route('/redeem/generate', methods=['POST'])
+def redeem_generate():
+    """生成体验码：body {password, label, page, duration, count}。
+    校验日密码 + 不超池容量。成功返回新生成的码（含可复制链接）。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+
+        label = str(data.get('label') or '').strip()
+        page = str(data.get('page') or '/').strip() or '/'
+        duration = str(data.get('duration') or '10min').strip()
+        try:
+            count = int(data.get('count') or 1)
+        except Exception:
+            count = 1
+
+        if not label:
+            return jsonify({'success': False, 'message': '请填写标签（如：大盘云图）'}), 400
+
+        result = redemption_code.create_codes(label, page, duration, count, created_by='vk')
+        if not result.get('success'):
+            return jsonify(result), 400
+
+        # 顺带返回分享链接前缀，前端直接拼 ?redeem=CODE
+        origin = request.host_url.rstrip('/')
+        codes = [
+            {'code': c, 'link': f"{origin}/?redeem={c}"}
+            for c in result.get('codes', [])
+        ]
+        return jsonify({
+            'success': True,
+            'codes': codes,
+            'can_generate': result.get('can_generate', 0),
+        })
+    except Exception as e:
+        error_logger.error(f"生成兑换码失败: {e}")
+        error_logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': '生成兑换码失败'}), 500
+
+
+@config_bp.route('/redeem/revoke', methods=['POST'])
+def redeem_revoke():
+    """撤销一张码（active 删除 / used 标 revoked）。已凭该码登录的会话靠轮询+守卫自然踢出。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+        code = str(data.get('code') or '').strip()
+        if not code:
+            return jsonify({'success': False, 'message': '缺少兑换码'}), 400
+        result = redemption_code.revoke(code)
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        error_logger.error(f"撤销兑换码失败: {e}")
+        return jsonify({'success': False, 'message': '撤销兑换码失败'}), 500
+
+
+@config_bp.route('/redeem/delete', methods=['POST'])
+def redeem_delete():
+    """彻底删除一张码（从 active 和 used 中移除，用于清理历史）。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        if not verify_password(data.get('password', '')):
+            return jsonify({'success': False, 'message': '密码错误'}), 401
+        code = str(data.get('code') or '').strip()
+        if not code:
+            return jsonify({'success': False, 'message': '缺少兑换码'}), 400
+        result = redemption_code.delete_code(code)
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        error_logger.error(f"删除兑换码失败: {e}")
+        return jsonify({'success': False, 'message': '删除兑换码失败'}), 500
 

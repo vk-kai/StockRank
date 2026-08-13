@@ -11,6 +11,7 @@ const MarketMap = () => import('./MarketMap.vue')
 const FlowAlert = () => import('./FlowAlert.vue')
 const AiChain = () => import('./AiChain.vue')
 const IndustryCycle = () => import('./IndustryCycle.vue')
+const RedeemCode = () => import('./RedeemCode.vue')
 
 const routes = [
   {
@@ -67,6 +68,11 @@ const routes = [
     path: '/industry-cycle',
     name: 'IndustryCycle',
     component: IndustryCycle
+  },
+  {
+    path: '/redeem-code',
+    name: 'RedeemCode',
+    component: RedeemCode
   }
 ]
 

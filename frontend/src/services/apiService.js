@@ -1176,3 +1176,37 @@ export async function getNewsSummaryStatus() {
     throw error
   }
 }
+
+// ==================== 兑换码（体验访问） ====================
+/** 体验者兑换码（无需登录，凭码建会话） */
+export async function redeemCode(code) {
+  const response = await apiClient.post('/auth/redeem', { code })
+  return response.data
+}
+
+/** vk 列出可用码 + 历史 */
+export async function listRedeemCodes() {
+  const response = await apiClient.get('/config/redeem/list')
+  return response.data
+}
+
+/** vk 生成体验码：{password, label, page, duration, count} */
+export async function createRedeemCodes(password, label, page, duration, count) {
+  const response = await apiClient.post('/config/redeem/generate', {
+    password, label, page, duration, count
+  })
+  return response.data
+}
+
+/** vk 撤销一张码 */
+export async function revokeRedeemCode(password, code) {
+  const response = await apiClient.post('/config/redeem/revoke', { password, code })
+  return response.data
+}
+
+/** vk 彻底删除一张码 */
+export async function deleteRedeemCode(password, code) {
+  const response = await apiClient.post('/config/redeem/delete', { password, code })
+  return response.data
+}
+

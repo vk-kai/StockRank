@@ -1,8 +1,11 @@
+import time
+
 from flask import Blueprint, jsonify, request, session
 
 from core.daily_password import verify_password as _verify_daily_password
 from core.otp_service import is_otp_enabled, load_otp_config, verify_code
 from core.config import load_jarvis_token
+from core import redemption_code
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
@@ -16,6 +19,20 @@ def verify_password(password):
 
 def is_authenticated():
     return session.get('stockrank_user') == USERNAME
+
+
+def is_redeem_session_valid():
+    """兑换码会话是否有效：session 里有 redeem_code，且 session 内记录的过期时间未到，
+    且对应码本身仍未过期/被撤销（双保险：防止撤销后旧会话仍放行）。
+    """
+    code = (session.get('redeem_code') or '').strip().upper()
+    if not code:
+        return False
+    # session 内记录的过期时间先判（快路径，无需查 JSON）
+    if time.time() > float(session.get('redeem_expire', 0) or 0):
+        return False
+    # 再校验码本身状态（被 vk 撤销/删除 → 失效）
+    return not redemption_code.is_code_expired(code)
 
 
 def is_service_push_request():
@@ -64,7 +81,8 @@ def install_auth_guard(app):
             return None
 
         # 仅 /api/ 开头的业务接口需要登录；静态资源、前端路由等一律不拦截
-        if path.startswith('/api/') and not is_authenticated():
+        # 放行条件：vk 已登录，或持有效兑换码会话（体验访问，全站可看数据，但不能改配置/生成码）
+        if path.startswith('/api/') and not (is_authenticated() or is_redeem_session_valid()):
             return jsonify({
                 'success': False,
                 'error': 'auth_required',
@@ -110,19 +128,54 @@ def login():
     })
 
 
+@auth_bp.route('/auth/redeem', methods=['POST'])
+def redeem():
+    """兑换体验码（无需登录，已被 PUBLIC_PATH_PREFIXES 放行）。
+
+    一次性核销：成功则建立兑换码会话（session 写 redeem_code/redeem_expire），
+    返回 expire_at + 落地页 page。失败返回模糊错误（不区分 used/invalid，防枚举探测）。
+    """
+    data = request.get_json(silent=True) or {}
+    code = str(data.get('code') or '').strip()
+    if not code:
+        return jsonify({'success': False, 'message': '请输入兑换码'}), 400
+
+    result = redemption_code.redeem(code, request.remote_addr or '')
+    if result.get('success'):
+        session['redeem_code'] = code.upper()
+        session['redeem_expire'] = result['expire_at']
+        session.permanent = True
+        return jsonify(result), 200
+    # 失败：统一 400
+    return jsonify(result), 400
+
+
 @auth_bp.route('/auth/logout', methods=['POST'])
 def logout():
     session.pop('stockrank_user', None)
+    session.pop('redeem_code', None)
+    session.pop('redeem_expire', None)
     return jsonify({'success': True, 'authenticated': False})
 
 
 @auth_bp.route('/auth/session', methods=['GET'])
 def auth_session():
     authed = is_authenticated()
+    redeem_active = is_redeem_session_valid()
+    # 兑换码会话也算"已认证可看数据"；但 is_admin 只对 vk 登录态为 True
+    # （凭码体验者不能进入体验码管理/改配置）。
+    redeem_label = None
+    if redeem_active:
+        rec = redemption_code.find_in_used((session.get('redeem_code') or '').upper())
+        if rec:
+            redeem_label = rec.get('label')
     return jsonify({
         'success': True,
-        'authenticated': authed,
-        'username': USERNAME if authed else '',
+        'authenticated': authed or redeem_active,
+        'username': USERNAME if authed else ('体验码' if redeem_active else ''),
+        'is_admin': authed,
+        'redeem_label': redeem_label,
+        'redeem_expire': session.get('redeem_expire') if redeem_active else None,
     })
 
 

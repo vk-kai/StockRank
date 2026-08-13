@@ -33,6 +33,7 @@
               <div class="more-dropdown-item" @click="guardedGoToIndustryCycle(); showMoreMenu = false">行业见顶诊断</div>
               <div class="more-dropdown-item" @click="guardedGoToLogs(); showMoreMenu = false">日志</div>
               <div class="more-dropdown-item" @click="guardedGoToHouseKline(); showMoreMenu = false">房价K线</div>
+              <div class="more-dropdown-item" v-if="isAdmin" @click="guardedGoToRedeemCode(); showMoreMenu = false">体验码</div>
             </div>
           </div>
         </div>

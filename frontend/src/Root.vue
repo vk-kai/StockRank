@@ -46,6 +46,21 @@
               {{ loading ? '登录中...' : '登录' }}
             </button>
           </form>
+          <!-- 兑换码入口（兜底：分享链接被 IM 截断时手动粘贴） -->
+          <div class="auth-divider"><span>或</span></div>
+          <div v-if="!showRedeemBox" class="auth-redeem-toggle" @click="showRedeemBox = true; message = ''">
+            用兑换码体验
+          </div>
+          <form v-else class="auth-form" @submit.prevent="submitRedeem">
+            <input
+              v-model="redeemInput"
+              placeholder="粘贴兑换码（如 AB12-CD34-EF56）"
+              :disabled="loading"
+            />
+            <button type="submit" :disabled="loading">
+              {{ loading ? '兑换中...' : '兑换并进入' }}
+            </button>
+          </form>
           <div v-if="message" class="auth-message">{{ message }}</div>
         </div>
       </div>
@@ -54,7 +69,7 @@
 </template>
 
 <script>
-import { getAuthSession, getOtpRequired, login, logout } from './services/apiService'
+import { getAuthSession, getOtpRequired, login, logout, redeemCode } from './services/apiService'
 
 export default {
   name: 'Root',
@@ -67,7 +82,13 @@ export default {
       otpCode: '',
       otpRequired: false,
       loading: false,
-      message: ''
+      message: '',
+      // 兑换码（体验访问）
+      isAdmin: false,            // vk 登录态才为 true（决定是否显示体验码管理入口）
+      redeemInput: '',           // 登录框里的"粘贴兑换码"输入
+      showRedeemBox: false,      // 是否展开兑换码输入框
+      _prevAuthed: false,        // 上一轮轮询的认证态，用于检测过期掉线
+      redeemPollTimer: null      // 5 分钟全局轮询定时器
     }
   },
   computed: {
@@ -86,18 +107,82 @@ export default {
     window.addEventListener('auth-required', this.handleAuthRequired)
     window.addEventListener('auth-request-login', this.openLogin)
     await this.checkSession()
+    // 链接带 ?redeem=XXXX → 自动兑换（分享链接进入）；兑换后清掉 URL 参数避免刷新重兑
+    await this.tryAutoRedeemFromUrl()
+    // 5 分钟全局轮询：无论在哪个页面都查会话有效性（有的页面没有定时请求），
+    // 体验码过期/被撤销 → checkSession 发现掉线 → 走 auth-required 链路回到锁定态。
+    this.redeemPollTimer = setInterval(() => this.checkSession(), 5 * 60 * 1000)
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.handleAuthRequired)
     window.removeEventListener('auth-request-login', this.openLogin)
+    if (this.redeemPollTimer) clearInterval(this.redeemPollTimer)
   },
   methods: {
     async checkSession() {
       try {
         const session = await getAuthSession()
-        this.authenticated = !!session.authenticated
+        this.isAdmin = !!(session && session.is_admin)
+        const nowAuthed = !!(session && session.authenticated)
+        // 检测掉线：上一轮是认证态、本轮变未认证 → 体验码过期或会话失效 → 触发登录提示
+        if (this._prevAuthed && !nowAuthed && !this.showLogin) {
+          this.authenticated = false
+          window.dispatchEvent(new CustomEvent('auth-required'))
+        }
+        this._prevAuthed = nowAuthed
+        this.authenticated = nowAuthed
       } catch (err) {
         this.authenticated = false
+        this._prevAuthed = false
+      }
+    },
+    async tryAutoRedeemFromUrl() {
+      try {
+        const code = new URLSearchParams(window.location.search).get('redeem')
+        if (!code) return
+        await this.doRedeem(code, { auto: true })
+        // 清掉 URL 里的 ?redeem=，避免刷新/分享时重兑
+        const url = new URL(window.location.href)
+        url.searchParams.delete('redeem')
+        window.history.replaceState({}, document.title, url.pathname + url.search + url.hash)
+      } catch (e) { /* 忽略 */ }
+    },
+    async submitRedeem() {
+      const code = (this.redeemInput || '').trim()
+      if (!code) { this.message = '请输入兑换码'; return }
+      this.loading = true
+      try {
+        await this.doRedeem(code, { auto: false })
+      } finally {
+        this.loading = false
+      }
+    },
+    async doRedeem(code, { auto }) {
+      try {
+        const res = await redeemCode(code)
+        if (res && res.success) {
+          this.authenticated = true
+          this.isAdmin = false
+          this.showLogin = false
+          this.showRedeemBox = false
+          this.redeemInput = ''
+          this.message = ''
+          this._prevAuthed = true
+          // 复用现有登录成功链路：通知各页面已可加载数据
+          window.dispatchEvent(new CustomEvent('auth-login-success'))
+          // 跳到码绑定的落地页（首页码则留原地）
+          if (res.page && res.page !== '/' && this.$router) {
+            try { this.$router.push(res.page) } catch (e) { /* 忽略重复导航 */ }
+          }
+        } else {
+          this.message = (res && res.message) || '兑换码无效或已被使用'
+          if (!auto) this.showRedeemBox = true
+        }
+      } catch (err) {
+        const data = err && err.response && err.response.data
+        this.message = (data && data.message) || '兑换码无效或已被使用'
+        if (!auto) this.showRedeemBox = true
+        throw err
       }
     },
     openLogin() {
@@ -118,6 +203,8 @@ export default {
       this.showLogin = false
       this.password = ''
       this.otpCode = ''
+      this.redeemInput = ''
+      this.showRedeemBox = false
       this.message = ''
     },
     async submitLogin() {
@@ -305,6 +392,37 @@ export default {
   margin-top: 12px;
   color: #ff8a8a;
   font-size: 13px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 16px 0 10px;
+  color: #5b6b85;
+  font-size: 12px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(111, 142, 190, 0.22);
+}
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.auth-redeem-toggle {
+  text-align: center;
+  color: #7cc4ff;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 0;
+  border-radius: 6px;
+}
+.auth-redeem-toggle:hover {
+  background: rgba(124, 196, 255, 0.08);
 }
 
 .auth-modal-enter-active,
