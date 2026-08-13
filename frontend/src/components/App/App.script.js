@@ -42,6 +42,9 @@ export default {
       historyData: {},
       minuteData: {},
       chartInstance: null,
+      // 折线图横屏全屏（移动端）：独立 echarts 实例，避免干扰内联图表
+      chartFullscreen: false,
+      fullscreenChart: null,
       loading: false,
       error: null,
       lastUpdate: null,
@@ -360,6 +363,10 @@ export default {
     if (this.chartInstance) {
       this.chartInstance.dispose()
       this.chartInstance = null
+    }
+    if (this.fullscreenChart) {
+      try { this.fullscreenChart.dispose() } catch (e) { /* noop */ }
+      this.fullscreenChart = null
     }
     if (this.countdownInterval) {
       clearInterval(this.countdownInterval)
@@ -686,6 +693,12 @@ export default {
         this.chartInstance.resize()
       }
       this.updateLayoutHeight()
+      // 横屏全屏开启时，窗口/方向变化也要重排全屏图表
+      if (this.chartFullscreen && this.fullscreenChart) {
+        this.$nextTick(() => {
+          if (this.fullscreenChart) this.fullscreenChart.resize()
+        })
+      }
     },
 
     updateLayoutHeight() {
@@ -726,6 +739,123 @@ export default {
           this.chartInstance.resize()
         }
       })
+    },
+
+    // ===== 折线图横屏全屏（移动端） =====
+    toggleChartFullscreen() {
+      if (this.chartFullscreen) {
+        this.closeChartFullscreen()
+      } else {
+        this.openChartFullscreen()
+      }
+    },
+    openChartFullscreen() {
+      // 尝试唤起系统横屏（部分浏览器支持，失败无碍——用 CSS 旋转兜底）
+      this.tryLockOrientation('landscape')
+      this.chartFullscreen = true
+      this.$nextTick(() => {
+        this.renderFullscreenChart()
+      })
+    },
+    closeChartFullscreen() {
+      this.tryLockOrientation('portrait')
+      this.chartFullscreen = false
+      if (this.fullscreenChart) {
+        try { this.fullscreenChart.dispose() } catch (e) { /* noop */ }
+        this.fullscreenChart = null
+      }
+    },
+    tryLockOrientation(orientation) {
+      // 异步且尽力而为；任何错误（不支持/非 HTTPS/无权限）都静默忽略
+      try {
+        const lock = window.screen && window.screen.orientation && window.screen.orientation.lock
+        if (lock) {
+          const p = lock.call(window.screen.orientation, orientation)
+          if (p && typeof p.catch === 'function') p.catch(() => {})
+        }
+      } catch (e) { /* noop */ }
+    },
+    renderFullscreenChart() {
+      const el = this.$refs.chartFullscreenEl
+      if (!el) return
+      if (!this.chartInstance) return
+
+      if (this.fullscreenChart) {
+        try { this.fullscreenChart.dispose() } catch (e) { /* noop */ }
+        this.fullscreenChart = null
+      }
+
+      try {
+        this.fullscreenChart = echarts.init(el, null, { renderer: 'canvas' })
+      } catch (e) {
+        console.error('横屏图表初始化失败:', e)
+        return
+      }
+
+      // 取当前内联图表的 option，增强可读性后应用到横屏全屏实例。
+      // 注意：不能用 JSON.parse(JSON.stringify(...)) —— option 里的坐标轴 / 提示框
+      // formatter 是函数，序列化会丢失，导致“X亿”格式化失效。这里只做浅拷贝并
+      // 单独克隆被改写的 axis/legend/series 配置，函数引用得以保留。
+      const baseOption = this.chartInstance.getOption()
+      const option = { ...baseOption }
+      option.xAxis = Array.isArray(baseOption.xAxis) ? baseOption.xAxis.map(a => ({ ...a })) : { ...baseOption.xAxis }
+      option.yAxis = Array.isArray(baseOption.yAxis) ? baseOption.yAxis.map(a => ({ ...a })) : { ...baseOption.yAxis }
+      option.legend = Array.isArray(baseOption.legend) ? baseOption.legend.map(l => ({ ...l })) : { ...baseOption.legend }
+      option.series = Array.isArray(baseOption.series) ? baseOption.series.map(s => ({ ...s })) : []
+
+      // 横屏空间更宽，放大坐标轴与末端标签字体，便于辨认行业
+      this.applyLandscapeReadability(option)
+
+      this.fullscreenChart.setOption(option, true)
+      this.$nextTick(() => {
+        if (this.fullscreenChart) this.fullscreenChart.resize()
+      })
+    },
+    applyLandscapeReadability(option) {
+      // 横屏空间更宽，给图例腾位置，使行业名清晰可见
+      const series = Array.isArray(option.series) ? option.series : []
+      const seriesNames = series.map(s => s.name).filter(Boolean)
+
+      let legend
+      if (option.legend) {
+        legend = Array.isArray(option.legend) ? option.legend[0] : option.legend
+      } else if (seriesNames.length) {
+        // 今日实时图原本没有图例（移动端靠 endLabel 标注）——横屏全屏补一个图例
+        legend = { type: 'plain' }
+        option.legend = legend
+      }
+      if (legend) {
+        legend.show = true
+        legend.top = 4
+        legend.type = legend.type || 'scroll'
+        legend.textStyle = { ...(legend.textStyle || {}), fontSize: 13, color: '#cbd5e1' }
+        if (seriesNames.length) legend.data = seriesNames
+      }
+
+      // 末端标签 / 坐标轴字号放大
+      series.forEach((s) => {
+        if (s.endLabel) {
+          s.endLabel.show = true
+          s.endLabel.fontSize = 13
+        }
+      })
+      // 横屏顶部留出图例空间，避免遮挡曲线
+      const bumpGrid = (g) => {
+        if (!g) return
+        if (typeof g.top === 'number') g.top = Math.max(g.top, 34)
+        else if (g.top === undefined || g.top === '') g.top = 34
+      }
+      if (option.grid) {
+        const grids = Array.isArray(option.grid) ? option.grid : [option.grid]
+        grids.forEach(bumpGrid)
+      }
+      const bumpAxis = (axis) => {
+        if (!axis) return
+        axis.axisLabel = axis.axisLabel || {}
+        axis.axisLabel.fontSize = 12
+      }
+      bumpAxis(Array.isArray(option.xAxis) ? option.xAxis[0] : option.xAxis)
+      bumpAxis(Array.isArray(option.yAxis) ? option.yAxis[0] : option.yAxis)
     },
 
     highlightSector(sectorName) {

@@ -184,6 +184,20 @@
     </div>
 
     <div class="chart-container" ref="chartContainer">
+      <button
+        class="chart-rotate-btn"
+        v-if="!needsAuth"
+        @click="toggleChartFullscreen"
+        title="横屏全屏查看"
+        aria-label="横屏全屏查看折线图"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 3v3a3 3 0 0 0 3 3h11"></path>
+          <path d="M5 3a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2"></path>
+          <path d="M19 21v-3a3 3 0 0 0-3-3H5"></path>
+          <path d="M19 21a2 2 0 0 0 2-2v0a2 2 0 0 0-2-2"></path>
+        </svg>
+      </button>
       <div class="chart-controls" v-if="!needsAuth">
         <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
           <label>回放日期：</label>
@@ -209,6 +223,14 @@
           <div class="chart-auth-text">登录后查看资金流向图表</div>
           <button class="chart-auth-btn" @click="promptLogin">去登录</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 折线图横屏全屏（移动端点右上角旋转图标触发） -->
+    <div v-if="chartFullscreen" class="chart-fullscreen-overlay" @click.self="toggleChartFullscreen">
+      <div class="chart-fullscreen-inner">
+        <button class="chart-fullscreen-close" @click="toggleChartFullscreen" aria-label="退出横屏">✕</button>
+        <div ref="chartFullscreenEl" class="chart-fullscreen-canvas"></div>
       </div>
     </div>
 

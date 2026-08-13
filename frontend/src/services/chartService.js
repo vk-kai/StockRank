@@ -1,5 +1,28 @@
 import { formatFlow, formatNetFlow } from '../utils/formatters'
 
+// 窄屏折线图末端标签的行业名缩短：去掉常见冗余后缀，最多保留 4 字，避免横向溢出
+function shortenSectorName(name) {
+  if (!name) return ''
+  let s = String(name)
+  // 去掉“行业/板块/概念/指数”等冗余后缀，如“半导体及元件”→“半导体及元件”（无后缀不动），
+  // “电子半导体行业”→“电子半导体”
+  s = s.replace(/(行业|板块|概念|指数|概念股|股票|股)$/, '')
+  if (s.length > 4) {
+    s = s.slice(0, 4)
+  }
+  return s
+}
+
+// 窄屏净流入紧凑展示：亿级以上省略小数/单位，腾出空间给行业名
+function compactNetFlow(value) {
+  if (value === null || value === undefined) return '-'
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(1)}万亿`
+  if (abs >= 1) return `${sign}${abs.toFixed(1)}亿`
+  return `${sign}${(abs * 10000).toFixed(0)}万`
+}
+
 function getFlowValue(item) {
   if (!item) return null
   if (item.net_flow !== undefined && item.net_flow !== null) return item.net_flow
@@ -362,7 +385,11 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         fontSize: isMobile ? 10 : 12,
         formatter: (params) => {
           const realValue = params?.data?.realValue ?? params?.value ?? null
-          return isMobile ? formatNetFlow(realValue) : `${params.seriesName}  ${formatNetFlow(realValue)}`
+          if (isMobile) {
+            // 移动端原仅显示数值，无法分辨是哪个行业 → 加上缩短后的行业名
+            return `${shortenSectorName(params.seriesName)} ${compactNetFlow(realValue)}`
+          }
+          return `${params.seriesName}  ${formatNetFlow(realValue)}`
         }
       },
       labelLayout: {

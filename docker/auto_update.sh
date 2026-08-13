@@ -122,11 +122,11 @@ while true; do
             log "======== 开始重建容器: docker compose down && up -d $NEED_BUILD ========"
             t0=$(date +%s)
             # --timeout 10:backend 是 Werkzeug 开发服务器,不响应 SIGTERM,快速进 SIGKILL 不干等。
-            docker compose -f "$COMPOSE_FILE" down --timeout 10 >>"$LOG_FILE" 2>&1
+            docker compose  down --timeout 10 >>"$LOG_FILE" 2>&1
             down_rc=$?
             t1=$(date +%s)
             log "  down 完成,耗时 $((t1 - t0))s (rc=$down_rc)"
-            docker compose -f "$COMPOSE_FILE" up -d $NEED_BUILD >>"$LOG_FILE" 2>&1
+            docker compose -f up -d  >>"$LOG_FILE" 2>&1
             up_rc=$?
             t2=$(date +%s)
             log "  up 完成,耗时 $((t2 - t1))s (rc=$up_rc)"
