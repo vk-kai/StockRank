@@ -45,6 +45,8 @@ export default {
       // 折线图横屏全屏（移动端）：独立 echarts 实例，避免干扰内联图表
       chartFullscreen: false,
       fullscreenChart: null,
+      // 横屏画布像素尺寸（视口长边×短边），显式设置到 DOM 后再 init echarts，避免“只铺一部分”
+      landscapeSize: { w: 0, h: 0 },
       loading: false,
       error: null,
       lastUpdate: null,
@@ -693,8 +695,10 @@ export default {
         this.chartInstance.resize()
       }
       this.updateLayoutHeight()
-      // 横屏全屏开启时，窗口/方向变化也要重排全屏图表
+      // 横屏全屏开启时，窗口/方向变化（含系统横屏生效后）要重算尺寸并重排全屏图表
       if (this.chartFullscreen && this.fullscreenChart) {
+        this.landscapeSize = this.getLandscapeSize()
+        this.applyLandscapeSizeToDom()
         this.$nextTick(() => {
           if (this.fullscreenChart) this.fullscreenChart.resize()
         })
@@ -749,11 +753,23 @@ export default {
         this.openChartFullscreen()
       }
     },
+    // 取横屏画布像素尺寸：视口的“长边×短边”（横屏时长边作宽、短边作高，铺满屏幕）
+    getLandscapeSize() {
+      const w = window.innerWidth
+      const h = window.innerHeight
+      const longEdge = Math.max(w, h)
+      const shortEdge = Math.min(w, h)
+      return { w: longEdge, h: shortEdge }
+    },
     openChartFullscreen() {
       // 尝试唤起系统横屏（部分浏览器支持，失败无碍——用 CSS 旋转兜底）
       this.tryLockOrientation('landscape')
+      this.landscapeSize = this.getLandscapeSize()
       this.chartFullscreen = true
       this.$nextTick(() => {
+        // 先把画布撑到目标像素尺寸，再 init echarts —— 否则 echarts 读到的是
+        // 旋转前的内联尺寸，渲染出的 canvas 偏小，导致“只铺了一部分”
+        this.applyLandscapeSizeToDom()
         this.renderFullscreenChart()
       })
     },
@@ -764,6 +780,15 @@ export default {
         try { this.fullscreenChart.dispose() } catch (e) { /* noop */ }
         this.fullscreenChart = null
       }
+    },
+    applyLandscapeSizeToDom() {
+      const el = this.$refs.chartFullscreenEl
+      if (!el) return
+      const { w, h } = this.landscapeSize
+      if (!w || !h) return
+      // 显式像素尺寸覆盖 CSS，确保 echarts.init 时容器已是横向铺满的真实大小
+      el.style.width = w + 'px'
+      el.style.height = h + 'px'
     },
     tryLockOrientation(orientation) {
       // 异步且尽力而为；任何错误（不支持/非 HTTPS/无权限）都静默忽略

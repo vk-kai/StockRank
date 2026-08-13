@@ -228,8 +228,8 @@
 
     <!-- 折线图横屏全屏（移动端点右上角旋转图标触发） -->
     <div v-if="chartFullscreen" class="chart-fullscreen-overlay" @click.self="toggleChartFullscreen">
+      <button class="chart-fullscreen-close" @click="toggleChartFullscreen" aria-label="退出横屏">✕</button>
       <div class="chart-fullscreen-inner">
-        <button class="chart-fullscreen-close" @click="toggleChartFullscreen" aria-label="退出横屏">✕</button>
         <div ref="chartFullscreenEl" class="chart-fullscreen-canvas"></div>
       </div>
     </div>
