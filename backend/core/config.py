@@ -40,6 +40,10 @@ THS_SECTOR_URL = THS_SECTOR_NET_IN_URL
 THS_PROXY_ENABLED = True          # 主开关:本机IP被风控时从第2轮起走代理
 THS_PROXY_VERIFY_URL = THS_SECTOR_NET_IN_URL   # 用净流入主路由验证代理(必须能拿到真实板块表才算可用)
 THS_PROXY_CACHE_TTL = 300         # 验证通过的代理缓存复用5分钟,避免每轮采集都重验
+THS_PROXY_FETCH_COUNT = 20        # 每次从代理源拉取的候选数(免费代理质量差,多拉才有可能攒到可用的)
+THS_PROXY_TARGET_COUNT = 2        # 目标可用代理数(粘性用1个+备用1个,被封后立即切换)
+THS_PROXY_COOLDOWN_SECONDS = 600  # 被同花顺短期封禁的代理冷却时长(秒);过冷却期后重新验证可复用
+THS_PROXY_MAX_FETCH_ROUNDS = 3    # 攒代理时最多拉取多少轮(每轮FETCH_COUNT个),避免无限拉免费接口
 
 # 可插拔代理源列表。kind 决定如何解析响应成 ["ip:port", ...] / 完整URL:
 #   scdn   → proxy.scdn.io JSON API(占位,实测返回垃圾IP;置 enabled:False 可关)
@@ -51,8 +55,8 @@ PROXY_SOURCES = [
         'name': 'proxy.scdn.io',
         'kind': 'scdn',
         'url': 'https://proxy.scdn.io/api/get_proxy.php',
-        'params': {'protocol': 'https', 'count': 5, 'country_code': 'CN'},
-        'enabled': True,         # 占位源(实测返回的多为路由器等垃圾IP),保留以兼容旧行为
+        'params': {'protocol': 'https', 'count': 20, 'country_code': 'CN'},
+        'enabled': True,         # 免费源(实测大量垃圾IP,靠验证池过滤;count拉满20提高命中率)
     },
     {
         'name': 'jhao_proxy_pool_local',
@@ -182,6 +186,11 @@ STOCK_SCORE_STATUS_FILE = os.path.join(STOCK_SCORES_DIR, 'status.json')
 INDUSTRY_CYCLE_SCORES_DIR = os.path.join(DATA_DIR, 'industry_cycle_scores')
 INDUSTRY_CYCLE_SCORES_FILE = os.path.join(INDUSTRY_CYCLE_SCORES_DIR, 'scores.json')
 INDUSTRY_CYCLE_BATCH_STATUS_FILE = os.path.join(INDUSTRY_CYCLE_SCORES_DIR, 'batch_status.json')
+
+# 同花顺代理池持久化:验证可用的代理 + 被短期封禁的冷却池(过冷却期可复用)
+PROXY_POOL_DIR = os.path.join(DATA_DIR, 'proxy_pool')
+PROXY_POOL_FILE = os.path.join(PROXY_POOL_DIR, 'pool.json')
+PROXY_COOLDOWN_FILE = os.path.join(PROXY_POOL_DIR, 'cooldown.json')
 
 def load_monitor_config():
     default_config = {
