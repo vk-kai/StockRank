@@ -1,0 +1,17 @@
+# Docker build context 过滤:这些目录/文件不进镜像,避免拖慢 context 上传
+# 并防止 __pycache__/tests 等变化导致 COPY 层缓存失效。
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+tests/
+# 运行时数据/日志由 volumes 挂载,不进镜像
+data/daily/
+data/realtime/
+logs/
+*.log
+# 本地环境/IDE
+.venv/
+.env
+.idea/
+.vscode/
