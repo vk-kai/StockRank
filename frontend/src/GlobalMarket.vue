@@ -524,7 +524,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 130px 15px 20px;
+  padding: 15px 290px 15px 20px; /* 右侧避让固定北京时间+登录入口 */
   background: rgba(26, 35, 53, 0.8);
   border-radius: 12px;
   border: 1px solid rgba(58, 74, 107, 0.5);

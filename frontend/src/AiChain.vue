@@ -194,7 +194,7 @@ export default {
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
-.aic-header-right { display: flex; align-items: center; gap: 14px; }
+.aic-header-right { display: flex; align-items: center; gap: 14px; margin-right: 250px; /* 避让右上角固定北京时间+登录入口 */ }
 .aic-source {
   padding: 5px 12px;
   background: rgba(24, 144, 255, 0.15);

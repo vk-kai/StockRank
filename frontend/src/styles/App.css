@@ -27,7 +27,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-right: 110px;
+  margin-right: 290px; /* 避让右上角固定北京时间+登录入口 */
 }
 
 .header h1 {

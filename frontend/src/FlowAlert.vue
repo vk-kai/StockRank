@@ -410,7 +410,7 @@ export default {
   background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
   color: #e0e6f0; padding: 20px;
 }
-.fa-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding-right: 110px; }
+.fa-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; padding-right: 290px; /* 避让右上角固定北京时间+登录入口 */ }
 .fa-back-button {
   background: linear-gradient(135deg, #3a4a6b, #2a3a5b); color: #e0e6f0;
   border: 1px solid #4a5a7b; border-radius: 4px; padding: 8px 14px; cursor: pointer; font-size: 14px;

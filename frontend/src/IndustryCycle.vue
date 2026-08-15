@@ -873,6 +873,7 @@ export default {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  margin-right: 250px; /* 避让右上角固定北京时间+登录入口 */
 }
 .icy-history-label {
   color: #8899aa;

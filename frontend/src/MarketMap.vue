@@ -2556,7 +2556,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 90px 6px 14px;
+  padding: 6px 290px 6px 14px; /* 右侧避让固定北京时间+登录入口 */
   background: rgba(26, 35, 53, 0.8);
   border-radius: 8px;
   border: 1px solid rgba(58, 74, 107, 0.5);
