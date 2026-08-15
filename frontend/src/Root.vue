@@ -6,9 +6,12 @@
     </transition>
   </router-view>
 
-  <!-- 右上角登录态入口 -->
-  <button v-if="authenticated" :class="authEntryClass" @click="submitLogout">退出登录</button>
-  <button v-else :class="authEntryClass" @click="openLogin">登录</button>
+  <!-- 右上角登录态入口 + 北京时间（所有页面共用） -->
+  <div :class="['top-actions', isMarketMapRoute ? 'market-map-entry' : '']">
+    <span class="beijing-clock" :title="'北京时间 ' + beijingTime">{{ beijingTime }}</span>
+    <button v-if="authenticated" :class="authEntryClass" @click="submitLogout">退出登录</button>
+    <button v-else :class="authEntryClass" @click="openLogin">登录</button>
+  </div>
 
   <!-- 登录弹窗（未登录访问受保护数据时由 auth-required 事件触发，或点击按钮主动唤起） -->
   <Teleport to="body">
@@ -88,7 +91,9 @@ export default {
       redeemInput: '',           // 登录框里的"粘贴兑换码"输入
       showRedeemBox: false,      // 是否展开兑换码输入框
       _prevAuthed: false,        // 上一轮轮询的认证态，用于检测过期掉线
-      redeemPollTimer: null      // 5 分钟全局轮询定时器
+      redeemPollTimer: null,     // 5 分钟全局轮询定时器
+      beijingTime: '',           // 右上角北京时间显示（YYYY-MM-DD HH:mm:ss）
+      clockTimer: null           // 每秒刷新北京时间的定时器
     }
   },
   computed: {
@@ -98,8 +103,7 @@ export default {
     authEntryClass() {
       return [
         'auth-entry',
-        this.authenticated ? 'auth-logout' : 'auth-login-btn',
-        this.isMarketMapRoute ? 'market-map-entry' : ''
+        this.authenticated ? 'auth-logout' : 'auth-login-btn'
       ]
     }
   },
@@ -112,13 +116,31 @@ export default {
     // 5 分钟全局轮询：无论在哪个页面都查会话有效性（有的页面没有定时请求），
     // 体验码过期/被撤销 → checkSession 发现掉线 → 走 auth-required 链路回到锁定态。
     this.redeemPollTimer = setInterval(() => this.checkSession(), 5 * 60 * 1000)
+    // 北京时间每秒刷新
+    this.updateBeijingClock()
+    this.clockTimer = setInterval(() => this.updateBeijingClock(), 1000)
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.handleAuthRequired)
     window.removeEventListener('auth-request-login', this.openLogin)
     if (this.redeemPollTimer) clearInterval(this.redeemPollTimer)
+    if (this.clockTimer) clearInterval(this.clockTimer)
   },
   methods: {
+    updateBeijingClock() {
+      // 按 Asia/Shanghai 时区取值，客户端本地时区不影响显示；hourCycle h23 避免出现 24 点
+      const parts = new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        hourCycle: 'h23',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      }).formatToParts(new Date())
+      const get = (type) => {
+        const p = parts.find((item) => item.type === type)
+        return p ? p.value.padStart(2, '0') : '00'
+      }
+      this.beijingTime = `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`
+    },
     async checkSession() {
       try {
         const session = await getAuthSession()
@@ -260,11 +282,34 @@ export default {
 </script>
 
 <style scoped>
-.auth-entry {
+.top-actions {
   position: fixed;
   right: 14px;
   top: 14px;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-actions.market-map-entry {
+  top: 18px;
+  right: 18px;
+}
+
+.beijing-clock {
+  border: 1px solid rgba(111, 142, 190, 0.4);
+  background: rgba(16, 24, 39, 0.9);
+  color: #d7e4f5;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums; /* 等宽数字，秒级跳动不抖动 */
+  user-select: none;
+}
+
+.auth-entry {
   border: 1px solid rgba(111, 142, 190, 0.4);
   background: rgba(16, 24, 39, 0.9);
   color: #d7e4f5;
@@ -272,12 +317,6 @@ export default {
   padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
-}
-
-.auth-entry.market-map-entry {
-  top: 18px;
-  right: 18px;
-  padding: 6px 12px;
 }
 
 .auth-login-btn {
