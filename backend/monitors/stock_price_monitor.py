@@ -69,7 +69,7 @@ DEFAULT_ALERTS_CFG = {
     'limit_down':  {'enabled': True},
     'rapid_rise':  {'enabled': True, 'pct': 3.0, 'win_min': 3},
     'rapid_drop':  {'enabled': True, 'pct': 3.0, 'win_min': 3},
-    'cum_move':    {'enabled': True, 'pct': 3.0},
+    'cum_move':    {'enabled': True, 'pct': 3.0, 'reset': 1.0},
     'spike_fade':  {'enabled': True, 'peak': 3.0, 'back': 2.0},
     'dip_rebound': {'enabled': True, 'trough': 3.0, 'back': 2.0},
     'gap_open':    {'enabled': True, 'pct': 3.0},
@@ -167,31 +167,47 @@ def _get_last_ref_value(code, hit_type, alerts, today):
     return None, True
 
 
-def _cum_move(q, cfg, alerts=None, today=None):
-    """累计涨跌检测（递进）。
+def _cum_move(q, state, cfg):
+    """累计涨跌检测（滞回状态机）。
 
-    只有涨跌幅比上次推送时更极端（涨得更多或跌得更多），才会触发。
-    避免持续涨跌时反复推送。
+    当日涨跌幅站上阈值只报一次；之后回落到 reset 水位（默认1%）及以下才解除锁定，
+    再次站上阈值才会重新报。大跌方向对称（回升到 -reset 及以上解锁）。
+    例：阈值5% -> 0涨到7%途中报一次"累计大涨"；回落到1%以下后再站上5%才报第二次；
+    只回落到3%不解锁（reset~阈值之间为滞回保持带）。
+
+    首个采样只初始化锁定状态、不报——没有观察到"站上阈值"的过渡，
+    避免进程重启/盘中新加自选股时对已经涨过的票重复报（大幅高开由 gap_open 负责）。
     """
     if not cfg['cum_move']['enabled']:
         return None
     pct = q['pct']
-    if abs(pct) < cfg['cum_move']['pct']:
+    th = cfg['cum_move']['pct']
+    reset = cfg['cum_move'].get('reset', 1.0)
+
+    if 'cum_seen' not in state:
+        # 首采样：已在阈值上方视为"已报过"，防止重启后重复推送
+        state['cum_seen'] = True
+        state['cum_up_fired'] = pct >= th
+        state['cum_down_fired'] = pct <= -th
         return None
 
-    # 递进检测：只有涨跌幅更极端才触发
-    if alerts and today:
-        last_pct, _ = _get_last_ref_value(q.get('_code', ''), 'cum_move', alerts, today)
-        if last_pct is not None:
-            # 判断方向是否一致
-            same_direction = (pct > 0 and last_pct > 0) or (pct < 0 and last_pct < 0)
-            if same_direction:
-                # 如果是同向，只有更极端才触发（涨得更多或跌得更多）
-                if abs(pct) <= abs(last_pct):
-                    return None
-            # 如果方向相反（从涨到跌或从跌到涨），允许触发
+    hit = None
+    if pct >= th:
+        if not state.get('cum_up_fired'):
+            state['cum_up_fired'] = True
+            hit = {'type': 'cum_move', 'label': f'累计大涨 {pct:+.2f}%', 'direction': 1}
+    elif pct <= reset:
+        # 回落到重置水位及以下：解锁，再次站上阈值可再报
+        state['cum_up_fired'] = False
 
-    return {'type': 'cum_move', 'label': f'累计{"大涨" if pct > 0 else "大跌"} {pct:+.2f}%', 'direction': 1 if pct > 0 else -1}
+    if pct <= -th:
+        if not state.get('cum_down_fired'):
+            state['cum_down_fired'] = True
+            hit = hit or {'type': 'cum_move', 'label': f'累计大跌 {pct:+.2f}%', 'direction': -1}
+    elif pct >= -reset:
+        state['cum_down_fired'] = False
+
+    return hit
 
 
 def _spike_fade(q, cfg, alerts=None, today=None):
@@ -377,7 +393,7 @@ def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=No
 
     checkers = (
         lambda: _rapid_move(q, series, alerts_cfg),
-        lambda: _cum_move(q, alerts_cfg, alerts, today),
+        lambda: _cum_move(q, state, alerts_cfg),
         lambda: _spike_fade(q, alerts_cfg, alerts, today),
         lambda: _dip_rebound(q, alerts_cfg, alerts, today),
         lambda: _amplitude(q, alerts_cfg, alerts, today),
@@ -464,7 +480,7 @@ def record_alert(code, name, primary_hit, all_hits, quote, pushed, now=None):
     同时记录关键数据用于递进检测：
     - dip_rebound: 记录低点价格
     - spike_fade: 记录高点价格
-    - cum_move: 记录涨跌幅
+    - cum_move: 记录涨跌幅(仅作历史参考;去重已改由滞回状态机负责)
     - amplitude: 记录振幅
     """
     now = now or datetime.now()

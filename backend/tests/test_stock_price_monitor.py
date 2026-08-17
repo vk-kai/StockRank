@@ -59,8 +59,12 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(hit['type'], 'rapid_rise')
 
     def test_cum_move_default_threshold(self):
+        # 滞回状态机:首采样只初始化不报,站上阈值才报
+        state = {}
+        warm = _q(10.05, 10.0, pct=0.5)
+        self.assertIsNone(m._cum_move(warm, state, m.DEFAULT_ALERTS_CFG))
         now = _q(10.3, 10.0, pct=3.0)
-        self.assertEqual(m._cum_move(now, m.DEFAULT_ALERTS_CFG)['type'], 'cum_move')
+        self.assertEqual(m._cum_move(now, state, m.DEFAULT_ALERTS_CFG)['type'], 'cum_move')
 
     def test_spike_fade(self):
         # 曾涨 4%(最高 10.40),现 +1.6% -> 高点回落 ≈ 2.3% 触发(peak≥3,back≥2)
@@ -173,6 +177,65 @@ class SealStateTests(unittest.TestCase):
         self.assertIn('limit_down', [h['type'] for h in h3])
 
 
+class CumMoveHysteresisTests(unittest.TestCase):
+    """累计涨跌滞回状态机:站上阈值只报一次;回落到 reset 水位及以下解锁后,
+    再次站上阈值才再报。reset~阈值之间为滞回保持带,不解锁。"""
+
+    def _cfg(self, th=5.0, reset=1.0):
+        cfg = json.loads(json.dumps(m.DEFAULT_ALERTS_CFG))
+        cfg['cum_move']['pct'] = th
+        cfg['cum_move']['reset'] = reset
+        for k in cfg:  # 只开 cum_move,隔离其它检测
+            if k != 'cum_move':
+                cfg[k]['enabled'] = False
+        return cfg
+
+    def _hits(self, pct, state, cfg):
+        q = _q(round(10 * (1 + pct / 100), 3), 10.0, pct=pct)
+        return m.detect_hits(q, [q], state, cfg, limit=10.0, name='X')
+
+    def test_fire_once_then_more_extreme_no_rereport(self):
+        # 0 -> 5 报一次;6、7 虽更极端也不再报(旧"递进"逻辑移除)
+        cfg, state = self._cfg(), {}
+        self.assertEqual(self._hits(0.5, state, cfg), [])  # 首采样初始化,不报
+        self.assertTrue(self._hits(5.2, state, cfg))       # 站上阈值,报
+        self.assertEqual(self._hits(6.0, state, cfg), [])
+        self.assertEqual(self._hits(7.0, state, cfg), [])
+
+    def test_hold_band_does_not_unlock(self):
+        # 回落到3%(未到 reset=1%)不解锁;再站上5%不重报
+        cfg, state = self._cfg(), {}
+        self._hits(0.5, state, cfg)
+        self.assertTrue(self._hits(5.2, state, cfg))
+        self.assertEqual(self._hits(3.0, state, cfg), [])  # 保持带内,不解锁
+        self.assertEqual(self._hits(5.0, state, cfg), [])  # 未解锁,不重报
+
+    def test_reset_then_recross_rereports(self):
+        # 回落到1%及以下解锁;再次站上5% -> 重报(核心诉求)
+        cfg, state = self._cfg(), {}
+        self._hits(0.5, state, cfg)
+        self.assertTrue(self._hits(5.2, state, cfg))
+        self.assertEqual(self._hits(1.0, state, cfg), [])  # 回落到 reset 水位,解锁
+        self.assertTrue(self._hits(5.0, state, cfg))       # 再站上阈值,重报
+        self.assertEqual(self._hits(5.5, state, cfg), [])
+
+    def test_down_side_symmetric(self):
+        cfg, state = self._cfg(), {}
+        self._hits(0.0, state, cfg)
+        h = self._hits(-5.2, state, cfg)
+        self.assertTrue(h and '大跌' in h[0]['label'])
+        self.assertEqual(self._hits(-7.0, state, cfg), [])
+        self.assertEqual(self._hits(-1.0, state, cfg), [])  # 回升到 -1%,解锁
+        self.assertTrue(self._hits(-5.0, state, cfg))       # 再次跌破,重报
+
+    def test_first_sight_above_threshold_not_reported(self):
+        # 首采样已在阈值上方(重启/盘中新加自选):无"站上"过渡,不报
+        cfg, state = self._cfg(), {}
+        self.assertEqual(self._hits(6.0, state, cfg), [])
+        self.assertEqual(self._hits(0.5, state, cfg), [])   # 回落解锁
+        self.assertTrue(self._hits(5.2, state, cfg))        # 站上后才报
+
+
 class ProcessTickTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -192,6 +255,11 @@ class ProcessTickTests(unittest.TestCase):
 
     def test_hit_pushes_and_records(self):
         pushed = []
+        # 先来一笔阈值下方的报价:完成累计涨跌状态机首采样初始化(不触发任何检测)
+        warm = dict(self._limit_up_quote(), price=10.05, pct=0.5, high=10.05, low=10.0)
+        m.process_tick('sh600519', '贵州茅台', warm, self._cfg(),
+                       limit=10.0, pusher=lambda t, c: pushed.append((t, c)) or True)
+        self.assertEqual(len(pushed), 0)
         m.process_tick('sh600519', '贵州茅台', self._limit_up_quote(), self._cfg(),
                        limit=10.0, pusher=lambda t, c: pushed.append((t, c)) or True)
         self.assertTrue(pushed)

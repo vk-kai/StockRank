@@ -113,7 +113,7 @@ export default {
         { key: 'limit_down', label: '触及跌停', fields: [], defaults: {} },
         { key: 'rapid_rise', label: '急速拉升', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
         { key: 'rapid_drop', label: '急速打压', fields: [{ k: 'pct', label: '阈值%' }, { k: 'win_min', label: '窗口分钟' }], defaults: { pct: 3, win_min: 3 } },
-        { key: 'cum_move', label: '累计大涨/大跌', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 3 } },
+        { key: 'cum_move', label: '累计大涨/大跌', fields: [{ k: 'pct', label: '阈值%' }, { k: 'reset', label: '回落至%' }], defaults: { pct: 3, reset: 1 } },
         { key: 'spike_fade', label: '冲高回落', fields: [{ k: 'peak', label: '曾涨%' }, { k: 'back', label: '回落%' }], defaults: { peak: 3, back: 2 } },
         { key: 'dip_rebound', label: '探底回升', fields: [{ k: 'trough', label: '曾跌%' }, { k: 'back', label: '反弹%' }], defaults: { trough: 3, back: 2 } },
         { key: 'gap_open', label: '大幅高/低开', fields: [{ k: 'pct', label: '阈值%' }], defaults: { pct: 3 } },
