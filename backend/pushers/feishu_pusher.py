@@ -232,11 +232,11 @@ def push_daily_summary_feishu(comparison_data, period='上午'):
         strength_icon = '🔴' if strength == '增强' else ('🟢' if strength == '减弱' else ('🟡' if strength == '持平' else '🔥'))
         
         content_lines.append(f"**{rank}. {name}**")
-        content_lines.append(f"   💰 今日流入：**<font color='red'>{format_flow_value(today_flow)}</font>**")
+        content_lines.append(f"   💰 今日净流入：**<font color='red'>{format_flow_value(today_flow)}</font>**")
         content_lines.append(f"   📈 今日涨跌：**{format_change_value(today_change)}**")
         
         if yesterday_flow is not None:
-            content_lines.append(f"   📊 昨日流入：{format_flow_value(yesterday_flow)}")
+            content_lines.append(f"   📊 昨日净流入：{format_flow_value(yesterday_flow)}")
             content_lines.append(f"   📉 昨日涨跌：{format_change_value(yesterday_change)}")
             if flow_change_percent is not None:
                 flow_change_sign = '+' if flow_change_percent >= 0 else ''

@@ -40,9 +40,9 @@
           <div class="table-header">
             <div class="col rank">排名</div>
             <div class="col name">板块</div>
-            <div class="col today-flow">今日流入</div>
+            <div class="col today-flow">今日净流入</div>
             <div class="col today-change">今日涨跌</div>
-            <div class="col yesterday-flow">昨日流入</div>
+            <div class="col yesterday-flow">昨日净流入</div>
             <div class="col yesterday-change">昨日涨跌</div>
             <div class="col strength">强度</div>
           </div>

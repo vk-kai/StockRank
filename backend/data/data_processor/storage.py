@@ -530,13 +530,14 @@ def get_top5_comparison_data(date_str):
         comparison_data = []
         for i, today_item in enumerate(top5):
             sector_name = today_item['name']
-            today_flow = today_item.get('flow', 0)
+            # 收盘汇总口径用净流入（net_flow），不是总流入（flow）
+            today_flow = today_item.get('net_flow', 0)
             today_change = today_item.get('change', 0)
             
             yesterday_item = yesterday_dict.get(sector_name)
             
             if yesterday_item:
-                yesterday_flow = yesterday_item.get('flow', 0)
+                yesterday_flow = yesterday_item.get('net_flow', 0)
                 yesterday_change = yesterday_item.get('change', 0)
                 
                 if yesterday_flow != 0:
