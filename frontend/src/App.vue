@@ -396,6 +396,10 @@
           <button class="close-btn" @click="closeMarginTotalModal">×</button>
         </div>
         <div class="modal-body">
+          <div v-if="marginTotal && marginTotal.latest_date" class="margin-total-meta">
+            <span>数据截止 {{ formatMarginDate(marginTotal.latest_date) }}</span>
+            <span v-if="marginTotal.updated_at" class="margin-total-meta-sub">更新于 {{ marginTotal.updated_at }}</span>
+          </div>
           <div ref="marginTotalChartEl" style="width:100%;height:360px;"></div>
         </div>
       </div>

@@ -570,6 +570,11 @@ export default {
       }
     },
 
+    formatMarginDate(d) {
+      const s = String(d || '')
+      return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s
+    },
+
     getMarketSummaryRefreshDelay() {
       const now = new Date()
       const hour = now.getHours()

@@ -244,10 +244,15 @@ def market_map_margin():
 @flow_bp.route('/market-margin-total', methods=['GET'])
 def market_margin_total():
     """全市场融资余额合计(聚合个股 b)+ 比昨日变化% + 历史序列(折线图用)。
-    只读 stock_margin.json 缓存,不抓取。返回 {success, data:{latest_date, latest_total, prev_total, change_pct, history}}。"""
+    只读 stock_margin.json 缓存,不抓取。返回 {success, data:{latest_date, latest_total, prev_total, change_pct, history}}。
+    数据落后超过 4 个自然日(采集线程异常/接口故障)时触发一次按需更新。"""
     try:
         res = get_market_margin_total()
-        return jsonify({'success': True, 'data': res})
+        updating = False
+        latest_date = str(res.get('latest_date') or '')
+        if not latest_date or (datetime.now() - datetime.strptime(latest_date, '%Y%m%d')) > timedelta(days=4):
+            updating = trigger_ondemand_update_async()
+        return jsonify({'success': True, 'data': res, 'updating': bool(updating)})
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-margin-total]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500

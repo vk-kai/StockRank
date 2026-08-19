@@ -1274,6 +1274,20 @@ button:active:not(:disabled) {
   padding: 20px;
 }
 
+.margin-total-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #8ba4c7;
+}
+
+.margin-total-meta .margin-total-meta-sub {
+  color: rgba(139, 164, 199, 0.55);
+  font-size: 11px;
+}
+
 .stocks-table {
   overflow-x: auto;
 }
