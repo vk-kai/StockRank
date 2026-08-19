@@ -9,6 +9,8 @@
   POST /api/mp/game/room/answer    提交本人答案(双方交齐时服务端算合拍度)
   GET  /api/mp/game/room/status    轮询房间状态(小程序每3秒一次)
   GET  /api/mp/game/room/detail    逐题对照(双方交卷后)
+  POST /api/mp/game/stat/inc       测试参与计数+1(「xx人在测」,不去重)
+  GET  /api/mp/game/stat           批量查询计数(缺省0,最多20个key)
 
 鉴权复用 mp_sec_routes 的 X-Auth-Key;业务失败统一 HTTP 200 + success:false + 中文 message。
 限频:score 6次/分、room创建 10次/时、其余 30次/分(按 openid)。
@@ -16,6 +18,7 @@
 """
 import os
 import json
+import re
 import time
 import random
 import sqlite3
@@ -47,6 +50,13 @@ _rank_cache = {}             # {quiz_id: {'ts', 'total', 'top'}}
 _nick_ok_cache = {}          # 昂贵的 msgSecCheck 结果缓存:昵称->通过
 _purge_lock = threading.Lock()
 _last_purge = 0.0
+
+STAT_KEY_RE = re.compile(r'^[a-z0-9_]{1,64}$')
+STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
+STAT_CACHE_TTL = 60
+_stat_lock = threading.Lock()
+_stat_dedup = {}             # {(openid, key): 上次计入时间戳} 内存级,重启丢失无所谓
+_stat_cache = {}             # {key: {'ts', 'count'}} 查询缓存,inc 主动失效
 
 
 # --------------------------------------------------------------------------
@@ -85,6 +95,11 @@ def _db():
             match_detail   TEXT,
             expires_at     TEXT NOT NULL,
             created_at     TEXT NOT NULL
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS stats (
+            key       TEXT PRIMARY KEY,
+            count     INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
@@ -500,3 +515,89 @@ def room_detail():
     except Exception as e:
         error_logger.error(f'逐题对照查询异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})
+
+
+# --------------------------------------------------------------------------
+# 三、测试参与计数（「xx人在测」真实数据）
+#    每测完一次+1,不去重;同 openid+key 10秒窗口只防脚本连发,不是业务去重。
+#    错误响应字段用 error(与本组规范一致)。
+# --------------------------------------------------------------------------
+@mp_game_bp.route('/stat/inc', methods=['POST'])
+def stat_inc():
+    """计数+1,返回自增后的最新值。key 如 test_caiyun/test_sbti。"""
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        data = request.get_json(silent=True) or {}
+        key = str(data.get('key') or '').strip()
+        openid = str(data.get('openid') or '').strip()
+        if not key or not openid:
+            return jsonify({'success': False, 'error': '参数不完整'})
+        if not STAT_KEY_RE.match(key):
+            return jsonify({'success': False, 'error': 'key 格式不合法'})
+        if _rate_limited('stat_inc', openid, 30, 60):
+            return jsonify({'success': False, 'error': '操作太频繁，请稍后再试'})
+
+        now = time.time()
+        with _stat_lock:
+            allowed = now - _stat_dedup.get((openid, key), 0) >= STAT_DEDUP_SECONDS
+        if not allowed:
+            # 10秒内连发:吞掉不计,回当前值(正常重测至少几十秒,不受影响)
+            with _db() as conn:
+                row = conn.execute('SELECT count FROM stats WHERE key = ?', (key,)).fetchone()
+            return jsonify({'success': True, 'count': row['count'] if row else 0})
+
+        with _db() as conn:
+            row = conn.execute('''INSERT INTO stats(key, count) VALUES (?, 1)
+                ON CONFLICT(key) DO UPDATE SET count = count + 1,
+                    updated_at = CAST(strftime('%s','now') AS INTEGER)
+                RETURNING count''', (key,)).fetchone()
+            count = row['count']
+        # 写库成功后才登记防刷窗口,失败可立即重试
+        with _stat_lock:
+            _stat_dedup[(openid, key)] = now
+            if len(_stat_dedup) > 10000:  # 防膨胀:丢弃早已过期的窗口
+                stale = {k: v for k, v in _stat_dedup.items() if now - v < 60}
+                _stat_dedup.clear()
+                _stat_dedup.update(stale)
+        _stat_cache.pop(key, None)
+        return jsonify({'success': True, 'count': count})
+    except Exception as e:
+        error_logger.error(f'stat inc 异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/stat', methods=['GET'])
+def stat_query():
+    """批量查询计数:GET /stat?keys=test_a,test_b。无记录的 key 返回 0。"""
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        keys_raw = (request.args.get('keys') or '').strip()
+        if not keys_raw:
+            return jsonify({'success': False, 'error': '参数不完整'})
+        keys = [k.strip() for k in keys_raw.split(',') if k.strip()]
+        keys = [k for k in keys if STAT_KEY_RE.match(k)][:20]  # 最多20个,超出截断
+
+        now = time.time()
+        found = {}
+        missing = []
+        for k in keys:
+            c = _stat_cache.get(k)
+            if c and now - c['ts'] <= STAT_CACHE_TTL:
+                found[k] = c['count']
+            else:
+                missing.append(k)
+        if missing:
+            with _db() as conn:
+                for k in missing:
+                    row = conn.execute('SELECT count FROM stats WHERE key = ?', (k,)).fetchone()
+                    v = row['count'] if row else 0
+                    _stat_cache[k] = {'ts': now, 'count': v}
+                    found[k] = v
+        return jsonify({'success': True, 'counts': {k: found.get(k, 0) for k in keys}})
+    except Exception as e:
+        error_logger.error(f'stat 查询异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})

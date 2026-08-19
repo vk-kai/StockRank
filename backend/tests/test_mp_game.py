@@ -19,6 +19,8 @@ class GameTestCase(unittest.TestCase):
         m._rank_cache.clear()
         m._nick_ok_cache.clear()
         m._last_purge = 0.0
+        m._stat_dedup.clear()
+        m._stat_cache.clear()
         # auth_key 置空 → 免鉴权专注业务;鉴权单独测
         sec.MP_SEC_CONFIG_FILE = os.path.join(tmp, 'sec.json')
         with open(sec.MP_SEC_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -270,6 +272,65 @@ class RoomFlowTests(GameTestCase):
         st = self._status(code, 'oA6')
         self.assertEqual(st['message'], '房间不存在或已过期')
         self.assertIsNone(self._room_row(code))  # 顺手删掉
+
+
+class StatTests(GameTestCase):
+    """参与计数:不去重(产品要求)、10秒防脚本窗口、批量查询默认0。"""
+
+    def _inc(self, key='test_caiyun', openid='oA'):
+        r = self.client.post('/api/mp/game/stat/inc',
+                             json={'key': key, 'openid': openid})
+        return r.status_code, r.get_json()
+
+    def _query(self, keys):
+        r = self.client.get(f'/api/mp/game/stat?keys={keys}')
+        return r.get_json()
+
+    def test_inc_counts_up(self):
+        _, b1 = self._inc()
+        _, b2 = self._inc(openid='oB')  # 不同人:正常+1(不去重)
+        self.assertTrue(b1['success'])
+        self.assertEqual(b1['count'], 1)
+        self.assertEqual(b2['count'], 2)
+        q = self._query('test_caiyun')
+        self.assertEqual(q['counts']['test_caiyun'], 2)
+
+    def test_same_openid_within_10s_swallowed(self):
+        _, b1 = self._inc(openid='oA')
+        _, b2 = self._inc(openid='oA')  # 10秒内同openid+key:只计1次
+        self.assertEqual(b1['count'], 1)
+        self.assertTrue(b2['success'])
+        self.assertEqual(b2['count'], 1)  # 未自增
+        _, b3 = self._inc(openid='oC')
+        self.assertEqual(b3['count'], 2)
+
+    def test_invalid_key_rejected(self):
+        for bad in ('Test-1', 'test caiyun', 'x' * 65, '', '测试'):
+            code, body = self._inc(key=bad)
+            self.assertFalse(body['success'], msg=bad)
+            self.assertEqual(body.get('error'), 'key 格式不合法' if bad else '参数不完整')
+
+    def test_missing_params(self):
+        code, body = self._inc(key='')  # openid有key为空
+        self.assertEqual(body.get('error'), '参数不完整')
+        r = self.client.post('/api/mp/game/stat/inc', json={'key': 'test_x'})
+        self.assertEqual(r.get_json().get('error'), '参数不完整')
+
+    def test_query_missing_key_returns_zero(self):
+        q = self._query('test_sbti,test_tianfu')
+        self.assertTrue(q['success'])
+        self.assertEqual(q['counts'], {'test_sbti': 0, 'test_tianfu': 0})
+
+    def test_query_truncates_to_20_keys(self):
+        keys = ','.join(f'test_k{i}' for i in range(25))
+        q = self._query(keys)
+        self.assertEqual(len(q['counts']), 20)
+
+    def test_inc_invalidates_cache(self):
+        self._inc(openid='oA')                     # count=1
+        self.assertEqual(self._query('test_caiyun')['counts']['test_caiyun'], 1)  # 进缓存
+        self._inc(openid='oB')                     # count=2,缓存失效
+        self.assertEqual(self._query('test_caiyun')['counts']['test_caiyun'], 2)
 
 
 class AuthGuardTests(GameTestCase):
