@@ -57,7 +57,9 @@ def is_jarvis_request():
 # 若要求登录 → backend 永不健康 → nginx(service_healthy) 永不启动
 PUBLIC_EXACT_PATHS = {'/health'}
 # 登录/登出/会话查询本身必须放行，否则无法完成登录
-PUBLIC_PATH_PREFIXES = ('/api/auth/',)
+# /api/mp/sec/ 是微信小程序内容安全代理：小程序端无登录态，接口自带 X-Auth-Key
+# 共享密钥校验，callback 则由微信服务器调用(仅签名校验)，均不走本站登录
+PUBLIC_PATH_PREFIXES = ('/api/auth/', '/api/mp/sec/')
 
 
 def install_auth_guard(app):
