@@ -1033,7 +1033,8 @@ export default {
     await this.loadPushedStateFromQuery()
     await this.fetchData(true)
     // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
-    this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 30000)
+    // 新浪行情源本身约3-6秒更新一次，15秒轮询已足够跟手；后端每请求现拉无缓存，再快只是徒增请求
+    this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 15000)
     // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
     this.refreshReplayPoints()
     this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
