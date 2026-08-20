@@ -26,9 +26,35 @@ XIANY_ERSHOUFANG_HUANBI = [
     101.0, 100.9, 100.6, 100.8, 101.0, 100.9, 100.6, 100.3, 100.2, 99.8, 99.5, 99.7,
     100.0, 99.7, 100.1, 99.9, 99.6, 100.1, 100.3, 99.5, 99.6, 99.8, 99.3, 99.7,
     100.6, 100.8, 100.8, 100.3, 99.6, 99.6, 99.4, 99.7, 99.5, 100.0, 99.4, 99.5,
-    99.5, 99.6, 99.7, 99.4, 99.0, 99.2, 99.4, 99.8, 99.2, 99.1, 99.7, 99.8,
-    99.7, 99.6, 99.7, 99.6, 99.3, 99.2, 99.1, 98.9, 98.8, 99.0, 99.6, 98.9,
+    99.5, 99.6, 99.7, 99.4, 99.0, 99.2, 99.4, 98.9, 99.2, 99.1, 99.7, 99.8,
+    99.7, 99.6, 99.7, 99.6, 99.3, 99.2, 99.1, 98.9, 98.8, 99.0, 98.9, 98.9,
     99.2, 99.9, 100.0,100.4,99.8,99.6,99.6
+]
+
+# 西安一手房(新建商品住宅,70城公报表1)环比指数(上月=100),与二手房同口径:2019-01 → 2026-07
+XIANY_XINFANG_HUANBI = [
+    # 2019
+    101.5, 101.1, 101.0, 101.1, 102.0, 101.7, 101.4, 100.5, 100.7, 100.9, 100.7, 100.7,
+    # 2020
+    100.3, 100.0, 100.5, 100.6, 100.5, 100.8, 100.9, 101.1, 100.8, 100.5, 100.2, 100.5,
+    # 2021
+    100.4, 100.8, 100.9, 100.6, 100.5, 101.0, 100.7, 100.7, 100.6, 100.4, 100.2, 99.5,
+    # 2022
+    100.0, 101.0, 100.4, 100.2, 100.3, 100.3, 100.6, 100.1, 99.5, 99.7, 99.7, 100.1,
+    # 2023
+    100.2, 100.0, 100.4, 100.6, 100.4, 100.3, 100.5, 100.4, 100.4, 100.6, 100.2, 100.5,
+    # 2024
+    100.2, 100.3, 100.4, 100.1, 99.9, 100.2, 100.2, 100.0, 99.4, 99.4, 99.8, 99.7,
+    # 2025
+    99.6, 99.5, 99.8, 99.7, 99.6, 99.5, 99.7, 99.4, 99.1, 99.2, 99.6, 99.5,
+    # 2026
+    99.3, 99.7, 99.8, 99.7, 99.6, 99.7, 99.5,
+]
+
+# 内置房价数据集注册表(一手/二手切换;id 'house' 保持兼容)
+BUILTIN_HOUSE_DATASETS = [
+    {'id': 'house', 'title': '🏠 西安二手房价格', 'unit': '万', 'huanbi': XIANY_ERSHOUFANG_HUANBI},
+    {'id': 'house_new', 'title': '🏗️ 西安一手房价格', 'unit': '万', 'huanbi': XIANY_XINFANG_HUANBI},
 ]
 
 # 基础周期 → 可聚合出的更高周期
@@ -60,15 +86,18 @@ def _fmt_label(ts, period):
         return f"{ts.year}Q{ts.quarter}"
     return ts.strftime('%Y-%m-%d')
 
-def generate_xian_price_data():
+def generate_xian_price_data(huanbi=None):
+    """环比指数链成价格序列(2018-12=100);huanbi 传二手/一手环比数组"""
+    if huanbi is None:
+        huanbi = XIANY_ERSHOUFANG_HUANBI
     base_date = pd.to_datetime("2018-12-31")
     month_freq = get_pandas_freq('month')
-    date_range = pd.date_range(start="2019-01-31", periods=len(XIANY_ERSHOUFANG_HUANBI), freq=month_freq)
+    date_range = pd.date_range(start="2019-01-31", periods=len(huanbi), freq=month_freq)
 
     df = pd.DataFrame(index=[base_date] + list(date_range))
 
     prices = [100.0]
-    for ratio in XIANY_ERSHOUFANG_HUANBI:
+    for ratio in huanbi:
         new_price = prices[-1] * (ratio / 100)
         prices.append(new_price)
 
@@ -198,13 +227,13 @@ def _aggregate_custom(ds, period):
 @house_bp.route('/datasets', methods=['GET'])
 def list_datasets():
     datasets = [{
-        'id': 'house',
-        'title': '🏠 西安二手房价格',
-        'unit': '万',
+        'id': b['id'],
+        'title': b['title'],
+        'unit': b['unit'],
         'basePeriod': 'monthly',
         'builtin': True,
-        'count': len(XIANY_ERSHOUFANG_HUANBI)
-    }]
+        'count': len(b['huanbi'])
+    } for b in BUILTIN_HOUSE_DATASETS]
     for ds in _load_custom():
         datasets.append({
             'id': ds.get('id'),
@@ -278,8 +307,9 @@ def get_kline_data():
     dataset_id = (request.args.get('id') or 'house').strip()
     period = (request.args.get('period') or 'monthly').strip()
     try:
-        if dataset_id == 'house':
-            data = generate_xian_price_data()
+        builtin = next((b for b in BUILTIN_HOUSE_DATASETS if b['id'] == dataset_id), None)
+        if builtin:
+            data = generate_xian_price_data(builtin['huanbi'])
             monthly_kline = generate_monthly_kline(data)
             if period == 'quarterly':
                 kline = generate_quarterly_kline(monthly_kline)
@@ -291,8 +321,8 @@ def get_kline_data():
             return jsonify({
                 'success': True,
                 'data': {
-                    'title': '🏠 西安二手房价格',
-                    'unit': '万',
+                    'title': builtin['title'],
+                    'unit': builtin['unit'],
                     'source': '国家统计局',
                     'period': period,
                     'points': points
