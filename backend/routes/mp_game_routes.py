@@ -51,6 +51,7 @@ _nick_ok_cache = {}          # 昂贵的 msgSecCheck 结果缓存:昵称->通过
 _purge_lock = threading.Lock()
 _last_purge = 0.0
 
+# key 统一先转小写再校验/入库:test_careerFit 与 test_careerfit 是同一个计数器
 STAT_KEY_RE = re.compile(r'^[a-z0-9_]{1,64}$')
 STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
 STAT_CACHE_TTL = 60
@@ -520,17 +521,18 @@ def room_detail():
 # --------------------------------------------------------------------------
 # 三、测试参与计数（「xx人在测」真实数据）
 #    每测完一次+1,不去重;同 openid+key 10秒窗口只防脚本连发,不是业务去重。
+#    key 统一小写归一(兼容 test_careerFit 这类驼峰写法),查询响应按原始写法返回。
 #    错误响应字段用 error(与本组规范一致)。
 # --------------------------------------------------------------------------
 @mp_game_bp.route('/stat/inc', methods=['POST'])
 def stat_inc():
-    """计数+1,返回自增后的最新值。key 如 test_caiyun/test_sbti。"""
+    """计数+1,返回自增后的最新值。key 如 test_caiyun/test_sbti,驼峰自动按小写归一。"""
     denied = _check_auth_key()
     if denied:
         return denied
     try:
         data = request.get_json(silent=True) or {}
-        key = str(data.get('key') or '').strip()
+        key = str(data.get('key') or '').strip().lower()
         openid = str(data.get('openid') or '').strip()
         if not key or not openid:
             return jsonify({'success': False, 'error': '参数不完整'})
@@ -570,7 +572,7 @@ def stat_inc():
 
 @mp_game_bp.route('/stat', methods=['GET'])
 def stat_query():
-    """批量查询计数:GET /stat?keys=test_a,test_b。无记录的 key 返回 0。"""
+    """批量查询计数:GET /stat?keys=test_a,test_b。无记录的 key 返回 0,响应按原始写法回 key 名。"""
     denied = _check_auth_key()
     if denied:
         return denied
@@ -578,18 +580,27 @@ def stat_query():
         keys_raw = (request.args.get('keys') or '').strip()
         if not keys_raw:
             return jsonify({'success': False, 'error': '参数不完整'})
-        keys = [k.strip() for k in keys_raw.split(',') if k.strip()]
-        keys = [k for k in keys if STAT_KEY_RE.match(k)][:20]  # 最多20个,超出截断
+        # 归一key(小写)查库,响应按客户端原始写法返回;最多20个,超出截断
+        pairs = []    # [(原始写法, 归一key)]
+        seen = set()  # 已收录的归一key(同key不同大小写只查一次)
+        for raw in keys_raw.split(','):
+            raw = raw.strip()
+            norm = raw.lower()
+            if raw and norm not in seen and STAT_KEY_RE.match(norm):
+                seen.add(norm)
+                pairs.append((raw, norm))
+                if len(pairs) >= 20:
+                    break
 
         now = time.time()
         found = {}
         missing = []
-        for k in keys:
-            c = _stat_cache.get(k)
+        for _, norm in pairs:
+            c = _stat_cache.get(norm)
             if c and now - c['ts'] <= STAT_CACHE_TTL:
-                found[k] = c['count']
+                found[norm] = c['count']
             else:
-                missing.append(k)
+                missing.append(norm)
         if missing:
             with _db() as conn:
                 for k in missing:
@@ -597,7 +608,8 @@ def stat_query():
                     v = row['count'] if row else 0
                     _stat_cache[k] = {'ts': now, 'count': v}
                     found[k] = v
-        return jsonify({'success': True, 'counts': {k: found.get(k, 0) for k in keys}})
+        return jsonify({'success': True,
+                        'counts': {raw: found.get(norm, 0) for raw, norm in pairs}})
     except Exception as e:
         error_logger.error(f'stat 查询异常: {e}')
         return jsonify({'success': False, 'error': f'服务异常: {e}'})

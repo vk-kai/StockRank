@@ -332,6 +332,31 @@ class StatTests(GameTestCase):
         self._inc(openid='oB')                     # count=2,缓存失效
         self.assertEqual(self._query('test_caiyun')['counts']['test_caiyun'], 2)
 
+    def test_mixed_case_key_counts_normally(self):
+        # 回归:驼峰 key(test_careerFit)曾被 ^[a-z0-9_]+$ 拒绝 → 新测试永远不+1
+        code, b1 = self._inc(key='test_careerFit')
+        self.assertEqual(code, 200)
+        self.assertTrue(b1['success'])
+        self.assertEqual(b1['count'], 1)
+        # 大小写归一为同一计数器:小写写法继续累加
+        _, b2 = self._inc(key='test_careerfit', openid='oB')
+        self.assertEqual(b2['count'], 2)
+
+    def test_query_mixed_case_key_echoes_original_name(self):
+        # 回归:未测过的驼峰 key 曾被静默过滤 → counts:{};规范要求按原名返回 0
+        q = self._query('test_careerFit')
+        self.assertTrue(q['success'])
+        self.assertEqual(q['counts'], {'test_careerFit': 0})
+        self._inc(key='test_careerFit')
+        self.assertEqual(self._query('test_careerFit')['counts'], {'test_careerFit': 1})
+        # 换小写问同一个计数器,也拿得到
+        self.assertEqual(self._query('test_careerfit')['counts'], {'test_careerfit': 1})
+
+    def test_query_dedup_after_normalization(self):
+        # 同 key 不同大小写只算一个,首个写法为准
+        q = self._query('test_X,test_x')
+        self.assertEqual(q['counts'], {'test_X': 0})
+
 
 class AuthGuardTests(GameTestCase):
     def test_auth_key_enforced(self):
