@@ -59,17 +59,21 @@ export default {
     },
     async fetchOverview() {
       this.error = null
+      this.loading = true // 重试时也回到加载态,避免闪出 overview 为空的主体
       try {
         const res = await getMpAdminOverview()
         if (res && res.success) {
           this.overview = res.data
-          this.$nextTick(() => this.renderCharts())
         } else {
           this.error = (res && res.message) || '加载失败'
         }
       } catch (e) {
         const data = e && e.response && e.response.data
         this.error = (data && data.message) || '加载失败，请稍后重试'
+      } finally {
+        // 必须先解除加载态,图表容器(v-else分支)才会进DOM,再初始化echarts
+        this.loading = false
+        if (this.overview) this.$nextTick(() => this.renderCharts())
       }
     },
     renderCharts() {
