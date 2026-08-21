@@ -64,14 +64,16 @@
           <input v-model="newStat.key" placeholder="新key，如 test_xxx（小写字母数字下划线）" class="filter-input" />
           <input v-model.number="newStat.count" type="number" min="0" class="count-input" placeholder="次数" />
           <button class="gen-btn" @click="onStatAdd">新增计数</button>
+          <button class="warn-btn" @click="onCleanupClick">清理联调数据</button>
         </div>
         <div v-if="!stats.items.length" class="empty">暂无计数</div>
         <table v-else class="data-table">
           <thead>
-            <tr><th>key</th><th>参与人次</th><th>最后更新</th><th>操作</th></tr>
+            <tr><th>名称</th><th>key</th><th>参与人次</th><th>最后更新</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in stats.items" :key="row.key">
+              <td>{{ row.name }} <small v-if="row.name !== row.key" class="dim">{{ row.key }}</small></td>
               <td class="code-text">{{ row.key }}</td>
               <td>{{ row.count }}</td>
               <td>{{ fmtEpoch(row.updated_at) }}</td>
@@ -87,7 +89,13 @@
       <!-- ===== PK房间 ===== -->
       <section v-if="tab === 'rooms'" class="card">
         <div class="toolbar">
-          <button class="gen-btn" @click="loadRooms(1)">刷新</button>
+          <select v-model.number="roomsDays" class="count-input" @change="loadRooms(1)">
+            <option :value="7">近7天</option>
+            <option :value="30">近30天</option>
+            <option :value="0">全部</option>
+          </select>
+          <button class="gen-btn" @click="loadRooms(rooms.page)">刷新</button>
+          <span class="toolbar-hint">过期房间保留7天后自动从库中清除</span>
         </div>
         <div v-if="!rooms.items.length" class="empty">暂无房间</div>
         <table v-else class="data-table">

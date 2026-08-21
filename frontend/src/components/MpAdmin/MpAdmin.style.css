@@ -153,4 +153,7 @@
   color: #6b7d99;
   font-size: 12px;
   text-align: center;
+  line-height: 1.7;
 }
+
+.dim { color: #6b7d99; font-size: 11px; }

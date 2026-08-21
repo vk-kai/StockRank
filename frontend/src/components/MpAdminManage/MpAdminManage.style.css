@@ -133,6 +133,26 @@
 }
 .gen-btn:hover { background: #4096ff; }
 
+.warn-btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid rgba(250, 173, 20, 0.55);
+  border-radius: 6px;
+  background: rgba(250, 173, 20, 0.12);
+  color: #faad14;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.warn-btn:hover { background: rgba(250, 173, 20, 0.24); }
+
+.toolbar-hint {
+  color: #6b7d99;
+  font-size: 12px;
+}
+
+.dim { color: #6b7d99; font-size: 11px; }
+
 .empty {
   color: #6b7d99;
   text-align: center;
@@ -193,6 +213,7 @@
 .status.waiting { background: rgba(250, 173, 20, 0.15); color: #faad14; }
 .status.ready { background: rgba(22, 119, 255, 0.15); color: #7cc4ff; }
 .status.finished { background: rgba(82, 196, 26, 0.15); color: #52c41a; }
+.status.expired { background: rgba(107, 125, 153, 0.18); color: #8ba4c7; }
 
 .pager {
   display: flex;

@@ -2,7 +2,7 @@ import {
   getAuthSession,
   getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete,
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
-  getMpAdminRooms, mpAdminRoomDelete
+  getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData
 } from '../../services/apiService'
 
 export default {
@@ -16,6 +16,7 @@ export default {
       scores: { items: [], page: 1, totalPages: 1, total: 0 },
       stats: { items: [] },
       rooms: { items: [], page: 1, totalPages: 1, total: 0 },
+      roomsDays: 7,
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -88,7 +89,7 @@ export default {
     async loadRooms(page = 1) {
       if (page < 1) return
       try {
-        const res = await getMpAdminRooms({ page, pageSize: 20 })
+        const res = await getMpAdminRooms({ page, pageSize: 20, days: this.roomsDays })
         if (res && res.success) {
           const d = res.data
           this.rooms = {
@@ -261,9 +262,39 @@ export default {
       })
     },
 
+    // ---- 清理开发联调数据 ----
+    onCleanupClick() {
+      this.openPwdModal('清理联调数据',
+        '删除遗留 quiz（selftest_tmp / wealth）、联调 openid（vkself* / otest*）的成绩与房间、按流水回滚其计数、tool_probe_diag 清零。可重复执行。',
+        async () => {
+          this.pwdModal.busy = true
+          try {
+            const res = await mpAdminCleanupDevData(this.pwdModal.password)
+            if (res && res.success) {
+              this.pwdModal.show = false
+              this.pwdModal.password = ''
+              const r = res.result || {}
+              const dec = Object.keys(r.decremented || {})
+                .map(k => `${k} -${r.decremented[k]}`).join('、')
+              this.showToast(
+                `清理完成：成绩 ${r.scores} 条、房间 ${r.rooms} 个` +
+                (dec ? `；计数回滚 ${dec}` : '') +
+                (r.probe_cleared ? '；探针已清零' : ''), 'ok')
+              await this.loadStats()
+            } else {
+              this.showToast((res && res.message) || '清理失败', 'error')
+            }
+          } catch (e) {
+            this.showReqError(e, '清理失败')
+          } finally {
+            this.pwdModal.busy = false
+          }
+        })
+    },
+
     // ---- 工具 ----
     stateName(s) {
-      return ({ waiting: '等待中', ready: '已就绪', finished: '已完成' })[s] || s
+      return ({ waiting: '等待中', ready: '已就绪', finished: '已完成', expired: '已过期' })[s] || s
     },
     shortOpenid(id) {
       return id && id.length > 10 ? id.slice(0, 6) + '…' + id.slice(-4) : (id || '--')

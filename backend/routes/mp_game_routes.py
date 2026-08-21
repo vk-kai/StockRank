@@ -39,6 +39,7 @@ error_logger = get_logger('error')
 DB_FILE = os.path.join(DATA_DIR, 'mp_game.db')
 DEFAULT_NICKNAME = '匿名测试者'
 ROOM_TTL_HOURS = 24
+ROOM_KEEP_DAYS = 7           # 过期房间再保留7天供后台查看,之后懒清理删除
 MAX_ANSWERS = 64
 ANSWER_CHARS = set('ABCDEF')
 RANK_CACHE_TTL = 60          # 榜单缓存秒数
@@ -55,6 +56,33 @@ _last_purge = 0.0
 STAT_KEY_RE = re.compile(r'^[a-z0-9_]{1,64}$')
 STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
 STAT_CACHE_TTL = 60
+# key→中文名 内置兜底映射(小程序端 /stat/inc 现已自带 name 字段优先入库;
+# 这里只兜底:早期没传过 name 的 key、以及还没触发过计数的新 key)。
+# 映射的 key 统一小写:入库的 stat key 一律小写归一,驼峰写法查不到
+STAT_KEY_NAMES = {k.lower(): v for k, v in {
+    'test_careerFit': '职业适配测试', 'test_childCreativity': '创造力测试',
+    'test_childEmotion': '情绪管理测试', 'test_childFocus': '专注力测试',
+    'test_childIntelligence': '智力测试', 'test_childLogic': '逻辑测试',
+    'test_childSocial': '社交测试', 'test_company': '职场测试',
+    'test_decisionStyle': '决策风格测试', 'test_fortune': '财运测试',
+    'test_friend': '好友印象测试', 'test_health': '健康测试',
+    'test_lifestyle': '生活测试', 'test_love': '真爱定位测试',
+    'test_loveAttraction': '恋爱吸引力测试', 'test_loveCommunication': '恋爱沟通力测试',
+    'test_loveDifficulty': '恋爱难追测试', 'test_loveReunionChance': '复合可能性测试',
+    'test_loveTiming': '脱单时间测试', 'test_mbti': 'MBTI人格测试',
+    'test_pastlifeWho': '前世测试', 'test_personality': '性格测试',
+    'test_qixiLove': '七夕鹊桥缘', 'test_richChance': '暴富测试',
+    'test_sbti': 'SBTI人格测试', 'test_stress': '心理测试',
+    'test_wealthTalent': '赚钱天赋测试', 'test_wealthTime': '发财时间测试',
+    'tool_danmaku': '手持弹幕', 'tool_beadArt': '拼豆图纸生成器',
+    'tool_beadString': '串珠排珠计算器', 'tool_sketch': '照片转素描',
+    'tool_gridCut': '九宫格切图', 'tool_avatar': '头像挂件',
+    'tool_signature': '艺术签名设计', 'tool_coupleTest': '情侣契合度',
+    'tool_friendPK': '好友PK', 'tool_giftMoney': '随礼金额计算器',
+    'tool_pkRoom': '双人默契大作战', 'tool_fortune': '每日运势签',
+    'tool_horoscope': '今日星座运势', 'tool_zodiacMatch': '十二星座配对',
+    'tool_foodWheel': '吃什么转盘', 'tool_countdown': '倒数日',
+}.items()}
 _stat_lock = threading.Lock()
 _stat_dedup = {}             # {(openid, key): 上次计入时间戳} 内存级,重启丢失无所谓
 _stat_cache = {}             # {key: {'ts', 'count'}} 查询缓存,inc 主动失效
@@ -103,12 +131,24 @@ def _db():
             updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
         )''')
         # 每次真实 +1 记一条流水（不含被10秒窗口吞掉的），供后台「每日测试人次」趋势图
+        # openid 用于事后按人清理联调脏数据(回滚其贡献的计数)
         conn.execute('''CREATE TABLE IF NOT EXISTS stat_log (
             id  INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT NOT NULL,
-            ts  INTEGER NOT NULL
+            ts  INTEGER NOT NULL,
+            openid TEXT
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_stat_log_ts ON stat_log(ts)')
+        # 旧库迁移:stat_log 早期无 openid 列,补上(新库 CREATE 已带,ALTER 报重复列则忽略)
+        try:
+            conn.execute('ALTER TABLE stat_log ADD COLUMN openid TEXT')
+        except sqlite3.OperationalError:
+            pass
+        # key→中文名 KV(小程序 /stat/inc 自带 name,后写覆盖先写)
+        conn.execute('''CREATE TABLE IF NOT EXISTS stat_names (
+            key  TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
         conn.commit()
@@ -145,7 +185,8 @@ def _rate_limited(action, openid, limit, window_s):
 
 
 def _purge_expired_rooms(force=False):
-    """删除过期房间(懒清理,节流5分钟,不开线程)。"""
+    """删除过期超过 ROOM_KEEP_DAYS 天的房间(懒清理,节流5分钟,不开线程)。
+    刚过期的房间保留在库里:玩家侧当不存在,后台还能看7天漏斗。"""
     global _last_purge
     now = time.time()
     if not force and now - _last_purge < ROOM_PURGE_INTERVAL:
@@ -154,10 +195,12 @@ def _purge_expired_rooms(force=False):
         if not force and now - _last_purge < ROOM_PURGE_INTERVAL:
             return
         try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=ROOM_KEEP_DAYS)) \
+                .strftime('%Y-%m-%d %H:%M:%S')
             with _db() as conn:
-                cur = conn.execute('DELETE FROM rooms WHERE expires_at <= ?', (_utcnow(),))
+                cur = conn.execute('DELETE FROM rooms WHERE expires_at <= ?', (cutoff,))
                 if cur.rowcount:
-                    logger.info(f'已清理过期PK房间 {cur.rowcount} 个')
+                    logger.info(f'已清理过期超{ROOM_KEEP_DAYS}天的PK房间 {cur.rowcount} 个')
         except Exception as e:
             error_logger.error(f'清理过期房间失败: {e}')
         _last_purge = now
@@ -186,12 +229,11 @@ def _check_nickname(nickname, openid):
 
 
 def _fetch_room(conn, room_code):
-    """取未过期房间;过期则顺手删掉返回 None。"""
+    """取未过期房间;过期的对玩家侧视为不存在(不立即删,留7天给后台看漏斗)。"""
     row = conn.execute('SELECT * FROM rooms WHERE room_code = ?', (room_code,)).fetchone()
     if not row:
         return None
     if row['expires_at'] <= _utcnow():
-        conn.execute('DELETE FROM rooms WHERE room_code = ?', (room_code,))
         return None
     return row
 
@@ -563,8 +605,14 @@ def stat_inc():
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
                 RETURNING count''', (key,)).fetchone()
             count = row['count']
-            # 同事务记流水:后台趋势图按天聚合用
-            conn.execute('INSERT INTO stat_log(key, ts) VALUES (?, ?)', (key, int(now)))
+            # 同事务记流水:后台趋势图按天聚合 + 事后按人清理联调数据
+            conn.execute('INSERT INTO stat_log(key, ts, openid) VALUES (?, ?, ?)',
+                         (key, int(now), openid))
+            # 可选中文名:后写覆盖先写,后台展示用(不传不影响计数)
+            name = str(data.get('name') or '').strip()
+            if name and len(name) <= 30:
+                conn.execute('''INSERT INTO stat_names(key, name) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET name = excluded.name''', (key, name))
         # 写库成功后才登记防刷窗口,失败可立即重试
         with _stat_lock:
             _stat_dedup[(openid, key)] = now

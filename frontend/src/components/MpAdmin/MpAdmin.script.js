@@ -19,13 +19,15 @@ export default {
       isAdmin: false,
       error: null,
       overview: null,
-      statChart: null,
+      testChart: null,
+      toolChart: null,
       dailyChart: null
     }
   },
   async mounted() {
     this._onResize = () => {
-      if (this.statChart) this.statChart.resize()
+      if (this.testChart) this.testChart.resize()
+      if (this.toolChart) this.toolChart.resize()
       if (this.dailyChart) this.dailyChart.resize()
     }
     window.addEventListener('resize', this._onResize)
@@ -44,7 +46,8 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener('resize', this._onResize)
-    if (this.statChart) { this.statChart.dispose(); this.statChart = null }
+    if (this.testChart) { this.testChart.dispose(); this.testChart = null }
+    if (this.toolChart) { this.toolChart.dispose(); this.toolChart = null }
     if (this.dailyChart) { this.dailyChart.dispose(); this.dailyChart = null }
   },
   methods: {
@@ -71,7 +74,8 @@ export default {
     },
     renderCharts() {
       if (!this.overview) return
-      this.renderStatChart()
+      this.renderBarChart('testChart', this.overview.test_counts, '#1890ff')
+      this.renderBarChart('toolChart', this.overview.tool_counts, '#13c2c2')
       this.renderDailyChart()
     },
     _initChart(refName, key) {
@@ -81,17 +85,24 @@ export default {
       this[key] = echarts.init(dom)
       return this[key]
     },
-    renderStatChart() {
-      const chart = this._initChart('statChart', 'statChart')
+    renderBarChart(refName, items, color) {
+      if (!items || !items.length) return
+      const chart = this._initChart(refName, refName)
       if (!chart) return
-      const items = this.overview.stat_counts
       chart.setOption({
         backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP },
+        tooltip: {
+          trigger: 'axis', axisPointer: { type: 'shadow' }, ...TOOLTIP,
+          formatter: (params) => {
+            const p = params[0]
+            const item = items[p.dataIndex]
+            return `${item.name}<br/><span style="color:#8ba4c7">${item.key}</span> ： ${p.value} 次`
+          }
+        },
         grid: { left: 10, right: 16, top: 16, bottom: 10, containLabel: true },
         xAxis: {
           type: 'category',
-          data: items.map(x => x.key),
+          data: items.map(x => x.name),
           axisLine: { lineStyle: { color: AXIS_LINE } },
           axisLabel: { color: AXIS_LABEL, fontSize: 11, interval: 0, rotate: items.length > 6 ? 32 : 0 },
           axisTick: { show: false }
@@ -106,14 +117,14 @@ export default {
           type: 'bar',
           data: items.map(x => x.count),
           barMaxWidth: 34,
-          itemStyle: { color: '#1890ff', borderRadius: [3, 3, 0, 0] }
+          itemStyle: { color, borderRadius: [3, 3, 0, 0] }
         }]
       })
     },
     renderDailyChart() {
       const chart = this._initChart('dailyChart', 'dailyChart')
       if (!chart) return
-      const { days, tests, scores, rooms } = this.overview.daily
+      const { days, tests, tools, scores, rooms } = this.overview.daily
       const shortDays = days.map(d => d.slice(5)) // MM-DD
       chart.setOption({
         backgroundColor: 'transparent',
@@ -139,10 +150,12 @@ export default {
         series: [
           { name: '测试人次', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: tests, itemStyle: { color: '#1890ff' }, lineStyle: { width: 2 } },
+          { name: '工具人次', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+            data: tools, itemStyle: { color: '#13c2c2' }, lineStyle: { width: 2 } },
           { name: '新增成绩', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },
           { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
-            data: rooms, itemStyle: { color: '#13c2c2' }, lineStyle: { width: 2 } }
+            data: rooms, itemStyle: { color: '#b37feb' }, lineStyle: { width: 2 } }
         ]
       })
     }

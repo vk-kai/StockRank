@@ -22,19 +22,27 @@
     </div>
 
     <div v-else class="mpadmin-body">
-      <!-- 总量卡片 -->
+      <!-- 总量卡片（口径已区分） -->
       <section class="stat-cards">
         <div class="stat-card">
           <div class="stat-value">{{ overview.totals.tests }}</div>
-          <div class="stat-label">总测试人次</div>
+          <div class="stat-label">总测试人次 <small>（计数求和，同人重测也+1）</small></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ overview.totals.tool_usage }}</div>
+          <div class="stat-label">工具使用人次 <small>（计数求和）</small></div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ overview.totals.players }}</div>
-          <div class="stat-label">参与玩家</div>
+          <div class="stat-label">参与玩家 <small>（有成绩记录的去重人数）</small></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ overview.totals.scores }}</div>
+          <div class="stat-label">去重参与记录 <small>（同人同测试只记最佳）</small></div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ overview.totals.quizzes }}</div>
-          <div class="stat-label">上线测试数</div>
+          <div class="stat-label">有成绩记录的测试数 <small>（≠上线测试总数）</small></div>
         </div>
         <div class="stat-card">
           <div class="stat-value">{{ overview.totals.rooms }}</div>
@@ -42,11 +50,17 @@
         </div>
       </section>
 
-      <!-- 图表区 -->
+      <!-- 图表区：测试榜 + 工具榜 -->
       <section class="card">
-        <h2>各测试参与人次</h2>
-        <div v-if="!overview.stat_counts.length" class="empty">暂无计数数据</div>
-        <div v-else ref="statChart" class="chart-box"></div>
+        <h2>测试参与榜</h2>
+        <div v-if="!overview.test_counts.length" class="empty">暂无测试计数数据</div>
+        <div v-else ref="testChart" class="chart-box"></div>
+      </section>
+
+      <section class="card">
+        <h2>工具使用榜</h2>
+        <div v-if="!overview.tool_counts.length" class="empty">暂无工具计数数据</div>
+        <div v-else ref="toolChart" class="chart-box"></div>
       </section>
 
       <section class="card">
@@ -60,12 +74,12 @@
         <div v-if="!overview.quiz_top.length" class="empty">暂无成绩数据</div>
         <table v-else class="data-table">
           <thead>
-            <tr><th>#</th><th>测试 ID</th><th>参与人数</th><th>平均得分率</th></tr>
+            <tr><th>#</th><th>测试</th><th>参与人数</th><th>平均得分率</th></tr>
           </thead>
           <tbody>
             <tr v-for="(q, i) in overview.quiz_top" :key="q.quiz_id">
               <td>{{ i + 1 }}</td>
-              <td class="code-text">{{ q.quiz_id }}</td>
+              <td>{{ q.name }} <small class="dim">{{ q.quiz_id }}</small></td>
               <td>{{ q.players }}</td>
               <td>{{ q.avg_score }}%</td>
             </tr>
@@ -74,7 +88,8 @@
       </section>
 
       <div class="footnote">
-        「每日测试人次」自后台上线后开始逐日记录，此前无历史流水；「新增成绩 / 新建房间」按记录时间统计。
+        口径说明：「总测试人次 / 工具使用人次」为计数接口求和（不去重，同人重复使用照常 +1）；
+        「去重参与记录」来自成绩表（同人同测试只记最佳）。「每日测试/工具人次」自后台上线后开始逐日记录，此前无历史流水。
       </div>
     </div>
   </div>

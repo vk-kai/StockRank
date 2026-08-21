@@ -271,7 +271,11 @@ class RoomFlowTests(GameTestCase):
                          (code,))
         st = self._status(code, 'oA6')
         self.assertEqual(st['message'], '房间不存在或已过期')
-        self.assertIsNone(self._room_row(code))  # 顺手删掉
+        # 玩家侧当不存在,但行保留7天给后台看漏斗,不立即删
+        self.assertIsNotNone(self._room_row(code))
+        # 超过保留期才会被懒清理真正删除
+        m._purge_expired_rooms(force=True)
+        self.assertIsNone(self._room_row(code))
 
 
 class StatTests(GameTestCase):
@@ -356,6 +360,23 @@ class StatTests(GameTestCase):
         # 同 key 不同大小写只算一个,首个写法为准
         q = self._query('test_X,test_x')
         self.assertEqual(q['counts'], {'test_X': 0})
+
+    def test_inc_with_name_persists_last_wins(self):
+        # 小程序带 name 上报:KV 存储,后写覆盖先写,供后台展示中文名
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'test_mbti', 'openid': 'oA', 'name': '第一次的名字'})
+        with m._db() as conn:
+            row = conn.execute("SELECT name FROM stat_names WHERE key='test_mbti'").fetchone()
+        self.assertEqual(row['name'], '第一次的名字')
+        # 10秒窗口外不同人再报 → 覆盖;顺带校验 stat_log 带 openid
+        m._stat_dedup.clear()
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'test_mbti', 'openid': 'oB', 'name': 'MBTI人格测试'})
+        with m._db() as conn:
+            row = conn.execute("SELECT name FROM stat_names WHERE key='test_mbti'").fetchone()
+            logs = conn.execute("SELECT openid FROM stat_log WHERE key='test_mbti'").fetchall()
+        self.assertEqual(row['name'], 'MBTI人格测试')
+        self.assertEqual(sorted(r['openid'] for r in logs), ['oA', 'oB'])
 
 
 class AuthGuardTests(GameTestCase):

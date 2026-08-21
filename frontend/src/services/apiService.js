@@ -1272,11 +1272,11 @@ export async function mpAdminStatDelete(password, key) {
   return response.data
 }
 
-/** PK 房间列表(分页) */
-export async function getMpAdminRooms({ page = 1, pageSize = 20 } = {}) {
+/** PK 房间列表(分页;days 默认7,0=全部) */
+export async function getMpAdminRooms({ page = 1, pageSize = 20, days = 7 } = {}) {
   try {
     const response = await apiClient.get('/mp-admin/rooms',
-      { params: { page, page_size: pageSize } })
+      { params: { page, page_size: pageSize, days } })
     return response.data
   } catch (error) {
     console.error('获取小程序PK房间失败:', error)
@@ -1288,6 +1288,12 @@ export async function getMpAdminRooms({ page = 1, pageSize = 20 } = {}) {
 export async function mpAdminRoomDelete(password, roomCode) {
   const response = await apiClient.post('/mp-admin/rooms/delete',
     { password, room_code: roomCode })
+  return response.data
+}
+
+/** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
+export async function mpAdminCleanupDevData(password) {
+  const response = await apiClient.post('/mp-admin/cleanup-dev-data', { password })
   return response.data
 }
 
