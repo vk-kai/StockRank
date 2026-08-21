@@ -12,6 +12,8 @@ const FlowAlert = () => import('./FlowAlert.vue')
 const AiChain = () => import('./AiChain.vue')
 const IndustryCycle = () => import('./IndustryCycle.vue')
 const RedeemCode = () => import('./RedeemCode.vue')
+const MpAdmin = () => import('./MpAdmin.vue')
+const MpAdminManage = () => import('./MpAdminManage.vue')
 
 const routes = [
   {
@@ -73,6 +75,16 @@ const routes = [
     path: '/redeem-code',
     name: 'RedeemCode',
     component: RedeemCode
+  },
+  {
+    path: '/mp-admin',
+    name: 'MpAdmin',
+    component: MpAdmin
+  },
+  {
+    path: '/mp-admin/manage',
+    name: 'MpAdminManage',
+    component: MpAdminManage
   }
 ]
 

@@ -1210,3 +1210,84 @@ export async function deleteRedeemCode(password, code) {
   return response.data
 }
 
+// ==================== 小程序数据后台管理 ====================
+/** 趋势看板:总量 + 各测试参与人次 + 近30天每日趋势 + 测试热度排行 */
+export async function getMpAdminOverview() {
+  try {
+    const response = await apiClient.get('/mp-admin/overview')
+    return response.data
+  } catch (error) {
+    console.error('获取小程序数据看板失败:', error)
+    throw error
+  }
+}
+
+/** 成绩列表(分页,可按 quiz_id 过滤) */
+export async function getMpAdminScores({ quizId = '', page = 1, pageSize = 20 } = {}) {
+  try {
+    const params = { page, page_size: pageSize }
+    if (quizId) params.quiz_id = quizId
+    const response = await apiClient.get('/mp-admin/scores', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取小程序成绩列表失败:', error)
+    throw error
+  }
+}
+
+/** 改成绩:{password, quiz_id, openid, nickname?, score?, full_score?, duration_ms?} */
+export async function mpAdminScoreUpdate(password, payload) {
+  const response = await apiClient.post('/mp-admin/scores/update',
+    { ...payload, password })
+  return response.data
+}
+
+/** 删成绩 */
+export async function mpAdminScoreDelete(password, quizId, openid) {
+  const response = await apiClient.post('/mp-admin/scores/delete',
+    { password, quiz_id: quizId, openid })
+  return response.data
+}
+
+/** 参与计数列表 */
+export async function getMpAdminStats() {
+  try {
+    const response = await apiClient.get('/mp-admin/stats')
+    return response.data
+  } catch (error) {
+    console.error('获取小程序参与计数失败:', error)
+    throw error
+  }
+}
+
+/** 新建/改计数 */
+export async function mpAdminStatSave(password, key, count) {
+  const response = await apiClient.post('/mp-admin/stats/save', { password, key, count })
+  return response.data
+}
+
+/** 删计数 */
+export async function mpAdminStatDelete(password, key) {
+  const response = await apiClient.post('/mp-admin/stats/delete', { password, key })
+  return response.data
+}
+
+/** PK 房间列表(分页) */
+export async function getMpAdminRooms({ page = 1, pageSize = 20 } = {}) {
+  try {
+    const response = await apiClient.get('/mp-admin/rooms',
+      { params: { page, page_size: pageSize } })
+    return response.data
+  } catch (error) {
+    console.error('获取小程序PK房间失败:', error)
+    throw error
+  }
+}
+
+/** 删房间 */
+export async function mpAdminRoomDelete(password, roomCode) {
+  const response = await apiClient.post('/mp-admin/rooms/delete',
+    { password, room_code: roomCode })
+  return response.data
+}
+

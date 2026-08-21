@@ -102,6 +102,13 @@ def _db():
             count     INTEGER NOT NULL DEFAULT 0,
             updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
         )''')
+        # 每次真实 +1 记一条流水（不含被10秒窗口吞掉的），供后台「每日测试人次」趋势图
+        conn.execute('''CREATE TABLE IF NOT EXISTS stat_log (
+            id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL,
+            ts  INTEGER NOT NULL
+        )''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_stat_log_ts ON stat_log(ts)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
         conn.commit()
@@ -556,6 +563,8 @@ def stat_inc():
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
                 RETURNING count''', (key,)).fetchone()
             count = row['count']
+            # 同事务记流水:后台趋势图按天聚合用
+            conn.execute('INSERT INTO stat_log(key, ts) VALUES (?, ?)', (key, int(now)))
         # 写库成功后才登记防刷窗口,失败可立即重试
         with _stat_lock:
             _stat_dedup[(openid, key)] = now

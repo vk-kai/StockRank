@@ -1588,6 +1588,7 @@ export default {
     guardedGoToHouseKline() { if (this.requireAuthOrPrompt()) return; this.goToHouseKline() },
     guardedGoToIndustryCycle() { if (this.requireAuthOrPrompt()) return; this.goToIndustryCycle() },
     guardedGoToRedeemCode() { if (this.requireAuthOrPrompt()) return; this.$router.push('/redeem-code') },
+    guardedGoToMpAdmin() { if (this.requireAuthOrPrompt()) return; this.$router.push('/mp-admin') },
     guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
     guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
