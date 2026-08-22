@@ -211,12 +211,14 @@ class CallbackVerifyTests(MpSecTestCase):
 
 class LoginProxyTests(MpSecTestCase):
     def test_code2session(self):
+        # 微信返回里有 session_key,但接口绝不能透传给前端(合规检测硬性要求)
         self.get_responses.append({'openid': 'oABC', 'session_key': 'sk'})
         resp = self.client.post('/api/mp/sec/login',
                                 json={'code': 'jscode', 'auth_key': 'key123'})
         body = resp.get_json()
         self.assertTrue(body['success'])
         self.assertEqual(body['openid'], 'oABC')
+        self.assertNotIn('session_key', body)
 
     def test_login_without_code(self):
         resp = self.client.post('/api/mp/sec/login', json={'auth_key': 'key123'})

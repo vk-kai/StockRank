@@ -324,6 +324,7 @@ def mp_login():
     """code2session 代理:小程序 wx.login 的 code 换 openid。
 
     注意:openid 对应的用户需在近2小时内访问过小程序,送检接口才能用该 openid。
+    合规:session_key 禁止下发前端/参与通信(微信安全检测要求),仅返回 openid。
     """
     denied = _check_auth_key()
     if denied:
@@ -343,8 +344,7 @@ def mp_login():
         openid = resp.get('openid')
         if not openid:
             return _wx_error_response(resp)
-        return jsonify({'success': True, 'openid': openid,
-                        'session_key': resp.get('session_key')})
+        return jsonify({'success': True, 'openid': openid})
     except MpSecError as e:
         return jsonify({'success': False, 'message': e.message, 'errcode': e.code}), 500
     except Exception as e:
