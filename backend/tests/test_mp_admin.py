@@ -305,6 +305,26 @@ class StatsTests(MpAdminTestCase):
         r = self.client.get('/api/mp-admin/stats').get_json()
         self.assertEqual(r['data']['total'], 1)
         self.assertEqual(r['data']['items'][0]['key'], 'test_a')
+        self.assertEqual(r['data']['sum'], 3)
+
+    def test_list_filter_by_type(self):
+        # ?type=test|tool 按前缀过滤:分开查看测试/工具的使用情况
+        self._login()
+        with m._db() as conn:
+            conn.execute("INSERT INTO stats(key, count) VALUES ('test_a', 3)")
+            conn.execute("INSERT INTO stats(key, count) VALUES ('test_b', 4)")
+            conn.execute("INSERT INTO stats(key, count) VALUES ('tool_x', 5)")
+            conn.execute("INSERT INTO stats(key, count) VALUES ('other', 9)")
+        r_test = self.client.get('/api/mp-admin/stats?type=test').get_json()
+        keys = [i['key'] for i in r_test['data']['items']]
+        self.assertEqual(keys, ['test_b', 'test_a'])       # 按次数降序
+        self.assertEqual(r_test['data']['sum'], 7)
+        r_tool = self.client.get('/api/mp-admin/stats?type=tool').get_json()
+        self.assertEqual([i['key'] for i in r_tool['data']['items']], ['tool_x'])
+        self.assertEqual(r_tool['data']['sum'], 5)
+        # 非法 type 等于不过滤
+        r_all = self.client.get('/api/mp-admin/stats?type=xyz').get_json()
+        self.assertEqual(r_all['data']['total'], 4)
         # 新增(驼峰自动归一) + 缓存失效
         self.client.get('/api/mp/game/stat?keys=test_new')  # 0 进缓存
         r2 = self.client.post('/api/mp-admin/stats/save',

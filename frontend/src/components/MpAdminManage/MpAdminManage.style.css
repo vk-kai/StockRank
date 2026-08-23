@@ -151,6 +151,12 @@
   font-size: 12px;
 }
 
+.stats-sum {
+  margin-top: 10px;
+  color: #8ba4c7;
+  font-size: 12px;
+}
+
 .dim { color: #6b7d99; font-size: 11px; }
 
 .empty {

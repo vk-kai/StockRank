@@ -1268,10 +1268,11 @@ export async function mpAdminScoreDelete(password, quizId, openid) {
   return response.data
 }
 
-/** 参与计数列表 */
-export async function getMpAdminStats() {
+/** 参与计数列表(type=test|tool 按前缀过滤,缺省全部) */
+export async function getMpAdminStats(type = '') {
   try {
-    const response = await apiClient.get('/mp-admin/stats')
+    const params = type ? { type } : {}
+    const response = await apiClient.get('/mp-admin/stats', { params })
     return response.data
   } catch (error) {
     console.error('获取小程序参与计数失败:', error)

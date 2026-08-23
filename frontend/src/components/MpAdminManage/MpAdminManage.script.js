@@ -14,7 +14,8 @@ export default {
       tab: 'scores',
       scoresFilter: '',
       scores: { items: [], page: 1, totalPages: 1, total: 0 },
-      stats: { items: [] },
+      stats: { items: [], sum: 0 },
+      statsType: 'test',   // 参与计数子分类:test测试 / tool工具
       rooms: { items: [], page: 1, totalPages: 1, total: 0 },
       roomsDays: 7,
       newStat: { key: '', count: 0 },
@@ -57,6 +58,11 @@ export default {
       if (tab === 'stats' && !this.stats.items.length) this.loadStats()
       if (tab === 'rooms' && !this.rooms.items.length) this.loadRooms(1)
     },
+    switchStatsType(type) {
+      if (this.statsType === type) return
+      this.statsType = type
+      this.loadStats()
+    },
 
     // ---- 数据加载 ----
     async loadScores(page = 1) {
@@ -82,9 +88,9 @@ export default {
     },
     async loadStats() {
       try {
-        const res = await getMpAdminStats()
+        const res = await getMpAdminStats(this.statsType)
         if (res && res.success) {
-          this.stats = { items: res.data.items }
+          this.stats = { items: res.data.items, sum: res.data.sum || 0 }
         }
       } catch (e) {
         this.showReqError(e, '加载失败')

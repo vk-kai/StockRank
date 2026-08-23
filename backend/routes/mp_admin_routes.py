@@ -402,18 +402,25 @@ def mp_admin_quiz_rank():
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/stats', methods=['GET'])
 def mp_admin_stats():
+    """参与计数列表。?type=test|tool 按前缀过滤(test_*测试/tool_*工具),缺省全部。"""
     resp = _require_admin()
     if resp:
         return resp
     try:
+        stat_type = (request.args.get('type') or '').strip().lower()
+        prefix = {'test': 'test_', 'tool': 'tool_'}.get(stat_type)
         with _db() as conn:
             names = _key_names(conn)
             items = [{
                 'key': r['key'], 'name': names.get(r['key'], r['key']),
                 'count': r['count'], 'updated_at': r['updated_at'],
             } for r in conn.execute('SELECT key, count, updated_at FROM stats '
-                                    'ORDER BY count DESC, key')]
-        return jsonify({'success': True, 'data': {'items': items, 'total': len(items)}})
+                                    'ORDER BY count DESC, key')
+            if not prefix or r['key'].startswith(prefix)]
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': len(items),
+            'sum': sum(i['count'] for i in items),
+        }})
     except Exception as e:
         error_logger.error(f'mp-admin stats 列表异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500

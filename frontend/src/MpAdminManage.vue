@@ -66,13 +66,21 @@
 
       <!-- ===== 参与计数 ===== -->
       <section v-if="tab === 'stats'" class="card">
+        <nav class="sub-tabs">
+          <span :class="['sub-tab', { active: statsType === 'test' }]" @click="switchStatsType('test')">测试（test_）</span>
+          <span :class="['sub-tab', { active: statsType === 'tool' }]" @click="switchStatsType('tool')">工具（tool_）</span>
+        </nav>
         <div class="toolbar">
           <input v-model="newStat.key" placeholder="新key，如 test_xxx（小写字母数字下划线）" class="filter-input" />
           <input v-model.number="newStat.count" type="number" min="0" class="count-input" placeholder="次数" />
           <button class="gen-btn" @click="onStatAdd">新增计数</button>
           <button class="warn-btn" @click="onCleanupClick">清理联调数据</button>
         </div>
-        <div v-if="!stats.items.length" class="empty">暂无计数</div>
+        <div v-if="stats.items.length" class="stats-sum">
+          共 {{ stats.items.length }} 个{{ statsType === 'test' ? '测试' : '工具' }} ·
+          累计 {{ stats.sum }} 人次
+        </div>
+        <div v-if="!stats.items.length" class="empty">暂无{{ statsType === 'test' ? '测试' : '工具' }}计数</div>
         <table v-else class="data-table">
           <thead>
             <tr><th>名称</th><th>key</th><th>参与人次</th><th>最后更新</th><th>操作</th></tr>
