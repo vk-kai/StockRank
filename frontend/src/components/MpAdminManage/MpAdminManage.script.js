@@ -1,6 +1,6 @@
 import {
   getAuthSession,
-  getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete,
+  getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete, mpAdminScoreCreate,
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
   getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData
 } from '../../services/apiService'
@@ -19,6 +19,10 @@ export default {
       roomsDays: 7,
       newStat: { key: '', count: 0 },
       scoreEdit: {
+        show: false, busy: false, quiz_id: '', openid: '',
+        nickname: '', score: 0, full_score: 100, duration_ms: 0
+      },
+      scoreCreate: {
         show: false, busy: false, quiz_id: '', openid: '',
         nickname: '', score: 0, full_score: 100, duration_ms: 0
       },
@@ -104,7 +108,52 @@ export default {
       }
     },
 
-    // ---- 成绩编辑/删除 ----
+    // ---- 成绩新增/编辑/删除 ----
+    openScoreCreate() {
+      this.scoreCreate = {
+        show: true, busy: false,
+        quiz_id: this.scoresFilter.trim(), openid: '',
+        nickname: '', score: 0, full_score: 100, duration_ms: 0
+      }
+    },
+    doScoreCreate() {
+      const s = this.scoreCreate
+      if (!s.quiz_id.trim() || !s.openid.trim()) {
+        this.showToast('测试ID 和 openid 必填', 'error'); return
+      }
+      if (!s.nickname || !s.nickname.trim() || s.nickname.trim().length > 12) {
+        this.showToast('昵称不合法（1~12字）', 'error'); return
+      }
+      if (s.score < 0 || s.full_score < 1 || s.score > s.full_score) {
+        this.showToast('分数不合法（0 ≤ 分数 ≤ 满分）', 'error'); return
+      }
+      if (s.duration_ms < 0) {
+        this.showToast('用时不合法', 'error'); return
+      }
+      this.openPwdModal('新增成绩', `为 ${s.quiz_id.trim()} 新增一条成绩`, async () => {
+        this.pwdModal.busy = true
+        try {
+          const res = await mpAdminScoreCreate(this.pwdModal.password, {
+            quiz_id: s.quiz_id.trim(), openid: s.openid.trim(),
+            nickname: s.nickname.trim(), score: s.score,
+            full_score: s.full_score, duration_ms: s.duration_ms
+          })
+          if (res && res.success) {
+            s.show = false
+            this.pwdModal.show = false
+            this.pwdModal.password = ''
+            this.showToast('已新增', 'ok')
+            await this.loadScores(1)
+          } else {
+            this.showToast((res && res.message) || '新增失败', 'error')
+          }
+        } catch (e) {
+          this.showReqError(e, '新增失败')
+        } finally {
+          this.pwdModal.busy = false
+        }
+      })
+    },
     openScoreEdit(row) {
       this.scoreEdit = {
         show: true, busy: false,

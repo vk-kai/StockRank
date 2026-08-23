@@ -185,6 +185,37 @@ class ScoresTests(MpAdminTestCase):
             'password': 'pw', 'quiz_id': 'test_a', 'openid': 'oA'})
         self.assertEqual(r3.status_code, 404)
 
+    def test_create(self):
+        self._login()
+        body = {'password': 'pw', 'quiz_id': 'test_a', 'openid': 'oNEW',
+                'nickname': '补录', 'score': 66, 'full_score': 100, 'duration_ms': 45000}
+        r = self.client.post('/api/mp-admin/scores/create', json=body).get_json()
+        self.assertTrue(r['success'])
+        with m._db() as conn:
+            row = conn.execute("SELECT * FROM scores WHERE openid='oNEW'").fetchone()
+        self.assertEqual(row['nickname'], '补录')
+        self.assertEqual(row['score'], 66)
+        self.assertTrue(row['created_at'])
+        # 重复新增同一 (quiz_id, openid) → 409 提示走编辑
+        r2 = self.client.post('/api/mp-admin/scores/create', json=body)
+        self.assertEqual(r2.status_code, 409)
+        # 参数校验:缺昵称 / 分数超满分 / 缺密码
+        bad1 = self.client.post('/api/mp-admin/scores/create',
+                                json={**body, 'openid': 'o2', 'nickname': ''})
+        self.assertEqual(bad1.status_code, 400)
+        bad2 = self.client.post('/api/mp-admin/scores/create',
+                                json={**body, 'openid': 'o3', 'score': 101})
+        self.assertEqual(bad2.status_code, 400)
+        bad3 = self.client.post('/api/mp-admin/scores/create',
+                                json={**body, 'openid': 'o4', 'password': ''})
+        self.assertEqual(bad3.status_code, 401)
+        # 未登录 401
+        self.client.get('/api/mp-admin/logout')  # 无此路由也无妨,session 仍在
+        with self.client.session_transaction() as s:
+            s.clear()
+        bad4 = self.client.post('/api/mp-admin/scores/create', json=body)
+        self.assertEqual(bad4.status_code, 401)
+
 
 class QuizRankTests(MpAdminTestCase):
     def test_rank_order_and_pagination(self):

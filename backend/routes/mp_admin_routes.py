@@ -5,6 +5,7 @@
   GET  /api/mp-admin/overview        趋势看板:总量/各测试参与人次/近30天每日趋势/热度排行
   GET  /api/mp-admin/scores          成绩列表(分页,可按 quiz_id 过滤)
   GET  /api/mp-admin/quiz-rank       某测试的排行榜(分页,按分数/用时排序,含测试时间)
+  POST /api/mp-admin/scores/create  新增成绩(手动补录/造数据)
   POST /api/mp-admin/scores/update   改成绩(昵称/分数/用时)
   POST /api/mp-admin/scores/delete   删成绩
   GET  /api/mp-admin/stats           参与计数列表
@@ -21,7 +22,7 @@
 复用 mp_game_routes 的 _db()(同一 SQLite,WAL)与缓存,改完主动清缓存。
 """
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -203,6 +204,55 @@ def mp_admin_scores():
         }})
     except Exception as e:
         error_logger.error(f'mp-admin scores 列表异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/scores/create', methods=['POST'])
+def mp_admin_score_create():
+    """手动新增成绩(补录/运营造数据)。管理员录入,昵称不过 msgSecCheck(可信源)。
+    同 quiz_id+openid 已存在则提示走编辑,不覆盖。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        resp = _require_password(data)
+        if resp:
+            return resp
+        quiz_id = str(data.get('quiz_id') or '').strip()
+        openid = str(data.get('openid') or '').strip()
+        nickname = str(data.get('nickname') or '').strip()
+        if not quiz_id or not openid:
+            return jsonify({'success': False, 'message': '缺少 quiz_id 或 openid'}), 400
+        if not nickname or len(nickname) > 12:
+            return jsonify({'success': False, 'message': '昵称不合法(1~12字)'}), 400
+        try:
+            score = int(data.get('score'))
+            full_score = int(data.get('full_score'))
+            duration_ms = int(data.get('duration_ms'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': '分数/满分/用时格式错误'}), 400
+        if not (0 < full_score <= 1000) or not (0 <= score <= full_score):
+            return jsonify({'success': False, 'message': '分数不合法(0 ≤ 分数 ≤ 满分 ≤ 1000)'}), 400
+        if not (0 <= duration_ms <= 86400000):
+            return jsonify({'success': False, 'message': '用时不合法(0 ≤ 用时 ≤ 1天)'}), 400
+
+        with _db() as conn:
+            exists = conn.execute('SELECT 1 FROM scores WHERE quiz_id = ? AND openid = ?',
+                                  (quiz_id, openid)).fetchone()
+            if exists:
+                return jsonify({'success': False,
+                                'message': '该玩家在此测试已有成绩，请使用编辑功能'}), 409
+            conn.execute('''INSERT INTO scores
+                (quiz_id, openid, nickname, score, full_score, duration_ms, answers, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (quiz_id, openid, nickname, score, full_score, duration_ms, None,
+                 datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
+        _rank_cache.pop(quiz_id, None)
+        logger.info(f'[mp-admin] 新增成绩: {quiz_id}/{openid} score={score}')
+        return jsonify({'success': True, 'message': '已新增'})
+    except Exception as e:
+        error_logger.error(f'mp-admin score create 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

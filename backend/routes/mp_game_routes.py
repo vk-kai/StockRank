@@ -207,7 +207,13 @@ def _purge_expired_rooms(force=False):
 
 
 def _check_nickname(nickname, openid):
-    """昵称过 msgSecCheck;任何失败/不合规一律回退默认昵称,绝不让成绩丢失。"""
+    """昵称过 msgSecCheck;任何失败/不合规一律回退默认昵称,绝不让成绩丢失。
+
+    失败原因打详细日志(errcode/errmsg),常见:
+      87009  openid 用户近2小时未访问小程序(客户端需重新 wx.login 换 code 走 /sec/login)
+      45009  接口调用额度耗尽
+      40001/42001 access_token 失效(已自动强刷重试一次,仍失败多为 appsecret 配置错)
+    """
     nickname = (nickname or '').strip()
     if not nickname or len(nickname) > 12:
         return DEFAULT_NICKNAME
@@ -216,7 +222,18 @@ def _check_nickname(nickname, openid):
     try:
         resp = _call_wx_api('/wxa/msg_sec_check', {
             'version': 2, 'openid': openid, 'scene': 1, 'content': nickname})
-        ok = resp.get('errcode') == 0 and (resp.get('result') or {}).get('suggest') == 'pass'
+        errcode = resp.get('errcode')
+        ok = errcode == 0 and (resp.get('result') or {}).get('suggest') == 'pass'
+        if not ok:
+            if errcode == 0:
+                # 检测服务正常、内容被拦:正常业务,记 info
+                logger.info(f"昵称未过审(回退默认): openid={openid[:6]}… "
+                            f"suggest={(resp.get('result') or {}).get('suggest')}")
+            else:
+                # 检测服务故障:warning 带错误码,便于服务端定位
+                error_logger.warning(
+                    f"昵称安全检测接口失败(回退默认昵称): errcode={errcode} "
+                    f"errmsg={resp.get('errmsg')} openid={openid[:6]}…")
     except Exception as e:
         error_logger.warning(f'昵称安全校验异常(按默认昵称处理): {e}')
         ok = False
@@ -282,7 +299,9 @@ def submit_score():
             return jsonify({'success': False, 'message': '成绩参数不合法'})
         if not (0 < answer_count <= MAX_ANSWERS):
             return jsonify({'success': False, 'message': '题目数量不合法'})
-        if duration_ms < answer_count * 800 or not (0 < duration_ms <= 86400000):
+        # 时长合理性:每题至少0.5秒且整体至少1秒(拦脚本连发),快速真实作答可过;
+        # 上限1天。曾用每题0.8秒,实测会误杀点得快的真实玩家(10题5秒被拒)。
+        if duration_ms < max(1000, answer_count * 500) or not (0 < duration_ms <= 86400000):
             return jsonify({'success': False, 'message': '答题时长异常'})
 
         # answers 可选:长度/字符不符则忽略该字段,成绩照收(为将来服务端判分预留)
@@ -293,21 +312,31 @@ def submit_score():
         nickname = _check_nickname(str(data.get('nickname') or ''), openid)
 
         with _db() as conn:
-            conn.execute('''INSERT INTO scores
+            # 昵称检测失败回退默认昵称时,保留库中已有昵称:
+            # 避免检测服务故障期间重交成绩,把玩家已通过检测的昵称冲掉
+            if nickname == DEFAULT_NICKNAME:
+                row = conn.execute('SELECT nickname FROM scores WHERE quiz_id = ? AND openid = ?',
+                                   (quiz_id, openid)).fetchone()
+                if row and row['nickname']:
+                    nickname = row['nickname']
+            # 改名需求:昵称无条件更新(低分重交也能改);
+            # 成绩相关字段仍只记最佳(分数更高,或同分用时更短)
+            better = ('excluded.score > scores.score '
+                      'OR (excluded.score = scores.score AND excluded.duration_ms < scores.duration_ms)')
+            conn.execute(f'''INSERT INTO scores
                 (quiz_id, openid, nickname, score, full_score, duration_ms, answers, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(quiz_id, openid) DO UPDATE SET
                     nickname = excluded.nickname,
-                    score = excluded.score,
-                    full_score = excluded.full_score,
-                    duration_ms = excluded.duration_ms,
-                    answers = excluded.answers,
-                    created_at = excluded.created_at
-                WHERE excluded.score > scores.score
-                   OR (excluded.score = scores.score AND excluded.duration_ms < scores.duration_ms)''',
+                    score = CASE WHEN {better} THEN excluded.score ELSE scores.score END,
+                    full_score = CASE WHEN {better} THEN excluded.full_score ELSE scores.full_score END,
+                    duration_ms = CASE WHEN {better} THEN excluded.duration_ms ELSE scores.duration_ms END,
+                    answers = CASE WHEN {better} THEN excluded.answers ELSE scores.answers END,
+                    created_at = CASE WHEN {better} THEN excluded.created_at ELSE scores.created_at END''',
                 (quiz_id, openid, nickname, score, full_score, duration_ms, answers, _utcnow()))
         _rank_cache.pop(quiz_id, None)
-        return jsonify({'success': True, 'message': '已记录'})
+        # 返回最终入库昵称,客户端可感知被安全检测替换的情况
+        return jsonify({'success': True, 'message': '已记录', 'nickname': nickname})
     except Exception as e:
         error_logger.error(f'score 上报异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})

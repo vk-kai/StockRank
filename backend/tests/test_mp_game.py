@@ -91,9 +91,18 @@ class ScoreValidationTests(GameTestCase):
         self.assertFalse(r['success'])
 
     def test_too_fast_rejected(self):
-        r = self._score(dur=20 * 800 - 1).get_json()
+        # 每题至少0.5秒:20题下限10000ms,9999仍被拦(防脚本连发)
+        r = self._score(dur=20 * 500 - 1).get_json()
         self.assertFalse(r['success'])
         self.assertIn('时长', r['message'])
+
+    def test_fast_but_real_passes(self):
+        # 客户端实测场景:10题5秒(每题0.5秒)曾因旧规则(每题0.8秒)被误杀,现应入库
+        r = self._score(dur=5000, count=10, answers='A' * 10).get_json()
+        self.assertTrue(r['success'])
+        # 整体绝对下限1秒:10题999ms仍拦
+        r2 = self._score(openid='oB', dur=999, count=10, answers='A' * 10).get_json()
+        self.assertFalse(r2['success'])
 
     def test_answers_mismatch_ignored_but_score_kept(self):
         self._score(answers='ABC')  # 长度不符 → 忽略 answers,成绩照收
@@ -132,6 +141,28 @@ class ScoreValidationTests(GameTestCase):
         self.assertEqual(r['mine']['score'], 80)
         top_dur = r['top'][0]['duration_ms']
         self.assertEqual(top_dur, 30000)
+
+    def test_rename_updates_nickname_even_with_lower_score(self):
+        # 改名需求:低分重交也要更新昵称(分数仍只记最佳)
+        self._score(openid='oA', score=85, dur=60000, nickname='旧名字')
+        self._score(openid='oA', score=1, dur=60000, nickname='新名字')
+        with m._db() as conn:
+            row = conn.execute("SELECT nickname, score FROM scores WHERE openid='oA'").fetchone()
+        self.assertEqual(row['nickname'], '新名字')   # 昵称已更新
+        self.assertEqual(row['score'], 85)            # 成绩仍是最佳
+        # 响应回带入库昵称,客户端可感知
+        r = self._score(openid='oA', score=2, dur=60000, nickname='新名字').get_json()
+        self.assertEqual(r.get('nickname'), '新名字')
+
+    def test_sec_fail_keeps_existing_nickname(self):
+        # 检测服务故障回退默认昵称时,不冲掉库中已过检的昵称
+        self._score(openid='oA', score=80, dur=60000, nickname='好名字')
+        self.sec_ok = False
+        self._score(openid='oA', score=90, dur=60000, nickname='另一个名字')
+        with m._db() as conn:
+            row = conn.execute("SELECT nickname, score FROM scores WHERE openid='oA'").fetchone()
+        self.assertEqual(row['nickname'], '好名字')   # 保留旧昵称
+        self.assertEqual(row['score'], 90)            # 成绩照常更新
 
     def test_rate_limit_6_per_minute(self):
         for i in range(6):

@@ -1247,6 +1247,13 @@ export async function getMpAdminQuizRank({ quizId, page = 1, pageSize = 20 } = {
   }
 }
 
+/** 新增成绩:{password, quiz_id, openid, nickname, score, full_score, duration_ms} */
+export async function mpAdminScoreCreate(password, payload) {
+  const response = await apiClient.post('/mp-admin/scores/create',
+    { ...payload, password })
+  return response.data
+}
+
 /** 改成绩:{password, quiz_id, openid, nickname?, score?, full_score?, duration_ms?} */
 export async function mpAdminScoreUpdate(password, payload) {
   const response = await apiClient.post('/mp-admin/scores/update',

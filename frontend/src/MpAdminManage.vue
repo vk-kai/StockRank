@@ -30,6 +30,7 @@
           <input v-model="scoresFilter" placeholder="按测试ID过滤，如 test_caiyun" class="filter-input"
                  @keyup.enter="loadScores(1)" />
           <button class="gen-btn" @click="loadScores(1)">查询</button>
+          <button class="gen-btn" @click="openScoreCreate">新增成绩</button>
         </div>
         <div v-if="!scores.items.length" class="empty">暂无成绩</div>
         <table v-else class="data-table">
@@ -123,6 +124,26 @@
           <button :disabled="rooms.page >= rooms.totalPages" @click="loadRooms(rooms.page + 1)">下一页</button>
         </div>
       </section>
+    </div>
+
+    <!-- 新增成绩弹窗 -->
+    <div v-if="scoreCreate.show" class="pwd-overlay" @click.self="scoreCreate.show = false">
+      <div class="pwd-card">
+        <h3>新增成绩</h3>
+        <p class="pwd-desc">管理员手动补录，昵称不过内容安全检测</p>
+        <label class="edit-row">测试ID <input v-model="scoreCreate.quiz_id" placeholder="如 childIntelligence" /></label>
+        <label class="edit-row">openid <input v-model="scoreCreate.openid" placeholder="玩家 openid" /></label>
+        <label class="edit-row">昵称 <input v-model="scoreCreate.nickname" maxlength="12" /></label>
+        <label class="edit-row">分数 <input v-model.number="scoreCreate.score" type="number" min="0" /></label>
+        <label class="edit-row">满分 <input v-model.number="scoreCreate.full_score" type="number" min="1" /></label>
+        <label class="edit-row">用时(ms) <input v-model.number="scoreCreate.duration_ms" type="number" min="0" /></label>
+        <div class="pwd-actions">
+          <button class="cancel-btn" @click="scoreCreate.show = false">取消</button>
+          <button class="ok-btn" :disabled="scoreCreate.busy" @click="doScoreCreate">
+            {{ scoreCreate.busy ? '处理中…' : '保存' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 改成绩弹窗 -->
