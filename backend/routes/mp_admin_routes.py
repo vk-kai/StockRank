@@ -87,6 +87,29 @@ def _key_names(conn):
     return names
 
 
+def _quiz_display_name(names, quiz_id):
+    """quiz_id → 中文名。
+
+    scores 表的 quiz_id 是客户端原样上报(如 pastlifeWho / friend,不带 test_ 前缀、
+    可能驼峰),而名称映射(stat_names/内置)的 key 统一小写且带 test_/tool_ 前缀
+    (如 test_pastlifewho),直接 names.get(quiz_id) 匹配不上 → 全英文。
+    这里按 小写原样/去前缀/补前缀 多形态匹配,都失败才回退 quiz_id。
+    """
+    if not quiz_id:
+        return quiz_id
+    low = quiz_id.lower()
+    cands = [low]
+    for prefix in ('test_', 'tool_'):
+        if low.startswith(prefix):
+            cands.append(low[len(prefix):])
+        else:
+            cands.append(prefix + low)
+    for c in cands:
+        if c in names:
+            return names[c]
+    return quiz_id
+
+
 # --------------------------------------------------------------------------
 # 一、趋势看板
 # --------------------------------------------------------------------------
@@ -147,7 +170,7 @@ def mp_admin_overview():
                 "WHERE date(created_at, '+8 hours') >= ? GROUP BY d", (day_from,))}
             # 测试热度排行:每个 quiz 的参与人数/平均得分率(带中文名)
             quiz_top = [{
-                'quiz_id': r['quiz_id'], 'name': names.get(r['quiz_id'], r['quiz_id']),
+                'quiz_id': r['quiz_id'], 'name': _quiz_display_name(names, r['quiz_id']),
                 'players': r['players'], 'avg_score': round(r['avg_pct'], 1),
             } for r in conn.execute('''SELECT quiz_id, COUNT(*) AS players,
                     AVG(CAST(score AS REAL) / full_score * 100) AS avg_pct
@@ -187,10 +210,13 @@ def mp_admin_scores():
             where = 'quiz_id = ?'
             params.append(quiz_id)
         with _db() as conn:
+            names = _key_names(conn)
             total = conn.execute(f'SELECT COUNT(*) AS c FROM scores WHERE {where}',
                                  params).fetchone()['c']
             items = [{
-                'quiz_id': r['quiz_id'], 'openid': r['openid'],
+                'quiz_id': r['quiz_id'],
+                'name': _quiz_display_name(names, r['quiz_id']),
+                'openid': r['openid'],
                 'nickname': r['nickname'] or DEFAULT_NICKNAME,
                 'score': r['score'], 'full_score': r['full_score'],
                 'duration_ms': r['duration_ms'], 'created_at': r['created_at'],
@@ -348,6 +374,7 @@ def mp_admin_quiz_rank():
             return jsonify({'success': False, 'message': '缺少 quiz_id'}), 400
         page, page_size = _parse_page_args()
         with _db() as conn:
+            names = _key_names(conn)
             total = conn.execute('SELECT COUNT(*) AS c FROM scores WHERE quiz_id = ?',
                                  (quiz_id,)).fetchone()['c']
             items = [{
@@ -359,7 +386,7 @@ def mp_admin_quiz_rank():
                 ORDER BY score DESC, duration_ms ASC, created_at ASC
                 LIMIT ? OFFSET ?''',
                 (quiz_id, page_size, (page - 1) * page_size))]
-            name = _key_names(conn).get(quiz_id, quiz_id)
+            name = _quiz_display_name(names, quiz_id)
         return jsonify({'success': True, 'data': {
             'quiz_id': quiz_id, 'name': name,
             'items': items, 'total': total, 'page': page, 'page_size': page_size,
@@ -476,6 +503,7 @@ def mp_admin_rooms():
             params.append(state)
         now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         with _db() as conn:
+            names = _key_names(conn)
             total = conn.execute(f'SELECT COUNT(*) AS c FROM rooms WHERE {where}',
                                  params).fetchone()['c']
             items = []
@@ -487,6 +515,7 @@ def mp_admin_rooms():
                 display_state = 'expired' if r['expires_at'] <= now_str else r['state']
                 items.append({
                     'room_code': r['room_code'], 'quiz_id': r['quiz_id'],
+                    'name': _quiz_display_name(names, r['quiz_id']),
                     'state': display_state,
                     'players': 1 + (1 if r['openid_b'] else 0),
                     'a_submitted': bool(r['answers_a']), 'b_submitted': bool(r['answers_b']),

@@ -35,11 +35,16 @@
         <div v-if="!scores.items.length" class="empty">暂无成绩</div>
         <table v-else class="data-table">
           <thead>
-            <tr><th>测试ID</th><th>玩家</th><th>昵称</th><th>分数</th><th>用时</th><th>提交时间</th><th>操作</th></tr>
+            <tr><th>测试</th><th>玩家</th><th>昵称</th><th>分数</th><th>用时</th><th>提交时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in scores.items" :key="row.quiz_id + '/' + row.openid">
-              <td class="code-text">{{ row.quiz_id }}</td>
+              <td>
+                <template v-if="row.name && row.name !== row.quiz_id">
+                  {{ row.name }} <small class="dim">{{ row.quiz_id }}</small>
+                </template>
+                <span v-else class="code-text">{{ row.quiz_id }}</span>
+              </td>
               <td class="code-text">{{ shortOpenid(row.openid) }}</td>
               <td>{{ row.nickname }}</td>
               <td>{{ row.score }}/{{ row.full_score }}</td>
@@ -101,12 +106,17 @@
         <div v-if="!rooms.items.length" class="empty">暂无房间</div>
         <table v-else class="data-table">
           <thead>
-            <tr><th>房间码</th><th>测试ID</th><th>状态</th><th>人数</th><th>交卷</th><th>合拍度</th><th>创建时间</th><th>操作</th></tr>
+            <tr><th>房间码</th><th>测试</th><th>状态</th><th>人数</th><th>交卷</th><th>合拍度</th><th>创建时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in rooms.items" :key="row.room_code">
               <td class="code-text">{{ row.room_code }}</td>
-              <td class="code-text">{{ row.quiz_id }}</td>
+              <td>
+                <template v-if="row.name && row.name !== row.quiz_id">
+                  {{ row.name }} <small class="dim">{{ row.quiz_id }}</small>
+                </template>
+                <span v-else class="code-text">{{ row.quiz_id }}</span>
+              </td>
               <td><span :class="['status', row.state]">{{ stateName(row.state) }}</span></td>
               <td>{{ row.players }}</td>
               <td>{{ row.a_submitted ? 'A✓' : 'A…' }} {{ row.b_submitted ? 'B✓' : 'B…' }}</td>

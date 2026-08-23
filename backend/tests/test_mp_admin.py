@@ -258,6 +258,45 @@ class QuizRankTests(MpAdminTestCase):
         self.assertEqual(r3['data']['total'], 0)
 
 
+class QuizNameTests(MpAdminTestCase):
+    """中文名解析:scores 的 quiz_id 不带 test_ 前缀/驼峰时,也能映射到计数 key 的中文名。"""
+
+    def test_overview_quiz_top_names(self):
+        self._login()
+        # 客户端实际上报形态:不带 test_ 前缀、可能驼峰
+        self._add_score(quiz='pastlifeWho', openid='oA')
+        self._add_score(quiz='friend', openid='oB')
+        self._add_score(quiz='childIntelligence', openid='oC')
+        self._add_score(quiz='test_mbti', openid='oD')   # 带前缀直接命中
+        r = self.client.get('/api/mp-admin/overview').get_json()
+        names = {q['quiz_id']: q['name'] for q in r['data']['quiz_top']}
+        self.assertEqual(names['pastlifeWho'], '前世测试')
+        self.assertEqual(names['friend'], '好友印象测试')
+        self.assertEqual(names['childIntelligence'], '智力测试')
+        self.assertEqual(names['test_mbti'], 'MBTI人格测试')
+
+    def test_scores_and_rank_names(self):
+        self._login()
+        self._add_score(quiz='pastlifeWho', openid='oA', nickname='甲')
+        # 成绩列表带 name 字段
+        r = self.client.get('/api/mp-admin/scores?quiz_id=pastlifeWho').get_json()
+        self.assertEqual(r['data']['items'][0]['name'], '前世测试')
+        # 排行榜接口同样解析
+        r2 = self.client.get('/api/mp-admin/quiz-rank?quiz_id=pastlifeWho').get_json()
+        self.assertEqual(r2['data']['name'], '前世测试')
+
+    def test_rooms_names(self):
+        self._login()
+        with m._db() as conn:
+            conn.execute(
+                "INSERT INTO rooms(room_code, quiz_id, openid_a, state, expires_at, created_at)"
+                " VALUES ('1234', 'tool_pkRoom', 'oA', 'waiting', '2099-01-01 00:00:00', ?)",
+                (_utcnow_str(),))
+        r = self.client.get('/api/mp-admin/rooms').get_json()
+        item = next(x for x in r['data']['items'] if x['room_code'] == '1234')
+        self.assertEqual(item['name'], '双人默契大作战')
+
+
 class StatsTests(MpAdminTestCase):
     def test_list_save_delete(self):
         self._login()

@@ -106,6 +106,7 @@
           <button class="rank-close" @click="rankModal.show = false">×</button>
         </div>
         <p class="rank-sub">
+          <small v-if="rankModal.name !== rankModal.quizId" class="dim">{{ rankModal.quizId }} · </small>
           共 {{ rankModal.total }} 条成绩 · 排序与小程序端一致（分数优先，同分用时短优先）
         </p>
         <div v-if="rankModal.error" class="rank-error">{{ rankModal.error }}</div>
