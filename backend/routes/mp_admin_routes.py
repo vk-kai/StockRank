@@ -31,6 +31,7 @@ from core.logger import get_logger
 from routes.auth_routes import is_authenticated, verify_password
 from routes.mp_game_routes import (
     _db, _rank_cache, _stat_cache, STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME,
+    _field_safe, _safe_nick,
 )
 
 mp_admin_bp = Blueprint('mp_admin', __name__, url_prefix='/api/mp-admin')
@@ -106,8 +107,10 @@ def _quiz_display_name(names, quiz_id):
             cands.append(prefix + low)
     for c in cands:
         if c in names:
-            return names[c]
-    return quiz_id
+            name = names[c]
+            # 回显兜底(防存量脏数据):映射名来自小程序上报,注入检测不过则弃用
+            return name if _field_safe(name) else quiz_id if _field_safe(quiz_id) else '未知'
+    return quiz_id if _field_safe(quiz_id) else '未知'
 
 
 # --------------------------------------------------------------------------
@@ -217,7 +220,7 @@ def mp_admin_scores():
                 'quiz_id': r['quiz_id'],
                 'name': _quiz_display_name(names, r['quiz_id']),
                 'openid': r['openid'],
-                'nickname': r['nickname'] or DEFAULT_NICKNAME,
+                'nickname': _safe_nick(r['nickname']),
                 'score': r['score'], 'full_score': r['full_score'],
                 'duration_ms': r['duration_ms'], 'created_at': r['created_at'],
             } for r in conn.execute(
@@ -378,7 +381,7 @@ def mp_admin_quiz_rank():
             total = conn.execute('SELECT COUNT(*) AS c FROM scores WHERE quiz_id = ?',
                                  (quiz_id,)).fetchone()['c']
             items = [{
-                'nickname': r['nickname'] or DEFAULT_NICKNAME,
+                'nickname': _safe_nick(r['nickname']),
                 'score': r['score'], 'full_score': r['full_score'],
                 'duration_ms': r['duration_ms'], 'created_at': r['created_at'],
             } for r in conn.execute('''SELECT nickname, score, full_score, duration_ms, created_at

@@ -297,6 +297,107 @@ class QuizNameTests(MpAdminTestCase):
         self.assertEqual(item['name'], '双人默契大作战')
 
 
+class InjectionGuardTests(MpAdminTestCase):
+    """注入防护:复用 Jarvis 攻击模式库,小程序上报字段一律先检测再入库/回显。"""
+
+    def test_score_quiz_id_whitelist(self):
+        # quiz_id 白名单:英文标识符形态,含标签/引号/空格一律拒绝
+        for evil in ['<script>alert(1)</script>', "test' --", 'test a', 'test\x00']:
+            r = self.client.post('/api/mp/game/score', json={
+                'openid': 'oA', 'quiz_id': evil, 'score': 80, 'full_score': 100,
+                'duration_ms': 60000, 'answer_count': 10})
+            self.assertEqual(r.status_code, 200)
+            self.assertFalse(r.get_json()['success'], evil)
+        # 正常标识符不受影响(驼峰/数字/连字符)
+        for ok in ['pastlifeWho', 'test_007', 'tool-x']:
+            self.assertTrue(m.QUIZ_ID_RE.match(ok), ok)
+
+    def test_score_nickname_attack_rejected(self):
+        # 昵称含攻击特征:入库前拦截,回退默认昵称(不依赖微信检测,本地先拦)
+        r = self.client.post('/api/mp/game/score', json={
+            'openid': 'oA', 'quiz_id': 'test_a', 'nickname': '<img src=x onerror=alert(1)>',
+            'score': 80, 'full_score': 100, 'duration_ms': 60000, 'answer_count': 10})
+        data = r.get_json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['nickname'], m.DEFAULT_NICKNAME)
+        with m._db() as conn:
+            row = conn.execute('SELECT nickname FROM scores').fetchone()
+            self.assertEqual(row['nickname'], m.DEFAULT_NICKNAME)
+
+    def test_stat_name_attack_dropped(self):
+        # stat_names 的 name 能覆盖内置映射并回显后台:攻击特征直接丢弃,计数照常+1
+        self.client.post('/api/mp/game/stat/inc', json={
+            'key': 'test_a', 'openid': 'oA', 'name': '<svg onload=alert(1)>'})
+        with m._db() as conn:
+            cnt = conn.execute("SELECT count FROM stats WHERE key='test_a'").fetchone()
+            nm = conn.execute("SELECT name FROM stat_names WHERE key='test_a'").fetchone()
+            self.assertEqual(cnt['count'], 1)          # 计数不受影响
+            self.assertIsNone(nm)                       # 攻击名未入库
+        # 正常中文名照常入库
+        self.client.post('/api/mp/game/stat/inc', json={
+            'key': 'test_b', 'openid': 'oA', 'name': '正常测试名'})
+        with m._db() as conn:
+            nm = conn.execute("SELECT name FROM stat_names WHERE key='test_b'").fetchone()
+            self.assertEqual(nm['name'], '正常测试名')
+
+    def test_legacy_dirty_nickname_sanitized_on_echo(self):
+        # 存量脏数据(防护上线前入库):玩家排行榜与后台列表回显时兜底替换
+        self._add_score(quiz='test_a', openid='oA',
+                        nickname='<img src=x onerror=alert(1)>')
+        # 玩家侧排行榜 TOP10
+        r = self.client.get('/api/mp/game/rank?quiz_id=test_a&openid=oA').get_json()
+        self.assertEqual(r['top'][0]['nickname'], m.DEFAULT_NICKNAME)
+        # 后台成绩列表
+        self._login()
+        r2 = self.client.get('/api/mp-admin/scores?quiz_id=test_a').get_json()
+        self.assertEqual(r2['data']['items'][0]['nickname'], m.DEFAULT_NICKNAME)
+        # 后台排行榜弹窗
+        r3 = self.client.get('/api/mp-admin/quiz-rank?quiz_id=test_a').get_json()
+        self.assertEqual(r3['data']['items'][0]['nickname'], m.DEFAULT_NICKNAME)
+
+    def test_room_quiz_id_whitelist(self):
+        r = self.client.post('/api/mp/game/room', json={
+            'openid': 'oA', 'quiz_id': '<script>'})
+        self.assertFalse(r.get_json()['success'])
+
+    def test_openid_rejected_at_submission(self):
+        # openid 也会入库并回显后台(玩家列):所有提交入口统一白名单拦截
+        evil = '<script>alert(1)</script>'
+        # 成绩上报
+        r1 = self.client.post('/api/mp/game/score', json={
+            'openid': evil, 'quiz_id': 'test_a', 'score': 80, 'full_score': 100,
+            'duration_ms': 60000, 'answer_count': 10})
+        self.assertFalse(r1.get_json()['success'])
+        # 创建/加入房间、交卷、轮询、逐题对照
+        self.assertFalse(self.client.post('/api/mp/game/room', json={
+            'openid': evil, 'quiz_id': 'pk'}).get_json()['success'])
+        self.assertFalse(self.client.post('/api/mp/game/room/join', json={
+            'room_code': '1234', 'openid': evil}).get_json()['success'])
+        self.assertFalse(self.client.post('/api/mp/game/room/answer', json={
+            'room_code': '1234', 'openid': evil, 'answers': 'AB'}).get_json()['success'])
+        self.assertFalse(self.client.get(
+            '/api/mp/game/room/status?room_code=1234&openid=' + evil).get_json()['success'])
+        self.assertFalse(self.client.get(
+            '/api/mp/game/room/detail?room_code=1234&openid=' + evil).get_json()['success'])
+        # 计数上报(error 字段规范)
+        self.assertFalse(self.client.post('/api/mp/game/stat/inc', json={
+            'key': 'test_a', 'openid': evil}).get_json()['success'])
+        # 排行榜查询
+        self.assertFalse(self.client.get(
+            '/api/mp/game/rank?quiz_id=test_a&openid=' + evil).get_json()['success'])
+        # 库里绝无脏 openid
+        with m._db() as conn:
+            self.assertIsNone(conn.execute(
+                'SELECT * FROM scores WHERE openid = ?', (evil,)).fetchone())
+
+    def test_room_code_rejected_at_submission(self):
+        # 房间码只认4位数字:标签/超长/字母一律拒
+        for evil in ['<img>', '12345', '12a4', "1' --"]:
+            r = self.client.post('/api/mp/game/room/join', json={
+                'room_code': evil, 'openid': 'oA'})
+            self.assertFalse(r.get_json()['success'], evil)
+
+
 class StatsTests(MpAdminTestCase):
     def test_list_save_delete(self):
         self._login()

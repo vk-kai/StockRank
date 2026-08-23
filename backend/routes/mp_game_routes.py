@@ -54,7 +54,38 @@ _last_purge = 0.0
 
 # key 统一先转小写再校验/入库:test_careerFit 与 test_careerfit 是同一个计数器
 STAT_KEY_RE = re.compile(r'^[a-z0-9_]{1,64}$')
+# quiz_id 白名单:客户端上报的测试/工具标识(成绩表、PK房间),英文标识符形态
+QUIZ_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+# openid 白名单:微信 openid 形态(字母数字-_);openid 会入库并回显后台,提交时拦截
+OPENID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+# 房间码:服务端生成的4位数字,join/answer/status/detail 由客户端回传
+ROOM_CODE_RE = re.compile(r'^\d{4}$')
 STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
+
+# 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
+# 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
+# 中间件模式有盲区(编码变形/不完整标签),脏数据一旦入库会回显到管理后台。
+try:
+    from Jarvis import SecurityChecker as _JarvisChecker
+    _sec_checker = _JarvisChecker()
+except Exception:            # Jarvis 不可用时降级为仅白名单校验,不阻断业务
+    _sec_checker = None
+
+
+def _field_safe(value):
+    """回显字段检测:命中 Jarvis 攻击模式(XSS/SQL注入等)返回 False。"""
+    if not _sec_checker or not isinstance(value, str) or not value:
+        return True
+    return _sec_checker.check(value) is None
+
+
+def _safe_nick(nickname):
+    """昵称回显兜底(玩家排行榜/后台列表共用):空/含攻击特征一律显示默认昵称。"""
+    if not nickname or not _field_safe(nickname):
+        return DEFAULT_NICKNAME
+    return nickname
+
+
 STAT_CACHE_TTL = 60
 # key→中文名 内置兜底映射(小程序端 /stat/inc 现已自带 name 字段优先入库;
 # 这里只兜底:早期没传过 name 的 key、以及还没触发过计数的新 key)。
@@ -217,6 +248,11 @@ def _check_nickname(nickname, openid):
     nickname = (nickname or '').strip()
     if not nickname or len(nickname) > 12:
         return DEFAULT_NICKNAME
+    # 注入防护(复用Jarvis攻击模式库):昵称会回显到管理后台,先于msgSecCheck拦截,
+    # 命中XSS/SQL注入等模式直接回退默认昵称——顺带省一次检测额度
+    if not _field_safe(nickname):
+        logger.warning(f"昵称含攻击特征(回退默认): openid={openid[:6]}…")
+        return DEFAULT_NICKNAME
     if nickname in _nick_ok_cache:
         return nickname
     try:
@@ -286,6 +322,9 @@ def submit_score():
         quiz_id = str(data.get('quiz_id') or '').strip()
         if not openid or not quiz_id:
             return jsonify({'success': False, 'message': '缺少 openid 或 quiz_id'})
+        # openid 会入库并回显后台(玩家列),quiz_id 回显到成绩列表/排行榜/趋势页:白名单防注入
+        if not OPENID_RE.match(openid) or not QUIZ_ID_RE.match(quiz_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('score', openid, 6, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
 
@@ -353,6 +392,8 @@ def query_rank():
         openid = (request.args.get('openid') or '').strip()
         if not quiz_id or not openid:
             return jsonify({'success': False, 'message': '缺少 quiz_id 或 openid'})
+        if not OPENID_RE.match(openid) or not QUIZ_ID_RE.match(quiz_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('rank', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
 
@@ -362,7 +403,7 @@ def query_rank():
             with _db() as conn:
                 total = conn.execute('SELECT COUNT(*) AS c FROM scores WHERE quiz_id = ?',
                                      (quiz_id,)).fetchone()['c']
-                top = [{'nickname': r['nickname'] or DEFAULT_NICKNAME,
+                top = [{'nickname': _safe_nick(r['nickname']),
                         'score': r['score'], 'duration_ms': r['duration_ms']}
                        for r in conn.execute('''SELECT nickname, score, duration_ms FROM scores
                            WHERE quiz_id = ? ORDER BY score DESC, duration_ms ASC LIMIT 10''',
@@ -409,6 +450,9 @@ def create_room():
         quiz_id = str(data.get('quiz_id') or '').strip()
         if not openid or not quiz_id:
             return jsonify({'success': False, 'message': '缺少 openid 或 quiz_id'})
+        # openid/quiz_id 均入库并回显后台PK房间列表,白名单防注入
+        if not OPENID_RE.match(openid) or not QUIZ_ID_RE.match(quiz_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('room_create', openid, 10, 3600):
             return jsonify({'success': False, 'message': '创建太频繁，请稍后再试'})
         answer_count = _parse_int(data.get('answer_count')) if data.get('answer_count') else None
@@ -452,6 +496,8 @@ def join_room():
         openid = str(data.get('openid') or '').strip()
         if not room_code or not openid:
             return jsonify({'success': False, 'message': '缺少 room_code 或 openid'})
+        if not ROOM_CODE_RE.match(room_code) or not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('join', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
 
@@ -488,6 +534,8 @@ def submit_answer():
         answers = str(data.get('answers') or '').strip().upper()
         if not room_code or not openid or not answers:
             return jsonify({'success': False, 'message': '缺少 room_code、openid 或 answers'})
+        if not ROOM_CODE_RE.match(room_code) or not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('answer', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
         if len(answers) > MAX_ANSWERS or not set(answers) <= ANSWER_CHARS:
@@ -547,6 +595,8 @@ def room_status():
         openid = (request.args.get('openid') or '').strip()
         if not room_code or not openid:
             return jsonify({'success': False, 'message': '缺少 room_code 或 openid'})
+        if not ROOM_CODE_RE.match(room_code) or not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('status', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
 
@@ -576,6 +626,8 @@ def room_detail():
         openid = (request.args.get('openid') or '').strip()
         if not room_code or not openid:
             return jsonify({'success': False, 'message': '缺少 room_code 或 openid'})
+        if not ROOM_CODE_RE.match(room_code) or not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
         if _rate_limited('detail', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
 
@@ -616,6 +668,8 @@ def stat_inc():
             return jsonify({'success': False, 'error': '参数不完整'})
         if not STAT_KEY_RE.match(key):
             return jsonify({'success': False, 'error': 'key 格式不合法'})
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'error': 'openid 格式不合法'})
         if _rate_limited('stat_inc', openid, 30, 60):
             return jsonify({'success': False, 'error': '操作太频繁，请稍后再试'})
 
@@ -638,8 +692,9 @@ def stat_inc():
             conn.execute('INSERT INTO stat_log(key, ts, openid) VALUES (?, ?, ?)',
                          (key, int(now), openid))
             # 可选中文名:后写覆盖先写,后台展示用(不传不影响计数)
+            # name 会回显到后台且能覆盖内置映射,注入检测不过则丢弃(计数照常+1)
             name = str(data.get('name') or '').strip()
-            if name and len(name) <= 30:
+            if name and len(name) <= 30 and _field_safe(name):
                 conn.execute('''INSERT INTO stat_names(key, name) VALUES (?, ?)
                     ON CONFLICT(key) DO UPDATE SET name = excluded.name''', (key, name))
         # 写库成功后才登记防刷窗口,失败可立即重试
