@@ -157,3 +157,83 @@
 }
 
 .dim { color: #6b7d99; font-size: 11px; }
+
+/* ---- 测试名称可点击(查看排行榜) ---- */
+.quiz-link {
+  border: 0;
+  background: transparent;
+  color: #7cc4ff;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+}
+.quiz-link:hover { text-decoration: underline; }
+
+/* ---- 测试排行榜弹窗 ---- */
+.rank-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.rank-card {
+  width: 560px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: #101827;
+  border: 1px solid rgba(111, 142, 190, 0.35);
+  border-radius: 10px;
+  padding: 20px;
+}
+.rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rank-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #e5edf7;
+}
+.rank-close {
+  border: 0;
+  background: transparent;
+  color: #9db0ca;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.rank-close:hover { color: #e5edf7; }
+.rank-sub {
+  margin: 6px 0 14px;
+  color: #8ba4c7;
+  font-size: 12px;
+}
+.rank-error {
+  color: #ff7875;
+  text-align: center;
+  padding: 24px 0;
+}
+.rank-card .pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: #8ba4c7;
+  font-size: 12px;
+}
+.rank-card .pager button {
+  border: 1px solid rgba(111, 142, 190, 0.4);
+  background: rgba(16, 24, 39, 0.9);
+  color: #d7e4f5;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.rank-card .pager button:disabled { opacity: 0.4; cursor: not-allowed; }

@@ -56,6 +56,7 @@ class MpAdminTestCase(unittest.TestCase):
 class AuthTests(MpAdminTestCase):
     def test_no_session_401(self):
         for url in ('/api/mp-admin/overview', '/api/mp-admin/scores',
+                    '/api/mp-admin/quiz-rank?quiz_id=q',
                     '/api/mp-admin/stats', '/api/mp-admin/rooms'):
             r = self.client.get(url)
             self.assertEqual(r.status_code, 401, msg=url)
@@ -183,6 +184,47 @@ class ScoresTests(MpAdminTestCase):
         r3 = self.client.post('/api/mp-admin/scores/delete', json={
             'password': 'pw', 'quiz_id': 'test_a', 'openid': 'oA'})
         self.assertEqual(r3.status_code, 404)
+
+
+class QuizRankTests(MpAdminTestCase):
+    def test_rank_order_and_pagination(self):
+        self._login()
+        # 甲80分60秒、乙90分60秒、丙90分30秒:排序应为 丙>乙>甲(同分用时短优先)
+        self._add_score(quiz='test_a', openid='oA', nickname='甲', score=80, dur=60000)
+        self._add_score(quiz='test_a', openid='oB', nickname='乙', score=90, dur=60000)
+        self._add_score(quiz='test_a', openid='oC', nickname='丙', score=90, dur=30000)
+        self._add_score(quiz='test_b', openid='oD', nickname='丁', score=100)
+        r = self.client.get('/api/mp-admin/quiz-rank?quiz_id=test_a').get_json()
+        self.assertTrue(r['success'])
+        d = r['data']
+        self.assertEqual(d['quiz_id'], 'test_a')
+        self.assertEqual(d['name'], 'test_a')  # 无映射时回退 quiz_id
+        self.assertEqual(d['total'], 3)
+        self.assertEqual([i['nickname'] for i in d['items']], ['丙', '乙', '甲'])
+        self.assertEqual(d['items'][0]['score'], 90)
+        self.assertEqual(d['items'][0]['duration_ms'], 30000)
+        # 每行带分数/满分/测试时间
+        for it in d['items']:
+            self.assertEqual(it['full_score'], 100)
+            self.assertTrue(it['created_at'])
+        # 分页:page_size=2 → 第1页2条、共2页
+        r2 = self.client.get('/api/mp-admin/quiz-rank?quiz_id=test_a&page_size=2').get_json()
+        self.assertEqual(len(r2['data']['items']), 2)
+        self.assertEqual(r2['data']['total_pages'], 2)
+        r3 = self.client.get('/api/mp-admin/quiz-rank?quiz_id=test_a&page_size=2&page=2').get_json()
+        self.assertEqual([i['nickname'] for i in r3['data']['items']], ['甲'])
+
+    def test_rank_auth_and_params(self):
+        r = self.client.get('/api/mp-admin/quiz-rank?quiz_id=test_a')
+        self.assertEqual(r.status_code, 401)
+        self._login()
+        r2 = self.client.get('/api/mp-admin/quiz-rank')
+        self.assertEqual(r2.status_code, 400)
+        # 查无此 quiz:空榜不是错误
+        r3 = self.client.get('/api/mp-admin/quiz-rank?quiz_id=nope').get_json()
+        self.assertTrue(r3['success'])
+        self.assertEqual(r3['data']['items'], [])
+        self.assertEqual(r3['data']['total'], 0)
 
 
 class StatsTests(MpAdminTestCase):

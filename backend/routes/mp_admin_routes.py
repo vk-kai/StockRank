@@ -4,6 +4,7 @@
 给《每日热门趣味测试》小程序的数据做后台看板与增删改查:
   GET  /api/mp-admin/overview        趋势看板:总量/各测试参与人次/近30天每日趋势/热度排行
   GET  /api/mp-admin/scores          成绩列表(分页,可按 quiz_id 过滤)
+  GET  /api/mp-admin/quiz-rank       某测试的排行榜(分页,按分数/用时排序,含测试时间)
   POST /api/mp-admin/scores/update   改成绩(昵称/分数/用时)
   POST /api/mp-admin/scores/delete   删成绩
   GET  /api/mp-admin/stats           参与计数列表
@@ -282,7 +283,45 @@ def mp_admin_score_delete():
 
 
 # --------------------------------------------------------------------------
-# 三、参与计数管理（stats）
+# 三、测试排行榜（点开测试名查看）
+# --------------------------------------------------------------------------
+@mp_admin_bp.route('/quiz-rank', methods=['GET'])
+def mp_admin_quiz_rank():
+    """某测试的排行榜:排序与小程序端一致(分数高优先,同分用时短优先)。
+    返回 昵称/分数/满分/用时/测试时间(created_at,UTC文本,前端转北京时间)。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        quiz_id = (request.args.get('quiz_id') or '').strip()
+        if not quiz_id:
+            return jsonify({'success': False, 'message': '缺少 quiz_id'}), 400
+        page, page_size = _parse_page_args()
+        with _db() as conn:
+            total = conn.execute('SELECT COUNT(*) AS c FROM scores WHERE quiz_id = ?',
+                                 (quiz_id,)).fetchone()['c']
+            items = [{
+                'nickname': r['nickname'] or DEFAULT_NICKNAME,
+                'score': r['score'], 'full_score': r['full_score'],
+                'duration_ms': r['duration_ms'], 'created_at': r['created_at'],
+            } for r in conn.execute('''SELECT nickname, score, full_score, duration_ms, created_at
+                FROM scores WHERE quiz_id = ?
+                ORDER BY score DESC, duration_ms ASC, created_at ASC
+                LIMIT ? OFFSET ?''',
+                (quiz_id, page_size, (page - 1) * page_size))]
+            name = _key_names(conn).get(quiz_id, quiz_id)
+        return jsonify({'success': True, 'data': {
+            'quiz_id': quiz_id, 'name': name,
+            'items': items, 'total': total, 'page': page, 'page_size': page_size,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin quiz-rank 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 四、参与计数管理（stats）
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/stats', methods=['GET'])
 def mp_admin_stats():
@@ -361,7 +400,7 @@ def mp_admin_stat_delete():
 
 
 # --------------------------------------------------------------------------
-# 四、PK 房间管理（rooms）
+# 五、PK 房间管理（rooms）
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/rooms', methods=['GET'])
 def mp_admin_rooms():
@@ -438,7 +477,7 @@ def mp_admin_room_delete():
 
 
 # --------------------------------------------------------------------------
-# 五、清理开发联调脏数据
+# 六、清理开发联调脏数据
 #    可重复执行:删遗留 quiz、删联调 openid 的成绩/房间、按流水回滚其计数、探针计数清零
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/cleanup-dev-data', methods=['POST'])

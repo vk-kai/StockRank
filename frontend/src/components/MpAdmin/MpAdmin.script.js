@@ -1,5 +1,5 @@
 import * as echarts from 'echarts'
-import { getAuthSession, getMpAdminOverview } from '../../services/apiService'
+import { getAuthSession, getMpAdminOverview, getMpAdminQuizRank } from '../../services/apiService'
 
 // 图表公共暗色样式(与 HouseKline/首页一致)
 const AXIS_LINE = '#3a4a6b'
@@ -21,7 +21,21 @@ export default {
       overview: null,
       testChart: null,
       toolChart: null,
-      dailyChart: null
+      dailyChart: null,
+      // 测试排行榜弹窗(点开测试名查看)
+      rankModal: {
+        show: false, loading: false, error: null,
+        quizId: '', name: '',
+        items: [], total: 0, page: 1, pageSize: 20, totalPages: 1
+      }
+    }
+  },
+  computed: {
+    // 人均玩过测试 = 去重参与记录 ÷ 参与人数（同人同测试只记一次，即每人玩过几个不同测试）
+    avgTestsPerPlayer() {
+      if (!this.overview) return 0
+      const players = this.overview.totals.players
+      return players ? Math.round((this.overview.totals.scores / players) * 10) / 10 : 0
     }
   },
   async mounted() {
@@ -56,6 +70,53 @@ export default {
     },
     goManage() {
       this.$router.push('/mp-admin/manage')
+    },
+    // ---- 测试排行榜弹窗 ----
+    openQuizRank(quiz) {
+      this.rankModal.quizId = quiz.quiz_id
+      this.rankModal.name = quiz.name
+      this.loadQuizRank(1)
+    },
+    async loadQuizRank(page) {
+      const m = this.rankModal
+      m.show = true
+      m.loading = true
+      m.error = null
+      try {
+        const res = await getMpAdminQuizRank({ quizId: m.quizId, page, pageSize: m.pageSize })
+        if (res && res.success) {
+          const d = res.data
+          m.items = d.items
+          m.total = d.total
+          m.page = d.page
+          m.totalPages = d.total_pages
+          m.name = d.name || m.name
+        } else {
+          m.error = (res && res.message) || '加载失败'
+          m.items = []
+        }
+      } catch (e) {
+        const data = e && e.response && e.response.data
+        m.error = (data && data.message) || '加载失败，请稍后重试'
+        m.items = []
+      } finally {
+        m.loading = false
+      }
+    },
+    fmtDuration(ms) {
+      if (ms == null) return '--'
+      const sec = Math.round(ms / 1000)
+      return sec >= 60 ? `${Math.floor(sec / 60)}分${sec % 60}秒` : `${sec}秒`
+    },
+    fmtUtc(s) {
+      // 后端存的是 UTC 文本 'YYYY-MM-DD HH:MM:SS',转北京时间展示
+      if (!s) return '--'
+      try {
+        const d = new Date(s.replace(' ', 'T') + 'Z')
+        return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+      } catch (e) {
+        return s
+      }
     },
     async fetchOverview() {
       this.error = null
@@ -152,9 +213,9 @@ export default {
           splitLine: SPLIT_LINE
         },
         series: [
-          { name: '测试人次', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+          { name: '测试次数', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: tests, itemStyle: { color: '#1890ff' }, lineStyle: { width: 2 } },
-          { name: '工具人次', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+          { name: '工具次数', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: tools, itemStyle: { color: '#13c2c2' }, lineStyle: { width: 2 } },
           { name: '新增成绩', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },

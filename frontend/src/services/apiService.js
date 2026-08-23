@@ -1235,6 +1235,18 @@ export async function getMpAdminScores({ quizId = '', page = 1, pageSize = 20 } 
   }
 }
 
+/** 某测试的排行榜(分页,按分数/用时排序):{quiz_id, name, items, total, ...} */
+export async function getMpAdminQuizRank({ quizId, page = 1, pageSize = 20 } = {}) {
+  try {
+    const params = { quiz_id: quizId, page, page_size: pageSize }
+    const response = await apiClient.get('/mp-admin/quiz-rank', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取小程序测试排行榜失败:', error)
+    throw error
+  }
+}
+
 /** 改成绩:{password, quiz_id, openid, nickname?, score?, full_score?, duration_ms?} */
 export async function mpAdminScoreUpdate(password, payload) {
   const response = await apiClient.post('/mp-admin/scores/update',
