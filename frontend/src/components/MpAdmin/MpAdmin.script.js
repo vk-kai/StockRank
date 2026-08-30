@@ -24,6 +24,7 @@ export default {
       dailyChart: null,
       hourlyChart: null,
       hourlyTopChart: null,
+      dailyTopChart: null,
       // 测试排行榜弹窗(点开测试名查看)
       rankModal: {
         show: false, loading: false, error: null,
@@ -49,6 +50,10 @@ export default {
     // 今日热力图行(今天最活跃的测试/工具,按总量降序)
     hourlyTopItems() {
       return (this.overview && this.overview.hourly_top && this.overview.hourly_top.items) || []
+    },
+    // 近30天热力图行(30天最活跃的测试/工具,按总量降序)
+    dailyTopItems() {
+      return (this.overview && this.overview.daily_top && this.overview.daily_top.items) || []
     }
   },
   async mounted() {
@@ -58,6 +63,7 @@ export default {
       if (this.dailyChart) this.dailyChart.resize()
       if (this.hourlyChart) this.hourlyChart.resize()
       if (this.hourlyTopChart) this.hourlyTopChart.resize()
+      if (this.dailyTopChart) this.dailyTopChart.resize()
     }
     window.addEventListener('resize', this._onResize)
     try {
@@ -80,6 +86,7 @@ export default {
     if (this.dailyChart) { this.dailyChart.dispose(); this.dailyChart = null }
     if (this.hourlyChart) { this.hourlyChart.dispose(); this.hourlyChart = null }
     if (this.hourlyTopChart) { this.hourlyTopChart.dispose(); this.hourlyTopChart = null }
+    if (this.dailyTopChart) { this.dailyTopChart.dispose(); this.dailyTopChart = null }
   },
   methods: {
     goBack() {
@@ -161,6 +168,7 @@ export default {
       this.renderDailyChart()
       this.renderHourlyChart()
       this.renderHourlyTopChart()
+      this.renderDailyTopChart()
     },
     _initChart(refName, key) {
       const dom = this.$refs[refName]
@@ -286,40 +294,63 @@ export default {
       })
     },
     renderHourlyTopChart() {
-      // 今日热力图:行=今天最活跃的测试/工具(总量降序),列=00~23,颜色越亮次数越多。
-      // 只画 >0 的格子,空格子留黑 = 该小时未使用
-      const chart = this._initChart('hourlyTopChart', 'hourlyTopChart')
-      if (!chart) return
-      const t = this.overview.hourly_top
-      if (!t || !t.items.length) return
+      // 今日热力图:行=今天最活跃的测试/工具(总量降序),列=00~23
       const hours = this.overview.hourly.hours
-      const names = t.items.map(i => i.name).reverse()   // 反转让最活跃的在最上面
+      this._renderTopHeatmap('hourlyTopChart', this.overview.hourly_top, hours,
+        (i) => `${hours[i]}:00`)
+    },
+    renderDailyTopChart() {
+      // 近30天热力图:行=30天最活跃的测试/工具(总量降序),列=日期,一天总结一次
+      const days = this.overview.daily.days
+      this._renderTopHeatmap('dailyTopChart', this.overview.daily_top,
+        days.map(d => d.slice(5)), (i) => days[i])
+    },
+    // 通用最热Top热力图:只画 >0 的格子,空格子留黑 = 该时段未使用
+    _renderTopHeatmap(refName, t, colLabels, fmtCol) {
+      if (!t || !t.items.length) return
+      const chart = this._initChart(refName, refName)
+      if (!chart) return
+      // 行首加类型徽标:测=测试(蓝)/具=工具(青),纵轴一眼区分行是测试还是工具
+      const rows = t.items
+        .map(i => ({ name: i.name, vals: i.hours || i.days, isTest: i.key.indexOf('test_') === 0 }))
+        .reverse()   // 反转让最活跃的在最上面
+      const names = rows.map(r => (r.isTest ? '{t|测} ' : '{g|具} ') + '{n|' + r.name + '}')
       const data = []
-      t.items.forEach((item, row) => {
-        const y = t.items.length - 1 - row
-        item.hours.forEach((c, x) => { if (c > 0) data.push([x, y, c]) })
+      rows.forEach((row, y) => {
+        row.vals.forEach((c, x) => { if (c > 0) data.push([x, y, c]) })
       })
       chart.setOption({
         backgroundColor: 'transparent',
         tooltip: {
           ...TOOLTIP,
           position: 'top',
-          formatter: (p) => `${names[p.value[1]]} · ${hours[p.value[0]]}:00 —— ${p.value[2]} 次`
+          formatter: (p) => {
+            const r = rows[p.value[1]]
+            return `${r.isTest ? '测试' : '工具'} · ${r.name} · ${fmtCol(p.value[0])} —— ${p.value[2]} 次`
+          }
         },
         grid: { left: 10, right: 12, top: 8, bottom: 46, containLabel: true },
         xAxis: {
           type: 'category',
-          data: hours,
+          data: colLabels,
           splitArea: { show: true, areaStyle: { color: ['rgba(16,24,39,0.4)', 'rgba(11,20,36,0.4)'] } },
           axisLine: { lineStyle: { color: AXIS_LINE } },
-          axisLabel: { color: AXIS_LABEL, fontSize: 11, interval: 1 },
+          axisLabel: { color: AXIS_LABEL, fontSize: 11, interval: colLabels.length > 24 ? 2 : 1 },
           axisTick: { show: false }
         },
         yAxis: {
           type: 'category',
           data: names,
           axisLine: { lineStyle: { color: AXIS_LINE } },
-          axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+          axisLabel: {
+            color: AXIS_LABEL, fontSize: 11,
+            // 徽标配色与小时趋势图图例一致:测试蓝、工具青
+            rich: {
+              t: { color: '#0b1424', backgroundColor: '#1890ff', padding: [1, 3], borderRadius: 2, fontSize: 10 },
+              g: { color: '#0b1424', backgroundColor: '#13c2c2', padding: [1, 3], borderRadius: 2, fontSize: 10 },
+              n: { color: AXIS_LABEL, fontSize: 11 }
+            }
+          },
           axisTick: { show: false }
         },
         visualMap: {

@@ -209,6 +209,19 @@ def mp_admin_overview():
                                  'hours': [hh.get(h, 0) for h in hours]}
                                 for k, hh in top_key_rows]
             hourly_top_max = max((c for _, hh in top_key_rows for c in hh.values()), default=0)
+            # 近30天热力:top15 计数key × 30天(「哪天哪个测试/工具最热」),按30天总量排序
+            key_day = {}
+            for r in conn.execute(
+                "SELECT key, date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
+                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY key, d",
+                (day_from,)):
+                key_day.setdefault(r['key'], {})[r['d']] = r['c']
+            top_key_day_rows = sorted(key_day.items(),
+                                      key=lambda kv: (-sum(kv[1].values()), kv[0]))[:15]
+            daily_top_items = [{'key': k, 'name': names.get(k, k),
+                                'days': [dd.get(d, 0) for d in days]}
+                               for k, dd in top_key_day_rows]
+            daily_top_max = max((c for _, dd in top_key_day_rows for c in dd.values()), default=0)
 
         # 综合排名榜:与小程序 /rank/overall 同口径(60秒缓存,成绩写操作时失效)
         board = _overall_board_cached()
@@ -237,6 +250,8 @@ def mp_admin_overview():
             },
             # 今日热力图数据:items 按今天总量降序取前15,自带上限 max(前端色阶用)
             'hourly_top': {'items': hourly_top_items, 'max': hourly_top_max},
+            # 近30天热力图数据:items 按30天总量降序取前15,列=日期(一天总结一次)
+            'daily_top': {'items': daily_top_items, 'max': daily_top_max},
         }})
     except Exception as e:
         error_logger.error(f'mp-admin overview 异常: {e}')

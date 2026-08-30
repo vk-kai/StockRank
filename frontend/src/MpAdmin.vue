@@ -69,9 +69,15 @@
       </section>
 
       <section class="card">
-        <h2>今日各小时最热 Top15 <small class="dim">（行=今天最活跃的测试/工具，列=小时，颜色越亮次数越多）</small></h2>
+        <h2>今日各小时最热 Top15 <small class="dim">（行=今天最活跃的测试/工具，列=小时，颜色越亮次数越多；行首「测」=测试、「具」=工具）</small></h2>
         <div v-if="!hourlyTopItems.length" class="empty">今天还没有使用记录</div>
         <div v-else ref="hourlyTopChart" class="chart-box"></div>
+      </section>
+
+      <section class="card">
+        <h2>近30天最热 Top15 <small class="dim">（行=近30天最活跃的测试/工具，列=日期，一天总结一次，颜色越亮次数越多）</small></h2>
+        <div v-if="!dailyTopItems.length" class="empty">近30天还没有使用记录</div>
+        <div v-else ref="dailyTopChart" class="chart-box"></div>
       </section>
 
       <section class="card">
@@ -124,7 +130,7 @@
       <div class="footnote">
         说明：「测试完成次数 / 工具使用次数」每用一次就 +1，重复使用照常计入；
         「参与人数 / 人均玩过测试 / 有人玩的测试」按成绩表统计，同一人同一测试只记最好一次。
-        「每日趋势」自后台上线后开始逐日记录，此前无历史数据；「今日按小时」为当天各时间点的实时分布。
+        「每日趋势 / 近30天最热」自后台上线后开始逐日记录，此前无历史数据；「今日按小时 / 今日最热」为当天各时间点的实时分布；两张最热图行首「测」=测试、「具」=工具。
         综合排名 = 各测试击败率的平均值（跨测试可比，非总分加总），参与≥3个测试才上榜，同分时参与多者在前。
       </div>
     </div>

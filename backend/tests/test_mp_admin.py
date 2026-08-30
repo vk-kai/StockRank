@@ -124,8 +124,9 @@ class OverviewTests(MpAdminTestCase):
         self.assertEqual(sum(h['tools']), 0)
         self.assertEqual(sum(h['scores']), d['daily']['scores'][-1])
         self.assertEqual(sum(h['rooms']), d['daily']['rooms'][-1])
-        # 今日热力:当天无计数流水 → 空items/max=0
+        # 今日热力:当天无计数流水 → 空items/max=0;近30天热力同理
         self.assertEqual(d['hourly_top'], {'items': [], 'max': 0})
+        self.assertEqual(d['daily_top'], {'items': [], 'max': 0})
 
     def test_name_priority_stored_over_builtin(self):
         # 名称优先级:小程序上报的 name > 内置映射 > 原样 key
@@ -184,6 +185,17 @@ class OverviewTests(MpAdminTestCase):
         self.assertIn('tool_danmaku', items)
         self.assertEqual(items['tool_danmaku']['name'], '手持弹幕')
         self.assertGreaterEqual(top['max'], 1)
+        # 近30天热力:同两个 key 进榜,days 30桶,最后一列(今天)=当天总次数
+        dtop = self.client.get('/api/mp-admin/overview').get_json()['data']['daily_top']
+        ditems = {i['key']: i for i in dtop['items']}
+        self.assertIn('test_careerfit', ditems)
+        self.assertEqual(ditems['test_careerfit']['name'], '职业适配测试')
+        self.assertEqual(len(ditems['test_careerfit']['days']), 30)
+        self.assertEqual(ditems['test_careerfit']['days'][-1], 1)
+        self.assertEqual(sum(ditems['test_careerfit']['days']), 1)
+        self.assertIn('tool_danmaku', ditems)
+        self.assertEqual(ditems['tool_danmaku']['days'][-1], 1)
+        self.assertGreaterEqual(dtop['max'], 1)
 
 
 class ScoresTests(MpAdminTestCase):
