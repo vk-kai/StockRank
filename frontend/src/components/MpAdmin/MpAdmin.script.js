@@ -23,6 +23,7 @@ export default {
       toolChart: null,
       dailyChart: null,
       hourlyChart: null,
+      hourlyTopChart: null,
       // 测试排行榜弹窗(点开测试名查看)
       rankModal: {
         show: false, loading: false, error: null,
@@ -44,6 +45,10 @@ export default {
     },
     overallTotal() {
       return (this.overview && this.overview.overall && this.overview.overall.total) || 0
+    },
+    // 今日热力图行(今天最活跃的测试/工具,按总量降序)
+    hourlyTopItems() {
+      return (this.overview && this.overview.hourly_top && this.overview.hourly_top.items) || []
     }
   },
   async mounted() {
@@ -52,6 +57,7 @@ export default {
       if (this.toolChart) this.toolChart.resize()
       if (this.dailyChart) this.dailyChart.resize()
       if (this.hourlyChart) this.hourlyChart.resize()
+      if (this.hourlyTopChart) this.hourlyTopChart.resize()
     }
     window.addEventListener('resize', this._onResize)
     try {
@@ -73,6 +79,7 @@ export default {
     if (this.toolChart) { this.toolChart.dispose(); this.toolChart = null }
     if (this.dailyChart) { this.dailyChart.dispose(); this.dailyChart = null }
     if (this.hourlyChart) { this.hourlyChart.dispose(); this.hourlyChart = null }
+    if (this.hourlyTopChart) { this.hourlyTopChart.dispose(); this.hourlyTopChart = null }
   },
   methods: {
     goBack() {
@@ -153,6 +160,7 @@ export default {
       this.renderBarChart('toolChart', this.overview.tool_counts, '#13c2c2')
       this.renderDailyChart()
       this.renderHourlyChart()
+      this.renderHourlyTopChart()
     },
     _initChart(refName, key) {
       const dom = this.$refs[refName]
@@ -275,6 +283,62 @@ export default {
           { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: h.rooms, itemStyle: { color: '#b37feb' }, lineStyle: { width: 2 } }
         ]
+      })
+    },
+    renderHourlyTopChart() {
+      // 今日热力图:行=今天最活跃的测试/工具(总量降序),列=00~23,颜色越亮次数越多。
+      // 只画 >0 的格子,空格子留黑 = 该小时未使用
+      const chart = this._initChart('hourlyTopChart', 'hourlyTopChart')
+      if (!chart) return
+      const t = this.overview.hourly_top
+      if (!t || !t.items.length) return
+      const hours = this.overview.hourly.hours
+      const names = t.items.map(i => i.name).reverse()   // 反转让最活跃的在最上面
+      const data = []
+      t.items.forEach((item, row) => {
+        const y = t.items.length - 1 - row
+        item.hours.forEach((c, x) => { if (c > 0) data.push([x, y, c]) })
+      })
+      chart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          ...TOOLTIP,
+          position: 'top',
+          formatter: (p) => `${names[p.value[1]]} · ${hours[p.value[0]]}:00 —— ${p.value[2]} 次`
+        },
+        grid: { left: 10, right: 12, top: 8, bottom: 46, containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: hours,
+          splitArea: { show: true, areaStyle: { color: ['rgba(16,24,39,0.4)', 'rgba(11,20,36,0.4)'] } },
+          axisLine: { lineStyle: { color: AXIS_LINE } },
+          axisLabel: { color: AXIS_LABEL, fontSize: 11, interval: 1 },
+          axisTick: { show: false }
+        },
+        yAxis: {
+          type: 'category',
+          data: names,
+          axisLine: { lineStyle: { color: AXIS_LINE } },
+          axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+          axisTick: { show: false }
+        },
+        visualMap: {
+          min: 0,
+          max: t.max || 1,
+          calculable: false,
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 0,
+          textStyle: { color: AXIS_LABEL, fontSize: 11 },
+          inRange: { color: ['#16233c', '#1d5fd0', '#1890ff', '#13c2c2'] }
+        },
+        series: [{
+          type: 'heatmap',
+          data,
+          label: { show: false },
+          itemStyle: { borderColor: '#0b1424', borderWidth: 1 },
+          emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(24,144,255,0.5)' } }
+        }]
       })
     }
   }

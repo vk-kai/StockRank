@@ -69,6 +69,12 @@
       </section>
 
       <section class="card">
+        <h2>今日各小时最热 Top15 <small class="dim">（行=今天最活跃的测试/工具，列=小时，颜色越亮次数越多）</small></h2>
+        <div v-if="!hourlyTopItems.length" class="empty">今天还没有使用记录</div>
+        <div v-else ref="hourlyTopChart" class="chart-box"></div>
+      </section>
+
+      <section class="card">
         <h2>近30天每日趋势（北京时间）</h2>
         <div ref="dailyChart" class="chart-box"></div>
       </section>

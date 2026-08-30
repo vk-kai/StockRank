@@ -196,6 +196,19 @@ def mp_admin_overview():
             rooms_by_hour = {r['h']: r['c'] for r in conn.execute(
                 "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM rooms "
                 "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
+            # 今日热力:top15 计数key × 24小时(「12点哪个工具最热」),按今天总量排序
+            key_hour = {}
+            for r in conn.execute(
+                "SELECT key, strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') = ? GROUP BY key, h",
+                (today,)):
+                key_hour.setdefault(r['key'], {})[r['h']] = r['c']
+            top_key_rows = sorted(key_hour.items(),
+                                  key=lambda kv: (-sum(kv[1].values()), kv[0]))[:15]
+            hourly_top_items = [{'key': k, 'name': names.get(k, k),
+                                 'hours': [hh.get(h, 0) for h in hours]}
+                                for k, hh in top_key_rows]
+            hourly_top_max = max((c for _, hh in top_key_rows for c in hh.values()), default=0)
 
         # 综合排名榜:与小程序 /rank/overall 同口径(60秒缓存,成绩写操作时失效)
         board = _overall_board_cached()
@@ -222,6 +235,8 @@ def mp_admin_overview():
                 'scores': [scores_by_hour.get(h, 0) for h in hours],
                 'rooms': [rooms_by_hour.get(h, 0) for h in hours],
             },
+            # 今日热力图数据:items 按今天总量降序取前15,自带上限 max(前端色阶用)
+            'hourly_top': {'items': hourly_top_items, 'max': hourly_top_max},
         }})
     except Exception as e:
         error_logger.error(f'mp-admin overview 异常: {e}')
