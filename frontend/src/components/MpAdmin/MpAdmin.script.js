@@ -22,6 +22,7 @@ export default {
       testChart: null,
       toolChart: null,
       dailyChart: null,
+      hourlyChart: null,
       // 测试排行榜弹窗(点开测试名查看)
       rankModal: {
         show: false, loading: false, error: null,
@@ -36,6 +37,13 @@ export default {
       if (!this.overview) return 0
       const players = this.overview.totals.players
       return players ? Math.round((this.overview.totals.scores / players) * 10) / 10 : 0
+    },
+    // 综合排名榜(参与≥3个测试的玩家,avg_beat=各测试击败率均值)
+    overallTop() {
+      return (this.overview && this.overview.overall && this.overview.overall.top) || []
+    },
+    overallTotal() {
+      return (this.overview && this.overview.overall && this.overview.overall.total) || 0
     }
   },
   async mounted() {
@@ -43,6 +51,7 @@ export default {
       if (this.testChart) this.testChart.resize()
       if (this.toolChart) this.toolChart.resize()
       if (this.dailyChart) this.dailyChart.resize()
+      if (this.hourlyChart) this.hourlyChart.resize()
     }
     window.addEventListener('resize', this._onResize)
     try {
@@ -63,6 +72,7 @@ export default {
     if (this.testChart) { this.testChart.dispose(); this.testChart = null }
     if (this.toolChart) { this.toolChart.dispose(); this.toolChart = null }
     if (this.dailyChart) { this.dailyChart.dispose(); this.dailyChart = null }
+    if (this.hourlyChart) { this.hourlyChart.dispose(); this.hourlyChart = null }
   },
   methods: {
     goBack() {
@@ -142,6 +152,7 @@ export default {
       this.renderBarChart('testChart', this.overview.test_counts, '#1890ff')
       this.renderBarChart('toolChart', this.overview.tool_counts, '#13c2c2')
       this.renderDailyChart()
+      this.renderHourlyChart()
     },
     _initChart(refName, key) {
       const dom = this.$refs[refName]
@@ -221,6 +232,48 @@ export default {
             data: scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },
           { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: rooms, itemStyle: { color: '#b37feb' }, lineStyle: { width: 2 } }
+        ]
+      })
+    },
+    renderHourlyChart() {
+      // 今日按小时分布:当天各时间点测试/工具被用了几次(实时,无缓存口径问题)
+      const chart = this._initChart('hourlyChart', 'hourlyChart')
+      if (!chart) return
+      const h = this.overview.hourly
+      if (!h) return
+      chart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis', ...TOOLTIP,
+          valueFormatter: (v) => (v == null ? '-' : `${v} 次`)
+        },
+        legend: {
+          top: 0, right: 8, itemWidth: 14, itemHeight: 8,
+          textStyle: { color: AXIS_LABEL, fontSize: 11 }
+        },
+        grid: { left: 10, right: 16, top: 30, bottom: 10, containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: h.hours,
+          axisLine: { lineStyle: { color: AXIS_LINE } },
+          axisLabel: { color: AXIS_LABEL, fontSize: 11, interval: 1 },  // 每隔1小时标一个
+          axisTick: { show: false }
+        },
+        yAxis: {
+          type: 'value',
+          minInterval: 1,
+          axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+          splitLine: SPLIT_LINE
+        },
+        series: [
+          { name: '测试次数', type: 'bar', data: h.tests,
+            barMaxWidth: 10, itemStyle: { color: '#1890ff', borderRadius: [2, 2, 0, 0] } },
+          { name: '工具次数', type: 'bar', data: h.tools,
+            barMaxWidth: 10, itemStyle: { color: '#13c2c2', borderRadius: [2, 2, 0, 0] } },
+          { name: '新增成绩', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+            data: h.scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },
+          { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+            data: h.rooms, itemStyle: { color: '#b37feb' }, lineStyle: { width: 2 } }
         ]
       })
     }

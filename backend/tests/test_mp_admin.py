@@ -23,6 +23,8 @@ class MpAdminTestCase(unittest.TestCase):
         m.DB_FILE = os.path.join(tmp, 'game.db')
         m._rl_store.clear()
         m._rank_cache.clear()
+        m._overall_cache['ts'] = 0.0
+        m._overall_cache['board'] = None
         m._stat_cache.clear()
         m._stat_dedup.clear()
         m._nick_ok_cache.clear()
@@ -111,6 +113,17 @@ class OverviewTests(MpAdminTestCase):
         self.assertEqual(by_quiz, {'test_a': 1, 'test_b': 1})
         for q in d['quiz_top']:
             self.assertEqual(q['name'], q['quiz_id'])
+        # 无人参与≥3个测试 → 综合榜为空
+        self.assertEqual(d['overall'], {'total': 0, 'top': []})
+        # 今日按小时:24个桶,当天总和与按日口径的今天一致
+        h = d['hourly']
+        self.assertEqual(len(h['hours']), 24)
+        self.assertEqual(h['hours'][0], '00')
+        self.assertEqual(h['hours'][-1], '23')
+        self.assertEqual(sum(h['tests']), 0)
+        self.assertEqual(sum(h['tools']), 0)
+        self.assertEqual(sum(h['scores']), d['daily']['scores'][-1])
+        self.assertEqual(sum(h['rooms']), d['daily']['rooms'][-1])
 
     def test_name_priority_stored_over_builtin(self):
         # 名称优先级:小程序上报的 name > 内置映射 > 原样 key
@@ -127,6 +140,21 @@ class OverviewTests(MpAdminTestCase):
         self.assertEqual(names['tool_foodwheel'], '吃什么转盘')
         self.assertEqual(names['test_zzz'], 'test_zzz')
 
+    def test_overview_includes_overall_rank(self):
+        # oA 参与3个测试达标上榜;oB 只测1个不计入综合榜
+        self._login()
+        self._add_score(quiz='quiz1', openid='oA', score=90)
+        self._add_score(quiz='quiz1', openid='oB', score=60)
+        self._add_score(quiz='quiz2', openid='oA', score=80)
+        self._add_score(quiz='quiz3', openid='oA', score=70)
+        d = self.client.get('/api/mp-admin/overview').get_json()['data']
+        self.assertEqual(d['overall']['total'], 1)
+        top = d['overall']['top']
+        self.assertEqual(len(top), 1)
+        # 击败率:quiz1 1/2、quiz2 0/1、quiz3 0/1 → 平均 50/3 = 16.7;昵称取该玩家最近一条成绩
+        self.assertEqual(top[0], {'rank': 1, 'nickname': '甲',
+                                  'avg_beat': 16.7, 'quizzes': 3})
+
     def test_stat_inc_feeds_daily_trend(self):
         # 集成:小程序计数接口真实+1后,趋势图当天人次应增加;工具key进工具曲线
         self._login()
@@ -139,6 +167,11 @@ class OverviewTests(MpAdminTestCase):
         d = self.client.get('/api/mp-admin/overview').get_json()['data']['daily']
         self.assertEqual(d['tests'][-1], base_t + 1)
         self.assertEqual(d['tools'][-1], base_g + 1)
+        # 小时分布与按日今天值一致(inc 落在当前北京小时桶)
+        h = self.client.get('/api/mp-admin/overview').get_json()['data']['hourly']
+        self.assertEqual(sum(h['tests']), d['tests'][-1])
+        self.assertEqual(sum(h['tools']), d['tools'][-1])
+        self.assertTrue(any(c > 0 for c in h['tests']))
 
 
 class ScoresTests(MpAdminTestCase):

@@ -30,7 +30,8 @@ from core.daily_password import BEIJING_TZ
 from core.logger import get_logger
 from routes.auth_routes import is_authenticated, verify_password
 from routes.mp_game_routes import (
-    _db, _rank_cache, _stat_cache, STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME,
+    _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
+    STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME,
     _field_safe, _safe_nick,
 )
 
@@ -178,18 +179,48 @@ def mp_admin_overview():
             } for r in conn.execute('''SELECT quiz_id, COUNT(*) AS players,
                     AVG(CAST(score AS REAL) / full_score * 100) AS avg_pct
                 FROM scores GROUP BY quiz_id ORDER BY players DESC, avg_pct DESC LIMIT 20''')]
+            # 今日按小时分布(北京时区,00~23):当天各时间点的实时使用情况
+            today = days[-1]
+            hours = [f'{h:02d}' for h in range(24)]
+            tests_by_hour = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'test_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
+            tools_by_hour = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'tool_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
+            scores_by_hour = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM scores "
+                "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
+            rooms_by_hour = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM rooms "
+                "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
+
+        # 综合排名榜:与小程序 /rank/overall 同口径(60秒缓存,成绩写操作时失效)
+        board = _overall_board_cached()
+        overall = {'total': board['total'], 'top': board['top']}
 
         return jsonify({'success': True, 'data': {
             'totals': totals,
             'test_counts': test_counts,
             'tool_counts': tool_counts,
             'quiz_top': quiz_top,
+            # 综合排名榜(与小程序 /rank/overall 同口径,走同一份60秒缓存)
+            'overall': {'total': overall['total'], 'top': overall['top']},
             'daily': {
                 'days': days,
                 'tests': [tests_by_day.get(d, 0) for d in days],
                 'tools': [tools_by_day.get(d, 0) for d in days],
                 'scores': [players_by_day.get(d, 0) for d in days],
                 'rooms': [rooms_by_day.get(d, 0) for d in days],
+            },
+            'hourly': {
+                'hours': hours,
+                'tests': [tests_by_hour.get(h, 0) for h in hours],
+                'tools': [tools_by_hour.get(h, 0) for h in hours],
+                'scores': [scores_by_hour.get(h, 0) for h in hours],
+                'rooms': [rooms_by_hour.get(h, 0) for h in hours],
             },
         }})
     except Exception as e:
@@ -278,6 +309,7 @@ def mp_admin_score_create():
                 (quiz_id, openid, nickname, score, full_score, duration_ms, None,
                  datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')))
         _rank_cache.pop(quiz_id, None)
+        _overall_cache['ts'] = 0.0
         logger.info(f'[mp-admin] 新增成绩: {quiz_id}/{openid} score={score}')
         return jsonify({'success': True, 'message': '已新增'})
     except Exception as e:
@@ -327,6 +359,7 @@ def mp_admin_score_update():
             if cur.rowcount == 0:
                 return jsonify({'success': False, 'message': '记录不存在'}), 404
         _rank_cache.pop(quiz_id, None)
+        _overall_cache['ts'] = 0.0
         logger.info(f'[mp-admin] 修改成绩: {quiz_id}/{openid}')
         return jsonify({'success': True, 'message': '已更新'})
     except Exception as e:
@@ -354,6 +387,7 @@ def mp_admin_score_delete():
             if cur.rowcount == 0:
                 return jsonify({'success': False, 'message': '记录不存在'}), 404
         _rank_cache.pop(quiz_id, None)
+        _overall_cache['ts'] = 0.0
         logger.info(f'[mp-admin] 删除成绩: {quiz_id}/{openid}')
         return jsonify({'success': True, 'message': '已删除'})
     except Exception as e:
@@ -616,6 +650,7 @@ def mp_admin_cleanup_dev_data():
             # 5) 顺手清掉遗留 quiz 贡献的榜单缓存
             for q in dirty_quizzes:
                 _rank_cache.pop(q, None)
+            _overall_cache['ts'] = 0.0   # 删过成绩,综合榜一并失效
         _stat_cache.clear()
         logger.info(f'[mp-admin] 清理联调数据: {result}')
         return jsonify({'success': True, 'message': '清理完成', 'result': result})

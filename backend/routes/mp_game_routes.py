@@ -4,6 +4,7 @@
 挂在现有 Flask 进程里,SQLite(data/mp_game.db, WAL)存储,零新增服务/线程:
   POST /api/mp/game/score          上报成绩(客户端判分+服务端合理性校验)
   GET  /api/mp/game/rank           我的排名(击败比例)+ TOP10
+  GET  /api/mp/game/rank/overall   综合排名(≥3个测试上榜,avg_beat=各测试击败率均值)
   POST /api/mp/game/room           创建PK房间(4位房间码)
   POST /api/mp/game/room/join      加入房间
   POST /api/mp/game/room/answer    提交本人答案(双方交齐时服务端算合拍度)
@@ -23,6 +24,7 @@ import time
 import random
 import sqlite3
 import threading
+from bisect import bisect_left
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -48,6 +50,9 @@ ROOM_PURGE_INTERVAL = 300    # 过期房间懒清理节流
 _rl_lock = threading.Lock()
 _rl_store = {}               # {(action, openid): [时间戳...]} 滑动窗口限频
 _rank_cache = {}             # {quiz_id: {'ts', 'total', 'top'}}
+# 综合榜(全站跨测试聚合)整体缓存:60秒兜底,上报成绩/后台改成绩时主动失效
+OVERALL_MIN_QUIZZES = 3      # 上榜门槛:参与≥3个不同测试(不足则 found=false 带 quizzes)
+_overall_cache = {'ts': 0.0, 'board': None}
 _nick_ok_cache = {}          # 昂贵的 msgSecCheck 结果缓存:昵称->通过
 _purge_lock = threading.Lock()
 _last_purge = 0.0
@@ -374,6 +379,7 @@ def submit_score():
                     created_at = CASE WHEN {better} THEN excluded.created_at ELSE scores.created_at END''',
                 (quiz_id, openid, nickname, score, full_score, duration_ms, answers, _utcnow()))
         _rank_cache.pop(quiz_id, None)
+        _overall_cache['ts'] = 0.0   # 综合榜聚合依赖全部成绩,一并失效
         # 返回最终入库昵称,客户端可感知被安全检测替换的情况
         return jsonify({'success': True, 'message': '已记录', 'nickname': nickname})
     except Exception as e:
@@ -432,6 +438,104 @@ def query_rank():
         return jsonify({'success': True, 'total': cached['total'], 'mine': mine, 'top': cached['top']})
     except Exception as e:
         error_logger.error(f'rank 查询异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'})
+
+
+def _compute_overall_board():
+    """全站综合榜:每人综合分 = 各测试 beat_percent 的平均(击败率跨测试可比)。
+
+    单测试 beat_percent = 击败人数/该榜总人数(与 /rank 同口径,按当前最佳成绩行);
+    榜内名次同分按时长 tie-break,也与 /rank 一致。上榜需参与 ≥ OVERALL_MIN_QUIZZES
+    个测试。排序:avg_beat 降序 → 参与测试多者优先 → openid 保证稳定。
+    best 取击败率最高的测试(并列取榜内名次靠前,再按 quiz_id)。
+    """
+    with _db() as conn:
+        rows = conn.execute('''SELECT quiz_id, openid, nickname, score, duration_ms, created_at
+            FROM scores''').fetchall()
+    # 每个测试榜预排序:bisect 算「严格更低的分数个数」(击败数)和「严格更好的个数」(名次-1)
+    quizzes = {}   # quiz_id -> {'scores': 升序[], 'keys': (-score,duration) 升序[], 'rows': {openid: row}}
+    for r in rows:
+        q = quizzes.setdefault(r['quiz_id'], {'scores': [], 'keys': [], 'rows': {}})
+        q['scores'].append(r['score'])
+        q['keys'].append((-r['score'], r['duration_ms']))
+        q['rows'][r['openid']] = r
+    for q in quizzes.values():
+        q['scores'].sort()
+        q['keys'].sort()
+
+    players = {}   # openid -> 聚合(未达门槛的用户也保留,供 mine.quizzes 展示)
+    for quiz_id, q in quizzes.items():
+        total = len(q['scores'])
+        for openid, r in q['rows'].items():
+            beat = bisect_left(q['scores'], r['score']) / total * 100 if total else 0.0
+            rank = bisect_left(q['keys'], (-r['score'], r['duration_ms'])) + 1
+            p = players.setdefault(openid, {'beats': [], 'best': None,
+                                            'nickname': '', 'latest': ''})
+            p['beats'].append(beat)
+            cand = {'quiz_id': quiz_id, 'rank': rank, 'score': r['score'], 'beat': beat}
+            b = p['best']
+            if b is None or (beat, -rank) > (b['beat'], -b['rank']) or \
+                    ((beat, -rank) == (b['beat'], -b['rank']) and quiz_id < b['quiz_id']):
+                p['best'] = cand
+            if r['created_at'] >= p['latest']:   # 昵称取最近一条成绩的,只用于 top 展示
+                p['latest'] = r['created_at']
+                p['nickname'] = r['nickname']
+
+    ranked = sorted(
+        ((openid, p, sum(p['beats']) / len(p['beats']))
+         for openid, p in players.items() if len(p['beats']) >= OVERALL_MIN_QUIZZES),
+        key=lambda t: (-t[2], -len(t[1]['beats']), t[0]))
+    return {
+        'total': len(ranked),
+        'top': [{'rank': i + 1, 'nickname': _safe_nick(p['nickname']),
+                 'avg_beat': round(avg, 1), 'quizzes': len(p['beats'])}
+                for i, (_, p, avg) in enumerate(ranked[:10])],
+        'players': {openid: {'rank': i + 1, 'quizzes': len(p['beats']),
+                             'avg_beat': round(avg, 1),
+                             'best': {'quiz_id': p['best']['quiz_id'],
+                                      'rank': p['best']['rank'],
+                                      'score': p['best']['score']}}
+                    for i, (openid, p, avg) in enumerate(ranked)},
+        'quiz_counts': {openid: len(p['beats']) for openid, p in players.items()},
+    }
+
+
+def _overall_board_cached():
+    """综合榜(带60秒缓存):小程序端点与后台看板共用,写操作主动失效。"""
+    now = time.time()
+    if not _overall_cache['board'] or now - _overall_cache['ts'] > RANK_CACHE_TTL:
+        _overall_cache['board'] = _compute_overall_board()
+        _overall_cache['ts'] = now
+    return _overall_cache['board']
+
+
+@mp_game_bp.route('/rank/overall', methods=['GET'])
+def query_rank_overall():
+    """综合排名。参与<3个测试:mine.found=false 且带 quizzes(前端「再测N个解锁」)。
+
+    total/top/各玩家名次整体缓存60秒;上报成绩或后台改数据时主动失效。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        openid = (request.args.get('openid') or '').strip()
+        if not openid:
+            return jsonify({'success': False, 'message': '缺少 openid'})
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
+        if _rate_limited('rank', openid, 30, 60):
+            return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
+
+        board = _overall_board_cached()
+
+        info = board['players'].get(openid)
+        mine = ({'found': True, **info} if info
+                else {'found': False, 'quizzes': board['quiz_counts'].get(openid, 0)})
+        return jsonify({'success': True, 'total': board['total'],
+                        'mine': mine, 'top': board['top']})
+    except Exception as e:
+        error_logger.error(f'overall rank 查询异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})
 
 

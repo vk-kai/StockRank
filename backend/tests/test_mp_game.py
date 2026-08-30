@@ -17,6 +17,8 @@ class GameTestCase(unittest.TestCase):
         m.DB_FILE = os.path.join(tmp, 'game.db')
         m._rl_store.clear()
         m._rank_cache.clear()
+        m._overall_cache['ts'] = 0.0
+        m._overall_cache['board'] = None
         m._nick_ok_cache.clear()
         m._last_purge = 0.0
         m._stat_dedup.clear()
@@ -408,6 +410,115 @@ class StatTests(GameTestCase):
             logs = conn.execute("SELECT openid FROM stat_log WHERE key='test_mbti'").fetchall()
         self.assertEqual(row['name'], 'MBTI人格测试')
         self.assertEqual(sorted(r['openid'] for r in logs), ['oA', 'oB'])
+
+
+class OverallRankTests(GameTestCase):
+    """综合排名:avg_beat=各测试击败率均值、3测试门槛、同分多测优先、缓存失效。"""
+
+    def _overall(self, openid):
+        return self.client.get(f'/api/mp/game/rank/overall?openid={openid}').get_json()
+
+    def test_avg_beat_and_threshold(self):
+        # o1/o2 各3个测试上榜;o5 只有2个 → found=false 带 quizzes 数
+        self._score(openid='o1', quiz='quizA', score=90)
+        self._score(openid='o2', quiz='quizA', score=80)
+        self._score(openid='o3', quiz='quizA', score=70)
+        self._score(openid='o4', quiz='quizA', score=60)
+        self._score(openid='o1', quiz='quizB', score=50)
+        self._score(openid='o2', quiz='quizB', score=60)
+        self._score(openid='o5', quiz='quizB', score=70)
+        self._score(openid='o1', quiz='quizC', score=100)
+        self._score(openid='o2', quiz='quizC', score=90)
+        self._score(openid='o5', quiz='quizC', score=80)
+        r = self._overall('o1')
+        self.assertTrue(r['success'])
+        self.assertEqual(r['total'], 2)                 # 只有 o1/o2 达3个测试
+        mine = r['mine']
+        self.assertTrue(mine['found'])
+        self.assertEqual(mine['rank'], 1)
+        self.assertEqual(mine['quizzes'], 3)
+        self.assertAlmostEqual(mine['avg_beat'], 47.2)  # (75 + 0 + 66.67)/3
+        # best=击败率最高的测试:quizA(击败3/4,榜内第1);同分按时长的名次规则与 /rank 一致
+        self.assertEqual(mine['best'], {'quiz_id': 'quizA', 'rank': 1, 'score': 90})
+        self.assertEqual(set(r['top'][0].keys()), {'rank', 'nickname', 'avg_beat', 'quizzes'})
+        self.assertEqual(r['top'][0]['rank'], 1)
+        self.assertEqual(r['top'][0]['quizzes'], 3)
+        self.assertEqual(r['top'][1]['avg_beat'], 38.9)  # (50+33.33+33.33)/3
+        # 未达门槛:found=false 且带 quizzes 数,前端可算「再测 N 个解锁」
+        r5 = self._overall('o5')
+        self.assertFalse(r5['mine']['found'])
+        self.assertEqual(r5['mine']['quizzes'], 2)
+        # 完全没成绩的 openid
+        r6 = self._overall('nobody')
+        self.assertFalse(r6['mine']['found'])
+        self.assertEqual(r6['mine']['quizzes'], 0)
+
+    def test_tie_more_quizzes_first(self):
+        # u1/u2 avg_beat 同为50.0:u2 参与5个测试 > u1 的3个 → u2 在前
+        for quiz, seeds in (
+            ('q1', (('u1', 90), ('u2', 80), ('u3', 70))),
+            ('q2', (('u1', 80), ('u2', 90), ('u3', 70))),
+            ('q3', (('u2', 80), ('u3', 90), ('u4', 100), ('u5', 70))),
+            ('q4', (('u2', 90), ('u3', 80), ('u4', 70), ('u5', 60))),
+            ('q5', (('u2', 80), ('u3', 90), ('u4', 70), ('u5', 60))),
+            ('q6', (('u1', 90), ('u3', 100), ('u4', 80), ('u5', 70))),
+        ):
+            for openid, score in seeds:
+                self._score(openid=openid, quiz=quiz, score=score)
+        r2 = self._overall('u2')   # beats: 33.3+66.7+25+75+50 → avg 50.0, 5个测试
+        self.assertTrue(r2['mine']['found'])
+        self.assertEqual(r2['mine']['rank'], 1)
+        self.assertEqual(r2['mine']['quizzes'], 5)
+        self.assertEqual(r2['mine']['avg_beat'], 50.0)
+        r1 = self._overall('u1')   # beats: 66.7+33.3+50 → avg 50.0, 3个测试
+        self.assertTrue(r1['mine']['found'])
+        self.assertEqual(r1['mine']['rank'], 2)
+        self.assertEqual(r1['mine']['quizzes'], 3)
+        self.assertEqual(r1['mine']['avg_beat'], 50.0)
+        self.assertEqual(r2['total'], 5)                # u1..u5 全部≥3个测试
+        self.assertEqual(r2['top'][0]['avg_beat'], 50.0)
+        self.assertEqual(r2['top'][1]['avg_beat'], 50.0)
+
+    def test_top10_limit(self):
+        # 11人×3测试,分数递增:最高分 u11 第1;最低分 u01 在榜(total)但不在 top10
+        for k in range(1, 12):
+            for quiz in ('x1', 'x2', 'x3'):
+                self._score(openid=f'u{k:02d}', quiz=quiz, score=k * 8)
+        r11 = self._overall('u11')
+        self.assertEqual(r11['total'], 11)
+        self.assertEqual(len(r11['top']), 10)
+        self.assertEqual(r11['top'][0]['rank'], 1)
+        self.assertEqual(r11['top'][0]['avg_beat'], 90.9)  # 10/11 击败率
+        self.assertEqual(r11['mine']['rank'], 1)
+        # 三张榜并列最佳,取 quiz_id 最小的稳定结果
+        self.assertEqual(r11['mine']['best']['quiz_id'], 'x1')
+        self.assertEqual(r11['mine']['best']['rank'], 1)
+        r01 = self._overall('u01')                         # 榜上第11名,超出 top10
+        self.assertEqual(r01['mine']['rank'], 11)
+        self.assertEqual(r01['mine']['quizzes'], 3)
+        self.assertEqual(r01['mine']['avg_beat'], 0.0)
+
+    def test_new_score_invalidates_overall_cache(self):
+        for quiz in ('a1', 'a2', 'a3'):
+            self._score(openid='o1', quiz=quiz, score=80)
+            self._score(openid='o2', quiz=quiz, score=70)
+        self.assertEqual(self._overall('o1')['total'], 2)
+        # o5 原本只有2个测试 → 补第3个,上报后立即生效(缓存已被主动失效)
+        for quiz in ('a1', 'a2'):
+            self._score(openid='o5', quiz=quiz, score=90)
+        self.assertFalse(self._overall('o5')['mine']['found'])
+        self._score(openid='o5', quiz='a3', score=90)
+        r2 = self._overall('o5')
+        self.assertTrue(r2['mine']['found'])
+        self.assertEqual(r2['total'], 3)
+        self.assertEqual(r2['mine']['rank'], 1)          # 每个测试都击败所有人
+        self.assertAlmostEqual(r2['mine']['avg_beat'], 66.7)  # 每榜击败 2/3
+
+    def test_missing_or_bad_openid(self):
+        r = self.client.get('/api/mp/game/rank/overall').get_json()
+        self.assertFalse(r['success'])
+        r2 = self.client.get('/api/mp/game/rank/overall?openid=坏key').get_json()
+        self.assertFalse(r2['success'])
 
 
 class AuthGuardTests(GameTestCase):

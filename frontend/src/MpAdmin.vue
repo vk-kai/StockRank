@@ -64,6 +64,11 @@
       </section>
 
       <section class="card">
+        <h2>今日按小时趋势（北京时间）</h2>
+        <div ref="hourlyChart" class="chart-box"></div>
+      </section>
+
+      <section class="card">
         <h2>近30天每日趋势（北京时间）</h2>
         <div ref="dailyChart" class="chart-box"></div>
       </section>
@@ -91,10 +96,30 @@
         </table>
       </section>
 
+      <!-- 综合排名榜 -->
+      <section class="card">
+        <h2>综合排名榜 <small class="dim">（达标 {{ overallTotal }} 人 · 参与≥3个测试）</small></h2>
+        <div v-if="!overallTop.length" class="empty">暂无达标玩家（参与至少3个不同测试）</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>#</th><th>玩家</th><th>平均击败率</th><th>参与测试数</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in overallTop" :key="p.rank">
+              <td>{{ p.rank }}</td>
+              <td>{{ p.nickname }}</td>
+              <td>{{ p.avg_beat }}%</td>
+              <td>{{ p.quizzes }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <div class="footnote">
         说明：「测试完成次数 / 工具使用次数」每用一次就 +1，重复使用照常计入；
         「参与人数 / 人均玩过测试 / 有人玩的测试」按成绩表统计，同一人同一测试只记最好一次。
-        「每日趋势」自后台上线后开始逐日记录，此前无历史数据。
+        「每日趋势」自后台上线后开始逐日记录，此前无历史数据；「今日按小时」为当天各时间点的实时分布。
+        综合排名 = 各测试击败率的平均值（跨测试可比，非总分加总），参与≥3个测试才上榜，同分时参与多者在前。
       </div>
     </div>
 
