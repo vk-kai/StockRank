@@ -49,6 +49,20 @@
   cursor: default;
 }
 
+.export-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(22, 119, 255, 0.55);
+  background: rgba(22, 119, 255, 0.18);
+  color: #7cc4ff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.export-btn:hover:not(:disabled) { background: rgba(22, 119, 255, 0.32); color: #a3d5ff; }
+.export-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .mpadmin-forbidden,
 .mpadmin-loading {
   text-align: center;

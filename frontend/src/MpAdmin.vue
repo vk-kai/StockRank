@@ -7,6 +7,9 @@
         <span class="tab active">数据趋势</span>
         <span class="tab" @click="goManage">数据管理</span>
       </nav>
+      <button class="export-btn" :disabled="exporting || !overview" @click="exportExcel">
+        {{ exporting ? '导出中…' : '⬇ 导出Excel' }}
+      </button>
     </header>
 
     <!-- 非 vk 提示 -->

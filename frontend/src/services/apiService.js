@@ -1222,6 +1222,17 @@ export async function getMpAdminOverview() {
   }
 }
 
+/** 导出小程序数据Excel报表(多sheet,含人气/趋势/PK漏斗核心数据)。
+ *  返回原始response(blob),调用方自己触发浏览器下载并从响应头取文件名 */
+export async function exportMpAdminReport() {
+  try {
+    return await apiClient.get('/mp-admin/export', { responseType: 'blob', timeout: 60000 })
+  } catch (error) {
+    console.error('导出小程序Excel失败:', error)
+    throw error
+  }
+}
+
 /** 成绩列表(分页,可按 quiz_id 过滤) */
 export async function getMpAdminScores({ quizId = '', page = 1, pageSize = 20 } = {}) {
   try {

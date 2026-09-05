@@ -198,6 +198,55 @@ class OverviewTests(MpAdminTestCase):
         self.assertGreaterEqual(dtop['max'], 1)
 
 
+class ExportTests(MpAdminTestCase):
+    def test_export_requires_admin(self):
+        r = self.client.get('/api/mp-admin/export')
+        self.assertEqual(r.status_code, 401)
+
+    def test_export_xlsx_sheets_and_numbers(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        self._login()
+        self._add_score(quiz='test_a', openid='oA', score=80)
+        self._add_score(quiz='test_a', openid='oB', score=40)
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'test_a', 'openid': 'oA', 'name': '阿尔法测试'})
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'tool_foodwheel', 'openid': 'oA'})
+        r = self.client.get('/api/mp-admin/export')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('spreadsheetml', r.headers['Content-Type'])
+        self.assertIn('.xlsx', r.headers['Content-Disposition'])
+        wb = load_workbook(BytesIO(r.data))
+        self.assertEqual(wb.sheetnames,
+                         ['概览', '测试明细', '工具明细', '每日趋势', '今日按小时',
+                          '综合排名', 'PK房间'])
+        # 测试明细:上报名生效,一条流水 + 两个去重参与者,得分率均值(80+40)/2
+        rows = list(wb['测试明细'].iter_rows(values_only=True))
+        head = list(rows[0])
+        row = next(x for x in rows[1:] if x[0] == 'test_a')
+        self.assertEqual(row[head.index('名称')], '阿尔法测试')
+        self.assertEqual(row[head.index('全史完成次数')], 1)
+        self.assertEqual(row[head.index('近30天次数')], 1)
+        self.assertEqual(row[head.index('去重参与人数')], 2)
+        self.assertEqual(row[head.index('平均得分率(%)')], 60.0)
+        self.assertEqual(row[head.index('状态')], '活跃')
+        # 工具明细:无上报名 → 内置中文名兜底
+        trows = list(wb['工具明细'].iter_rows(values_only=True))
+        thead = list(trows[0])
+        trow = next(x for x in trows[1:] if x[0] == 'tool_foodwheel')
+        self.assertEqual(trow[thead.index('名称')], '吃什么转盘')
+        self.assertEqual(trow[thead.index('全史使用次数')], 1)
+        # 每日趋势:30行,最后一行=今天,当天测试次数=1
+        drows = list(wb['每日趋势'].iter_rows(values_only=True))
+        self.assertEqual(len(drows) - 1, 30)
+        self.assertEqual(drows[-1][2], 1)
+        # 概览:全史测试完成次数与去重人数
+        ov = {x[0]: x[1] for x in wb['概览'].iter_rows(values_only=True) if x[0]}
+        self.assertEqual(ov['测试完成总次数'], 1)
+        self.assertEqual(ov['参与人数(玩过测试,去重)'], 2)
+
+
 class ScoresTests(MpAdminTestCase):
     def test_list_pagination_and_filter(self):
         self._login()

@@ -6,3 +6,6 @@
 # OTP 动态口令（TOTP）二次验证
 pyotp>=2.9.0
 qrcode[pil]>=7.4
+
+# 小程序后台 Excel 报表导出（轻量纯 Python，放轻量层）
+openpyxl>=3.1

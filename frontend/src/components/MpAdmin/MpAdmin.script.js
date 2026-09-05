@@ -1,5 +1,5 @@
 import * as echarts from 'echarts'
-import { getAuthSession, getMpAdminOverview, getMpAdminQuizRank } from '../../services/apiService'
+import { getAuthSession, getMpAdminOverview, getMpAdminQuizRank, exportMpAdminReport } from '../../services/apiService'
 
 // 图表公共暗色样式(与 HouseKline/首页一致)
 const AXIS_LINE = '#3a4a6b'
@@ -18,6 +18,7 @@ export default {
       loading: true,
       isAdmin: false,
       error: null,
+      exporting: false,
       overview: null,
       testChart: null,
       toolChart: null,
@@ -94,6 +95,30 @@ export default {
     },
     goManage() {
       this.$router.push('/mp-admin/manage')
+    },
+    // 导出Excel报表(blob下载,文件名优先取响应头 Content-Disposition)
+    async exportExcel() {
+      if (this.exporting) return
+      this.exporting = true
+      try {
+        const res = await exportMpAdminReport()
+        const cd = (res.headers && res.headers['content-disposition']) || ''
+        const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)
+        const name = (m ? decodeURIComponent(m[1].replace(/"/g, ''))
+                        : `mp_report_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        const url = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      } catch (e) {
+        alert('导出失败，请稍后重试（' + ((e && e.message) || '网络异常') + '）')
+      } finally {
+        this.exporting = false
+      }
     },
     // ---- 测试排行榜弹窗 ----
     openQuizRank(quiz) {

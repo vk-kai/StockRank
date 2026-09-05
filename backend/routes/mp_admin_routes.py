@@ -24,7 +24,7 @@
 import time
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from core.daily_password import BEIJING_TZ
 from core.logger import get_logger
@@ -686,4 +686,231 @@ def mp_admin_cleanup_dev_data():
         return jsonify({'success': True, 'message': '清理完成', 'result': result})
     except Exception as e:
         error_logger.error(f'mp-admin cleanup 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 五、Excel 报表导出(一个文件装全核心数据,面向"发给 AI 分析受欢迎程度"的场景)
+# --------------------------------------------------------------------------
+@mp_admin_bp.route('/export', methods=['GET'])
+def mp_admin_export():
+    resp = _require_admin()
+    if resp:
+        return resp
+    # openpyxl 延迟导入:未安装时只影响本接口,不拖垮整个后台
+    try:
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        error_logger.error('mp-admin export 失败: 服务器未安装 openpyxl')
+        return jsonify({'success': False,
+                        'message': '服务器未安装 openpyxl,pip install openpyxl 后重启即可'}), 500
+    try:
+        now_bj = datetime.now(BEIJING_TZ)
+        days = _bj_days(TREND_DAYS)
+        day_from, last7 = days[0], set(days[-7:])
+        with _db() as conn:
+            names = _key_names(conn)
+            stat_counts = {r['key']: r['count']
+                           for r in conn.execute('SELECT key, count FROM stats')}
+            # 近30天 key×日 流水(近7天/沉睡判定都从这份出)
+            key_day = {}
+            for r in conn.execute(
+                "SELECT key, date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
+                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY key, d",
+                (day_from,)):
+                key_day.setdefault(r['key'], {})[r['d']] = r['c']
+            key_last = {r['key']: r['last'] for r in conn.execute(
+                "SELECT key, MAX(date(ts, 'unixepoch', '+8 hours')) AS last "
+                "FROM stat_log GROUP BY key")}
+            # 测试维:成绩表(去重参与/得分率/用时) + 计数表(真实人次)
+            quiz_rows = {r['quiz_id']: r for r in conn.execute('''SELECT quiz_id,
+                    COUNT(*) AS players,
+                    AVG(CAST(score AS REAL) / full_score * 100) AS avg_pct,
+                    AVG(duration_ms) AS avg_ms,
+                    MAX(created_at) AS last_at
+                FROM scores GROUP BY quiz_id''')}
+            tests_by_day = {r['d']: r['c'] for r in conn.execute(
+                "SELECT date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c FROM stat_log "
+                "WHERE key GLOB 'test_*' AND date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY d",
+                (day_from,))}
+            tools_by_day = {r['d']: r['c'] for r in conn.execute(
+                "SELECT date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c FROM stat_log "
+                "WHERE key GLOB 'tool_*' AND date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY d",
+                (day_from,))}
+            scores_by_day = {r['d']: r['c'] for r in conn.execute(
+                "SELECT date(created_at, '+8 hours') AS d, COUNT(*) AS c FROM scores "
+                "WHERE date(created_at, '+8 hours') >= ? GROUP BY d", (day_from,))}
+            rooms_by_day = {r['d']: r['c'] for r in conn.execute(
+                "SELECT date(created_at, '+8 hours') AS d, COUNT(*) AS c FROM rooms "
+                "WHERE date(created_at, '+8 hours') >= ? GROUP BY d", (day_from,))}
+            today = days[-1]
+            hours = [f'{h:02d}' for h in range(24)]
+            t_by_h = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'test_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
+            g_by_h = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'tool_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
+            rooms_all = list(conn.execute('SELECT * FROM rooms ORDER BY created_at DESC'))
+            totals = {
+                'players': conn.execute(
+                    'SELECT COUNT(DISTINCT openid) AS c FROM scores').fetchone()['c'],
+                'scores': conn.execute('SELECT COUNT(*) AS c FROM scores').fetchone()['c'],
+                'quizzes': conn.execute(
+                    'SELECT COUNT(DISTINCT quiz_id) AS c FROM scores').fetchone()['c'],
+                'tests': sum(v for k, v in stat_counts.items() if k.startswith('test_')),
+                'tools': sum(v for k, v in stat_counts.items() if k.startswith('tool_')),
+                'key_total': len(stat_counts),
+                'active30': sum(1 for k in stat_counts
+                                if sum(key_day.get(k, {}).values()) > 0),
+            }
+        # 综合排名与看板同源(60秒缓存)
+        board = _overall_board_cached()
+        rooms_finished = sum(1 for r in rooms_all if r['state'] == 'finished')
+
+        def d30(k):
+            return sum(key_day.get(k, {}).values())
+
+        def d7(k):
+            return sum(c for d, c in key_day.get(k, {}).items() if d in last7)
+
+        def stat_key_for(quiz_id):
+            # scores 的 quiz_id 与计数 key 可能差一个 test_ 前缀,两个都试
+            if f'test_{quiz_id}' in stat_counts and quiz_id not in stat_counts:
+                return f'test_{quiz_id}'
+            return quiz_id
+
+        wb = Workbook()
+        h_fill = PatternFill('solid', fgColor='1F3864')
+        h_font = Font(bold=True, color='FFFFFF')
+
+        def sheet(ws, header, rows):
+            ws.append(header)
+            for c in ws[1]:
+                c.fill, c.font = h_fill, h_font
+                c.alignment = Alignment(horizontal='center', vertical='center')
+            for r in rows:
+                ws.append(r)
+            # 简易列宽:按内容长度估,中文按约2倍宽算
+            for i in range(1, len(header) + 1):
+                vals = [len(str(header[i - 1]))] + \
+                       [len(str(r[i - 1])) * 2 for r in rows if r[i - 1] is not None]
+                ws.column_dimensions[get_column_letter(i)].width = \
+                    min(max(max(vals) + 2, 10), 44)
+
+        # 1) 概览
+        ws = wb.active
+        ws.title = '概览'
+        sheet(ws, ['指标', '数值', '说明'], [
+            ['报表生成时间', now_bj.strftime('%Y-%m-%d %H:%M'), '北京时间'],
+            ['数据口径', '按日流水自后台上线起记录(约2026-08-21)',
+             '更早历史无按日流水,只有全史累计次数'],
+            ['参与人数(玩过测试,去重)', totals['players'], ''],
+            ['测试完成总次数', totals['tests'], '每完成一次+1,重复计入'],
+            ['工具使用总次数', totals['tools'], '每使用一次+1'],
+            ['提交成绩总数', totals['scores'], '同人同测试只记最好一次'],
+            ['人均玩过测试数',
+             round(totals['scores'] / totals['players'], 1) if totals['players'] else 0, ''],
+            ['有成绩的测试数', totals['quizzes'], ''],
+            ['计数条目总数(测试+工具)', totals['key_total'], ''],
+            ['近30天有使用的条目数', totals['active30'], ''],
+            ['近30天零使用(沉睡)条目数', totals['key_total'] - totals['active30'], ''],
+            ['PK房间总数', len(rooms_all), ''],
+            ['PK完成局数', rooms_finished, ''],
+            ['PK完成率',
+             f"{rooms_finished * 100 // len(rooms_all) if rooms_all else 0}%", ''],
+            ['综合排名达标人数(参与≥3个测试)', board['total'], ''],
+        ])
+
+        # 2) 测试明细(计数表 test_* ∪ 成绩表 quiz_id,两侧数据都别漏)
+        test_keys = sorted({k for k in stat_counts if k.startswith('test_')} | set(quiz_rows))
+        rows = []
+        for k in test_keys:
+            sk = stat_key_for(k)
+            q = quiz_rows.get(k)
+            n30 = d30(sk)
+            all_cnt = stat_counts.get(sk, 0)
+            status = '活跃' if n30 > 0 else (
+                '沉睡(近30天零使用)' if all_cnt > 0 else '无计数(仅成绩)')
+            rows.append([
+                k, _quiz_display_name(names, k), all_cnt, n30, d7(sk),
+                q['players'] if q else None,
+                round(q['avg_pct'], 1) if q else None,
+                round(q['avg_ms'] / 1000, 1) if q else None,
+                (datetime.strptime(q['last_at'], '%Y-%m-%d %H:%M:%S') + timedelta(hours=8))
+                    .strftime('%Y-%m-%d %H:%M') if q else None,
+                status,
+            ])
+        sheet(wb.create_sheet('测试明细'),
+              ['quiz_id', '名称', '全史完成次数', '近30天次数', '近7天次数',
+               '去重参与人数', '平均得分率(%)', '平均用时(秒)', '最近参与(北京)', '状态'], rows)
+
+        # 3) 工具明细
+        tool_keys = sorted({k for k in stat_counts if k.startswith('tool_')} |
+                           {k for k in key_day if k.startswith('tool_')})
+        rows = []
+        for k in tool_keys:
+            n30 = d30(k)
+            rows.append([
+                k, names.get(k, k), stat_counts.get(k, 0), n30, d7(k),
+                key_last.get(k, '') or '',
+                '活跃' if n30 > 0 else '沉睡(近30天零使用)',
+            ])
+        sheet(wb.create_sheet('工具明细'),
+              ['key', '名称', '全史使用次数', '近30天次数', '近7天次数',
+               '最近使用(北京)', '状态'], rows)
+
+        # 4) 每日趋势(近30天,带星期,方便AI看周期性)
+        wd_cn = '一二三四五六日'
+        rows = []
+        for d in days:
+            w = '周' + wd_cn[datetime.strptime(d, '%Y-%m-%d').weekday()]
+            rows.append([d, w, tests_by_day.get(d, 0), tools_by_day.get(d, 0),
+                         scores_by_day.get(d, 0), rooms_by_day.get(d, 0)])
+        sheet(wb.create_sheet('每日趋势'),
+              ['日期', '星期', '测试次数', '工具次数', '新增成绩', '新建房间'], rows)
+
+        # 5) 今日按小时(当天各时间点的实时分布)
+        sheet(wb.create_sheet('今日按小时'), ['小时(北京)', '测试次数', '工具次数'],
+              [[f'{h}:00', t_by_h.get(h, 0), g_by_h.get(h, 0)] for h in hours])
+
+        # 6) 综合排名Top10(与小程序 /rank/overall 同口径)
+        sheet(wb.create_sheet('综合排名'),
+              ['排名', '昵称', '平均击败率(%)', '参与测试数'],
+              [[p['rank'], p['nickname'], p['avg_beat'], p['quizzes']]
+               for p in board['top']])
+
+        # 7) PK房间明细(漏斗分析素材:多少房死在"等B加入")
+        now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        rows = []
+        for r in rooms_all:
+            state = 'expired' if r['expires_at'] <= now_utc else r['state']
+            created_bj = (datetime.strptime(r['created_at'], '%Y-%m-%d %H:%M:%S')
+                          + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
+            rows.append([
+                r['room_code'], _quiz_display_name(names, r['quiz_id']), state,
+                1 + (1 if r['openid_b'] else 0),
+                '是' if r['answers_a'] else '否', '是' if r['answers_b'] else '否',
+                r['match_percent'] if r['state'] == 'finished' else None, created_bj,
+            ])
+        sheet(wb.create_sheet('PK房间'),
+              ['房间码', '测试', '状态', '玩家数', 'A已提交', 'B已提交',
+               '默契度(%)', '建房时间(北京)'], rows)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"mp_report_{now_bj.strftime('%Y%m%d_%H%M')}.xlsx"
+        logger.info(f'[mp-admin] 导出Excel报表: {fname}')
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True, download_name=fname)
+    except Exception as e:
+        error_logger.error(f'mp-admin export 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
