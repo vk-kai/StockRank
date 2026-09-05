@@ -197,10 +197,12 @@ def mp_admin_overview():
                 "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM rooms "
                 "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
             # 今日热力:top15 计数key × 24小时(「12点哪个工具最热」),按今天总量排序
+            # article_* 是文章阅读计数(量大、口径与使用不同),不进测试/工具热力图,去数据管理列表看
             key_hour = {}
             for r in conn.execute(
                 "SELECT key, strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
-                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') = ? GROUP BY key, h",
+                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') = ? "
+                "AND key NOT GLOB 'article_*' GROUP BY key, h",
                 (today,)):
                 key_hour.setdefault(r['key'], {})[r['h']] = r['c']
             top_key_rows = sorted(key_hour.items(),
@@ -210,10 +212,12 @@ def mp_admin_overview():
                                 for k, hh in top_key_rows]
             hourly_top_max = max((c for _, hh in top_key_rows for c in hh.values()), default=0)
             # 近30天热力:top15 计数key × 30天(「哪天哪个测试/工具最热」),按30天总量排序
+            # 同上:article_* 阅读计数不进此图
             key_day = {}
             for r in conn.execute(
                 "SELECT key, date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
-                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY key, d",
+                "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? "
+                "AND key NOT GLOB 'article_*' GROUP BY key, d",
                 (day_from,)):
                 key_day.setdefault(r['key'], {})[r['d']] = r['c']
             top_key_day_rows = sorted(key_day.items(),
@@ -765,6 +769,8 @@ def mp_admin_export():
                     'SELECT COUNT(DISTINCT quiz_id) AS c FROM scores').fetchone()['c'],
                 'tests': sum(v for k, v in stat_counts.items() if k.startswith('test_')),
                 'tools': sum(v for k, v in stat_counts.items() if k.startswith('tool_')),
+                'articles': sum(v for k, v in stat_counts.items()
+                                if k.startswith('article_')),
                 'key_total': len(stat_counts),
                 'active30': sum(1 for k in stat_counts
                                 if sum(key_day.get(k, {}).values()) > 0),
@@ -813,11 +819,12 @@ def mp_admin_export():
             ['参与人数(玩过测试,去重)', totals['players'], ''],
             ['测试完成总次数', totals['tests'], '每完成一次+1,重复计入'],
             ['工具使用总次数', totals['tools'], '每使用一次+1'],
+            ['文章阅读总次数', totals['articles'], 'article_* 计数,每阅读一次+1'],
             ['提交成绩总数', totals['scores'], '同人同测试只记最好一次'],
             ['人均玩过测试数',
              round(totals['scores'] / totals['players'], 1) if totals['players'] else 0, ''],
             ['有成绩的测试数', totals['quizzes'], ''],
-            ['计数条目总数(测试+工具)', totals['key_total'], ''],
+            ['计数条目总数(测试+工具+文章)', totals['key_total'], ''],
             ['近30天有使用的条目数', totals['active30'], ''],
             ['近30天零使用(沉睡)条目数', totals['key_total'] - totals['active30'], ''],
             ['PK房间总数', len(rooms_all), ''],
@@ -865,7 +872,22 @@ def mp_admin_export():
               ['key', '名称', '全史使用次数', '近30天次数', '近7天次数',
                '最近使用(北京)', '状态'], rows)
 
-        # 4) 每日趋势(近30天,带星期,方便AI看周期性)
+        # 4) 文章明细(article_* 阅读计数,小程序上报 key=article_<id> name=标题)
+        art_keys = sorted({k for k in stat_counts if k.startswith('article_')} |
+                          {k for k in key_day if k.startswith('article_')})
+        rows = []
+        for k in art_keys:
+            n30 = d30(k)
+            rows.append([
+                k, names.get(k, k), stat_counts.get(k, 0), n30, d7(k),
+                key_last.get(k, '') or '',
+                '活跃' if n30 > 0 else '沉睡(近30天零阅读)',
+            ])
+        sheet(wb.create_sheet('文章明细'),
+              ['key', '标题', '全史阅读次数', '近30天次数', '近7天次数',
+               '最近阅读(北京)', '状态'], rows)
+
+        # 5) 每日趋势(近30天,带星期,方便AI看周期性)
         wd_cn = '一二三四五六日'
         rows = []
         for d in days:
@@ -875,17 +897,17 @@ def mp_admin_export():
         sheet(wb.create_sheet('每日趋势'),
               ['日期', '星期', '测试次数', '工具次数', '新增成绩', '新建房间'], rows)
 
-        # 5) 今日按小时(当天各时间点的实时分布)
+        # 6) 今日按小时(当天各时间点的实时分布)
         sheet(wb.create_sheet('今日按小时'), ['小时(北京)', '测试次数', '工具次数'],
               [[f'{h}:00', t_by_h.get(h, 0), g_by_h.get(h, 0)] for h in hours])
 
-        # 6) 综合排名Top10(与小程序 /rank/overall 同口径)
+        # 7) 综合排名Top10(与小程序 /rank/overall 同口径)
         sheet(wb.create_sheet('综合排名'),
               ['排名', '昵称', '平均击败率(%)', '参与测试数'],
               [[p['rank'], p['nickname'], p['avg_beat'], p['quizzes']]
                for p in board['top']])
 
-        # 7) PK房间明细(漏斗分析素材:多少房死在"等B加入")
+        # 8) PK房间明细(漏斗分析素材:多少房死在"等B加入")
         now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         rows = []
         for r in rooms_all:

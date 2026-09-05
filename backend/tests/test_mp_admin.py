@@ -196,6 +196,18 @@ class OverviewTests(MpAdminTestCase):
         self.assertIn('tool_danmaku', ditems)
         self.assertEqual(ditems['tool_danmaku']['days'][-1], 1)
         self.assertGreaterEqual(dtop['max'], 1)
+        # article_* 文章阅读:计数照常入库,但不进测试/工具热力图(量大口径不同)
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'article_intro', 'openid': 'oZ', 'name': '很' * 40})
+        top2 = self.client.get('/api/mp-admin/overview').get_json()['data']['hourly_top']
+        self.assertNotIn('article_intro', {i['key'] for i in top2['items']})
+        dtop2 = self.client.get('/api/mp-admin/overview').get_json()['data']['daily_top']
+        self.assertNotIn('article_intro', {i['key'] for i in dtop2['items']})
+        # 长标题(>30字符,文章标题常见)照常入库;数据管理列表能看到
+        items = self.client.get('/api/mp-admin/stats').get_json()['data']['items']
+        art = next(i for i in items if i['key'] == 'article_intro')
+        self.assertEqual(art['name'], '很' * 40)
+        self.assertEqual(art['count'], 1)
 
 
 class ExportTests(MpAdminTestCase):
@@ -213,14 +225,16 @@ class ExportTests(MpAdminTestCase):
                          json={'key': 'test_a', 'openid': 'oA', 'name': '阿尔法测试'})
         self.client.post('/api/mp/game/stat/inc',
                          json={'key': 'tool_foodwheel', 'openid': 'oA'})
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'article_intro', 'openid': 'oA', 'name': '开篇文章'})
         r = self.client.get('/api/mp-admin/export')
         self.assertEqual(r.status_code, 200)
         self.assertIn('spreadsheetml', r.headers['Content-Type'])
         self.assertIn('.xlsx', r.headers['Content-Disposition'])
         wb = load_workbook(BytesIO(r.data))
         self.assertEqual(wb.sheetnames,
-                         ['概览', '测试明细', '工具明细', '每日趋势', '今日按小时',
-                          '综合排名', 'PK房间'])
+                         ['概览', '测试明细', '工具明细', '文章明细', '每日趋势',
+                          '今日按小时', '综合排名', 'PK房间'])
         # 测试明细:上报名生效,一条流水 + 两个去重参与者,得分率均值(80+40)/2
         rows = list(wb['测试明细'].iter_rows(values_only=True))
         head = list(rows[0])
@@ -237,6 +251,13 @@ class ExportTests(MpAdminTestCase):
         trow = next(x for x in trows[1:] if x[0] == 'tool_foodwheel')
         self.assertEqual(trow[thead.index('名称')], '吃什么转盘')
         self.assertEqual(trow[thead.index('全史使用次数')], 1)
+        # 文章明细:article_* 阅读计数单列一页,标题即上报名
+        arows = list(wb['文章明细'].iter_rows(values_only=True))
+        ahead = list(arows[0])
+        arow = next(x for x in arows[1:] if x[0] == 'article_intro')
+        self.assertEqual(arow[ahead.index('标题')], '开篇文章')
+        self.assertEqual(arow[ahead.index('全史阅读次数')], 1)
+        self.assertEqual(arow[ahead.index('状态')], '活跃')
         # 每日趋势:30行,最后一行=今天,当天测试次数=1
         drows = list(wb['每日趋势'].iter_rows(values_only=True))
         self.assertEqual(len(drows) - 1, 30)
@@ -245,6 +266,7 @@ class ExportTests(MpAdminTestCase):
         ov = {x[0]: x[1] for x in wb['概览'].iter_rows(values_only=True) if x[0]}
         self.assertEqual(ov['测试完成总次数'], 1)
         self.assertEqual(ov['参与人数(玩过测试,去重)'], 2)
+        self.assertEqual(ov['文章阅读总次数'], 1)
 
 
 class ScoresTests(MpAdminTestCase):

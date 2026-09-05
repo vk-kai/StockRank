@@ -797,8 +797,9 @@ def stat_inc():
                          (key, int(now), openid))
             # 可选中文名:后写覆盖先写,后台展示用(不传不影响计数)
             # name 会回显到后台且能覆盖内置映射,注入检测不过则丢弃(计数照常+1)
+            # ≤64:文章标题(article_*)常超30字,与微信标题上限对齐
             name = str(data.get('name') or '').strip()
-            if name and len(name) <= 30 and _field_safe(name):
+            if name and len(name) <= 64 and _field_safe(name):
                 conn.execute('''INSERT INTO stat_names(key, name) VALUES (?, ?)
                     ON CONFLICT(key) DO UPDATE SET name = excluded.name''', (key, name))
         # 写库成功后才登记防刷窗口,失败可立即重试
