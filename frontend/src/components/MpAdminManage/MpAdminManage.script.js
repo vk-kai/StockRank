@@ -23,7 +23,8 @@ export default {
       echo: { items: [], page: 1, totalPages: 1, total: 0 },
       echoWall: '',
       echoDays: 7,
-      echoCreate: { show: false, busy: false, wall_id: '', nickname: '', text: '' },
+      echoCreate: { show: false, busy: false, wall_id: '', nickname: '', text: '', category: '其他' },
+      echoCats: ['情感', '压力', '成长', '校园', '生活', '职场', '树洞', '其他'],
       bans: { items: [], page: 1, totalPages: 1, total: 0, loaded: false },
       banEdit: { show: false, busy: false, openid: '', days: 0, reason: '' },
       newStat: { key: '', count: 0 },
@@ -165,7 +166,7 @@ export default {
       this.echoCreate = {
         show: true, busy: false,
         wall_id: this.echoWall.trim() || String(new Date().toISOString().slice(0, 10).replace(/-/g, '')),
-        nickname: '', text: ''
+        nickname: '', text: '', category: '其他'
       }
     },
     async doEchoCreate() {
@@ -178,7 +179,8 @@ export default {
         const res = await mpAdminEchoCreate({
           wall_id: s.wall_id.trim(),
           text: s.text.trim(),
-          nickname: s.nickname.trim()
+          nickname: s.nickname.trim(),
+          category: this.echoCats.includes(s.category) ? s.category : '其他'
         })
         if (res && res.success) {
           s.show = false
@@ -280,7 +282,10 @@ export default {
         if (res && res.success) {
           s.show = false
           this.showToast(s.days ? `已封禁 ${s.days} 天` : '已永久封禁', 'ok')
-          await this.loadBans(1)
+          // 同步刷新两处:封禁列表 + 留言行按钮变「解封」
+          const jobs = [this.loadBans(1)]
+          if (this.echo.items.length) jobs.push(this.loadEcho(this.echo.page))
+          await Promise.all(jobs)
         } else {
           this.showToast((res && res.message) || '封禁失败', 'error')
         }
@@ -298,7 +303,10 @@ export default {
           if (res && res.success) {
             this.confirmBox.show = false
             this.showToast(res.message || '已解封', 'ok')
-            await this.loadBans(this.bans.page)
+            // 同步刷新两处:封禁列表移除该行 + 留言行按钮变回「封禁」
+            const jobs = [this.loadBans(this.bans.page)]
+            if (this.echo.items.length) jobs.push(this.loadEcho(this.echo.page))
+            await Promise.all(jobs)
           } else {
             this.showToast((res && res.message) || '解封失败', 'error')
           }

@@ -664,10 +664,27 @@ class EchoAdminTests(MpAdminTestCase):
     def test_list_create_delete(self):
         self._login()
         r = self.client.post('/api/mp-admin/echo/create', json={
-            'password': 'pw', 'wall_id': '20260906', 'text': '管理员补录', 'nickname': '小编'
+            'password': 'pw', 'wall_id': '20260906', 'text': '管理员补录', 'nickname': '小编',
+            'category': '职场'
         }).get_json()
         self.assertTrue(r['success'])
         admin_id = r['id']
+        # 分类缺省/非法值落「其他」(与玩家发布接口同口径,不报错)
+        r2 = self.client.post('/api/mp-admin/echo/create', json={
+            'password': 'pw', 'wall_id': '20260906', 'text': '没选分类'})
+        r3 = self.client.post('/api/mp-admin/echo/create', json={
+            'password': 'pw', 'wall_id': '20260906', 'text': '乱填分类', 'category': '不存在的'})
+        with m._db() as conn:
+            cats = {row['id']: row['category'] for row in conn.execute(
+                'SELECT id, category FROM echo_wall WHERE id IN (?, ?, ?)',
+                (r2.get_json()['id'], r3.get_json()['id'], admin_id))}
+        self.assertEqual(cats[admin_id], '职场')
+        self.assertEqual(cats[r2.get_json()['id']], '其他')
+        self.assertEqual(cats[r3.get_json()['id']], '其他')
+        # 清掉分类验证用的两条,不影响后续 total 断言(顺带多测两次删除)
+        for cid in (r2.get_json()['id'], r3.get_json()['id']):
+            self.assertTrue(self.client.post('/api/mp-admin/echo/delete',
+                                             json={'password': 'pw', 'id': cid}).get_json()['success'])
         # 补录辱骂被本地词库拦(管理员内容不走微信送检,但本地硬底线照拦)
         bad = self.client.post('/api/mp-admin/echo/create', json={
             'password': 'pw', 'wall_id': '20260906', 'text': '你就是个傻逼'})
@@ -687,11 +704,12 @@ class EchoAdminTests(MpAdminTestCase):
                                json={'key': f'echohug_{player_id}', 'openid': 'o1'}).get_json()
         self.assertEqual(rep['count'], 3)
         d = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']
-        self.assertEqual(d['total'], 2)
+        self.assertEqual(d['total'], 2)   # 1条补录 + 1条玩家(分类验证2条已删)
         by_id = {i['id']: i for i in d['items']}
         self.assertEqual(by_id[player_id]['hugs'], 3)     # 实时抱抱数回填
         self.assertEqual(by_id[player_id]['openid'], 'oA')
         self.assertEqual(by_id[admin_id]['nickname'], '小编')
+        self.assertEqual(by_id[admin_id]['category'], '职场')
         self.assertEqual(self.client.get('/api/mp-admin/echo?days=0')
                          .get_json()['data']['total'], 2)
         # 删除:连带清 echohug_ 计数,不留孤儿条目
@@ -778,6 +796,7 @@ class EchoBanTests(MpAdminTestCase):
         self.assertEqual(r0.status_code, 401)             # 未登录不可封禁
         self._login()
         self.assertTrue(self._post_echo('oGood')['success'])   # 未封禁者照常发
+        self.assertTrue(self._post_echo('oBad')['success'])    # oBad 先发一条再封(行留在墙上)
         # 永久封禁 → 发布被拒;抱抱计数(stat/inc)不受影响
         self.assertTrue(self.client.post('/api/mp-admin/echo/ban',
                                          json={'openid': 'oBad', 'reason': '刷屏'}).get_json()['success'])
@@ -786,11 +805,15 @@ class EchoBanTests(MpAdminTestCase):
         self.assertIn('封禁', rep['message'])
         self.assertTrue(self.client.post('/api/mp/game/stat/inc',
                                          json={'key': 'echohug_1', 'openid': 'oBad'}).get_json()['success'])
-        # 封禁列表:permanent 状态 + 原因带出
+        # 封禁列表:permanent 状态 + 原因带出;留言列表每行带 banned(前端按钮切换依据)
         bans = self.client.get('/api/mp-admin/echo/bans').get_json()['data']
         self.assertEqual(bans['total'], 1)
         self.assertEqual(bans['items'][0]['status'], 'permanent')
         self.assertEqual(bans['items'][0]['reason'], '刷屏')
+        lst = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']['items']
+        st = {i['openid']: i['banned'] for i in lst}
+        self.assertTrue(st['oBad'])
+        self.assertFalse(st['oGood'])
         # 临时封禁覆盖永久(状态 active),解封后恢复发布;重复解封幂等
         self.assertTrue(self.client.post('/api/mp-admin/echo/ban',
                                          json={'openid': 'oBad', 'days': 7}).get_json()['success'])
@@ -799,6 +822,9 @@ class EchoBanTests(MpAdminTestCase):
         self.assertTrue(self.client.post('/api/mp-admin/echo/unban',
                                          json={'openid': 'oBad'}).get_json()['success'])
         self.assertTrue(self._post_echo('oBad')['success'])
+        lst = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']['items']
+        st = {i['openid']: i['banned'] for i in lst}
+        self.assertFalse(st['oBad'])   # 解封后按钮应切回「封禁」
         self.assertTrue(self.client.post('/api/mp-admin/echo/unban',
                                          json={'openid': 'oBad'}).get_json()['success'])
 

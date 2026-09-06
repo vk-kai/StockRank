@@ -347,3 +347,16 @@
   line-height: 16px;
   vertical-align: 1px;
 }
+
+/* ---- 弹幕墙留言分类标签(情感/压力/成长/校园/生活/职场/树洞/其他) ---- */
+.cat-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(110, 148, 255, 0.45);
+  background: rgba(110, 148, 255, 0.12);
+  color: #8fa8ff;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}

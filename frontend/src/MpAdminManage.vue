@@ -164,20 +164,23 @@
         </div>
         <table v-else class="data-table">
           <thead>
-            <tr><th>ID</th><th>墙</th><th>留言</th><th>昵称</th><th>抱抱</th><th>发布时间</th><th>操作</th></tr>
+            <tr><th>ID</th><th>墙</th><th>留言</th><th>分类</th><th>昵称</th><th>抱抱</th><th>发布时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in echo.items" :key="row.id">
               <td class="code-text">{{ row.id }}</td>
               <td class="code-text">{{ row.wall_id }}</td>
               <td class="echo-text">{{ row.text }}</td>
+              <td><span class="cat-tag">{{ row.category }}</span></td>
               <td>{{ row.nickname }} <small class="dim">{{ shortOpenid(row.openid) }}</small>
                 <span v-if="row.is_seed" class="seed-tag" title="冷启动种子数据，非真实用户">种子</span></td>
               <td>🤗 {{ row.hugs }}</td>
               <td>{{ fmtEpoch(row.ts) }}</td>
               <td>
                 <button class="del-btn" @click="onEchoDelete(row)">删除</button>
-                <button class="del-btn" @click="openEchoBan(row)">封禁</button>
+                <button class="del-btn" @click="row.banned ? onEchoUnban(row) : openEchoBan(row)">
+                  {{ row.banned ? '解封' : '封禁' }}
+                </button>
               </td>
             </tr>
           </tbody>
@@ -264,6 +267,11 @@
         <label class="edit-row">wall_id <input v-model="echoCreate.wall_id" placeholder="如 20260906" /></label>
         <label class="edit-row">昵称 <input v-model="echoCreate.nickname" maxlength="12" placeholder="默认 匿名测试者" /></label>
         <label class="edit-row">留言 <input v-model="echoCreate.text" maxlength="50" placeholder="最多50字" /></label>
+        <label class="edit-row">分类
+          <select v-model="echoCreate.category">
+            <option v-for="cat in echoCats" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+        </label>
         <div class="pwd-actions">
           <button class="cancel-btn" @click="echoCreate.show = false">取消</button>
           <button class="ok-btn" :disabled="echoCreate.busy" @click="doEchoCreate">

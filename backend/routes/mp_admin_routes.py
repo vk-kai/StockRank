@@ -40,7 +40,7 @@ from routes.auth_routes import is_authenticated
 from routes.mp_game_routes import (
     _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
     STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
-    ECHO_CATEGORY_DEFAULT, OPENID_RE, _field_safe, _safe_nick,
+    ECHO_CATEGORIES, ECHO_CATEGORY_DEFAULT, OPENID_RE, _field_safe, _safe_nick,
 )
 from routes.mp_sec_routes import local_text_blocked
 
@@ -684,9 +684,15 @@ def mp_admin_echo():
                 marks = ','.join('?' * len(keys))
                 hug = {r['key']: r['count'] for r in conn.execute(
                     f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
+            # 封禁状态:每行带 banned,前端按钮「封禁/解封」随状态切换(过期=未封)
+            now = int(time.time())
+            banned = {r['openid'] for r in conn.execute(
+                'SELECT openid FROM echo_bans WHERE expires_at IS NULL OR expires_at > ?',
+                (now,)).fetchall()}
         items = [{'id': r['id'], 'wall_id': r['wall_id'], 'openid': r['openid'],
                   'nickname': _safe_nick(r['nickname']), 'text': r['text'],
                   'category': r['category'] or ECHO_CATEGORY_DEFAULT,
+                  'banned': r['openid'] in banned,
                   # 种子留言:预设 hugs 列 + 真实抱抱计数;普通留言 hugs 列恒 0
                   'hugs': r['hugs'] + hug.get(f'echohug_{r["id"]}', 0),
                   'is_seed': bool(r['is_seed']), 'ts': r['ts']} for r in rows]
@@ -702,7 +708,11 @@ def mp_admin_echo():
 @mp_admin_bp.route('/echo/create', methods=['POST'])
 def mp_admin_echo_create():
     """补录留言(造氛围/补内容)。管理员内容不走微信送检(与补录成绩同口径),
-    但本地敏感词与注入检测照拦——墙上内容是公开回显的。"""
+    但本地敏感词与注入检测照拦——墙上内容是公开回显的。
+
+    body: {wall_id, text, nickname?, category?};分类缺省/不在枚举内落「其他」
+    (与玩家发布接口同口径,不报错)。
+    """
     resp = _require_admin()
     if resp:
         return resp
@@ -711,6 +721,7 @@ def mp_admin_echo_create():
         wall_id = str(data.get('wall_id') or '').strip()
         text = str(data.get('text') or '').strip()
         nickname = str(data.get('nickname') or '').strip()
+        category = str(data.get('category') or '').strip()
         if not wall_id or not text:
             return jsonify({'success': False, 'message': '缺少 wall_id 或 text'}), 400
         if not WALL_ID_RE.match(wall_id):
@@ -721,12 +732,16 @@ def mp_admin_echo_create():
             return jsonify({'success': False, 'message': '内容含违规信息'}), 400
         if nickname and (not _field_safe(nickname) or local_text_blocked(nickname)):
             nickname = ''
+        if category not in ECHO_CATEGORIES:
+            category = ECHO_CATEGORY_DEFAULT
         with _db() as conn:
-            cur = conn.execute('''INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts)
-                VALUES (?, ?, ?, ?, 0, ?)''',
-                (wall_id, 'admin', nickname or DEFAULT_NICKNAME, text, int(time.time())))
+            cur = conn.execute(
+                '''INSERT INTO echo_wall(wall_id, openid, nickname, text, category, hugs, ts)
+                VALUES (?, ?, ?, ?, ?, 0, ?)''',
+                (wall_id, 'admin', nickname or DEFAULT_NICKNAME, text, category,
+                 int(time.time())))
             new_id = cur.lastrowid
-        logger.info(f'[mp-admin] 补录留言: wall={wall_id} id={new_id}')
+        logger.info(f'[mp-admin] 补录留言: wall={wall_id} id={new_id} cat={category}')
         return jsonify({'success': True, 'id': new_id})
     except Exception as e:
         error_logger.error(f'mp-admin echo create 异常: {e}')
