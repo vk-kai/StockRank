@@ -177,6 +177,7 @@
               <td>{{ fmtEpoch(row.ts) }}</td>
               <td>
                 <button class="del-btn" @click="onEchoDelete(row)">删除</button>
+                <button class="del-btn" @click="openEchoBan(row)">封禁</button>
               </td>
             </tr>
           </tbody>
@@ -185,6 +186,34 @@
           <button :disabled="echo.page <= 1" @click="loadEcho(echo.page - 1)">上一页</button>
           <span>{{ echo.page }} / {{ echo.totalPages }} 页 · 共 {{ echo.total }} 条</span>
           <button :disabled="echo.page >= echo.totalPages" @click="loadEcho(echo.page + 1)">下一页</button>
+        </div>
+
+        <!-- 封禁列表:封禁后该用户无法发布留言,抱抱等其他功能不受影响 -->
+        <div class="toolbar" style="margin-top: 18px;">
+          <strong>留言封禁</strong>
+          <span class="dim">共 {{ bans.total }} 人</span>
+          <button class="gen-btn" @click="openEchoBan()">手动封禁</button>
+        </div>
+        <div v-if="!bans.items.length" class="empty">暂无封禁记录</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>openid</th><th>状态</th><th>原因</th><th>封禁时间</th><th>到期时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in bans.items" :key="row.openid">
+              <td class="code-text">{{ shortOpenid(row.openid) }}</td>
+              <td>{{ banStatusName(row) }}</td>
+              <td>{{ row.reason || '--' }}</td>
+              <td>{{ fmtEpoch(row.created_at) }}</td>
+              <td>{{ row.expires_at == null ? '永不' : fmtEpoch(row.expires_at) }}</td>
+              <td><button class="del-btn" @click="onEchoUnban(row)">解封</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="bans.totalPages > 1" class="pager">
+          <button :disabled="bans.page <= 1" @click="loadBans(bans.page - 1)">上一页</button>
+          <span>{{ bans.page }} / {{ bans.totalPages }} 页 · 共 {{ bans.total }} 人</span>
+          <button :disabled="bans.page >= bans.totalPages" @click="loadBans(bans.page + 1)">下一页</button>
         </div>
       </section>
     </div>
@@ -239,6 +268,31 @@
           <button class="cancel-btn" @click="echoCreate.show = false">取消</button>
           <button class="ok-btn" :disabled="echoCreate.busy" @click="doEchoCreate">
             {{ echoCreate.busy ? '处理中…' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 封禁留言用户弹窗 -->
+    <div v-if="banEdit.show" class="pwd-overlay" @click.self="banEdit.show = false">
+      <div class="pwd-card">
+        <h3>封禁留言用户</h3>
+        <p class="pwd-desc">封禁后该用户无法发布留言，抱抱等其他功能不受影响</p>
+        <label class="edit-row">openid <input v-model="banEdit.openid" placeholder="完整 openid" /></label>
+        <label class="edit-row">时长
+          <select v-model.number="banEdit.days">
+            <option :value="0">永久</option>
+            <option :value="1">1 天</option>
+            <option :value="3">3 天</option>
+            <option :value="7">7 天</option>
+            <option :value="30">30 天</option>
+          </select>
+        </label>
+        <label class="edit-row">原因 <input v-model="banEdit.reason" maxlength="100" placeholder="选填，仅后台可见" /></label>
+        <div class="pwd-actions">
+          <button class="cancel-btn" @click="banEdit.show = false">取消</button>
+          <button class="ok-btn" :disabled="banEdit.busy" @click="doEchoBan">
+            {{ banEdit.busy ? '处理中…' : '封禁' }}
           </button>
         </div>
       </div>

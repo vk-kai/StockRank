@@ -553,11 +553,31 @@ class EchoWallTests(GameTestCase):
         self.assertEqual(first['hugs'], 0)
         self.assertIsInstance(first['ts'], int)
         for item in lst:  # openid 绝不随列表下发
-            self.assertTrue(set(item.keys()) <= {'id', 'text', 'nickname', 'hugs', 'ts'})
+            self.assertTrue(set(item.keys()) <= {'id', 'text', 'nickname', 'category', 'hugs', 'ts'})
+            self.assertEqual(item['category'], '其他')  # 未传分类落「其他」
         # wall_id 隔离:另一面墙看不到
         self._post(openid='oC', wall='20260907', text='明天的墙')
         self.assertEqual(len(self._list(wall='20260907')['list']), 1)
         self.assertEqual(len(self._list()['list']), 2)
+
+    def test_category_whitelist_and_history_default(self):
+        # 合法枚举原样入库返回;缺省/非法/历史NULL 统一「其他」
+        import sqlite3
+        self._check()
+        self._post(openid='oA', text='职场人')  # 缺省
+        r = self.client.post('/api/mp/game/echo',
+                             json={'openid': 'oB', 'wall_id': '20260906',
+                                   'text': '压力好大', 'category': '压力'}).get_json()
+        self.assertTrue(r['success'])
+        self.client.post('/api/mp/game/echo',
+                         json={'openid': 'oC', 'wall_id': '20260906',
+                               'text': '随便说说', 'category': '不存在的分类'})
+        conn = sqlite3.connect(m.DB_FILE)  # 模拟历史数据:category 为 NULL
+        conn.execute("UPDATE echo_wall SET category=NULL WHERE text='职场人'")
+        conn.commit()
+        conn.close()
+        got = {x['text']: x['category'] for x in self._list()['list']}
+        self.assertEqual(got, {'职场人': '其他', '压力好大': '压力', '随便说说': '其他'})
 
     def test_risky_text_rejected_not_stored(self):
         # 87014 老违规码已在 sec 层 _do_msg_sec_check 归一为 suggest=risky

@@ -17,6 +17,9 @@
   POST /api/mp-admin/echo/create     补录留言(管理员内容,本地敏感词/注入检测照拦)
   POST /api/mp-admin/echo/seed       导入20条冷启动种子留言(is_seed=1,全局仅一次)
   POST /api/mp-admin/echo/delete     删留言(连带清掉对应 echohug_ 计数)
+  POST /api/mp-admin/echo/ban        封禁留言用户(按 openid,永久或 N 天)
+  POST /api/mp-admin/echo/unban      解封留言用户(幂等)
+  GET  /api/mp-admin/echo/bans       封禁列表(分页,含状态)
   POST /api/mp-admin/cleanup-dev-data  清理开发联调脏数据(可重复执行)
 
 鉴权注意:url_prefix 必须是 /api/mp-admin 而不能挂 /api/mp/ 下——
@@ -37,7 +40,7 @@ from routes.auth_routes import is_authenticated
 from routes.mp_game_routes import (
     _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
     STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
-    _field_safe, _safe_nick,
+    ECHO_CATEGORY_DEFAULT, OPENID_RE, _field_safe, _safe_nick,
 )
 from routes.mp_sec_routes import local_text_blocked
 
@@ -670,7 +673,7 @@ def mp_admin_echo():
             total = conn.execute(f'SELECT COUNT(*) AS c FROM echo_wall {cond}',
                                  params).fetchone()['c']
             rows = conn.execute(
-                f'''SELECT id, wall_id, openid, nickname, text, hugs, is_seed, ts
+                f'''SELECT id, wall_id, openid, nickname, text, category, hugs, is_seed, ts
                     FROM echo_wall {cond}
                     ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?''',
                 params + [page_size, (page - 1) * page_size]).fetchall()
@@ -683,6 +686,7 @@ def mp_admin_echo():
                     f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
         items = [{'id': r['id'], 'wall_id': r['wall_id'], 'openid': r['openid'],
                   'nickname': _safe_nick(r['nickname']), 'text': r['text'],
+                  'category': r['category'] or ECHO_CATEGORY_DEFAULT,
                   # 种子留言:预设 hugs 列 + 真实抱抱计数;普通留言 hugs 列恒 0
                   'hugs': r['hugs'] + hug.get(f'echohug_{r["id"]}', 0),
                   'is_seed': bool(r['is_seed']), 'ts': r['ts']} for r in rows]
@@ -729,30 +733,31 @@ def mp_admin_echo_create():
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 
-# 弹幕墙冷启动种子数据(vk 2026-09-06 提供,共20条):昵称/留言/预设抱抱数。
+# 弹幕墙冷启动种子数据(vk 2026-09-06 提供,共20条):昵称/留言/预设抱抱数/分类。
 # is_seed=1 标记,后台列表带「种子」角标,与真实用户数据区分;预设抱抱数写进
 # echo_wall.hugs 列(真实用户留言恒0;真实抱抱仍走 echohug_<id> 计数,展示时相加)。
+# 分类按留言内容人工归入 ECHO_CATEGORIES 枚举(情感/压力/成长/校园/生活/职场/树洞/其他)
 ECHO_SEEDS = (
-    ('悄悄碎了又拼好', '白天嘻嘻哈哈，晚上一个人对着天花板，突然就哭了。没发生什么，就是撑太久了。', 88),
-    ('十一点半的地铁', '加班到十一点，地铁上全是有家可回的人，只有我在故意走得很慢。', 23),
-    ('昨天很开心', '朋友圈编辑了又删，最后只发了个“哈哈哈”。其实我今天不太好。', 67),
-    ('想妈妈的第四天', '搬家那天一个人扛了七个箱子，晚上坐在地板上吃泡面，突然特别想我妈。', 41),
-    ('情绪收容所所长', '说不难过是假的，只是说了也没用，就省了。', 92),
-    ('熬夜的小月亮', '凌晨三点还醒着的人，我们看的是同一个月亮吧。', 34),
-    ('半糖去冰', '工资到账那天最有底气，还完花呗，又归于平静。', 19),
-    ('等雨停的猫', '和最好的朋友已经三年没见了，聊天记录停在“改天聚”。', 27),
-    ('今天也想被夸', '别人问我最近怎么样，我说挺好的。反正说了详情，也没人能替我过。', 76),
-    ('一盏没关的灯', '洗完澡坐在床边擦头发，突然觉得这一天里只有这五分钟是自己的。', 38),
-    ('不哭挑战失败', '不是不想谈恋爱，是怕再遇到一个让我半夜等消息的人。', 45),
-    ('今晚也晚安', '周末睡到下午两点，房间里安安静静，手机也没有新消息。', 52),
-    ('甜甜圈中间的洞', '减肥第五天，深夜点了外卖，一边吃一边骂自己没出息。', 16),
-    ('打工的小水豚', '我不怕一个人吃饭，我怕的是第二杯半价。', 83),
-    ('月亮邮递员', '生日快乐是自己说的，蛋糕也是自己买的，插了一根蜡烛，认真许了愿。', 29),
-    ('不想长大的小孩', '长大以后连崩溃都要挑时间，最好是不用上班的周末。', 71),
-    ('藏眼泪的云朵', '今天又被夸“你真独立”，可我只是没有人可以麻烦。', 33),
-    ('抱抱补给站', '那天在地铁上看见一个女孩偷偷哭，好想抱抱她，也想有人抱抱我。', 58),
-    ('慢半拍的考拉', '存款一点点变多，快乐好像没跟着涨，但至少安全感有了。', 22),
-    ('凌晨三点的风', '上周三在洗澡的时候哭了一场，出来像什么都没发生过。', 12),
+    ('悄悄碎了又拼好', '白天嘻嘻哈哈，晚上一个人对着天花板，突然就哭了。没发生什么，就是撑太久了。', 88, '压力'),
+    ('十一点半的地铁', '加班到十一点，地铁上全是有家可回的人，只有我在故意走得很慢。', 23, '职场'),
+    ('昨天很开心', '朋友圈编辑了又删，最后只发了个“哈哈哈”。其实我今天不太好。', 67, '树洞'),
+    ('想妈妈的第四天', '搬家那天一个人扛了七个箱子，晚上坐在地板上吃泡面，突然特别想我妈。', 41, '情感'),
+    ('情绪收容所所长', '说不难过是假的，只是说了也没用，就省了。', 92, '树洞'),
+    ('熬夜的小月亮', '凌晨三点还醒着的人，我们看的是同一个月亮吧。', 34, '树洞'),
+    ('半糖去冰', '工资到账那天最有底气，还完花呗，又归于平静。', 19, '生活'),
+    ('等雨停的猫', '和最好的朋友已经三年没见了，聊天记录停在“改天聚”。', 27, '情感'),
+    ('今天也想被夸', '别人问我最近怎么样，我说挺好的。反正说了详情，也没人能替我过。', 76, '压力'),
+    ('一盏没关的灯', '洗完澡坐在床边擦头发，突然觉得这一天里只有这五分钟是自己的。', 38, '生活'),
+    ('不哭挑战失败', '不是不想谈恋爱，是怕再遇到一个让我半夜等消息的人。', 45, '情感'),
+    ('今晚也晚安', '周末睡到下午两点，房间里安安静静，手机也没有新消息。', 52, '生活'),
+    ('甜甜圈中间的洞', '减肥第五天，深夜点了外卖，一边吃一边骂自己没出息。', 16, '生活'),
+    ('打工的小水豚', '我不怕一个人吃饭，我怕的是第二杯半价。', 83, '生活'),
+    ('月亮邮递员', '生日快乐是自己说的，蛋糕也是自己买的，插了一根蜡烛，认真许了愿。', 29, '情感'),
+    ('不想长大的小孩', '长大以后连崩溃都要挑时间，最好是不用上班的周末。', 71, '成长'),
+    ('藏眼泪的云朵', '今天又被夸“你真独立”，可我只是没有人可以麻烦。', 33, '情感'),
+    ('抱抱补给站', '那天在地铁上看见一个女孩偷偷哭，好想抱抱她，也想有人抱抱我。', 58, '情感'),
+    ('慢半拍的考拉', '存款一点点变多，快乐好像没跟着涨，但至少安全感有了。', 22, '生活'),
+    ('凌晨三点的风', '上周三在洗澡的时候哭了一场，出来像什么都没发生过。', 12, '树洞'),
 )
 
 
@@ -761,7 +766,8 @@ def mp_admin_echo_seed():
     """一键导入20条冷启动种子留言。仅 vk 登录态(无二次密码);全局只允许导入一次。
 
     body: {wall_id?}(缺省=北京今天 YYYYMMDD)。种子 openid='seed'、is_seed=1,
-    预设抱抱数写 hugs 列;ts 自导入时刻逐条向前错开约16分钟,列表顺序自然。
+    预设抱抱数写 hugs 列、分类写 category 列(ECHO_SEEDS 内人工归类);
+    ts 自导入时刻逐条向前错开约16分钟,列表顺序自然。
     """
     resp = _require_admin()
     if resp:
@@ -780,11 +786,11 @@ def mp_admin_echo_seed():
                 return jsonify({'success': False,
                                 'message': f'种子数据已导入过({cnt}条)，不会重复写入'}), 409
             now = int(time.time())
-            for i, (nick, text, hugs) in enumerate(ECHO_SEEDS):
+            for i, (nick, text, hugs, cat) in enumerate(ECHO_SEEDS):
                 conn.execute('''INSERT INTO echo_wall
-                    (wall_id, openid, nickname, text, hugs, is_seed, ts)
-                    VALUES (?, 'seed', ?, ?, ?, 1, ?)''',
-                    (wall_id, nick, text, hugs, now - i * 977))
+                    (wall_id, openid, nickname, text, category, hugs, is_seed, ts)
+                    VALUES (?, 'seed', ?, ?, ?, ?, 1, ?)''',
+                    (wall_id, nick, text, cat, hugs, now - i * 977))
         logger.info(f'[mp-admin] 导入种子留言: wall={wall_id} {len(ECHO_SEEDS)}条')
         return jsonify({'success': True, 'message': '已导入',
                         'count': len(ECHO_SEEDS), 'wall_id': wall_id})
@@ -818,6 +824,109 @@ def mp_admin_echo_delete():
         return jsonify({'success': True, 'message': '已删除'})
     except Exception as e:
         error_logger.error(f'mp-admin echo delete 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 弹幕墙用户封禁:按 openid 封禁/解封/列表。只挡发布留言(mp_game_routes
+# echo_post 里 _echo_banned 检查),不影响抱抱/成绩等其他功能。
+# 永久封禁 expires_at=NULL;临时封禁到期懒失效,过期行保留作历史可解封清除。
+# --------------------------------------------------------------------------
+@mp_admin_bp.route('/echo/ban', methods=['POST'])
+def mp_admin_echo_ban():
+    """封禁留言用户。body: {openid, days?, reason?}。
+
+    days 缺省/0=永久;1~3650=临时封禁天数。重复封禁同一人:覆盖时长与原因。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        if not openid:
+            return jsonify({'success': False, 'message': '缺少 openid'}), 400
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': 'openid 格式不合法'}), 400
+        days = data.get('days')
+        if days in (None, '', 0):
+            days = None
+        else:
+            try:
+                days = int(days)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'message': '封禁时长不合法'}), 400
+            if not 1 <= days <= 3650:
+                return jsonify({'success': False, 'message': '封禁时长需为 1~3650 天（留空=永久）'}), 400
+        # 原因选填,仅后台列表展示;截100字防滥用
+        reason = str(data.get('reason') or '').strip()[:100] or None
+        now = int(time.time())
+        expires = now + days * 86400 if days else None
+        with _db() as conn:
+            conn.execute('''INSERT INTO echo_bans(openid, reason, expires_at, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(openid) DO UPDATE SET
+                    reason = excluded.reason,
+                    expires_at = excluded.expires_at,
+                    created_at = excluded.created_at''', (openid, reason, expires, now))
+        logger.info(f'[mp-admin] 封禁留言用户: {openid[:6]}… '
+                    f'{"永久" if days is None else f"{days}天"} reason={reason or "-"}')
+        return jsonify({'success': True, 'message': '已封禁', 'expires_at': expires})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo ban 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/echo/unban', methods=['POST'])
+def mp_admin_echo_unban():
+    """解封留言用户。body: {openid};幂等:未封禁也返回成功(便于前端直接点)。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        if not openid:
+            return jsonify({'success': False, 'message': '缺少 openid'}), 400
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'message': 'openid 格式不合法'}), 400
+        with _db() as conn:
+            cur = conn.execute('DELETE FROM echo_bans WHERE openid = ?', (openid,))
+        removed = cur.rowcount > 0
+        if removed:
+            logger.info(f'[mp-admin] 解封留言用户: {openid[:6]}…')
+        return jsonify({'success': True,
+                        'message': '已解封' if removed else '该用户未在封禁列表'})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo unban 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/echo/bans', methods=['GET'])
+def mp_admin_echo_bans():
+    """封禁列表(分页,created_at 倒序)。status: permanent永久/active生效中/expired已过期。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        page, page_size = _parse_page_args()
+        now = int(time.time())
+        with _db() as conn:
+            total = conn.execute('SELECT COUNT(*) AS c FROM echo_bans').fetchone()['c']
+            rows = conn.execute('''SELECT openid, reason, expires_at, created_at
+                FROM echo_bans ORDER BY created_at DESC, openid ASC LIMIT ? OFFSET ?''',
+                [page_size, (page - 1) * page_size]).fetchall()
+        items = [{'openid': r['openid'], 'reason': r['reason'],
+                  'created_at': r['created_at'], 'expires_at': r['expires_at'],
+                  'status': ('permanent' if r['expires_at'] is None
+                             else 'active' if r['expires_at'] > now else 'expired')}
+                 for r in rows]
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': total, 'page': page, 'page_size': page_size,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo bans 查询异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

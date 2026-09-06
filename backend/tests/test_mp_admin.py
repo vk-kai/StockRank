@@ -743,6 +743,8 @@ class EchoAdminTests(MpAdminTestCase):
         self.assertTrue(all(i['is_seed'] for i in d['items']))
         self.assertEqual({i['openid'] for i in d['items']}, {'seed'})
         self.assertIn(88, {i['hugs'] for i in d['items']})   # 预设抱抱数带出
+        self.assertTrue(all(i['category'] in m.ECHO_CATEGORIES for i in d['items']))
+        self.assertIn('职场', {i['category'] for i in d['items']})  # 种子分类带出(加班那条)
         # 玩家侧列表同墙可见(昵称/抱抱数照常展示,不带 is_seed 字段)
         gl = self.client.get('/api/mp/game/echo?wall_id=20260906').get_json()
         self.assertEqual(len(gl['list']), 20)
@@ -755,6 +757,70 @@ class EchoAdminTests(MpAdminTestCase):
         # 非法 wall_id
         bad = self.client.post('/api/mp-admin/echo/seed', json={'wall_id': 'bad wall'})
         self.assertEqual(bad.status_code, 400)
+
+
+class EchoBanTests(MpAdminTestCase):
+    """弹幕墙用户封禁:封禁/解封/列表 + 发布接口拦截(永久/临时/过期懒失效)。"""
+
+    def _allow_sec(self):
+        # 打桩微信送检,让玩家侧 /game/echo 正常走通
+        m._do_msg_sec_check = lambda openid, text, scene=1: {
+            'errcode': 0, 'result': {'suggest': 'pass', 'label': 100}}
+
+    def _post_echo(self, openid):
+        return self.client.post('/api/mp/game/echo',
+                                json={'openid': openid, 'wall_id': '20260906',
+                                      'text': '留言内容'}).get_json()
+
+    def test_ban_unban_and_enforcement(self):
+        self._allow_sec()
+        r0 = self.client.post('/api/mp-admin/echo/ban', json={'openid': 'oBad'})
+        self.assertEqual(r0.status_code, 401)             # 未登录不可封禁
+        self._login()
+        self.assertTrue(self._post_echo('oGood')['success'])   # 未封禁者照常发
+        # 永久封禁 → 发布被拒;抱抱计数(stat/inc)不受影响
+        self.assertTrue(self.client.post('/api/mp-admin/echo/ban',
+                                         json={'openid': 'oBad', 'reason': '刷屏'}).get_json()['success'])
+        rep = self._post_echo('oBad')
+        self.assertFalse(rep['success'])
+        self.assertIn('封禁', rep['message'])
+        self.assertTrue(self.client.post('/api/mp/game/stat/inc',
+                                         json={'key': 'echohug_1', 'openid': 'oBad'}).get_json()['success'])
+        # 封禁列表:permanent 状态 + 原因带出
+        bans = self.client.get('/api/mp-admin/echo/bans').get_json()['data']
+        self.assertEqual(bans['total'], 1)
+        self.assertEqual(bans['items'][0]['status'], 'permanent')
+        self.assertEqual(bans['items'][0]['reason'], '刷屏')
+        # 临时封禁覆盖永久(状态 active),解封后恢复发布;重复解封幂等
+        self.assertTrue(self.client.post('/api/mp-admin/echo/ban',
+                                         json={'openid': 'oBad', 'days': 7}).get_json()['success'])
+        bans = self.client.get('/api/mp-admin/echo/bans').get_json()['data']
+        self.assertEqual(bans['items'][0]['status'], 'active')
+        self.assertTrue(self.client.post('/api/mp-admin/echo/unban',
+                                         json={'openid': 'oBad'}).get_json()['success'])
+        self.assertTrue(self._post_echo('oBad')['success'])
+        self.assertTrue(self.client.post('/api/mp-admin/echo/unban',
+                                         json={'openid': 'oBad'}).get_json()['success'])
+
+    def test_expired_ban_allows_post(self):
+        self._allow_sec()
+        self._login()
+        now = int(time.time())
+        with m._db() as conn:   # 直接种一条已过期的临时封禁
+            conn.execute('INSERT INTO echo_bans(openid, reason, expires_at, created_at) '
+                         "VALUES ('oOld', '历史', ?, ?)", (now - 10, now - 86400))
+        self.assertTrue(self._post_echo('oOld')['success'])   # 过期懒失效,可正常发布
+        bans = self.client.get('/api/mp-admin/echo/bans').get_json()['data']
+        self.assertEqual(bans['items'][0]['status'], 'expired')
+
+    def test_ban_param_validation(self):
+        self._login()
+        self.assertEqual(self.client.post('/api/mp-admin/echo/ban',
+                                          json={'openid': 'bad openid!'}).status_code, 400)
+        self.assertEqual(self.client.post('/api/mp-admin/echo/ban',
+                                          json={'openid': 'oX', 'days': 4000}).status_code, 400)
+        self.assertEqual(self.client.post('/api/mp-admin/echo/ban',
+                                          json={'openid': 'oX', 'days': 'abc'}).status_code, 400)
 
 
 class CleanupTests(MpAdminTestCase):

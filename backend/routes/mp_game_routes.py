@@ -70,10 +70,13 @@ OPENID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 # 房间码:服务端生成的4位数字,join/answer/status/detail 由客户端回传
 ROOM_CODE_RE = re.compile(r'^\d{4}$')
 STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
-# 弹幕墙(「不止我一个」共鸣墙):wall_id 形如日期 20260906;留言≤50字,列表只回最近7天
+# 弹幕墙(「抱抱树洞」共鸣墙):wall_id 形如日期 20260906;留言≤50字,列表只回最近7天
 WALL_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
 ECHO_TEXT_MAX = 50
 ECHO_KEEP_DAYS = 7
+# 留言分类:白名单枚举,缺省/非法一律落「其他」(前端另有白名单兜底展示)
+ECHO_CATEGORIES = ('情感', '压力', '成长', '校园', '生活', '职场', '树洞', '其他')
+ECHO_CATEGORY_DEFAULT = '其他'
 
 # 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
 # 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
@@ -126,6 +129,7 @@ STAT_KEY_NAMES = {k.lower(): v for k, v in {
     'tool_pkRoom': '双人默契大作战', 'tool_fortune': '每日运势签',
     'tool_horoscope': '今日星座运势', 'tool_zodiacMatch': '十二星座配对',
     'tool_foodWheel': '吃什么转盘', 'tool_countdown': '倒数日',
+    'tool_echowall': '抱抱树洞',
 }.items()}
 _stat_lock = threading.Lock()
 _stat_dedup = {}             # {(openid, key): 上次计入时间戳} 内存级,重启丢失无所谓
@@ -193,7 +197,7 @@ def _db():
             key  TEXT PRIMARY KEY,
             name TEXT NOT NULL
         )''')
-        # 弹幕墙留言(「不止我一个」):每面墙按 wall_id(如日期 20260906)隔离,
+        # 弹幕墙留言(「抱抱树洞」):每面墙按 wall_id(如日期 20260906)隔离,
         # 列表只回最近7天;openid 仅存档用于限频/清理,绝不随列表下发。
         # hugs 列=种子留言的预设抱抱数(真实用户留言恒0,真实抱抱走 echohug_ 计数);
         # is_seed=冷启动种子数据标记,后台列表带角标区分
@@ -203,6 +207,7 @@ def _db():
             openid   TEXT NOT NULL,
             nickname TEXT,
             text     TEXT NOT NULL,
+            category TEXT,
             hugs     INTEGER NOT NULL DEFAULT 0,
             is_seed  INTEGER NOT NULL DEFAULT 0,
             ts       INTEGER NOT NULL
@@ -213,6 +218,11 @@ def _db():
             conn.execute('ALTER TABLE echo_wall ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0')
         except sqlite3.OperationalError:
             pass
+        # 旧库迁移:echo_wall 无 category 列(留言分类),补上;历史 NULL 值查询时按「其他」返回
+        try:
+            conn.execute('ALTER TABLE echo_wall ADD COLUMN category TEXT')
+        except sqlite3.OperationalError:
+            pass
         # 抱抱永久去重:同一 openid 对同一条留言(echohug_<留言id>)终身只计一次,
         # 重复点 /stat/inc 直接返回当前值;admin 删留言时连带清掉
         conn.execute('''CREATE TABLE IF NOT EXISTS echo_hugs (
@@ -220,6 +230,14 @@ def _db():
             openid  TEXT NOT NULL,
             ts      INTEGER NOT NULL,
             PRIMARY KEY (hug_key, openid)
+        )''')
+        # 留言用户封禁:后台按 openid 手动封禁(永久或 N 天),只挡发布留言,
+        # 不影响抱抱/成绩等其他功能;到期懒失效(查询时比对),过期行保留作历史。
+        conn.execute('''CREATE TABLE IF NOT EXISTS echo_bans (
+            openid     TEXT PRIMARY KEY,
+            reason     TEXT,
+            expires_at INTEGER,
+            created_at INTEGER NOT NULL
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
@@ -918,12 +936,23 @@ def stat_query():
 
 
 # --------------------------------------------------------------------------
-# 四、弹幕墙（「不止我一个」共鸣墙）
+# 四、弹幕墙（「抱抱树洞」共鸣墙,原名「不止我一个」）
 #    发布留言服务端强制再过一次 msgSecCheck(不信任客户端「已检测」的说法,
 #    否则绕过客户端直接打接口就能把未检内容塞进墙里);昵称复用成绩那套检测。
 #    「抱抱/xx人也这样」计数不新开接口:小程序走 /stat/inc,key 形如 echohug_<留言id>
 #    (同一 openid 对同一条留言永久只计一次,去重记录在 echo_hugs 表)。
 # --------------------------------------------------------------------------
+def _echo_banned(conn, openid):
+    """留言封禁检查:存在且未到期(永久封禁 expires_at=NULL)返回 True。
+
+    后台 /mp-admin/echo/ban 维护;到期懒失效不删行,保留作封禁历史。
+    """
+    row = conn.execute(
+        'SELECT 1 FROM echo_bans WHERE openid = ? AND (expires_at IS NULL OR expires_at > ?)',
+        (openid, int(time.time()))).fetchone()
+    return bool(row)
+
+
 @mp_game_bp.route('/echo', methods=['POST'])
 def echo_post():
     """发布弹幕墙留言。body: {openid, wall_id, text, nickname?}。"""
@@ -944,6 +973,10 @@ def echo_post():
             return jsonify({'success': False, 'message': f'留言最多{ECHO_TEXT_MAX}字'})
         if _rate_limited('echo', openid, 10, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
+        # 封禁检查:被封用户直接拒(放内容送检之前,不烧微信检测额度)
+        with _db() as conn:
+            if _echo_banned(conn, openid):
+                return jsonify({'success': False, 'message': '你已被封禁，暂时无法留言'})
         # 注入防护先拦一道(XSS/SQL注入模式),省一次微信检测额度
         if not _field_safe(text):
             return jsonify({'success': False, 'message': '内容含违规信息'})
@@ -967,9 +1000,14 @@ def echo_post():
             return jsonify({'success': False, 'message': '内容含违规信息'})
 
         nickname = _check_nickname(str(data.get('nickname') or ''), openid)
+        # 分类:不在白名单/缺省一律落「其他」,不做严格校验(前端另有兜底展示)
+        category = str(data.get('category') or '').strip()
+        if category not in ECHO_CATEGORIES:
+            category = ECHO_CATEGORY_DEFAULT
         with _db() as conn:
-            cur = conn.execute('''INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts)
-                VALUES (?, ?, ?, ?, 0, ?)''', (wall_id, openid, nickname, text, int(time.time())))
+            cur = conn.execute('''INSERT INTO echo_wall(wall_id, openid, nickname, text, category, hugs, ts)
+                VALUES (?, ?, ?, ?, ?, 0, ?)''',
+                (wall_id, openid, nickname, text, category, int(time.time())))
             new_id = cur.lastrowid
         return jsonify({'success': True, 'id': new_id})
     except Exception as e:
@@ -998,7 +1036,7 @@ def echo_list():
         limit = max(1, min(limit, 100))
         cutoff = int(time.time()) - ECHO_KEEP_DAYS * 86400
         with _db() as conn:
-            rows = conn.execute('''SELECT id, text, nickname, hugs, ts FROM echo_wall
+            rows = conn.execute('''SELECT id, text, nickname, category, hugs, ts FROM echo_wall
                 WHERE wall_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?''',
                 (wall_id, cutoff, limit)).fetchall()
             # 实时抱抱数:echohug_<留言id> 批量查一把(≤100个key,PK索引)
@@ -1008,9 +1046,11 @@ def echo_list():
                 marks = ','.join('?' * len(keys))
                 hug = {r['key']: r['count'] for r in conn.execute(
                     f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
+        # category:历史数据 NULL 统一按「其他」返回,前端按 it.category 白名单兜底展示
         return jsonify({'success': True,
                         'list': [{'id': r['id'], 'text': r['text'],
                                   'nickname': _safe_nick(r['nickname']),
+                                  'category': r['category'] or ECHO_CATEGORY_DEFAULT,
                                   'hugs': r['hugs'] + hug.get(f'echohug_{r["id"]}', 0),
                                   'ts': r['ts']} for r in rows]})
     except Exception as e:

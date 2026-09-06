@@ -1351,6 +1351,31 @@ export async function mpAdminEchoSeed(wallId = '') {
   return response.data
 }
 
+/** 封禁留言用户:{openid, days?, reason?};days 缺省/0=永久,1~3650=临时天数 */
+export async function mpAdminEchoBan(payload) {
+  const response = await apiClient.post('/mp-admin/echo/ban', payload)
+  return response.data
+}
+
+/** 解封留言用户(幂等,未封禁也返回成功) */
+export async function mpAdminEchoUnban(openid) {
+  const response = await apiClient.post('/mp-admin/echo/unban', { openid })
+  return response.data
+}
+
+/** 弹幕墙封禁列表(分页;status: permanent/active/expired) */
+export async function getMpAdminEchoBans({ page = 1, pageSize = 20 } = {}) {
+  try {
+    const response = await apiClient.get('/mp-admin/echo/bans', {
+      params: { page, page_size: pageSize }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取封禁列表失败:', error)
+    throw error
+  }
+}
+
 /** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
 export async function mpAdminCleanupDevData() {
   const response = await apiClient.post('/mp-admin/cleanup-dev-data')

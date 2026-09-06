@@ -3,7 +3,8 @@ import {
   getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete, mpAdminScoreCreate,
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
   getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData,
-  getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete, mpAdminEchoSeed
+  getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete, mpAdminEchoSeed,
+  getMpAdminEchoBans, mpAdminEchoBan, mpAdminEchoUnban
 } from '../../services/apiService'
 
 export default {
@@ -23,6 +24,8 @@ export default {
       echoWall: '',
       echoDays: 7,
       echoCreate: { show: false, busy: false, wall_id: '', nickname: '', text: '' },
+      bans: { items: [], page: 1, totalPages: 1, total: 0, loaded: false },
+      banEdit: { show: false, busy: false, openid: '', days: 0, reason: '' },
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -69,7 +72,13 @@ export default {
       if (tab === 'scores' && !this.scores.items.length) this.loadScores(1)
       if (tab === 'stats' && !this.stats.items.length) this.loadStats()
       if (tab === 'rooms' && !this.rooms.items.length) this.loadRooms(1)
-      if (tab === 'echo' && !this.echo.items.length) this.loadEcho(1)
+      if (tab === 'echo') {
+        if (!this.echo.items.length) this.loadEcho(1)
+        if (!this.bans.loaded) {
+          this.bans.loaded = true
+          this.loadBans(1)
+        }
+      }
     },
     switchStatsType(type) {
       if (this.statsType === type) return
@@ -227,6 +236,84 @@ export default {
             this.confirmBox.busy = false
           }
         })
+    },
+
+    // ---- 弹幕墙用户封禁 ----
+    async loadBans(page = 1) {
+      if (page < 1) return
+      try {
+        const res = await getMpAdminEchoBans({ page, pageSize: 20 })
+        if (res && res.success) {
+          const d = res.data
+          // 删除末页最后一条后当前页越界:退回最后一页重查(与 loadEcho 同策略)
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadBans(d.total_pages)
+          }
+          this.bans = {
+            ...this.bans,
+            items: d.items,
+            page: d.page,
+            totalPages: d.total_pages,
+            total: d.total
+          }
+        }
+      } catch (e) {
+        this.showReqError(e, '加载封禁列表失败')
+      }
+    },
+    openEchoBan(row) {
+      // row 传入=从留言行封禁(带出该用户 openid);不传=手动输入
+      this.banEdit = { show: true, busy: false, openid: row ? row.openid : '', days: 0, reason: '' }
+    },
+    async doEchoBan() {
+      const s = this.banEdit
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(s.openid.trim())) {
+        this.showToast('openid 不合法（字母/数字/-/_，1~64位）', 'error'); return
+      }
+      s.busy = true
+      try {
+        const res = await mpAdminEchoBan({
+          openid: s.openid.trim(),
+          days: s.days || undefined,
+          reason: s.reason.trim() || undefined
+        })
+        if (res && res.success) {
+          s.show = false
+          this.showToast(s.days ? `已封禁 ${s.days} 天` : '已永久封禁', 'ok')
+          await this.loadBans(1)
+        } else {
+          this.showToast((res && res.message) || '封禁失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '封禁失败')
+      } finally {
+        s.busy = false
+      }
+    },
+    onEchoUnban(row) {
+      this.openConfirm('解封用户', `解封 ${this.shortOpenid(row.openid)}，恢复其发布留言权限`, async () => {
+        this.confirmBox.busy = true
+        try {
+          const res = await mpAdminEchoUnban(row.openid)
+          if (res && res.success) {
+            this.confirmBox.show = false
+            this.showToast(res.message || '已解封', 'ok')
+            await this.loadBans(this.bans.page)
+          } else {
+            this.showToast((res && res.message) || '解封失败', 'error')
+          }
+        } catch (e) {
+          this.showReqError(e, '解封失败')
+        } finally {
+          this.confirmBox.busy = false
+        }
+      })
+    },
+    banStatusName(row) {
+      if (row.expires_at == null) return '永久'
+      const left = row.expires_at - Math.floor(Date.now() / 1000)
+      if (left <= 0) return '已过期'
+      return `剩余${Math.ceil(left / 86400)}天`
     },
 
     // ---- 成绩新增/编辑/删除 ----
