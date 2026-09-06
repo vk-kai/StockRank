@@ -613,6 +613,26 @@ class EchoWallTests(GameTestCase):
         self.assertEqual(lst[msg_id]['hugs'], 2)
         self.assertEqual(lst[msg_id]['text'], '第一条')
 
+    def test_hug_permanent_dedup_per_openid(self):
+        # 抱抱永久去重:同一 openid 对同一条留言终身只计一次——
+        # 清掉10秒防刷窗口后再点仍是当前值(证明不是窗口去重);换人照常+1
+        self._check()
+        msg_id = self._post(text='求抱')['id']
+        key = f'echohug_{msg_id}'
+        r1 = self.client.post('/api/mp/game/stat/inc',
+                              json={'key': key, 'openid': 'oA'}).get_json()
+        m._stat_dedup.clear()
+        r2 = self.client.post('/api/mp/game/stat/inc',
+                              json={'key': key, 'openid': 'oA'}).get_json()
+        m._stat_dedup.clear()
+        r3 = self.client.post('/api/mp/game/stat/inc',
+                              json={'key': key, 'openid': 'oB'}).get_json()
+        self.assertEqual(r1['count'], 1)
+        self.assertEqual(r2['count'], 1)             # 同人再点:不涨
+        self.assertTrue(r2['success'])
+        self.assertEqual(r3['count'], 2)             # 别人:照常+1
+        self.assertEqual(self._list()['list'][0]['hugs'], 2)
+
     def test_nickname_local_insult_falls_back(self):
         # 昵称命中本地敏感词:回退默认昵称(微信送检都可能放行,本地先拦)
         self._check()

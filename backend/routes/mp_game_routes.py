@@ -10,7 +10,7 @@
   POST /api/mp/game/room/answer    提交本人答案(双方交齐时服务端算合拍度)
   GET  /api/mp/game/room/status    轮询房间状态(小程序每3秒一次)
   GET  /api/mp/game/room/detail    逐题对照(双方交卷后)
-  POST /api/mp/game/stat/inc       测试参与计数+1(「xx人在测」,不去重)
+  POST /api/mp/game/stat/inc       测试参与计数+1(「xx人在测」,不去重;echohug_*抱抱例外,永久去重)
   GET  /api/mp/game/stat           批量查询计数(缺省0,最多20个key)
   POST /api/mp/game/echo          弹幕墙发布留言(服务端强制再过一次msgSecCheck,不信客户端)
   GET  /api/mp/game/echo          弹幕墙留言列表(按wall_id,最近7天,ts倒序,默认50条)
@@ -205,6 +205,14 @@ def _db():
             ts       INTEGER NOT NULL
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_echo_wall ON echo_wall(wall_id, ts)')
+        # 抱抱永久去重:同一 openid 对同一条留言(echohug_<留言id>)终身只计一次,
+        # 重复点 /stat/inc 直接返回当前值;admin 删留言时连带清掉
+        conn.execute('''CREATE TABLE IF NOT EXISTS echo_hugs (
+            hug_key TEXT NOT NULL,
+            openid  TEXT NOT NULL,
+            ts      INTEGER NOT NULL,
+            PRIMARY KEY (hug_key, openid)
+        )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
         conn.commit()
@@ -779,12 +787,17 @@ def room_detail():
 # --------------------------------------------------------------------------
 # 三、测试参与计数（「xx人在测」真实数据）
 #    每测完一次+1,不去重;同 openid+key 10秒窗口只防脚本连发,不是业务去重。
+#    (例外:echohug_* 抱抱计数是「同一人对同一条留言」语义,永久去重,见 stat_inc。)
 #    key 统一小写归一(兼容 test_careerFit 这类驼峰写法),查询响应按原始写法返回。
 #    错误响应字段用 error(与本组规范一致)。
 # --------------------------------------------------------------------------
 @mp_game_bp.route('/stat/inc', methods=['POST'])
 def stat_inc():
-    """计数+1,返回自增后的最新值。key 如 test_caiyun/test_sbti,驼峰自动按小写归一。"""
+    """计数+1,返回自增后的最新值。key 如 test_caiyun/test_sbti,驼峰自动按小写归一。
+
+    echohug_<留言id>(弹幕墙抱抱)例外:同一 openid 对同一条留言永久只计一次,
+    重复点返回当前值——去重记录在 echo_hugs 表,重过期/清缓存也不会重复计数。
+    """
     denied = _check_auth_key()
     if denied:
         return denied
@@ -811,6 +824,17 @@ def stat_inc():
             return jsonify({'success': True, 'count': row['count'] if row else 0})
 
         with _db() as conn:
+            # 抱抱永久去重:首点 INSERT 去重表成功才 +1;重复点(哪怕隔了几个月、
+            # 或10秒防刷窗口已过)直接返回当前值,不再涨。普通计数不受影响。
+            if key.startswith('echohug_'):
+                cur = conn.execute('''INSERT INTO echo_hugs(hug_key, openid, ts)
+                    VALUES (?, ?, ?) ON CONFLICT(hug_key, openid) DO NOTHING''',
+                    (key, openid, int(now)))
+                if cur.rowcount == 0:
+                    row = conn.execute('SELECT count FROM stats WHERE key = ?',
+                                       (key,)).fetchone()
+                    return jsonify({'success': True,
+                                    'count': row['count'] if row else 0})
             row = conn.execute('''INSERT INTO stats(key, count) VALUES (?, 1)
                 ON CONFLICT(key) DO UPDATE SET count = count + 1,
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
@@ -889,7 +913,8 @@ def stat_query():
 # 四、弹幕墙（「不止我一个」共鸣墙）
 #    发布留言服务端强制再过一次 msgSecCheck(不信任客户端「已检测」的说法,
 #    否则绕过客户端直接打接口就能把未检内容塞进墙里);昵称复用成绩那套检测。
-#    「抱抱/xx人也这样」计数不新开接口:小程序走 /stat/inc,key 形如 echohug_<留言id>。
+#    「抱抱/xx人也这样」计数不新开接口:小程序走 /stat/inc,key 形如 echohug_<留言id>
+#    (同一 openid 对同一条留言永久只计一次,去重记录在 echo_hugs 表)。
 # --------------------------------------------------------------------------
 @mp_game_bp.route('/echo', methods=['POST'])
 def echo_post():

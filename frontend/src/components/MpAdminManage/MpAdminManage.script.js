@@ -134,6 +134,10 @@ export default {
         })
         if (res && res.success) {
           const d = res.data
+          // 删除末页最后一条后当前页越界:后端按空页返回,这里退回最后一页重查
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadEcho(d.total_pages)
+          }
           this.echo = {
             items: d.items,
             page: d.page,

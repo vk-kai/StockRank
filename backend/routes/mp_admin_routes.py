@@ -753,7 +753,7 @@ def mp_admin_echo_create():
 
 @mp_admin_bp.route('/echo/delete', methods=['POST'])
 def mp_admin_echo_delete():
-    """删留言(按 id)。连带清掉对应 echohug_<id> 计数,避免留下孤儿计数条目。"""
+    """删留言(按 id)。连带清掉对应 echohug_<id> 计数与 echo_hugs 去重记录,不留孤儿条目。"""
     resp = _require_admin()
     if resp:
         return resp
@@ -772,6 +772,8 @@ def mp_admin_echo_delete():
             if cur.rowcount == 0:
                 return jsonify({'success': False, 'message': '留言不存在'}), 404
             conn.execute('DELETE FROM stats WHERE key = ?', (hug_key,))
+            # 抱抱去重记录一并删:否则留言 id 若被复用,老用户会被误判「已抱过」
+            conn.execute('DELETE FROM echo_hugs WHERE hug_key = ?', (hug_key,))
         _stat_cache.pop(hug_key, None)
         logger.info(f'[mp-admin] 删除留言: id={msg_id}')
         return jsonify({'success': True, 'message': '已删除'})

@@ -158,7 +158,9 @@
           <button class="gen-btn" @click="loadEcho(1)">查询</button>
           <button class="gen-btn" @click="openEchoCreate">补录留言</button>
         </div>
-        <div v-if="!echo.items.length" class="empty">暂无留言</div>
+        <div v-if="!echo.items.length" class="empty">
+          {{ echoWall.trim() ? `该 wall_id 下暂无留言（清空过滤可看全部）` : '暂无留言' }}
+        </div>
         <table v-else class="data-table">
           <thead>
             <tr><th>ID</th><th>墙</th><th>留言</th><th>昵称</th><th>抱抱</th><th>发布时间</th><th>操作</th></tr>

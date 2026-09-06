@@ -669,14 +669,20 @@ class EchoAdminTests(MpAdminTestCase):
         bad = self.client.post('/api/mp-admin/echo/create', json={
             'password': 'pw', 'wall_id': '20260906', 'text': '你就是个傻逼'})
         self.assertEqual(bad.status_code, 400)
-        # 玩家留言直接入库(绕开需要微信送检的 /game/echo)+ 抱抱计数
+        # 玩家留言直接入库(绕开需要微信送检的 /game/echo);三人各抱一次=3
         with m._db() as conn:
             cur = conn.execute(
                 "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts) "
                 "VALUES ('20260906', 'oA', '甲', '玩家留言', 0, ?)", (int(time.time()),))
             player_id = cur.lastrowid
-            conn.execute("INSERT INTO stats(key, count) VALUES (?, 3)",
-                         (f'echohug_{player_id}',))
+        for oid in ('o1', 'o2', 'o3'):
+            self.client.post('/api/mp/game/stat/inc',
+                             json={'key': f'echohug_{player_id}', 'openid': oid})
+        # 同人重复抱:永久去重(清掉10秒防刷窗口,证明不是窗口吞的),计数不涨
+        m._stat_dedup.clear()
+        rep = self.client.post('/api/mp/game/stat/inc',
+                               json={'key': f'echohug_{player_id}', 'openid': 'o1'}).get_json()
+        self.assertEqual(rep['count'], 3)
         d = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']
         self.assertEqual(d['total'], 2)
         by_id = {i['id']: i for i in d['items']}
@@ -694,9 +700,19 @@ class EchoAdminTests(MpAdminTestCase):
                                            (player_id,)).fetchone())
             self.assertIsNone(conn.execute('SELECT * FROM stats WHERE key = ?',
                                            (f'echohug_{player_id}',)).fetchone())
+            self.assertIsNone(conn.execute('SELECT * FROM echo_hugs WHERE hug_key = ?',
+                                           (f'echohug_{player_id}',)).fetchone())
         r3 = self.client.post('/api/mp-admin/echo/delete',
                               json={'password': 'pw', 'id': player_id})
         self.assertEqual(r3.status_code, 404)
+        # 删除后立刻再查:剩余留言照常返回(前端删除后自动刷新依赖这一点,不能空)
+        d2 = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']
+        self.assertEqual([i['id'] for i in d2['items']], [admin_id])
+        self.assertEqual(d2['total'], 1)
+        # 分页越界:页码超出总页数时返回空items但不报错(前端负责回退到最后一页)
+        d3 = self.client.get('/api/mp-admin/echo?page=9').get_json()['data']
+        self.assertEqual(d3['items'], [])
+        self.assertEqual(d3['total'], 1)
 
     def test_echo_write_requires_admin_and_password(self):
         r0 = self.client.post('/api/mp-admin/echo/create',
