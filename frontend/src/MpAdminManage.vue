@@ -23,6 +23,7 @@
         <span :class="['sub-tab', { active: tab === 'stats' }]" @click="switchTab('stats')">参与计数</span>
         <span :class="['sub-tab', { active: tab === 'rooms' }]" @click="switchTab('rooms')">PK房间</span>
         <span :class="['sub-tab', { active: tab === 'echo' }]" @click="switchTab('echo')">弹幕墙</span>
+        <span :class="['sub-tab', { active: tab === 'subs' }]" @click="switchTab('subs')">订阅额度</span>
       </nav>
 
       <!-- ===== 成绩记录 ===== -->
@@ -219,6 +220,31 @@
           <span>{{ bans.page }} / {{ bans.totalPages }} 页 · 共 {{ bans.total }} 人</span>
           <button :disabled="bans.page >= bans.totalPages" @click="loadBans(bans.page + 1)">下一页</button>
         </div>
+      </section>
+
+      <!-- ===== 订阅额度 ===== -->
+      <section v-if="tab === 'subs'" class="card">
+        <div class="toolbar">
+          <span class="toolbar-hint">抱抱推送订阅额度：剩余额度 &gt; 0 的用户才可收到「有人抱了你的心声」推送；授权一次可推一条，推送成功即扣减</span>
+          <button class="gen-btn" @click="loadSubs()">刷新</button>
+        </div>
+        <div v-if="subs.items.length" class="stats-sum">
+          共 {{ subs.total }} 人订阅 · 剩余额度 {{ subs.totalQuota }} 条
+        </div>
+        <div v-if="!subs.items.length" class="empty">还没有订阅用户</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>openid</th><th>剩余额度</th><th>首次订阅</th><th>最近订阅</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in subs.items" :key="i">
+              <td class="code-text">{{ shortOpenid(row.openid) }}</td>
+              <td>{{ row.quota }}</td>
+              <td>{{ fmtEpoch(row.first_ts) }}</td>
+              <td>{{ fmtEpoch(row.last_ts) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
     </div>
 

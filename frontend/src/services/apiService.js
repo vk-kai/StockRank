@@ -1376,6 +1376,17 @@ export async function getMpAdminEchoBans({ page = 1, pageSize = 20 } = {}) {
   }
 }
 
+/** 树洞订阅额度列表(剩余额度>0的用户,抱抱推送一次性订阅) */
+export async function getMpAdminEchoSubs() {
+  try {
+    const response = await apiClient.get('/mp-admin/echo/subs')
+    return response.data
+  } catch (error) {
+    console.error('获取订阅额度列表失败:', error)
+    throw error
+  }
+}
+
 /** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
 export async function mpAdminCleanupDevData() {
   const response = await apiClient.post('/mp-admin/cleanup-dev-data')

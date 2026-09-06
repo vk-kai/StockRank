@@ -849,6 +849,57 @@ class EchoBanTests(MpAdminTestCase):
                                           json={'openid': 'oX', 'days': 'abc'}).status_code, 400)
 
 
+class EchoSubsAdminTests(MpAdminTestCase):
+    """管理后台「订阅额度」页签:额度>0的用户 + 首末订阅时间;推送到0后消失。"""
+
+    def setUp(self):
+        super().setUp()
+        m._do_msg_sec_check = lambda openid, text, scene=1: {
+            'errcode': 0, 'result': {'suggest': 'pass', 'label': 100}}
+        m._call_wx_api = lambda path, payload: {'errcode': 0}   # 抱抱推送直接成功
+
+    def _sub(self, openid):
+        return self.client.post('/api/mp/game/echo/sub', json={
+            'openid': openid, 'template_id': m.ECHO_HUG_TEMPLATE_ID}).get_json()
+
+    def test_subs_list_and_time(self):
+        r0 = self.client.get('/api/mp-admin/echo/subs')
+        self.assertEqual(r0.status_code, 401)             # 未登录不可见
+        self._login()
+        self._sub('oSub1')                                # 各订阅一次(额度1)
+        self._sub('oSub2')
+        d = self.client.get('/api/mp-admin/echo/subs').get_json()['data']
+        self.assertEqual(d['total'], 2)
+        self.assertEqual(d['total_quota'], 2)
+        self.assertEqual({i['openid'] for i in d['items']}, {'oSub1', 'oSub2'})
+        for it in d['items']:
+            self.assertEqual(it['quota'], 1)
+            self.assertIsNotNone(it['first_ts'])          # 流水记账 → 有订阅时间
+            self.assertIsNotNone(it['last_ts'])
+        # 额度用光(抱抱推送成功扣到0)后从列表消失
+        msg_id = self.client.post('/api/mp/game/echo', json={
+            'openid': 'oSub1', 'wall_id': '20260906', 'text': '我的心声'}).get_json()['id']
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': f'echohug_{msg_id}', 'openid': 'oHugger'})
+        d = self.client.get('/api/mp-admin/echo/subs').get_json()['data']
+        self.assertEqual(d['total'], 1)
+        self.assertEqual([i['openid'] for i in d['items']], ['oSub2'])
+
+    def test_subs_openid_fallback_from_key(self):
+        # 无流水存量行:openid 走 key 后缀剥离兜底,订阅时间为空
+        self._login()
+        with m._db() as conn:
+            conn.execute('INSERT INTO stats(key, count) VALUES (?, 3)',
+                         (f"subs_oLegacy_{m.ECHO_HUG_TEMPLATE_ID}",))
+        d = self.client.get('/api/mp-admin/echo/subs').get_json()['data']
+        self.assertEqual(d['total'], 1)
+        it = d['items'][0]
+        self.assertEqual(it['openid'], 'oLegacy')
+        self.assertEqual(it['quota'], 3)
+        self.assertIsNone(it['first_ts'])
+        self.assertIsNone(it['last_ts'])
+
+
 class CleanupTests(MpAdminTestCase):
     def test_cleanup_dev_data(self):
         self._login()

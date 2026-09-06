@@ -1188,13 +1188,19 @@ def echo_sub():
         if _rate_limited('echo_sub', openid, 30, 60):
             return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
         with _db() as conn:
+            key = _subs_key(openid, template_id)
+            prev = conn.execute('SELECT count FROM stats WHERE key = ?', (key,)).fetchone()
             # CASE 守护上限:到顶后不再自增,RETURNING 仍回当前值(前端好提示)
             row = conn.execute('''INSERT INTO stats(key, count) VALUES (?, 1)
                 ON CONFLICT(key) DO UPDATE SET
                     count = CASE WHEN count < ? THEN count + 1 ELSE count END,
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
-                RETURNING count''',
-                (_subs_key(openid, template_id), SUBS_QUOTA_MAX)).fetchone()
+                RETURNING count''', (key, SUBS_QUOTA_MAX)).fetchone()
+            # 真正涨了额度才记流水:后台「订阅额度」页签靠它展示首次/最近订阅时间
+            # (推送扣减不写流水,不污染订阅时间;后台热力图查询已排除 subs_*)
+            if row['count'] > (prev['count'] if prev else 0):
+                conn.execute('INSERT INTO stat_log(key, ts, openid) VALUES (?, ?, ?)',
+                             (key, int(time.time()), openid))
         return jsonify({'success': True, 'total': row['count']})
     except Exception as e:
         error_logger.error(f'echo 订阅记账异常: {e}')

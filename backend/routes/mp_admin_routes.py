@@ -20,6 +20,7 @@
   POST /api/mp-admin/echo/ban        封禁留言用户(按 openid,永久或 N 天)
   POST /api/mp-admin/echo/unban      解封留言用户(幂等)
   GET  /api/mp-admin/echo/bans       封禁列表(分页,含状态)
+  GET  /api/mp-admin/echo/subs       订阅额度列表(剩余额度>0的用户+首次/最近订阅时间)
   POST /api/mp-admin/cleanup-dev-data  清理开发联调脏数据(可重复执行)
 
 鉴权注意:url_prefix 必须是 /api/mp-admin 而不能挂 /api/mp/ 下——
@@ -41,6 +42,7 @@ from routes.mp_game_routes import (
     _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
     STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
     ECHO_CATEGORIES, ECHO_CATEGORY_DEFAULT, OPENID_RE, _field_safe, _safe_nick,
+    SUBS_KEY_PREFIX, ECHO_HUG_TEMPLATE_ID,
 )
 from routes.mp_sec_routes import local_text_blocked
 
@@ -218,12 +220,13 @@ def mp_admin_overview():
                 "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
             # 今日热力:top15 计数key × 24小时(「12点哪个工具最热」),按今天总量排序
             # article_* 是文章阅读计数(量大、口径与使用不同),不进测试/工具热力图,去数据管理列表看;
-            # echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key),同理不进
+            # echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key),subs_* 是订阅额度记账,同理不进
             key_hour = {}
             for r in conn.execute(
                 "SELECT key, strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
                 "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') = ? "
-                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' GROUP BY key, h",
+                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' "
+                "AND key NOT GLOB 'subs_*' GROUP BY key, h",
                 (today,)):
                 key_hour.setdefault(r['key'], {})[r['h']] = r['c']
             top_key_rows = sorted(key_hour.items(),
@@ -233,12 +236,13 @@ def mp_admin_overview():
                                 for k, hh in top_key_rows]
             hourly_top_max = max((c for _, hh in top_key_rows for c in hh.values()), default=0)
             # 近30天热力:top15 计数key × 30天(「哪天哪个测试/工具最热」),按30天总量排序
-            # 同上:article_* 阅读计数与 echohug_* 技术计数不进此图
+            # 同上:article_* 阅读计数、echohug_* 与 subs_* 技术计数不进此图
             key_day = {}
             for r in conn.execute(
                 "SELECT key, date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
                 "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? "
-                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' GROUP BY key, d",
+                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' "
+                "AND key NOT GLOB 'subs_*' GROUP BY key, d",
                 (day_from,)):
                 key_day.setdefault(r['key'], {})[r['d']] = r['c']
             top_key_day_rows = sorted(key_day.items(),
@@ -943,6 +947,55 @@ def mp_admin_echo_bans():
         }})
     except Exception as e:
         error_logger.error(f'mp-admin echo bans 查询异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+def _subs_openid_from_key(key):
+    """subs_<openid>_<template_id> → openid 兜底解析。
+
+    openid/模板号都可能含下划线,只有对已知模板做后缀剥离才可靠;正常路径
+    优先用 stat_log 流水里记的 openid,这里只兜底无流量的存量额度行。
+    """
+    body = key[len(SUBS_KEY_PREFIX):]
+    if body.endswith('_' + ECHO_HUG_TEMPLATE_ID):
+        return body[:-(len(ECHO_HUG_TEMPLATE_ID) + 1)]
+    return body
+
+
+@mp_admin_bp.route('/echo/subs', methods=['GET'])
+def mp_admin_echo_subs():
+    """订阅额度列表:剩余额度>0 的用户(抱抱推送一次性订阅)。
+
+    订阅时间来自 /echo/sub 的记账流水(每次授权涨额度才记一条;推送扣减不写
+    流水,不影响时间语义):first_ts=首次订阅,last_ts=最近订阅。
+    无流水的存量额度行 openid 走 key 兜底解析,时间为空由前端显示 '--'。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        with _db() as conn:
+            rows = conn.execute('''SELECT key, count AS quota FROM stats
+                WHERE key GLOB 'subs_*' AND count > 0
+                ORDER BY count DESC, key ASC LIMIT 500''').fetchall()
+            logs = {r['key']: r for r in conn.execute('''SELECT key,
+                MIN(ts) AS first_ts, MAX(ts) AS last_ts, MIN(openid) AS openid
+                FROM stat_log WHERE key GLOB 'subs_*' GROUP BY key''').fetchall()}
+        items = [{
+            'openid': (lg['openid'] if lg and lg['openid']
+                       else _subs_openid_from_key(r['key'])),
+            'quota': r['quota'],
+            'first_ts': lg['first_ts'] if lg else None,
+            'last_ts': lg['last_ts'] if lg else None,
+        } for r, lg in ((r, logs.get(r['key'])) for r in rows)]
+        # 最近订阅的排前面;无流水(存量/异常)的垫底
+        items.sort(key=lambda x: (x['last_ts'] is None, -(x['last_ts'] or 0)))
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': len(items),
+            'total_quota': sum(i['quota'] for i in items),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo subs 查询异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

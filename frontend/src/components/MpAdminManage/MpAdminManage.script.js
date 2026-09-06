@@ -4,7 +4,7 @@ import {
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
   getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData,
   getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete, mpAdminEchoSeed,
-  getMpAdminEchoBans, mpAdminEchoBan, mpAdminEchoUnban
+  getMpAdminEchoBans, mpAdminEchoBan, mpAdminEchoUnban, getMpAdminEchoSubs
 } from '../../services/apiService'
 
 export default {
@@ -27,6 +27,8 @@ export default {
       echoCats: ['情感', '压力', '成长', '校园', '生活', '职场', '树洞', '其他'],
       bans: { items: [], page: 1, totalPages: 1, total: 0, loaded: false },
       banEdit: { show: false, busy: false, openid: '', days: 0, reason: '' },
+      // 抱抱推送订阅额度(剩余额度>0的用户;loaded 防止重复拉取)
+      subs: { items: [], total: 0, totalQuota: 0, loaded: false },
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -79,6 +81,10 @@ export default {
           this.bans.loaded = true
           this.loadBans(1)
         }
+      }
+      if (tab === 'subs' && !this.subs.loaded) {
+        this.subs.loaded = true
+        this.loadSubs()
       }
     },
     switchStatsType(type) {
@@ -322,6 +328,23 @@ export default {
       const left = row.expires_at - Math.floor(Date.now() / 1000)
       if (left <= 0) return '已过期'
       return `剩余${Math.ceil(left / 86400)}天`
+    },
+
+    // ---- 抱抱推送订阅额度 ----
+    async loadSubs() {
+      try {
+        const res = await getMpAdminEchoSubs()
+        if (res && res.success) {
+          this.subs = {
+            ...this.subs,
+            items: res.data.items,
+            total: res.data.total,
+            totalQuota: res.data.total_quota
+          }
+        }
+      } catch (e) {
+        this.showReqError(e, '加载订阅额度失败')
+      }
     },
 
     // ---- 成绩新增/编辑/删除 ----
