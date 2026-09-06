@@ -170,7 +170,7 @@
             <tr v-for="row in echo.items" :key="row.id">
               <td class="code-text">{{ row.id }}</td>
               <td class="code-text">{{ row.wall_id }}</td>
-              <td class="echo-text">{{ row.text }}</td>
+              <td class="echo-text" :title="row.text">{{ row.text }}</td>
               <td><span class="cat-tag">{{ row.category }}</span></td>
               <td>{{ row.nickname }} <small class="dim">{{ shortOpenid(row.openid) }}</small>
                 <span v-if="row.is_seed" class="seed-tag" title="冷启动种子数据，非真实用户">种子</span></td>
@@ -178,7 +178,8 @@
               <td>{{ fmtEpoch(row.ts) }}</td>
               <td>
                 <button class="del-btn" @click="onEchoDelete(row)">删除</button>
-                <button class="del-btn" @click="row.banned ? onEchoUnban(row) : openEchoBan(row)">
+                <button :class="row.banned ? 'unban-btn' : 'del-btn'"
+                        @click="row.banned ? onEchoUnban(row) : openEchoBan(row)">
                   {{ row.banned ? '解封' : '封禁' }}
                 </button>
               </td>
@@ -209,7 +210,7 @@
               <td>{{ row.reason || '--' }}</td>
               <td>{{ fmtEpoch(row.created_at) }}</td>
               <td>{{ row.expires_at == null ? '永不' : fmtEpoch(row.expires_at) }}</td>
-              <td><button class="del-btn" @click="onEchoUnban(row)">解封</button></td>
+              <td><button class="unban-btn" @click="onEchoUnban(row)">解封</button></td>
             </tr>
           </tbody>
         </table>

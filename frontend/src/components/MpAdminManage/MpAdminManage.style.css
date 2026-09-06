@@ -89,6 +89,8 @@
   border: 1px solid rgba(111, 142, 190, 0.22);
   border-radius: 8px;
   padding: 18px;
+  /* 窄窗口兜底:表格内容超宽时在卡片内滚动,操作按钮不再溢出卡片边界 */
+  overflow-x: auto;
 }
 
 .toolbar {
@@ -183,6 +185,13 @@
 }
 .data-table tbody tr:hover { background: rgba(22, 119, 255, 0.06); }
 
+/* 留言正文列:超宽截断省号,防止长内容把表格撑出卡片 */
+td.echo-text {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .code-text {
   font-family: 'Consolas', 'Monaco', monospace;
   letter-spacing: 0.5px;
@@ -210,6 +219,18 @@
   font-size: 12px;
 }
 .del-btn:hover { background: rgba(255, 77, 79, 0.22); }
+
+/* 解封按钮:绿色,与红色删除/封禁区分 */
+.unban-btn {
+  border: 1px solid rgba(82, 196, 26, 0.5);
+  background: rgba(82, 196, 26, 0.12);
+  color: #7ad06a;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.unban-btn:hover { background: rgba(82, 196, 26, 0.24); }
 
 .status {
   border-radius: 999px;
