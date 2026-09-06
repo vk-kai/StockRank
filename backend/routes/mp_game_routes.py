@@ -60,6 +60,7 @@ _overall_cache = {'ts': 0.0, 'board': None}
 _nick_ok_cache = {}          # 昂贵的 msgSecCheck 结果缓存:昵称->通过
 _purge_lock = threading.Lock()
 _last_purge = 0.0
+_seed_cat_migrated = False   # 种子留言分类回填:每进程只跑一次(幂等,只补 NULL)
 
 # key 统一先转小写再校验/入库:test_careerFit 与 test_careerfit 是同一个计数器
 STAT_KEY_RE = re.compile(r'^[a-z0-9_]{1,64}$')
@@ -239,9 +240,27 @@ def _db():
             expires_at INTEGER,
             created_at INTEGER NOT NULL
         )''')
+        # 旧数据自愈:category 功能上线前导入的种子留言分类为 NULL(导入是全局幂等的,
+        # 重导被拒,老数据不会自己长出分类)——按昵称给 is_seed=1 且 category IS NULL
+        # 的行回填 ECHO_SEEDS 内置分类。每进程只跑一次;提交成功才标记完成,
+        # 中途回滚则下次连接重试。
+        global _seed_cat_migrated
+        migrate_pending = False
+        if not _seed_cat_migrated:
+            try:
+                from routes.mp_admin_routes import ECHO_SEEDS  # 延迟导入避免循环依赖
+                for _nick, _text, _hugs, _cat in ECHO_SEEDS:
+                    conn.execute('''UPDATE echo_wall SET category = ?
+                        WHERE is_seed = 1 AND nickname = ? AND category IS NULL''',
+                        (_cat, _nick))
+                migrate_pending = True
+            except Exception as e:
+                error_logger.warning(f'种子留言分类回填失败(下次连接重试): {e}')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
         conn.commit()
+        if migrate_pending:
+            _seed_cat_migrated = True
     except Exception:
         conn.rollback()
         raise
