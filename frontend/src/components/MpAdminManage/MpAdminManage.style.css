@@ -333,3 +333,17 @@
 .toast.ok { background: rgba(82, 196, 26, 0.92); color: #06130a; }
 .toast.error { background: rgba(255, 77, 79, 0.94); color: #fff; }
 .toast.info { background: rgba(22, 119, 255, 0.94); color: #fff; }
+
+/* ---- 弹幕墙种子数据角标 ---- */
+.seed-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(82, 196, 26, 0.5);
+  background: rgba(82, 196, 26, 0.12);
+  color: #7ad06a;
+  font-size: 11px;
+  line-height: 16px;
+  vertical-align: 1px;
+}

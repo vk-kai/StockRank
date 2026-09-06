@@ -15,14 +15,16 @@
   POST /api/mp-admin/rooms/delete    删房间
   GET  /api/mp-admin/echo            弹幕墙留言列表(分页,wall_id/days过滤,hugs=实时抱抱数)
   POST /api/mp-admin/echo/create     补录留言(管理员内容,本地敏感词/注入检测照拦)
+  POST /api/mp-admin/echo/seed       导入20条冷启动种子留言(is_seed=1,全局仅一次)
   POST /api/mp-admin/echo/delete     删留言(连带清掉对应 echohug_ 计数)
   POST /api/mp-admin/cleanup-dev-data  清理开发联调脏数据(可重复执行)
 
 鉴权注意:url_prefix 必须是 /api/mp-admin 而不能挂 /api/mp/ 下——
 后者被 install_auth_guard 的 PUBLIC_PATH_PREFIXES 整段放行(小程序接口无登录态)。
-本组接口走站点登录:每个 handler 先 _require_admin()(vk session),
-写操作再校验 body 里的今日动态密码(与兑换码/配置管理一致的双保险)。
-复用 mp_game_routes 的 _db()(同一 SQLite,WAL)与缓存,改完主动清缓存。
+本组接口走站点登录:每个 handler 先 _require_admin()(vk session)。
+写操作不二次验动态密码(2026-09 按需求移除:后台仅 vk 一人可见,登录态即唯一门槛,
+删除类操作由前端二次确认框兜底)。复用 mp_game_routes 的 _db()(同一 SQLite,
+WAL)与缓存,改完主动清缓存。
 """
 import time
 from datetime import datetime, timedelta, timezone
@@ -31,7 +33,7 @@ from flask import Blueprint, jsonify, request, send_file
 
 from core.daily_password import BEIJING_TZ
 from core.logger import get_logger
-from routes.auth_routes import is_authenticated, verify_password
+from routes.auth_routes import is_authenticated
 from routes.mp_game_routes import (
     _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
     STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
@@ -52,13 +54,6 @@ def _require_admin():
     if not is_authenticated():
         return jsonify({'success': False, 'error': 'auth_required',
                         'message': '仅管理员可操作'}), 401
-    return None
-
-
-def _require_password(data):
-    """写操作二次校验今日动态密码。返回 (response_or_None)。"""
-    if not verify_password((data or {}).get('password', '')):
-        return jsonify({'success': False, 'message': '密码错误'}), 401
     return None
 
 
@@ -336,9 +331,6 @@ def mp_admin_score_create():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         quiz_id = str(data.get('quiz_id') or '').strip()
         openid = str(data.get('openid') or '').strip()
         nickname = str(data.get('nickname') or '').strip()
@@ -384,9 +376,6 @@ def mp_admin_score_update():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         quiz_id = str(data.get('quiz_id') or '').strip()
         openid = str(data.get('openid') or '').strip()
         if not quiz_id or not openid:
@@ -434,9 +423,6 @@ def mp_admin_score_delete():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         quiz_id = str(data.get('quiz_id') or '').strip()
         openid = str(data.get('openid') or '').strip()
         if not quiz_id or not openid:
@@ -534,9 +520,6 @@ def mp_admin_stat_save():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         key = str(data.get('key') or '').strip().lower()
         try:
             count = int(data.get('count'))
@@ -566,9 +549,6 @@ def mp_admin_stat_delete():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         key = str(data.get('key') or '').strip().lower()
         if not key:
             return jsonify({'success': False, 'message': '缺少 key'}), 400
@@ -646,9 +626,6 @@ def mp_admin_room_delete():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         room_code = str(data.get('room_code') or '').strip()
         if not room_code:
             return jsonify({'success': False, 'message': '缺少 room_code'}), 400
@@ -669,7 +646,8 @@ def mp_admin_room_delete():
 @mp_admin_bp.route('/echo', methods=['GET'])
 def mp_admin_echo():
     """弹幕墙留言列表。?wall_id= 过滤,?days= 时间窗(默认7,0=全部),分页;
-    hugs=实时抱抱数(通用计数 echohug_<留言id> 回填,与小程序 GET /echo 同口径)。"""
+    hugs=种子预设数 + 实时抱抱数(echohug_<留言id> 回填,与小程序 GET /echo 同口径);
+    is_seed=冷启动种子数据标记(前端带「种子」角标,与真实用户数据区分)。"""
     resp = _require_admin()
     if resp:
         return resp
@@ -692,7 +670,8 @@ def mp_admin_echo():
             total = conn.execute(f'SELECT COUNT(*) AS c FROM echo_wall {cond}',
                                  params).fetchone()['c']
             rows = conn.execute(
-                f'''SELECT id, wall_id, openid, nickname, text, ts FROM echo_wall {cond}
+                f'''SELECT id, wall_id, openid, nickname, text, hugs, is_seed, ts
+                    FROM echo_wall {cond}
                     ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?''',
                 params + [page_size, (page - 1) * page_size]).fetchall()
             # 实时抱抱数:echohug_<留言id> 批量回填
@@ -704,7 +683,9 @@ def mp_admin_echo():
                     f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
         items = [{'id': r['id'], 'wall_id': r['wall_id'], 'openid': r['openid'],
                   'nickname': _safe_nick(r['nickname']), 'text': r['text'],
-                  'hugs': hug.get(f'echohug_{r["id"]}', 0), 'ts': r['ts']} for r in rows]
+                  # 种子留言:预设 hugs 列 + 真实抱抱计数;普通留言 hugs 列恒 0
+                  'hugs': r['hugs'] + hug.get(f'echohug_{r["id"]}', 0),
+                  'is_seed': bool(r['is_seed']), 'ts': r['ts']} for r in rows]
         return jsonify({'success': True, 'data': {
             'items': items, 'total': total, 'page': page, 'page_size': page_size,
             'total_pages': max(1, (total + page_size - 1) // page_size),
@@ -723,9 +704,6 @@ def mp_admin_echo_create():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         wall_id = str(data.get('wall_id') or '').strip()
         text = str(data.get('text') or '').strip()
         nickname = str(data.get('nickname') or '').strip()
@@ -751,6 +729,70 @@ def mp_admin_echo_create():
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 
+# 弹幕墙冷启动种子数据(vk 2026-09-06 提供,共20条):昵称/留言/预设抱抱数。
+# is_seed=1 标记,后台列表带「种子」角标,与真实用户数据区分;预设抱抱数写进
+# echo_wall.hugs 列(真实用户留言恒0;真实抱抱仍走 echohug_<id> 计数,展示时相加)。
+ECHO_SEEDS = (
+    ('悄悄碎了又拼好', '白天嘻嘻哈哈，晚上一个人对着天花板，突然就哭了。没发生什么，就是撑太久了。', 88),
+    ('十一点半的地铁', '加班到十一点，地铁上全是有家可回的人，只有我在故意走得很慢。', 23),
+    ('昨天很开心', '朋友圈编辑了又删，最后只发了个“哈哈哈”。其实我今天不太好。', 67),
+    ('想妈妈的第四天', '搬家那天一个人扛了七个箱子，晚上坐在地板上吃泡面，突然特别想我妈。', 41),
+    ('情绪收容所所长', '说不难过是假的，只是说了也没用，就省了。', 92),
+    ('熬夜的小月亮', '凌晨三点还醒着的人，我们看的是同一个月亮吧。', 34),
+    ('半糖去冰', '工资到账那天最有底气，还完花呗，又归于平静。', 19),
+    ('等雨停的猫', '和最好的朋友已经三年没见了，聊天记录停在“改天聚”。', 27),
+    ('今天也想被夸', '别人问我最近怎么样，我说挺好的。反正说了详情，也没人能替我过。', 76),
+    ('一盏没关的灯', '洗完澡坐在床边擦头发，突然觉得这一天里只有这五分钟是自己的。', 38),
+    ('不哭挑战失败', '不是不想谈恋爱，是怕再遇到一个让我半夜等消息的人。', 45),
+    ('今晚也晚安', '周末睡到下午两点，房间里安安静静，手机也没有新消息。', 52),
+    ('甜甜圈中间的洞', '减肥第五天，深夜点了外卖，一边吃一边骂自己没出息。', 16),
+    ('打工的小水豚', '我不怕一个人吃饭，我怕的是第二杯半价。', 83),
+    ('月亮邮递员', '生日快乐是自己说的，蛋糕也是自己买的，插了一根蜡烛，认真许了愿。', 29),
+    ('不想长大的小孩', '长大以后连崩溃都要挑时间，最好是不用上班的周末。', 71),
+    ('藏眼泪的云朵', '今天又被夸“你真独立”，可我只是没有人可以麻烦。', 33),
+    ('抱抱补给站', '那天在地铁上看见一个女孩偷偷哭，好想抱抱她，也想有人抱抱我。', 58),
+    ('慢半拍的考拉', '存款一点点变多，快乐好像没跟着涨，但至少安全感有了。', 22),
+    ('凌晨三点的风', '上周三在洗澡的时候哭了一场，出来像什么都没发生过。', 12),
+)
+
+
+@mp_admin_bp.route('/echo/seed', methods=['POST'])
+def mp_admin_echo_seed():
+    """一键导入20条冷启动种子留言。仅 vk 登录态(无二次密码);全局只允许导入一次。
+
+    body: {wall_id?}(缺省=北京今天 YYYYMMDD)。种子 openid='seed'、is_seed=1,
+    预设抱抱数写 hugs 列;ts 自导入时刻逐条向前错开约16分钟,列表顺序自然。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        wall_id = str(data.get('wall_id') or '').strip() or \
+            datetime.now(BEIJING_TZ).strftime('%Y%m%d')
+        if not WALL_ID_RE.match(wall_id):
+            return jsonify({'success': False, 'message': 'wall_id 格式不合法'}), 400
+        with _db() as conn:
+            # 幂等:种子数据全局只此一批,重复调用不再写入(换 wall_id 也不行)
+            if conn.execute('SELECT 1 FROM echo_wall WHERE is_seed = 1 LIMIT 1').fetchone():
+                cnt = conn.execute(
+                    'SELECT COUNT(*) AS c FROM echo_wall WHERE is_seed = 1').fetchone()['c']
+                return jsonify({'success': False,
+                                'message': f'种子数据已导入过({cnt}条)，不会重复写入'}), 409
+            now = int(time.time())
+            for i, (nick, text, hugs) in enumerate(ECHO_SEEDS):
+                conn.execute('''INSERT INTO echo_wall
+                    (wall_id, openid, nickname, text, hugs, is_seed, ts)
+                    VALUES (?, 'seed', ?, ?, ?, 1, ?)''',
+                    (wall_id, nick, text, hugs, now - i * 977))
+        logger.info(f'[mp-admin] 导入种子留言: wall={wall_id} {len(ECHO_SEEDS)}条')
+        return jsonify({'success': True, 'message': '已导入',
+                        'count': len(ECHO_SEEDS), 'wall_id': wall_id})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo seed 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
 @mp_admin_bp.route('/echo/delete', methods=['POST'])
 def mp_admin_echo_delete():
     """删留言(按 id)。连带清掉对应 echohug_<id> 计数与 echo_hugs 去重记录,不留孤儿条目。"""
@@ -759,9 +801,6 @@ def mp_admin_echo_delete():
         return resp
     try:
         data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
         try:
             msg_id = int(data.get('id'))
         except (TypeError, ValueError):
@@ -792,11 +831,6 @@ def mp_admin_cleanup_dev_data():
     if resp:
         return resp
     try:
-        data = request.get_json(silent=True) or {}
-        resp = _require_password(data)
-        if resp:
-            return resp
-
         dirty_quizzes = ('selftest_tmp', 'wealth')          # 遗留/废弃 quiz_id
         dev_glob = 'vkself*'                                 # 联调 openid 前缀(GLOB)
         dev_glob2 = 'otest*'

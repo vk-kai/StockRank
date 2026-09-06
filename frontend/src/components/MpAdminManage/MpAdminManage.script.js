@@ -3,7 +3,7 @@ import {
   getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete, mpAdminScoreCreate,
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
   getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData,
-  getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete
+  getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete, mpAdminEchoSeed
 } from '../../services/apiService'
 
 export default {
@@ -33,7 +33,8 @@ export default {
         nickname: '', score: 0, full_score: 100, duration_ms: 0
       },
       statEdit: { show: false, busy: false, key: '', count: 0 },
-      pwdModal: { show: false, title: '', desc: '', password: '', busy: false, confirm: () => {} },
+      // 二次确认框(删除/清理等破坏性操作):后台仅 vk 可见,不再二次输密码
+      confirmBox: { show: false, title: '', desc: '', busy: false, confirm: () => {} },
       toast: { show: false, message: '', type: 'info', timer: null }
     }
   },
@@ -158,44 +159,39 @@ export default {
         nickname: '', text: ''
       }
     },
-    doEchoCreate() {
+    async doEchoCreate() {
       const s = this.echoCreate
       if (!s.wall_id.trim()) { this.showToast('请填写 wall_id', 'error'); return }
       if (!s.text.trim()) { this.showToast('请填写留言内容', 'error'); return }
       if (s.text.trim().length > 50) { this.showToast('留言最多50字', 'error'); return }
-      this.openPwdModal('补录留言', `发布到墙 ${s.wall_id.trim()}(管理员内容,不过微信检测)`, async () => {
-        this.pwdModal.busy = true
-        try {
-          const res = await mpAdminEchoCreate(this.pwdModal.password, {
-            wall_id: s.wall_id.trim(),
-            text: s.text.trim(),
-            nickname: s.nickname.trim()
-          })
-          if (res && res.success) {
-            s.show = false
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
-            s.text = ''
-            this.showToast('已发布', 'ok')
-            await this.loadEcho(1)
-          } else {
-            this.showToast((res && res.message) || '发布失败', 'error')
-          }
-        } catch (e) {
-          this.showReqError(e, '发布失败')
-        } finally {
-          this.pwdModal.busy = false
+      s.busy = true
+      try {
+        const res = await mpAdminEchoCreate({
+          wall_id: s.wall_id.trim(),
+          text: s.text.trim(),
+          nickname: s.nickname.trim()
+        })
+        if (res && res.success) {
+          s.show = false
+          s.text = ''
+          this.showToast('已发布', 'ok')
+          await this.loadEcho(1)
+        } else {
+          this.showToast((res && res.message) || '发布失败', 'error')
         }
-      })
+      } catch (e) {
+        this.showReqError(e, '发布失败')
+      } finally {
+        s.busy = false
+      }
     },
     onEchoDelete(row) {
-      this.openPwdModal('删除留言', `删除「${row.text.slice(0, 20)}${row.text.length > 20 ? '…' : ''}」（抱抱 ${row.hugs}，不可恢复）`, async () => {
-        this.pwdModal.busy = true
+      this.openConfirm('删除留言', `删除「${row.text.slice(0, 20)}${row.text.length > 20 ? '…' : ''}」（抱抱 ${row.hugs}，不可恢复）`, async () => {
+        this.confirmBox.busy = true
         try {
-          const res = await mpAdminEchoDelete(this.pwdModal.password, row.id)
+          const res = await mpAdminEchoDelete(row.id)
           if (res && res.success) {
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
+            this.confirmBox.show = false
             this.showToast('已删除', 'ok')
             await this.loadEcho(this.echo.page)
           } else {
@@ -204,9 +200,33 @@ export default {
         } catch (e) {
           this.showReqError(e, '删除失败')
         } finally {
-          this.pwdModal.busy = false
+          this.confirmBox.busy = false
         }
       })
+    },
+
+    onEchoSeed() {
+      const wallId = this.echoWall.trim() ||
+        String(new Date().toISOString().slice(0, 10).replace(/-/g, ''))
+      this.openConfirm('导入种子数据',
+        `向墙 ${wallId} 写入 20 条内置共鸣留言（昵称/内容/抱抱数固定，标记为种子数据，全局仅可导入一次）`,
+        async () => {
+          this.confirmBox.busy = true
+          try {
+            const res = await mpAdminEchoSeed(wallId)
+            if (res && res.success) {
+              this.confirmBox.show = false
+              this.showToast(`已导入 ${res.count} 条种子留言`, 'ok')
+              await this.loadEcho(1)
+            } else {
+              this.showToast((res && res.message) || '导入失败', 'error')
+            }
+          } catch (e) {
+            this.showReqError(e, '导入失败')
+          } finally {
+            this.confirmBox.busy = false
+          }
+        })
     },
 
     // ---- 成绩新增/编辑/删除 ----
@@ -217,7 +237,7 @@ export default {
         nickname: '', score: 0, full_score: 100, duration_ms: 0
       }
     },
-    doScoreCreate() {
+    async doScoreCreate() {
       const s = this.scoreCreate
       if (!s.quiz_id.trim() || !s.openid.trim()) {
         this.showToast('测试ID 和 openid 必填', 'error'); return
@@ -231,29 +251,25 @@ export default {
       if (s.duration_ms < 0) {
         this.showToast('用时不合法', 'error'); return
       }
-      this.openPwdModal('新增成绩', `为 ${s.quiz_id.trim()} 新增一条成绩`, async () => {
-        this.pwdModal.busy = true
-        try {
-          const res = await mpAdminScoreCreate(this.pwdModal.password, {
-            quiz_id: s.quiz_id.trim(), openid: s.openid.trim(),
-            nickname: s.nickname.trim(), score: s.score,
-            full_score: s.full_score, duration_ms: s.duration_ms
-          })
-          if (res && res.success) {
-            s.show = false
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
-            this.showToast('已新增', 'ok')
-            await this.loadScores(1)
-          } else {
-            this.showToast((res && res.message) || '新增失败', 'error')
-          }
-        } catch (e) {
-          this.showReqError(e, '新增失败')
-        } finally {
-          this.pwdModal.busy = false
+      s.busy = true
+      try {
+        const res = await mpAdminScoreCreate({
+          quiz_id: s.quiz_id.trim(), openid: s.openid.trim(),
+          nickname: s.nickname.trim(), score: s.score,
+          full_score: s.full_score, duration_ms: s.duration_ms
+        })
+        if (res && res.success) {
+          s.show = false
+          this.showToast('已新增', 'ok')
+          await this.loadScores(1)
+        } else {
+          this.showToast((res && res.message) || '新增失败', 'error')
         }
-      })
+      } catch (e) {
+        this.showReqError(e, '新增失败')
+      } finally {
+        s.busy = false
+      }
     },
     openScoreEdit(row) {
       this.scoreEdit = {
@@ -263,7 +279,7 @@ export default {
         full_score: row.full_score, duration_ms: row.duration_ms
       }
     },
-    doScoreEdit() {
+    async doScoreEdit() {
       const s = this.scoreEdit
       if (s.score < 0 || s.full_score < 1 || s.score > s.full_score) {
         this.showToast('分数不合法（0 ≤ 分数 ≤ 满分）', 'error'); return
@@ -271,38 +287,33 @@ export default {
       if (!s.nickname || !s.nickname.trim() || s.nickname.trim().length > 12) {
         this.showToast('昵称不合法（1~12字）', 'error'); return
       }
-      this.openPwdModal('保存成绩', `修改 ${s.quiz_id} 的成绩记录`, async () => {
-        this.pwdModal.busy = true
-        try {
-          const res = await mpAdminScoreUpdate(this.pwdModal.password, {
-            quiz_id: s.quiz_id, openid: s.openid,
-            nickname: s.nickname.trim(), score: s.score,
-            full_score: s.full_score, duration_ms: s.duration_ms
-          })
-          if (res && res.success) {
-            s.show = false
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
-            this.showToast('已保存', 'ok')
-            await this.loadScores(this.scores.page)
-          } else {
-            this.showToast((res && res.message) || '保存失败', 'error')
-          }
-        } catch (e) {
-          this.showReqError(e, '保存失败')
-        } finally {
-          this.pwdModal.busy = false
+      s.busy = true
+      try {
+        const res = await mpAdminScoreUpdate({
+          quiz_id: s.quiz_id, openid: s.openid,
+          nickname: s.nickname.trim(), score: s.score,
+          full_score: s.full_score, duration_ms: s.duration_ms
+        })
+        if (res && res.success) {
+          s.show = false
+          this.showToast('已保存', 'ok')
+          await this.loadScores(this.scores.page)
+        } else {
+          this.showToast((res && res.message) || '保存失败', 'error')
         }
-      })
+      } catch (e) {
+        this.showReqError(e, '保存失败')
+      } finally {
+        s.busy = false
+      }
     },
     onScoreDelete(row) {
-      this.openPwdModal('删除成绩', `删除 ${row.quiz_id} / ${this.shortOpenid(row.openid)} 的成绩（不可恢复）`, async () => {
-        this.pwdModal.busy = true
+      this.openConfirm('删除成绩', `删除 ${row.quiz_id} / ${this.shortOpenid(row.openid)} 的成绩（不可恢复）`, async () => {
+        this.confirmBox.busy = true
         try {
-          const res = await mpAdminScoreDelete(this.pwdModal.password, row.quiz_id, row.openid)
+          const res = await mpAdminScoreDelete(row.quiz_id, row.openid)
           if (res && res.success) {
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
+            this.confirmBox.show = false
             this.showToast('已删除', 'ok')
             await this.loadScores(this.scores.page)
           } else {
@@ -311,72 +322,60 @@ export default {
         } catch (e) {
           this.showReqError(e, '删除失败')
         } finally {
-          this.pwdModal.busy = false
+          this.confirmBox.busy = false
         }
       })
     },
 
     // ---- 计数管理 ----
-    onStatAdd() {
+    async onStatAdd() {
       const key = this.newStat.key.trim()
       if (!key) { this.showToast('请填写 key', 'error'); return }
       if (!/^[a-z0-9_]{1,64}$/.test(key.toLowerCase())) {
         this.showToast('key 只能是小写字母/数字/下划线', 'error'); return
       }
-      this.openPwdModal('新增计数', `新增 ${key} = ${this.newStat.count}`, async () => {
-        this.pwdModal.busy = true
-        try {
-          const res = await mpAdminStatSave(this.pwdModal.password, key, this.newStat.count)
-          if (res && res.success) {
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
-            this.newStat = { key: '', count: 0 }
-            this.showToast('已保存', 'ok')
-            await this.loadStats()
-          } else {
-            this.showToast((res && res.message) || '保存失败', 'error')
-          }
-        } catch (e) {
-          this.showReqError(e, '保存失败')
-        } finally {
-          this.pwdModal.busy = false
+      try {
+        const res = await mpAdminStatSave(key, this.newStat.count)
+        if (res && res.success) {
+          this.newStat = { key: '', count: 0 }
+          this.showToast('已保存', 'ok')
+          await this.loadStats()
+        } else {
+          this.showToast((res && res.message) || '保存失败', 'error')
         }
-      })
+      } catch (e) {
+        this.showReqError(e, '保存失败')
+      }
     },
     openStatEdit(row) {
       this.statEdit = { show: true, busy: false, key: row.key, count: row.count }
     },
-    doStatEdit() {
+    async doStatEdit() {
       const s = this.statEdit
       if (!(s.count >= 0)) { this.showToast('数值不合法', 'error'); return }
-      this.openPwdModal('修改参与人次', `将 ${s.key} 设为 ${s.count}`, async () => {
-        this.pwdModal.busy = true
-        try {
-          const res = await mpAdminStatSave(this.pwdModal.password, s.key, s.count)
-          if (res && res.success) {
-            s.show = false
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
-            this.showToast('已保存', 'ok')
-            await this.loadStats()
-          } else {
-            this.showToast((res && res.message) || '保存失败', 'error')
-          }
-        } catch (e) {
-          this.showReqError(e, '保存失败')
-        } finally {
-          this.pwdModal.busy = false
+      s.busy = true
+      try {
+        const res = await mpAdminStatSave(s.key, s.count)
+        if (res && res.success) {
+          s.show = false
+          this.showToast('已保存', 'ok')
+          await this.loadStats()
+        } else {
+          this.showToast((res && res.message) || '保存失败', 'error')
         }
-      })
+      } catch (e) {
+        this.showReqError(e, '保存失败')
+      } finally {
+        s.busy = false
+      }
     },
     onStatDelete(row) {
-      this.openPwdModal('删除计数', `删除 ${row.key}（当前 ${row.count} 次，不可恢复）`, async () => {
-        this.pwdModal.busy = true
+      this.openConfirm('删除计数', `删除 ${row.key}（当前 ${row.count} 次，不可恢复）`, async () => {
+        this.confirmBox.busy = true
         try {
-          const res = await mpAdminStatDelete(this.pwdModal.password, row.key)
+          const res = await mpAdminStatDelete(row.key)
           if (res && res.success) {
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
+            this.confirmBox.show = false
             this.showToast('已删除', 'ok')
             await this.loadStats()
           } else {
@@ -385,20 +384,19 @@ export default {
         } catch (e) {
           this.showReqError(e, '删除失败')
         } finally {
-          this.pwdModal.busy = false
+          this.confirmBox.busy = false
         }
       })
     },
 
     // ---- 房间管理 ----
     onRoomDelete(row) {
-      this.openPwdModal('删除房间', `删除房间 ${row.room_code}（不可恢复）`, async () => {
-        this.pwdModal.busy = true
+      this.openConfirm('删除房间', `删除房间 ${row.room_code}（不可恢复）`, async () => {
+        this.confirmBox.busy = true
         try {
-          const res = await mpAdminRoomDelete(this.pwdModal.password, row.room_code)
+          const res = await mpAdminRoomDelete(row.room_code)
           if (res && res.success) {
-            this.pwdModal.show = false
-            this.pwdModal.password = ''
+            this.confirmBox.show = false
             this.showToast('已删除', 'ok')
             await this.loadRooms(this.rooms.page)
           } else {
@@ -407,22 +405,21 @@ export default {
         } catch (e) {
           this.showReqError(e, '删除失败')
         } finally {
-          this.pwdModal.busy = false
+          this.confirmBox.busy = false
         }
       })
     },
 
     // ---- 清理开发联调数据 ----
     onCleanupClick() {
-      this.openPwdModal('清理联调数据',
+      this.openConfirm('清理联调数据',
         '删除遗留 quiz（selftest_tmp / wealth）、联调 openid（vkself* / otest*）的成绩与房间、按流水回滚其计数、tool_probe_diag 清零。可重复执行。',
         async () => {
-          this.pwdModal.busy = true
+          this.confirmBox.busy = true
           try {
-            const res = await mpAdminCleanupDevData(this.pwdModal.password)
+            const res = await mpAdminCleanupDevData()
             if (res && res.success) {
-              this.pwdModal.show = false
-              this.pwdModal.password = ''
+              this.confirmBox.show = false
               const r = res.result || {}
               const dec = Object.keys(r.decremented || {})
                 .map(k => `${k} -${r.decremented[k]}`).join('、')
@@ -437,7 +434,7 @@ export default {
           } catch (e) {
             this.showReqError(e, '清理失败')
           } finally {
-            this.pwdModal.busy = false
+            this.confirmBox.busy = false
           }
         })
     },
@@ -472,13 +469,12 @@ export default {
         return '--'
       }
     },
-    openPwdModal(title, desc, confirmFn) {
-      this.pwdModal.title = title
-      this.pwdModal.desc = desc || ''
-      this.pwdModal.password = ''
-      this.pwdModal.busy = false
-      this.pwdModal.confirm = confirmFn
-      this.pwdModal.show = true
+    openConfirm(title, desc, confirmFn) {
+      this.confirmBox.title = title
+      this.confirmBox.desc = desc || ''
+      this.confirmBox.busy = false
+      this.confirmBox.confirm = confirmFn
+      this.confirmBox.show = true
     },
     showReqError(e, fallback) {
       const data = e && e.response && e.response.data

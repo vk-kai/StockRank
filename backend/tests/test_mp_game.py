@@ -633,6 +633,23 @@ class EchoWallTests(GameTestCase):
         self.assertEqual(r3['count'], 2)             # 别人:照常+1
         self.assertEqual(self._list()['list'][0]['hugs'], 2)
 
+    def test_seed_hugs_preset_plus_real(self):
+        # 种子留言的预设抱抱数存 hugs 列,真实抱抱(echohug_ 计数)在其上累加;
+        # 普通留言 hugs 列恒 0,展示行为不变
+        self._check()
+        msg_id = self._post(text='普通留言')['id']
+        with m._db() as conn:
+            cur = conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, is_seed, ts) "
+                "VALUES ('20260906', 'seed', '种子昵称', '种子留言', 88, 1, ?)",
+                (int(time.time()),))
+            seed_id = cur.lastrowid
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': f'echohug_{seed_id}', 'openid': 'oA'})
+        lst = {x['id']: x for x in self._list()['list']}
+        self.assertEqual(lst[seed_id]['hugs'], 89)        # 88 预设 + 1 真实
+        self.assertEqual(lst[msg_id]['hugs'], 0)
+
     def test_nickname_local_insult_falls_back(self):
         # 昵称命中本地敏感词:回退默认昵称(微信送检都可能放行,本地先拦)
         self._check()

@@ -1259,23 +1259,21 @@ export async function getMpAdminQuizRank({ quizId, page = 1, pageSize = 20 } = {
 }
 
 /** 新增成绩:{password, quiz_id, openid, nickname, score, full_score, duration_ms} */
-export async function mpAdminScoreCreate(password, payload) {
-  const response = await apiClient.post('/mp-admin/scores/create',
-    { ...payload, password })
+export async function mpAdminScoreCreate(payload) {
+  const response = await apiClient.post('/mp-admin/scores/create', payload)
   return response.data
 }
 
-/** 改成绩:{password, quiz_id, openid, nickname?, score?, full_score?, duration_ms?} */
-export async function mpAdminScoreUpdate(password, payload) {
-  const response = await apiClient.post('/mp-admin/scores/update',
-    { ...payload, password })
+/** 改成绩:{quiz_id, openid, nickname?, score?, full_score?, duration_ms?} */
+export async function mpAdminScoreUpdate(payload) {
+  const response = await apiClient.post('/mp-admin/scores/update', payload)
   return response.data
 }
 
 /** 删成绩 */
-export async function mpAdminScoreDelete(password, quizId, openid) {
+export async function mpAdminScoreDelete(quizId, openid) {
   const response = await apiClient.post('/mp-admin/scores/delete',
-    { password, quiz_id: quizId, openid })
+    { quiz_id: quizId, openid })
   return response.data
 }
 
@@ -1292,14 +1290,14 @@ export async function getMpAdminStats(type = '') {
 }
 
 /** 新建/改计数 */
-export async function mpAdminStatSave(password, key, count) {
-  const response = await apiClient.post('/mp-admin/stats/save', { password, key, count })
+export async function mpAdminStatSave(key, count) {
+  const response = await apiClient.post('/mp-admin/stats/save', { key, count })
   return response.data
 }
 
 /** 删计数 */
-export async function mpAdminStatDelete(password, key) {
-  const response = await apiClient.post('/mp-admin/stats/delete', { password, key })
+export async function mpAdminStatDelete(key) {
+  const response = await apiClient.post('/mp-admin/stats/delete', { key })
   return response.data
 }
 
@@ -1316,9 +1314,9 @@ export async function getMpAdminRooms({ page = 1, pageSize = 20, days = 7 } = {}
 }
 
 /** 删房间 */
-export async function mpAdminRoomDelete(password, roomCode) {
+export async function mpAdminRoomDelete(roomCode) {
   const response = await apiClient.post('/mp-admin/rooms/delete',
-    { password, room_code: roomCode })
+    { room_code: roomCode })
   return response.data
 }
 
@@ -1336,21 +1334,26 @@ export async function getMpAdminEcho({ wallId = '', page = 1, pageSize = 20, day
 }
 
 /** 补录留言:{password, wall_id, text, nickname?} */
-export async function mpAdminEchoCreate(password, payload) {
-  const response = await apiClient.post('/mp-admin/echo/create',
-    { ...payload, password })
+export async function mpAdminEchoCreate(payload) {
+  const response = await apiClient.post('/mp-admin/echo/create', payload)
   return response.data
 }
 
-/** 删留言(连带清对应 echohug_ 计数) */
-export async function mpAdminEchoDelete(password, id) {
-  const response = await apiClient.post('/mp-admin/echo/delete', { password, id })
+/** 删留言(连带清对应 echohug_ 计数与抱抱去重记录) */
+export async function mpAdminEchoDelete(id) {
+  const response = await apiClient.post('/mp-admin/echo/delete', { id })
+  return response.data
+}
+
+/** 导入弹幕墙冷启动种子留言(20条,is_seed=1;全局只允许导入一次) */
+export async function mpAdminEchoSeed(wallId = '') {
+  const response = await apiClient.post('/mp-admin/echo/seed', { wall_id: wallId })
   return response.data
 }
 
 /** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
-export async function mpAdminCleanupDevData(password) {
-  const response = await apiClient.post('/mp-admin/cleanup-dev-data', { password })
+export async function mpAdminCleanupDevData() {
+  const response = await apiClient.post('/mp-admin/cleanup-dev-data')
   return response.data
 }
 

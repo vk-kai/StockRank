@@ -157,6 +157,7 @@
           </select>
           <button class="gen-btn" @click="loadEcho(1)">查询</button>
           <button class="gen-btn" @click="openEchoCreate">补录留言</button>
+          <button class="gen-btn" @click="onEchoSeed">导入种子</button>
         </div>
         <div v-if="!echo.items.length" class="empty">
           {{ echoWall.trim() ? `该 wall_id 下暂无留言（清空过滤可看全部）` : '暂无留言' }}
@@ -170,7 +171,8 @@
               <td class="code-text">{{ row.id }}</td>
               <td class="code-text">{{ row.wall_id }}</td>
               <td class="echo-text">{{ row.text }}</td>
-              <td>{{ row.nickname }} <small class="dim">{{ shortOpenid(row.openid) }}</small></td>
+              <td>{{ row.nickname }} <small class="dim">{{ shortOpenid(row.openid) }}</small>
+                <span v-if="row.is_seed" class="seed-tag" title="冷启动种子数据，非真实用户">种子</span></td>
               <td>🤗 {{ row.hugs }}</td>
               <td>{{ fmtEpoch(row.ts) }}</td>
               <td>
@@ -235,7 +237,9 @@
         <label class="edit-row">留言 <input v-model="echoCreate.text" maxlength="50" placeholder="最多50字" /></label>
         <div class="pwd-actions">
           <button class="cancel-btn" @click="echoCreate.show = false">取消</button>
-          <button class="ok-btn" @click="doEchoCreate">保存</button>
+          <button class="ok-btn" :disabled="echoCreate.busy" @click="doEchoCreate">
+            {{ echoCreate.busy ? '处理中…' : '保存' }}
+          </button>
         </div>
       </div>
     </div>
@@ -255,16 +259,15 @@
       </div>
     </div>
 
-    <!-- 密码确认弹窗（删除等敏感操作） -->
-    <div v-if="pwdModal.show" class="pwd-overlay" @click.self="pwdModal.show = false">
+    <!-- 二次确认弹窗（删除/清理等破坏性操作；后台仅 vk 可见，不再二次输密码） -->
+    <div v-if="confirmBox.show" class="pwd-overlay" @click.self="confirmBox.show = false">
       <div class="pwd-card">
-        <h3>{{ pwdModal.title }}</h3>
-        <p v-if="pwdModal.desc" class="pwd-desc">{{ pwdModal.desc }}</p>
-        <input v-model="pwdModal.password" type="password" placeholder="今日动态密码" />
+        <h3>{{ confirmBox.title }}</h3>
+        <p v-if="confirmBox.desc" class="pwd-desc">{{ confirmBox.desc }}</p>
         <div class="pwd-actions">
-          <button class="cancel-btn" @click="pwdModal.show = false">取消</button>
-          <button class="ok-btn" :disabled="pwdModal.busy" @click="pwdModal.confirm">
-            {{ pwdModal.busy ? '处理中…' : '确认' }}
+          <button class="cancel-btn" @click="confirmBox.show = false">取消</button>
+          <button class="ok-btn" :disabled="confirmBox.busy" @click="confirmBox.confirm">
+            {{ confirmBox.busy ? '处理中…' : '确认' }}
           </button>
         </div>
       </div>

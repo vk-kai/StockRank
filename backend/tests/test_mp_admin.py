@@ -9,9 +9,9 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Flask
 
-from routes import mp_admin_routes as a
 from routes import mp_game_routes as m
 from routes import mp_sec_routes as sec
+from routes.mp_admin_routes import mp_admin_bp
 
 
 def _utcnow_str():
@@ -30,8 +30,6 @@ class MpAdminTestCase(unittest.TestCase):
         m._stat_dedup.clear()
         m._nick_ok_cache.clear()
         m._last_purge = 0.0
-        # 写操作密码校验打桩:测试密码固定 'pw',避免远程取北京时间
-        a.verify_password = lambda p: p == 'pw'
         # 游戏接口 auth_key 置空(集成测试用)
         sec.MP_SEC_CONFIG_FILE = os.path.join(tmp, 'sec.json')
         with open(sec.MP_SEC_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -39,7 +37,7 @@ class MpAdminTestCase(unittest.TestCase):
 
         app = Flask(__name__)
         app.secret_key = 'test'
-        app.register_blueprint(a.mp_admin_bp)
+        app.register_blueprint(mp_admin_bp)
         app.register_blueprint(m.mp_game_bp)
         self.client = app.test_client()
 
@@ -66,13 +64,16 @@ class AuthTests(MpAdminTestCase):
         r = self.client.post('/api/mp-admin/scores/delete', json={'password': 'pw'})
         self.assertEqual(r.status_code, 401)
 
-    def test_write_ops_require_password(self):
+    def test_write_ops_only_need_admin_session(self):
+        # 二次动态密码已按需求移除(后台仅 vk 一人可见):登录即可写,
+        # 不带 password 字段照常成功;body 里残留 password 也被忽略
         self._login()
         r = self.client.post('/api/mp-admin/scores/update',
-                             json={'quiz_id': 'q', 'openid': 'o', 'nickname': 'x'})
-        self.assertEqual(r.status_code, 401)  # 密码错误
+                             json={'quiz_id': 'nope', 'openid': 'o', 'nickname': 'x'})
+        self.assertEqual(r.status_code, 404)  # 已过鉴权,走到业务校验(记录不存在)
         r2 = self.client.post('/api/mp-admin/stats/save', json={'key': 'k', 'count': 1})
-        self.assertEqual(r2.status_code, 401)
+        self.assertEqual(r2.status_code, 200)
+        self.assertTrue(r2.get_json()['success'])
 
 
 class OverviewTests(MpAdminTestCase):
@@ -350,9 +351,11 @@ class ScoresTests(MpAdminTestCase):
         bad2 = self.client.post('/api/mp-admin/scores/create',
                                 json={**body, 'openid': 'o3', 'score': 101})
         self.assertEqual(bad2.status_code, 400)
-        bad3 = self.client.post('/api/mp-admin/scores/create',
-                                json={**body, 'openid': 'o4', 'password': ''})
-        self.assertEqual(bad3.status_code, 401)
+        # 二次密码已移除:不带 password 字段照常入库
+        no_pwd = dict(body, openid='o4')
+        no_pwd.pop('password', None)
+        ok4 = self.client.post('/api/mp-admin/scores/create', json=no_pwd)
+        self.assertEqual(ok4.status_code, 200)
         # 未登录 401
         self.client.get('/api/mp-admin/logout')  # 无此路由也无妨,session 仍在
         with self.client.session_transaction() as s:
@@ -714,16 +717,44 @@ class EchoAdminTests(MpAdminTestCase):
         self.assertEqual(d3['items'], [])
         self.assertEqual(d3['total'], 1)
 
-    def test_echo_write_requires_admin_and_password(self):
+    def test_echo_write_requires_admin_login(self):
         r0 = self.client.post('/api/mp-admin/echo/create',
-                              json={'password': 'pw', 'wall_id': 'w', 'text': 'x'})
+                              json={'wall_id': 'w', 'text': 'x'})
         self.assertEqual(r0.status_code, 401)             # 未登录
         self._login()
         r1 = self.client.post('/api/mp-admin/echo/create',
-                              json={'password': '', 'wall_id': 'w', 'text': 'x'})
-        self.assertEqual(r1.status_code, 401)             # 密码错
+                              json={'wall_id': 'w2', 'text': 'x'})   # 无密码字段
+        self.assertEqual(r1.status_code, 200)
         r2 = self.client.get('/api/mp-admin/echo')
         self.assertEqual(r2.status_code, 200)             # 只读有登录即可
+
+    def test_seed_import_once_and_badge(self):
+        # 冷启动种子:一键导入20条(is_seed=1+预设抱抱数+openid='seed'),
+        # 全局幂等(换墙重导也拒绝);后台列表带 is_seed 与预设 hugs
+        r0 = self.client.post('/api/mp-admin/echo/seed', json={'wall_id': 'w'})
+        self.assertEqual(r0.status_code, 401)             # 未登录不可导入
+        self._login()
+        r = self.client.post('/api/mp-admin/echo/seed',
+                             json={'wall_id': '20260906'}).get_json()
+        self.assertTrue(r['success'])
+        self.assertEqual(r['count'], 20)
+        d = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']
+        self.assertEqual(d['total'], 20)
+        self.assertTrue(all(i['is_seed'] for i in d['items']))
+        self.assertEqual({i['openid'] for i in d['items']}, {'seed'})
+        self.assertIn(88, {i['hugs'] for i in d['items']})   # 预设抱抱数带出
+        # 玩家侧列表同墙可见(昵称/抱抱数照常展示,不带 is_seed 字段)
+        gl = self.client.get('/api/mp/game/echo?wall_id=20260906').get_json()
+        self.assertEqual(len(gl['list']), 20)
+        self.assertTrue(all('is_seed' not in x for x in gl['list']))
+        # 幂等:重复导入(哪怕换墙)拒绝,数据不翻倍
+        r2 = self.client.post('/api/mp-admin/echo/seed', json={'wall_id': '20260907'})
+        self.assertEqual(r2.status_code, 409)
+        self.assertEqual(self.client.get('/api/mp-admin/echo?days=0')
+                         .get_json()['data']['total'], 20)
+        # 非法 wall_id
+        bad = self.client.post('/api/mp-admin/echo/seed', json={'wall_id': 'bad wall'})
+        self.assertEqual(bad.status_code, 400)
 
 
 class CleanupTests(MpAdminTestCase):
@@ -772,8 +803,7 @@ class CleanupTests(MpAdminTestCase):
         self.assertTrue(r2['success'])
         self.assertEqual(r2['result']['scores'], 0)
 
-    def test_cleanup_requires_password(self):
-        self._login()
+    def test_cleanup_requires_login(self):
         r = self.client.post('/api/mp-admin/cleanup-dev-data', json={})
         self.assertEqual(r.status_code, 401)
 

@@ -194,7 +194,9 @@ def _db():
             name TEXT NOT NULL
         )''')
         # 弹幕墙留言(「不止我一个」):每面墙按 wall_id(如日期 20260906)隔离,
-        # 列表只回最近7天;openid 仅存档用于限频/清理,绝不随列表下发
+        # 列表只回最近7天;openid 仅存档用于限频/清理,绝不随列表下发。
+        # hugs 列=种子留言的预设抱抱数(真实用户留言恒0,真实抱抱走 echohug_ 计数);
+        # is_seed=冷启动种子数据标记,后台列表带角标区分
         conn.execute('''CREATE TABLE IF NOT EXISTS echo_wall (
             id       INTEGER PRIMARY KEY AUTOINCREMENT,
             wall_id  TEXT NOT NULL,
@@ -202,9 +204,15 @@ def _db():
             nickname TEXT,
             text     TEXT NOT NULL,
             hugs     INTEGER NOT NULL DEFAULT 0,
+            is_seed  INTEGER NOT NULL DEFAULT 0,
             ts       INTEGER NOT NULL
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_echo_wall ON echo_wall(wall_id, ts)')
+        # 旧库迁移:echo_wall 早期无 is_seed 列(种子数据标记),补上
+        try:
+            conn.execute('ALTER TABLE echo_wall ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass
         # 抱抱永久去重:同一 openid 对同一条留言(echohug_<留言id>)终身只计一次,
         # 重复点 /stat/inc 直接返回当前值;admin 删留言时连带清掉
         conn.execute('''CREATE TABLE IF NOT EXISTS echo_hugs (
@@ -974,7 +982,7 @@ def echo_list():
     """弹幕墙留言列表。GET /echo?wall_id=20260906&limit=50(1~100,默认50)。
 
     只回最近 ECHO_KEEP_DAYS 天,ts 倒序;openid 不出库(列表只有展示字段)。
-    hugs 为实时抱抱数:从小程序走 /stat/inc 的 echohug_<留言id> 计数批量回填,
+    hugs = 种子留言预设数(hugs 列) + 真实抱抱数(echohug_<留言id> 计数,永久去重),
     前端不必再拉一次 /stat 合并。
     """
     denied = _check_auth_key()
@@ -990,7 +998,7 @@ def echo_list():
         limit = max(1, min(limit, 100))
         cutoff = int(time.time()) - ECHO_KEEP_DAYS * 86400
         with _db() as conn:
-            rows = conn.execute('''SELECT id, text, nickname, ts FROM echo_wall
+            rows = conn.execute('''SELECT id, text, nickname, hugs, ts FROM echo_wall
                 WHERE wall_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?''',
                 (wall_id, cutoff, limit)).fetchall()
             # 实时抱抱数:echohug_<留言id> 批量查一把(≤100个key,PK索引)
@@ -1003,7 +1011,7 @@ def echo_list():
         return jsonify({'success': True,
                         'list': [{'id': r['id'], 'text': r['text'],
                                   'nickname': _safe_nick(r['nickname']),
-                                  'hugs': hug.get(f'echohug_{r["id"]}', 0),
+                                  'hugs': r['hugs'] + hug.get(f'echohug_{r["id"]}', 0),
                                   'ts': r['ts']} for r in rows]})
     except Exception as e:
         error_logger.error(f'echo 查询异常: {e}')
