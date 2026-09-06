@@ -490,7 +490,8 @@ def mp_admin_quiz_rank():
 def mp_admin_stats():
     """参与计数列表。?type=test|tool|article 按前缀过滤(测试/工具/文章),缺省全部。
 
-    echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key,量大且非业务内容),不列。
+    echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key,量大且非业务内容),不列;
+    subs_* 是订阅推送额度记账(内部KV),同理不列。
     """
     resp = _require_admin()
     if resp:
@@ -506,7 +507,7 @@ def mp_admin_stats():
             } for r in conn.execute('SELECT key, count, updated_at FROM stats '
                                     'ORDER BY count DESC, key')
             if (not prefix or r['key'].startswith(prefix))
-            and not r['key'].startswith('echohug_')]
+            and not r['key'].startswith(('echohug_', 'subs_'))]
         return jsonify({'success': True, 'data': {
             'items': items, 'total': len(items),
             'sum': sum(i['count'] for i in items),

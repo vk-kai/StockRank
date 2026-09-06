@@ -14,6 +14,7 @@
   GET  /api/mp/game/stat           批量查询计数(缺省0,最多20个key)
   POST /api/mp/game/echo          弹幕墙发布留言(服务端强制再过一次msgSecCheck,不信客户端)
   GET  /api/mp/game/echo          弹幕墙留言列表(按wall_id,最近7天,ts倒序,默认50条)
+  POST /api/mp/game/echo/sub      抱抱推送订阅额度记账(授权一次+1,同一对上限20)
 
 鉴权复用 mp_sec_routes 的 X-Auth-Key;业务失败统一 HTTP 200 + success:false + 中文 message。
 限频:score 6次/分、room创建 10次/时、echo留言 10次/分、其余 30次/分(按 openid)。
@@ -75,9 +76,22 @@ STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产�
 WALL_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
 ECHO_TEXT_MAX = 50
 ECHO_KEEP_DAYS = 7
+# 种子补位阈值:当天真实用户留言(is_seed=0)不足该条数时,种子数据跨天补位充数;
+# 达到该条数后种子全部隐藏(纯真实列表)。种子主要给冷启动/低峰期撑场面
+ECHO_SEED_FILL_REAL_MIN = 10
 # 留言分类:白名单枚举,缺省/非法一律落「其他」(前端另有白名单兜底展示)
 ECHO_CATEGORIES = ('情感', '压力', '成长', '校园', '生活', '职场', '树洞', '其他')
 ECHO_CATEGORY_DEFAULT = '其他'
+# 抱抱→订阅消息推送(一次性订阅「点赞提醒」):额度复用 stats KV 计数,
+# key=subs_<openid>_<template_id>;前端授权成功调 /echo/sub 记额度+1(同一对
+# 上限20防刷),抱抱推送发送成功扣1;无额度/发送失败静默跳过,不影响计数主流程。
+ECHO_HUG_KEY_PREFIX = 'echohug_'             # 抱抱计数 key 前缀(/stat/inc)
+ECHO_HUG_TEMPLATE_ID = 'MFBBu8GqBoC7_VF41dhJu2ZEVr6jVeDy_eNnjWIKYJs'
+ECHO_HUG_PUSH_PAGE = 'pages/echoWall/echoWall'
+ECHO_HUG_PUSH_STATE = 'trial'                # miniprogram_state:联调期体验版,上线前切 'formal'
+SUBS_KEY_PREFIX = 'subs_'                    # 订阅额度 KV key 前缀(stats 表)
+SUBS_QUOTA_MAX = 20                          # 单个 (openid, template_id) 额度上限
+TEMPLATE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 
 # 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
 # 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
@@ -895,6 +909,17 @@ def stat_inc():
             if name and len(name) <= 64 and _field_safe(name):
                 conn.execute('''INSERT INTO stat_names(key, name) VALUES (?, ?)
                     ON CONFLICT(key) DO UPDATE SET name = excluded.name''', (key, name))
+            # 抱抱推送挂钩(方案A:第一个抱抱就推,每个新抱抱者都触发一次;
+            # 同一抱抱者对同一留言已被上面 echo_hugs 永久去重,不会重复推):
+            # 事务内只取作者+心声文本,微信发送放到事务提交后(网络调用不占连接)。
+            # 种子留言无真实作者(is_seed=1),查询直接排除
+            push_msg = None
+            if key.startswith(ECHO_HUG_KEY_PREFIX):
+                msg_id = key[len(ECHO_HUG_KEY_PREFIX):]
+                if msg_id.isdigit():
+                    push_msg = conn.execute(
+                        'SELECT openid, text FROM echo_wall WHERE id = ? AND is_seed = 0',
+                        (int(msg_id),)).fetchone()
         # 写库成功后才登记防刷窗口,失败可立即重试
         with _stat_lock:
             _stat_dedup[(openid, key)] = now
@@ -903,6 +928,9 @@ def stat_inc():
                 _stat_dedup.clear()
                 _stat_dedup.update(stale)
         _stat_cache.pop(key, None)
+        # 抱抱→订阅推送:计数已落库,推送静默失败,绝不影响计数主流程
+        if push_msg is not None:
+            _send_echo_hug_push(push_msg['openid'], push_msg['text'], openid)
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         error_logger.error(f'stat inc 异常: {e}')
@@ -972,6 +1000,51 @@ def _echo_banned(conn, openid):
     return bool(row)
 
 
+def _subs_key(openid, template_id):
+    """订阅额度 KV 键(复用 stats 计数表):授权一次 count+1,推送成功 count-1。"""
+    return f'{SUBS_KEY_PREFIX}{openid}_{template_id}'
+
+
+def _send_echo_hug_push(author_openid, msg_text, hugger_openid):
+    """抱抱→给留言作者发订阅消息(一次性订阅「点赞提醒」)。
+
+    作者有剩余额度才发,发送成功扣1条额度;自己抱自己/无额度/发送失败一律
+    静默跳过(抱抱计数主流程不受影响)。thing 关键词上限20字,超长截断。
+    """
+    try:
+        if not author_openid or author_openid == hugger_openid:
+            return                    # 自己抱自己不推(计数照常)
+        sub_key = _subs_key(author_openid, ECHO_HUG_TEMPLATE_ID)
+        with _db() as conn:
+            row = conn.execute('SELECT count FROM stats WHERE key = ?', (sub_key,)).fetchone()
+        if not row or row['count'] <= 0:
+            return                    # 未授权/额度用尽:静默跳过
+        bj_now = datetime.now(timezone(timedelta(hours=8)))
+        resp = _call_wx_api('/cgi-bin/message/subscribe/send', {
+            'touser': author_openid,
+            'template_id': ECHO_HUG_TEMPLATE_ID,
+            'page': ECHO_HUG_PUSH_PAGE,
+            'miniprogram_state': ECHO_HUG_PUSH_STATE,   # 联调期体验版,上线切 'formal'
+            'lang': 'zh_CN',
+            'data': {
+                'thing3': {'value': '一位温暖的路人'},  # 匿名树洞氛围,不暴露抱抱者
+                'thing1': {'value': msg_text[:20]},     # 心声前20字摘要
+                'time2': {'value': bj_now.strftime('%Y-%m-%d %H:%M')},
+            },
+        })
+        if resp.get('errcode') == 0:
+            with _db() as conn:
+                conn.execute('''UPDATE stats SET count = count - 1,
+                    updated_at = CAST(strftime('%s','now') AS INTEGER)
+                    WHERE key = ? AND count > 0''', (sub_key,))
+            logger.info(f'抱抱推送成功: to={author_openid[:6]}…')
+        else:
+            # 43101=用户未订阅/授权耗尽等:微信侧未消耗授权,本地额度不扣
+            logger.info(f'抱抱推送未发出(errcode={resp.get("errcode")}),静默跳过')
+    except Exception as e:
+        error_logger.warning(f'抱抱推送异常(静默跳过,不影响计数): {e}')
+
+
 @mp_game_bp.route('/echo', methods=['POST'])
 def echo_post():
     """发布弹幕墙留言。body: {openid, wall_id, text, nickname?}。"""
@@ -1039,6 +1112,8 @@ def echo_list():
     """弹幕墙留言列表。GET /echo?wall_id=20260906&limit=50(1~100,默认50)。
 
     只回最近 ECHO_KEEP_DAYS 天,ts 倒序;openid 不出库(列表只有展示字段)。
+    种子补位:当天真实用户留言不足 ECHO_SEED_FILL_REAL_MIN 条时,种子数据
+    跨天补位(不限 wall_id/天数);够了则种子全部隐藏,纯真实列表。
     hugs = 种子留言预设数(hugs 列) + 真实抱抱数(echohug_<留言id> 计数,永久去重),
     前端不必再拉一次 /stat 合并。
     """
@@ -1055,9 +1130,23 @@ def echo_list():
         limit = max(1, min(limit, 100))
         cutoff = int(time.time()) - ECHO_KEEP_DAYS * 86400
         with _db() as conn:
+            # 真实用户留言(is_seed=0):优先返回,窗口/排序/上限与原逻辑一致
             rows = conn.execute('''SELECT id, text, nickname, category, hugs, ts FROM echo_wall
-                WHERE wall_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?''',
+                WHERE wall_id = ? AND is_seed = 0 AND ts >= ?
+                ORDER BY ts DESC, id DESC LIMIT ?''',
                 (wall_id, cutoff, limit)).fetchall()
+            # 种子补位:展示条数不足阈值时按当天真实总数(不受 limit 截断影响)复核,
+            # 确实不足 → 种子跨天补位凑到 limit;真实够了 → 种子全隐藏
+            if len(rows) < ECHO_SEED_FILL_REAL_MIN:
+                real_count = conn.execute(
+                    'SELECT COUNT(*) AS c FROM echo_wall WHERE wall_id = ? AND is_seed = 0',
+                    (wall_id,)).fetchone()['c']
+                if real_count < ECHO_SEED_FILL_REAL_MIN:
+                    seeds = conn.execute('''SELECT id, text, nickname, category, hugs, ts
+                        FROM echo_wall WHERE is_seed = 1 ORDER BY ts DESC, id DESC LIMIT ?''',
+                        (limit - len(rows),)).fetchall()
+                    rows = sorted(list(rows) + list(seeds),
+                                  key=lambda r: (r['ts'], r['id']), reverse=True)
             # 实时抱抱数:echohug_<留言id> 批量查一把(≤100个key,PK索引)
             hug = {}
             if rows:
@@ -1074,4 +1163,39 @@ def echo_list():
                                   'ts': r['ts']} for r in rows]})
     except Exception as e:
         error_logger.error(f'echo 查询异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/echo/sub', methods=['POST'])
+def echo_sub():
+    """订阅授权记账:前端订阅授权成功后调用,为 (openid, template_id) 记额度+1。
+
+    一次性订阅语义:授权一次=可推1条;额度复用 stats KV(key=subs_<openid>_
+    <template_id>),同一对上限 SUBS_QUOTA_MAX 防刷,到顶后继续调用只返回上限值。
+    返回 {success, total: 当前剩余额度}。错误响应字段与 echo 组一致用 message。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        template_id = str(data.get('template_id') or '').strip()
+        if not openid or not template_id:
+            return jsonify({'success': False, 'message': '参数不完整'})
+        if not OPENID_RE.match(openid) or not TEMPLATE_ID_RE.match(template_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
+        if _rate_limited('echo_sub', openid, 30, 60):
+            return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
+        with _db() as conn:
+            # CASE 守护上限:到顶后不再自增,RETURNING 仍回当前值(前端好提示)
+            row = conn.execute('''INSERT INTO stats(key, count) VALUES (?, 1)
+                ON CONFLICT(key) DO UPDATE SET
+                    count = CASE WHEN count < ? THEN count + 1 ELSE count END,
+                    updated_at = CAST(strftime('%s','now') AS INTEGER)
+                RETURNING count''',
+                (_subs_key(openid, template_id), SUBS_QUOTA_MAX)).fetchone()
+        return jsonify({'success': True, 'total': row['count']})
+    except Exception as e:
+        error_logger.error(f'echo 订阅记账异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})

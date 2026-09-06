@@ -670,6 +670,38 @@ class EchoWallTests(GameTestCase):
         self.assertEqual(lst[seed_id]['hugs'], 89)        # 88 预设 + 1 真实
         self.assertEqual(lst[msg_id]['hugs'], 0)
 
+    def test_seed_fill_when_real_below_threshold(self):
+        # 种子补位:当天真实留言 <10 条 → 种子跨天/跨墙补位充数(9天前的旧种子也回)
+        self._check()
+        self._post(text='真实留言1')
+        self._post(openid='oB', text='真实留言2')
+        with m._db() as conn:
+            conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, is_seed, ts) "
+                "VALUES ('20260101', 'seed', '种子', '旧种子留言', 5, 1, ?)",
+                (int(time.time()) - 9 * 86400,))          # 旧墙 + 超出7天窗口
+        texts = [x['text'] for x in self._list()['list']]
+        self.assertEqual(texts, ['真实留言2', '真实留言1', '旧种子留言'])  # 真实在前,种子垫底
+        self.assertEqual(self._list()['list'][2]['hugs'], 5)  # 种子预设抱抱数照常展示
+
+    def test_seed_hidden_when_real_reaches_threshold(self):
+        # 当天真实留言达到 10 条(边界含10):种子全部隐藏——同墙的、别的天的都不生效
+        self._check()
+        with m._db() as conn:
+            conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, is_seed, ts) "
+                "VALUES ('20260906', 'seed', '种子', '同墙种子', 0, 1, ?)", (int(time.time()),))
+            conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, is_seed, ts) "
+                "VALUES ('20260101', 'seed', '种子', '旧墙种子', 0, 1, ?)",
+                (int(time.time()) - 9 * 86400,))
+        for i in range(10):                               # 不同 openid,避开限频
+            self._post(openid=f'u{i}', text=f'真实{i}')
+        texts = [x['text'] for x in self._list()['list']]
+        self.assertEqual(len(texts), 10)
+        self.assertNotIn('同墙种子', texts)
+        self.assertNotIn('旧墙种子', texts)
+
     def test_nickname_local_insult_falls_back(self):
         # 昵称命中本地敏感词:回退默认昵称(微信送检都可能放行,本地先拦)
         self._check()
@@ -716,6 +748,161 @@ class EchoWallTests(GameTestCase):
             if self._post(text=f'第{i}条')['success']:
                 ok += 1
         self.assertEqual(ok, 10)
+
+
+class EchoSubPushTests(GameTestCase):
+    """订阅额度记账(/echo/sub,上限20) + 抱抱推送钩子(echohug_* → 作者订阅消息)。"""
+
+    def setUp(self):
+        super().setUp()
+        m._do_msg_sec_check = lambda openid, content, scene=1: {
+            'errcode': 0, 'result': {'suggest': 'pass', 'label': 100}}
+        self.sent = []                      # 记录 subscribe/send 调用
+        self.wx_send_resp = {'errcode': 0}
+
+        def fake_wx(path, payload):
+            if path == '/cgi-bin/message/subscribe/send':
+                self.sent.append(payload)
+                return self.wx_send_resp
+            return {'errcode': 0, 'result': {'suggest': 'pass', 'label': 100}}
+        m._call_wx_api = fake_wx
+
+    def _post_msg(self, openid='oA', text='今天也在努力'):
+        return self.client.post('/api/mp/game/echo', json={
+            'openid': openid, 'wall_id': '20260906', 'text': text}).get_json()
+
+    def _sub(self, openid, template_id=None):
+        return self.client.post('/api/mp/game/echo/sub', json={
+            'openid': openid, 'template_id': template_id or m.ECHO_HUG_TEMPLATE_ID}).get_json()
+
+    def _hug(self, msg_id, openid):
+        return self.client.post('/api/mp/game/stat/inc',
+                                json={'key': f'echohug_{msg_id}', 'openid': openid}).get_json()
+
+    def _quota(self, openid, template_id=None):
+        with m._db() as conn:
+            row = conn.execute('SELECT count FROM stats WHERE key = ?',
+                               (m._subs_key(openid, template_id or m.ECHO_HUG_TEMPLATE_ID),)).fetchone()
+        return row['count'] if row else 0
+
+    def test_sub_accrues_quota(self):
+        r1 = self._sub('oA')
+        self.assertTrue(r1['success'])
+        self.assertEqual(r1['total'], 1)
+        self.assertEqual(self._sub('oA')['total'], 2)
+        self.assertEqual(self._quota('oA'), 2)
+
+    def test_sub_quota_capped_at_20(self):
+        total = 0
+        for _ in range(25):                 # 超30/分限频之前,够摸到20上限
+            total = self._sub('oA')['total']
+        self.assertEqual(total, 20)         # 到顶不再自增
+        self.assertEqual(self._quota('oA'), 20)
+
+    def test_sub_bad_params(self):
+        self.assertFalse(self._sub('')['success'])
+        self.assertFalse(self._sub('o<script>')['success'])
+        self.assertFalse(self._sub('oA', template_id='bad id')['success'])
+        r = self.client.post('/api/mp/game/echo/sub', json={'openid': 'oA'})
+        self.assertFalse(r.get_json()['success'])
+
+    def test_first_hug_pushes_to_author(self):
+        # 方案A:第一个抱抱就推;字段按「点赞提醒」模板映射,发送成功扣1条额度
+        msg_id = self._post_msg(openid='oAuthor', text='今天也请为自己鼓掌')['id']
+        self._sub('oAuthor')
+        r = self._hug(msg_id, openid='oHugger')
+        self.assertTrue(r['success'])
+        self.assertEqual(r['count'], 1)
+        self.assertEqual(len(self.sent), 1)
+        p = self.sent[0]
+        self.assertEqual(p['touser'], 'oAuthor')
+        self.assertEqual(p['template_id'], m.ECHO_HUG_TEMPLATE_ID)
+        self.assertEqual(p['page'], 'pages/echoWall/echoWall')
+        self.assertEqual(p['miniprogram_state'], 'trial')
+        self.assertEqual(p['data']['thing3']['value'], '一位温暖的路人')
+        self.assertEqual(p['data']['thing1']['value'], '今天也请为自己鼓掌')
+        self.assertRegex(p['data']['time2']['value'], r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$')
+        self.assertEqual(self._quota('oAuthor'), 0)   # 发送成功 → 扣1
+
+    def test_thing1_truncated_to_20_chars(self):
+        msg_id = self._post_msg(openid='oA', text='长' * 50)['id']
+        self._sub('oA')
+        self._hug(msg_id, openid='oH')
+        self.assertEqual(self.sent[0]['data']['thing1']['value'], '长' * 20)
+
+    def test_no_quota_no_push(self):
+        # 未授权(无额度):不调微信,静默跳过,抱抱计数照常
+        msg_id = self._post_msg(openid='oA')['id']
+        r = self._hug(msg_id, openid='oH')
+        self.assertTrue(r['success'])
+        self.assertEqual(self.sent, [])
+
+    def test_send_failure_silent_keeps_quota(self):
+        # 发送失败:静默跳过、不扣额度、计数主流程不受影响
+        msg_id = self._post_msg(openid='oA')['id']
+        self._sub('oA')
+        self.wx_send_resp = {'errcode': 43101, 'errmsg': 'user refused'}
+        r = self._hug(msg_id, openid='oH')
+        self.assertTrue(r['success'])               # 计数照常成功
+        self.assertEqual(r['count'], 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self._quota('oA'), 1)      # 额度不扣
+
+    def test_self_hug_no_push(self):
+        # 自己抱自己:计数照常,但不推(推送语义是「有人抱了你的心声」)
+        msg_id = self._post_msg(openid='oA')['id']
+        self._sub('oA')
+        r = self._hug(msg_id, openid='oA')
+        self.assertTrue(r['success'])
+        self.assertEqual(self.sent, [])
+        self.assertEqual(self._quota('oA'), 1)      # 未消耗
+
+    def test_repeat_hug_dedup_no_double_push(self):
+        # 永久去重联动:同一抱抱者对同一条留言重复点,不重复推送、不重复扣额度
+        msg_id = self._post_msg(openid='oA')['id']
+        self._sub('oA')
+        self._sub('oA')
+        self._hug(msg_id, openid='oH')
+        m._stat_dedup.clear()
+        self._hug(msg_id, openid='oH')
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self._quota('oA'), 1)
+
+    def test_each_new_hugger_pushes(self):
+        # 每个新抱抱者都推一次(第一个就推,额度逐条扣)
+        msg_id = self._post_msg(openid='oA')['id']
+        for _ in range(3):
+            self._sub('oA')
+        self._hug(msg_id, openid='h1')
+        self._hug(msg_id, openid='h2')
+        self.assertEqual(len(self.sent), 2)
+        self.assertEqual(self._quota('oA'), 1)
+
+    def test_seed_message_no_push(self):
+        # 种子留言无真实作者(is_seed=1):抱抱计数照常,不推送
+        with m._db() as conn:
+            cur = conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, is_seed, ts) "
+                "VALUES ('20260906', 'seed', '种子', '种子留言', 0, 1, ?)",
+                (int(time.time()),))
+            seed_id = cur.lastrowid
+        self._sub('seed')
+        r = self._hug(seed_id, openid='oH')
+        self.assertTrue(r['success'])
+        self.assertEqual(self.sent, [])
+
+    def test_push_never_breaks_count(self):
+        # _call_wx_api 抛异常(网络炸了):推送静默,计数照常+1返回
+        def boom(path, payload):
+            if path == '/cgi-bin/message/subscribe/send':
+                raise RuntimeError('wx down')
+            return {'errcode': 0, 'result': {'suggest': 'pass', 'label': 100}}
+        m._call_wx_api = boom
+        msg_id = self._post_msg(openid='oA')['id']
+        self._sub('oA')
+        r = self._hug(msg_id, openid='oH')
+        self.assertTrue(r['success'])
+        self.assertEqual(r['count'], 1)
 
 
 class AuthGuardTests(GameTestCase):
