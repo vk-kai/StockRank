@@ -37,6 +37,8 @@ config/jarvis_token.json
 config/redemption_codes.json
 config/otp_config.json
 config/session_secret.json
+# 微信送检探针词条(手动填敏感词,绝不入库)
+backend/scripts/sec_probe_words.txt
 
 # IDE
 .vscode/
