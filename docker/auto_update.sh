@@ -15,6 +15,7 @@
 #   GIT_BRANCH            监控的分支,默认 main
 #   AVOID_TRADING_HOURS   1=避开交易时段重建(默认),0=随时重建
 #   LOG_FILE              日志文件路径,默认 <仓库>/logs/auto_update.log
+#   HEALTH_PORT           重建后本地自检的端口(nginx 发布端口),默认 80
 #
 # 部署(systemd,推荐):
 #   sudo cp docker/auto_update.systemd.service /etc/systemd/system/auto_update.service
@@ -35,9 +36,9 @@ set -u
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
-# 仓库根 = 本脚本所在 docker 目录的上一级(不硬编码 /root/StockRank,便于迁移)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 注意:本脚本在服务器上的运行位置是 /root/auto_update.sh(在仓库外),
+# 不能按脚本位置推导仓库根(会推出 /),所以这里写死;挪动仓库时改这两行即可。
+REPO_DIR="/root/StockRank"
 DOCKER_DIR="$REPO_DIR/docker"
 COMPOSE_FILE="$DOCKER_DIR/docker-compose.yml"
 
@@ -65,6 +66,18 @@ is_trading_hours() {
     if [ "$now_min" -ge 570 ] && [ "$now_min" -le 690 ]; then return 0; fi
     if [ "$now_min" -ge 780 ] && [ "$now_min" -le 900 ]; then return 0; fi
     return 1
+}
+
+# 清理 CNI 端口转发残留:容器被 SIGKILL 时 CNI 不执行清理,发布端口的 DNAT 规则
+# 会漏在共享链 CNI-HOSTPORT-DNAT 里;iptables 首条命中,旧规则(指向已死容器IP)
+# 会永远遮蔽新规则——表现为容器 Up 且健康、端口却 No route to host / 公网超时。
+# 2026-09-06 事故根因。在容器已 down、up 之前调用,保证每次重建后只剩唯一一代规则。
+clean_stale_dnat() {
+    local n
+    while n=$(iptables -t nat -L CNI-HOSTPORT-DNAT --line-numbers -n 2>/dev/null \
+              | grep docker_stock-network | head -1 | awk '{print $1}'); [ -n "$n" ]; do
+        iptables -t nat -D CNI-HOSTPORT-DNAT "$n"
+    done
 }
 
 # 检查 docker compose v2 可用
@@ -117,22 +130,43 @@ while true; do
             log "处于交易时段,推迟容器重建到收盘后(已 pull 的代码会在收盘后自动生效)"
         else
             # 业务代码靠 volume(../backend:/app/backend)挂载进容器,pull 后只需重启即生效,
-            # 无需重建镜像。只依赖文件(requirements*/start.sh)或 Dockerfile 变了才 --build。
-            # 注意:这个 NEED_BUILD 判断用的是上次 pull 前记录的 HEAD(见上方 git pull 成功处)。
+            # 无需重建镜像。只有依赖文件(requirements*/start.sh)或 Dockerfile 变了才 --build。
+            # 关键:compose 命令必须在 docker/ 目录下执行——compose 文件在子目录 docker/ 里,
+            # 在仓库根目录跑会报 "no compose file found",down/up 全是空操作(rc=255)。
+            cd "$DOCKER_DIR" || { log "错误: 无法进入 $DOCKER_DIR"; sleep "$CHECK_INTERVAL"; continue; }
             log "======== 开始重建容器: docker compose down && up -d $NEED_BUILD ========"
             t0=$(date +%s)
             # --timeout 10:backend 是 Werkzeug 开发服务器,不响应 SIGTERM,快速进 SIGKILL 不干等。
-            docker compose  down --timeout 10 >>"$LOG_FILE" 2>&1
+            docker compose down --timeout 10 >>"$LOG_FILE" 2>&1
             down_rc=$?
             t1=$(date +%s)
             log "  down 完成,耗时 $((t1 - t0))s (rc=$down_rc)"
-            docker compose -f up -d  >>"$LOG_FILE" 2>&1
+            # down 后清掉本网络全部残留 DNAT(含刚停容器的旧代),up 重写唯一一代,不被影子遮蔽
+            clean_stale_dnat
+            docker compose up -d $NEED_BUILD >>"$LOG_FILE" 2>&1
             up_rc=$?
             t2=$(date +%s)
             log "  up 完成,耗时 $((t2 - t1))s (rc=$up_rc)"
             if [ "$down_rc" -eq 0 ] && [ "$up_rc" -eq 0 ]; then
-                log "======== 容器重建并启动完成(总耗时 $((t2 - t0))s),新代码已生效 ========"
-                PENDING_REBUILD=0
+                # 起来自检:podman(netavark) 的端口转发规则偶发不生效(容器 Up 但内外都不通)。
+                # 只有探测失败才走修复流程,绝不无脑每轮 restart podman。
+                sleep 5
+                if curl -s -m 5 -o /dev/null "http://127.0.0.1:${HEALTH_PORT:-80}/"; then
+                    log "======== 容器重建完成(总耗时 $((t2 - t0))s),本地探测正常,新代码已生效 ========"
+                    PENDING_REBUILD=0
+                else
+                    log "  本地探测不通,执行转发修复: down -> 清残留DNAT -> up"
+                    docker compose down --timeout 10 >>"$LOG_FILE" 2>&1
+                    clean_stale_dnat
+                    docker compose up -d $NEED_BUILD >>"$LOG_FILE" 2>&1
+                    sleep 5
+                    if curl -s -m 5 -o /dev/null "http://127.0.0.1:${HEALTH_PORT:-80}/"; then
+                        log "======== 转发修复成功,容器已恢复,新代码已生效 ========"
+                    else
+                        log "======== 转发修复后仍不通!代码已生效,请人工检查: docker compose ps / iptables -t nat -S ========"
+                    fi
+                    PENDING_REBUILD=0   # 代码已部署,不再无限重试;转发问题转人工,避免循环破坏
+                fi
             else
                 log "======== 容器重建失败(down_rc=$down_rc up_rc=$up_rc),保留待重建标志,下一轮重试 ========"
             fi

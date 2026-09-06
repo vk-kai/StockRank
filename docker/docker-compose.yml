@@ -6,6 +6,10 @@ services:
       context: ../backend
       dockerfile: ../docker/backend.Dockerfile
     container_name: a-stock-backend
+    # init:true 用 tini 做 PID 1,负责把 SIGTERM 转发给 start.sh exec 起来的 python;
+    # 否则 python 收不到停止信号→每次 down 都拖满 10 秒被 SIGKILL→CNI 端口规则清理被跳过
+    # →残留 DNAT 遮蔽新规则→容器 Up 但端口不通(2026-09-06 事故根因之一)。
+    init: true
     ports:
       - "5000:5000"
     environment:

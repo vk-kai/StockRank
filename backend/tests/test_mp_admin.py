@@ -88,9 +88,11 @@ class OverviewTests(MpAdminTestCase):
         r = self.client.get('/api/mp-admin/overview').get_json()
         self.assertTrue(r['success'])
         d = r['data']
-        # 口径:tests 只含 test_* 计数,tool_usage 只含 tool_*
+        # 口径:tests 只含 test_* 计数,tool_usage 只含 tool_*,articles 只含 article_*
         self.assertEqual(d['totals']['tests'], 5)
         self.assertEqual(d['totals']['tool_usage'], 2)
+        self.assertEqual(d['totals']['articles'], 0)
+        self.assertEqual(d['totals']['article_count'], 0)
         self.assertEqual(d['totals']['players'], 2)
         self.assertEqual(d['totals']['quizzes'], 2)
         self.assertEqual(d['totals']['scores'], 2)
@@ -101,6 +103,7 @@ class OverviewTests(MpAdminTestCase):
                          [{'key': 'test_a', 'name': 'test_a', 'count': 5}])
         self.assertEqual(d['tool_counts'],
                          [{'key': 'tool_foodwheel', 'name': '吃什么转盘', 'count': 2}])
+        self.assertEqual(d['article_counts'], [])
         # 近30天:今天应有 2 条新增成绩、1 个房间;无流水则计数趋势为0
         self.assertEqual(len(d['daily']['days']), 30)
         self.assertEqual(d['daily']['scores'][-1], 2)
@@ -108,6 +111,7 @@ class OverviewTests(MpAdminTestCase):
         self.assertEqual(sum(d['daily']['scores']), 2)
         self.assertEqual(sum(d['daily']['tests']), 0)
         self.assertEqual(sum(d['daily']['tools']), 0)
+        self.assertEqual(sum(d['daily']['articles']), 0)
         # 热度排行:两测试并列,人数对;name 无映射时回退 quiz_id
         by_quiz = {q['quiz_id']: q['players'] for q in d['quiz_top']}
         self.assertEqual(by_quiz, {'test_a': 1, 'test_b': 1})
@@ -122,6 +126,7 @@ class OverviewTests(MpAdminTestCase):
         self.assertEqual(h['hours'][-1], '23')
         self.assertEqual(sum(h['tests']), 0)
         self.assertEqual(sum(h['tools']), 0)
+        self.assertEqual(sum(h['articles']), 0)
         self.assertEqual(sum(h['scores']), d['daily']['scores'][-1])
         self.assertEqual(sum(h['rooms']), d['daily']['rooms'][-1])
         # 今日热力:当天无计数流水 → 空items/max=0;近30天热力同理
@@ -208,6 +213,16 @@ class OverviewTests(MpAdminTestCase):
         art = next(i for i in items if i['key'] == 'article_intro')
         self.assertEqual(art['name'], '很' * 40)
         self.assertEqual(art['count'], 1)
+        # 文章进 overview 的文章榜/趋势/总量(与测试/工具同接口,仅前缀不同)
+        ov2 = self.client.get('/api/mp-admin/overview').get_json()['data']
+        self.assertEqual(ov2['totals']['articles'], 1)
+        self.assertEqual(ov2['totals']['article_count'], 1)
+        acnts = {i['key']: i for i in ov2['article_counts']}
+        self.assertEqual(acnts['article_intro']['name'], '很' * 40)
+        self.assertEqual(acnts['article_intro']['count'], 1)
+        self.assertEqual(ov2['daily']['articles'][-1], 1)
+        self.assertEqual(sum(ov2['daily']['articles']), 1)
+        self.assertEqual(sum(ov2['hourly']['articles']), 1)
 
 
 class ExportTests(MpAdminTestCase):
@@ -544,6 +559,7 @@ class StatsTests(MpAdminTestCase):
             conn.execute("INSERT INTO stats(key, count) VALUES ('test_b', 4)")
             conn.execute("INSERT INTO stats(key, count) VALUES ('tool_x', 5)")
             conn.execute("INSERT INTO stats(key, count) VALUES ('other', 9)")
+            conn.execute("INSERT INTO stats(key, count) VALUES ('article_x', 6)")
         r_test = self.client.get('/api/mp-admin/stats?type=test').get_json()
         keys = [i['key'] for i in r_test['data']['items']]
         self.assertEqual(keys, ['test_b', 'test_a'])       # 按次数降序
@@ -551,9 +567,12 @@ class StatsTests(MpAdminTestCase):
         r_tool = self.client.get('/api/mp-admin/stats?type=tool').get_json()
         self.assertEqual([i['key'] for i in r_tool['data']['items']], ['tool_x'])
         self.assertEqual(r_tool['data']['sum'], 5)
+        r_art = self.client.get('/api/mp-admin/stats?type=article').get_json()
+        self.assertEqual([i['key'] for i in r_art['data']['items']], ['article_x'])
+        self.assertEqual(r_art['data']['sum'], 6)
         # 非法 type 等于不过滤
         r_all = self.client.get('/api/mp-admin/stats?type=xyz').get_json()
-        self.assertEqual(r_all['data']['total'], 4)
+        self.assertEqual(r_all['data']['total'], 5)
         # 新增(驼峰自动归一) + 缓存失效
         self.client.get('/api/mp/game/stat?keys=test_new')  # 0 进缓存
         r2 = self.client.post('/api/mp-admin/stats/save',

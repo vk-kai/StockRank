@@ -15,7 +15,7 @@ export default {
       scoresFilter: '',
       scores: { items: [], page: 1, totalPages: 1, total: 0 },
       stats: { items: [], sum: 0 },
-      statsType: 'test',   // 参与计数子分类:test测试 / tool工具
+      statsType: 'test',   // 参与计数子分类:test测试 / tool工具 / article文章
       rooms: { items: [], page: 1, totalPages: 1, total: 0 },
       roomsDays: 7,
       newStat: { key: '', count: 0 },
@@ -30,6 +30,12 @@ export default {
       statEdit: { show: false, busy: false, key: '', count: 0 },
       pwdModal: { show: false, title: '', desc: '', password: '', busy: false, confirm: () => {} },
       toast: { show: false, message: '', type: 'info', timer: null }
+    }
+  },
+  computed: {
+    // 参与计数子分类中文名(模板汇总/空态共用)
+    statsTypeName() {
+      return { test: '测试', tool: '工具', article: '文章' }[this.statsType] || '计数'
     }
   },
   async mounted() {

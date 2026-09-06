@@ -40,6 +40,10 @@
           <div class="stat-label">工具使用次数 <small>（每使用一次 +1）</small></div>
         </div>
         <div class="stat-card">
+          <div class="stat-value">{{ overview.totals.articles ?? 0 }}</div>
+          <div class="stat-label">文章阅读次数 <small>（共 {{ overview.totals.article_count ?? 0 }} 篇，每阅读一次 +1）</small></div>
+        </div>
+        <div class="stat-card">
           <div class="stat-value">{{ avgTestsPerPlayer }}</div>
           <div class="stat-label">人均玩过测试 <small>（平均每人玩过几个不同测试）</small></div>
         </div>
@@ -64,6 +68,12 @@
         <h2>各工具使用次数</h2>
         <div v-if="!overview.tool_counts.length" class="empty">暂无工具计数数据</div>
         <div v-else ref="toolChart" class="chart-box"></div>
+      </section>
+
+      <section class="card">
+        <h2>各文章阅读次数</h2>
+        <div v-if="!articleCounts.length" class="empty">暂无文章阅读数据</div>
+        <div v-else ref="articleChart" class="chart-box"></div>
       </section>
 
       <section class="card">
@@ -131,7 +141,8 @@
       </section>
 
       <div class="footnote">
-        说明：「测试完成次数 / 工具使用次数」每用一次就 +1，重复使用照常计入；
+        说明：「测试完成次数 / 工具使用次数 / 文章阅读次数」每用一次就 +1，重复使用照常计入；
+        文章为 article_* 前缀计数（key=article_文章id，名称=文章标题），口径与测试/工具一致；
         「参与人数 / 人均玩过测试 / 有人玩的测试」按成绩表统计，同一人同一测试只记最好一次。
         「每日趋势 / 近30天最热」自后台上线后开始逐日记录，此前无历史数据；「今日按小时 / 今日最热」为当天各时间点的实时分布；两张最热图行首「测」=测试、「具」=工具。
         综合排名 = 各测试击败率的平均值（跨测试可比，非总分加总），参与≥3个测试才上榜，同分时参与多者在前。

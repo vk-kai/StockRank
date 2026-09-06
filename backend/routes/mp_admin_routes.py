@@ -135,6 +135,13 @@ def mp_admin_overview():
                 'tool_usage': (conn.execute(
                     "SELECT COALESCE(SUM(count),0) AS c FROM stats WHERE key GLOB 'tool_*'")
                     .fetchone()['c']),
+                # 文章阅读:article_* 与测试/工具同一计数接口,口径=每阅读一次+1
+                'articles': (conn.execute(
+                    "SELECT COALESCE(SUM(count),0) AS c FROM stats WHERE key GLOB 'article_*'")
+                    .fetchone()['c']),
+                'article_count': (conn.execute(
+                    'SELECT COUNT(*) AS c FROM stats WHERE key GLOB \'article_*\'')
+                    .fetchone()['c']),
                 'players': (conn.execute('SELECT COUNT(DISTINCT openid) AS c FROM scores')
                             .fetchone()['c']),
                 # 去重参与记录:成绩表主键(quiz_id, openid),同人同测试只记最佳
@@ -156,6 +163,9 @@ def mp_admin_overview():
             tool_counts = [{'key': r['key'], 'name': names.get(r['key'], r['key']),
                             'count': r['count']}
                            for r in stat_rows if r['key'].startswith('tool_')][:20]
+            article_counts = [{'key': r['key'], 'name': names.get(r['key'], r['key']),
+                               'count': r['count']}
+                              for r in stat_rows if r['key'].startswith('article_')][:20]
             # 每日测试/工具人次:stat_log 按前缀 + 北京日 聚合
             tests_by_day = {r['d']: r['c'] for r in conn.execute(
                 "SELECT date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
@@ -164,6 +174,10 @@ def mp_admin_overview():
             tools_by_day = {r['d']: r['c'] for r in conn.execute(
                 "SELECT date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
                 "FROM stat_log WHERE key GLOB 'tool_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY d", (day_from,))}
+            articles_by_day = {r['d']: r['c'] for r in conn.execute(
+                "SELECT date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'article_*' "
                 "AND date(ts, 'unixepoch', '+8 hours') >= ? GROUP BY d", (day_from,))}
             # 每日新增成绩/建房:scores/rooms 的 created_at 是 UTC 文本,+8h 转北京日
             players_by_day = {r['d']: r['c'] for r in conn.execute(
@@ -189,6 +203,10 @@ def mp_admin_overview():
             tools_by_hour = {r['h']: r['c'] for r in conn.execute(
                 "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
                 "FROM stat_log WHERE key GLOB 'tool_*' "
+                "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
+            articles_by_hour = {r['h']: r['c'] for r in conn.execute(
+                "SELECT strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
+                "FROM stat_log WHERE key GLOB 'article_*' "
                 "AND date(ts, 'unixepoch', '+8 hours') = ? GROUP BY h", (today,))}
             scores_by_hour = {r['h']: r['c'] for r in conn.execute(
                 "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM scores "
@@ -235,6 +253,7 @@ def mp_admin_overview():
             'totals': totals,
             'test_counts': test_counts,
             'tool_counts': tool_counts,
+            'article_counts': article_counts,
             'quiz_top': quiz_top,
             # 综合排名榜(与小程序 /rank/overall 同口径,走同一份60秒缓存)
             'overall': {'total': overall['total'], 'top': overall['top']},
@@ -242,6 +261,7 @@ def mp_admin_overview():
                 'days': days,
                 'tests': [tests_by_day.get(d, 0) for d in days],
                 'tools': [tools_by_day.get(d, 0) for d in days],
+                'articles': [articles_by_day.get(d, 0) for d in days],
                 'scores': [players_by_day.get(d, 0) for d in days],
                 'rooms': [rooms_by_day.get(d, 0) for d in days],
             },
@@ -249,6 +269,7 @@ def mp_admin_overview():
                 'hours': hours,
                 'tests': [tests_by_hour.get(h, 0) for h in hours],
                 'tools': [tools_by_hour.get(h, 0) for h in hours],
+                'articles': [articles_by_hour.get(h, 0) for h in hours],
                 'scores': [scores_by_hour.get(h, 0) for h in hours],
                 'rooms': [rooms_by_hour.get(h, 0) for h in hours],
             },
@@ -473,13 +494,13 @@ def mp_admin_quiz_rank():
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/stats', methods=['GET'])
 def mp_admin_stats():
-    """参与计数列表。?type=test|tool 按前缀过滤(test_*测试/tool_*工具),缺省全部。"""
+    """参与计数列表。?type=test|tool|article 按前缀过滤(测试/工具/文章),缺省全部。"""
     resp = _require_admin()
     if resp:
         return resp
     try:
         stat_type = (request.args.get('type') or '').strip().lower()
-        prefix = {'test': 'test_', 'tool': 'tool_'}.get(stat_type)
+        prefix = {'test': 'test_', 'tool': 'tool_', 'article': 'article_'}.get(stat_type)
         with _db() as conn:
             names = _key_names(conn)
             items = [{

@@ -22,6 +22,7 @@ export default {
       overview: null,
       testChart: null,
       toolChart: null,
+      articleChart: null,
       dailyChart: null,
       hourlyChart: null,
       hourlyTopChart: null,
@@ -55,12 +56,17 @@ export default {
     // 近30天热力图行(30天最活跃的测试/工具,按总量降序)
     dailyTopItems() {
       return (this.overview && this.overview.daily_top && this.overview.daily_top.items) || []
+    },
+    // 文章阅读榜(article_* 与测试/工具同接口,仅前缀不同)
+    articleCounts() {
+      return (this.overview && this.overview.article_counts) || []
     }
   },
   async mounted() {
     this._onResize = () => {
       if (this.testChart) this.testChart.resize()
       if (this.toolChart) this.toolChart.resize()
+      if (this.articleChart) this.articleChart.resize()
       if (this.dailyChart) this.dailyChart.resize()
       if (this.hourlyChart) this.hourlyChart.resize()
       if (this.hourlyTopChart) this.hourlyTopChart.resize()
@@ -84,6 +90,7 @@ export default {
     window.removeEventListener('resize', this._onResize)
     if (this.testChart) { this.testChart.dispose(); this.testChart = null }
     if (this.toolChart) { this.toolChart.dispose(); this.toolChart = null }
+    if (this.articleChart) { this.articleChart.dispose(); this.articleChart = null }
     if (this.dailyChart) { this.dailyChart.dispose(); this.dailyChart = null }
     if (this.hourlyChart) { this.hourlyChart.dispose(); this.hourlyChart = null }
     if (this.hourlyTopChart) { this.hourlyTopChart.dispose(); this.hourlyTopChart = null }
@@ -190,6 +197,7 @@ export default {
       if (!this.overview) return
       this.renderBarChart('testChart', this.overview.test_counts, '#1890ff')
       this.renderBarChart('toolChart', this.overview.tool_counts, '#13c2c2')
+      this.renderBarChart('articleChart', this.articleCounts, '#b37feb')
       this.renderDailyChart()
       this.renderHourlyChart()
       this.renderHourlyTopChart()
@@ -241,7 +249,7 @@ export default {
     renderDailyChart() {
       const chart = this._initChart('dailyChart', 'dailyChart')
       if (!chart) return
-      const { days, tests, tools, scores, rooms } = this.overview.daily
+      const { days, tests, tools, scores, rooms, articles } = this.overview.daily
       const shortDays = days.map(d => d.slice(5)) // MM-DD
       chart.setOption({
         backgroundColor: 'transparent',
@@ -269,6 +277,8 @@ export default {
             data: tests, itemStyle: { color: '#1890ff' }, lineStyle: { width: 2 } },
           { name: '工具次数', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: tools, itemStyle: { color: '#13c2c2' }, lineStyle: { width: 2 } },
+          { name: '文章阅读', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
+            data: articles || [], itemStyle: { color: '#b37feb' }, lineStyle: { width: 2 } },
           { name: '新增成绩', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },
           { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
@@ -311,6 +321,8 @@ export default {
             barMaxWidth: 10, itemStyle: { color: '#1890ff', borderRadius: [2, 2, 0, 0] } },
           { name: '工具次数', type: 'bar', data: h.tools,
             barMaxWidth: 10, itemStyle: { color: '#13c2c2', borderRadius: [2, 2, 0, 0] } },
+          { name: '文章阅读', type: 'bar', data: h.articles || [],
+            barMaxWidth: 10, itemStyle: { color: '#b37feb', borderRadius: [2, 2, 0, 0] } },
           { name: '新增成绩', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
             data: h.scores, itemStyle: { color: '#faad14' }, lineStyle: { width: 2 } },
           { name: '新建房间', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
