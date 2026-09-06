@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 
 from flask import Flask
@@ -519,6 +520,116 @@ class OverallRankTests(GameTestCase):
         self.assertFalse(r['success'])
         r2 = self.client.get('/api/mp/game/rank/overall?openid=坏key').get_json()
         self.assertFalse(r2['success'])
+
+
+class EchoWallTests(GameTestCase):
+    """弹幕墙:服务端强制复检、7天窗口、ts倒序、限频、openid 不出列表。"""
+
+    def _check(self, suggest='pass', errcode=0):
+        # 打桩服务端复检(echo 走 m 命名空间里的 _do_msg_sec_check 绑定)
+        m._do_msg_sec_check = lambda openid, content, scene=1: {
+            'errcode': errcode, 'result': {'suggest': suggest, 'label': 100}}
+
+    def _post(self, openid='oA', wall='20260906', text='今天也在努力', nickname=None):
+        body = {'openid': openid, 'wall_id': wall, 'text': text}
+        if nickname is not None:
+            body['nickname'] = nickname
+        return self.client.post('/api/mp/game/echo', json=body).get_json()
+
+    def _list(self, wall='20260906', limit=None):
+        url = f'/api/mp/game/echo?wall_id={wall}' + (f'&limit={limit}' if limit else '')
+        return self.client.get(url).get_json()
+
+    def test_post_and_list_roundtrip(self):
+        self._check()
+        r = self._post(nickname='小明')
+        self.assertTrue(r['success'])
+        self.assertIsInstance(r['id'], int)
+        self._post(openid='oB', text='我也是')
+        lst = self._list()['list']
+        self.assertEqual([x['text'] for x in lst], ['我也是', '今天也在努力'])  # 新的在前
+        first = lst[1]
+        self.assertEqual(first['nickname'], '小明')
+        self.assertEqual(first['hugs'], 0)
+        self.assertIsInstance(first['ts'], int)
+        for item in lst:  # openid 绝不随列表下发
+            self.assertTrue(set(item.keys()) <= {'id', 'text', 'nickname', 'hugs', 'ts'})
+        # wall_id 隔离:另一面墙看不到
+        self._post(openid='oC', wall='20260907', text='明天的墙')
+        self.assertEqual(len(self._list(wall='20260907')['list']), 1)
+        self.assertEqual(len(self._list()['list']), 2)
+
+    def test_risky_text_rejected_not_stored(self):
+        # 87014 老违规码已在 sec 层 _do_msg_sec_check 归一为 suggest=risky
+        # (见 test_mp_sec 的 87014 用例),echo 只需处理归一化后的 risky
+        self._check(suggest='risky')
+        r = self._post()
+        self.assertFalse(r['success'])
+        self.assertEqual(r['message'], '内容含违规信息')
+        self.assertEqual(self._list()['list'], [])
+
+    def test_check_service_down_rejected(self):
+        # 检测服务故障:fail-closed 拒绝入库,但提示语与「内容违规」区分开
+        def boom(openid, content, scene=1):
+            raise RuntimeError('wx down')
+        m._do_msg_sec_check = boom
+        r = self._post()
+        self.assertFalse(r['success'])
+        self.assertIn('稍后再试', r['message'])
+        self.assertEqual(self._list()['list'], [])
+
+    def test_text_limits(self):
+        self._check()
+        self.assertFalse(self._post(text='')['success'])          # 空
+        self.assertFalse(self._post(text='长' * 51)['success'])   # 超50字
+        self.assertTrue(self._post(text='刚' * 50)['success'])    # 恰好50字
+
+    def test_attack_text_rejected_locally(self):
+        # 注入防护先拦:复检 mock 成 pass 仍拒(留言回显给所有访问者)
+        self._check()
+        r = self._post(text='<img src=x onerror=alert(1)>')
+        self.assertFalse(r['success'])
+        self.assertEqual(r['message'], '内容含违规信息')
+
+    def test_bad_params(self):
+        self._check()
+        self.assertFalse(self._post(wall='')['success'])
+        self.assertFalse(self._post(wall='wall/2026')['success'])
+        self.assertFalse(self._post(openid='<script>')['success'])
+        self.assertFalse(self._list(wall='')['success'])
+        self.assertFalse(self._list(wall='bad wall')['success'])
+
+    def test_seven_day_window(self):
+        self._check()
+        self._post(text='新留言')
+        with m._db() as conn:
+            conn.execute('UPDATE echo_wall SET ts = ? WHERE text = ?',
+                         (int(time.time()) - 8 * 86400, '新留言'))
+        self.assertEqual(self._list()['list'], [])   # 8天前的不返回
+
+    def test_limit_clamped_and_order(self):
+        self._check()
+        for i in range(3):
+            self._post(openid=f'o{i}', text=f'留言{i}')
+        lst = self._list(limit=2)['list']
+        self.assertEqual([x['text'] for x in lst], ['留言2', '留言1'])  # ts倒序
+        self.assertTrue(self._list(limit=0)['success'])    # 0 → 默认50
+        self.assertTrue(self._list(limit=999)['success'])  # 999 → 钳到100
+
+    def test_nickname_fallback(self):
+        self._check()
+        self.sec_ok = False    # 昵称送检失败(setUp 的 fake)→ 回退默认昵称,留言照发
+        self._post(nickname='坏名字', text='正文没问题')
+        item = self._list()['list'][0]
+        self.assertEqual(item['nickname'], '匿名测试者')
+
+    def test_rate_limit_10_per_minute(self):
+        self._check()
+        ok = 0
+        for i in range(12):
+            if self._post(text=f'第{i}条')['success']:
+                ok += 1
+        self.assertEqual(ok, 10)
 
 
 class AuthGuardTests(GameTestCase):

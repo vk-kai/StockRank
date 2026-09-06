@@ -12,9 +12,11 @@
   GET  /api/mp/game/room/detail    逐题对照(双方交卷后)
   POST /api/mp/game/stat/inc       测试参与计数+1(「xx人在测」,不去重)
   GET  /api/mp/game/stat           批量查询计数(缺省0,最多20个key)
+  POST /api/mp/game/echo          弹幕墙发布留言(服务端强制再过一次msgSecCheck,不信客户端)
+  GET  /api/mp/game/echo          弹幕墙留言列表(按wall_id,最近7天,ts倒序,默认50条)
 
 鉴权复用 mp_sec_routes 的 X-Auth-Key;业务失败统一 HTTP 200 + success:false + 中文 message。
-限频:score 6次/分、room创建 10次/时、其余 30次/分(按 openid)。
+限频:score 6次/分、room创建 10次/时、echo留言 10次/分、其余 30次/分(按 openid)。
 房间过期清理:懒删除(房间操作时顺带 DELETE,5分钟节流),不开新线程。
 """
 import os
@@ -32,7 +34,7 @@ from flask import Blueprint, jsonify, request
 
 from core.config import DATA_DIR
 from core.logger import get_logger
-from routes.mp_sec_routes import _check_auth_key, _call_wx_api
+from routes.mp_sec_routes import _check_auth_key, _call_wx_api, _do_msg_sec_check
 
 mp_game_bp = Blueprint('mp_game', __name__, url_prefix='/api/mp/game')
 logger = get_logger('system')
@@ -66,6 +68,10 @@ OPENID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 # 房间码:服务端生成的4位数字,join/answer/status/detail 由客户端回传
 ROOM_CODE_RE = re.compile(r'^\d{4}$')
 STAT_DEDUP_SECONDS = 10      # 同 openid+key 防脚本窗口(不是去重,产品要求重复测试照常+1)
+# 弹幕墙(「不止我一个」共鸣墙):wall_id 形如日期 20260906;留言≤50字,列表只回最近7天
+WALL_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
+ECHO_TEXT_MAX = 50
+ECHO_KEEP_DAYS = 7
 
 # 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
 # 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
@@ -185,6 +191,18 @@ def _db():
             key  TEXT PRIMARY KEY,
             name TEXT NOT NULL
         )''')
+        # 弹幕墙留言(「不止我一个」):每面墙按 wall_id(如日期 20260906)隔离,
+        # 列表只回最近7天;openid 仅存档用于限频/清理,绝不随列表下发
+        conn.execute('''CREATE TABLE IF NOT EXISTS echo_wall (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            wall_id  TEXT NOT NULL,
+            openid   TEXT NOT NULL,
+            nickname TEXT,
+            text     TEXT NOT NULL,
+            hugs     INTEGER NOT NULL DEFAULT 0,
+            ts       INTEGER NOT NULL
+        )''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_echo_wall ON echo_wall(wall_id, ts)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_rooms_expire ON rooms(expires_at)')
         yield conn
         conn.commit()
@@ -859,3 +877,88 @@ def stat_query():
     except Exception as e:
         error_logger.error(f'stat 查询异常: {e}')
         return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+# --------------------------------------------------------------------------
+# 四、弹幕墙（「不止我一个」共鸣墙）
+#    发布留言服务端强制再过一次 msgSecCheck(不信任客户端「已检测」的说法,
+#    否则绕过客户端直接打接口就能把未检内容塞进墙里);昵称复用成绩那套检测。
+#    「抱抱/xx人也这样」计数不新开接口:小程序走 /stat/inc,key 形如 echohug_<留言id>。
+# --------------------------------------------------------------------------
+@mp_game_bp.route('/echo', methods=['POST'])
+def echo_post():
+    """发布弹幕墙留言。body: {openid, wall_id, text, nickname?}。"""
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        wall_id = str(data.get('wall_id') or '').strip()
+        text = str(data.get('text') or '').strip()
+        if not openid or not wall_id or not text:
+            return jsonify({'success': False, 'message': '参数不完整'})
+        # openid 入库存档;wall_id/text 会回显给所有访问者,白名单+长度先拦
+        if not OPENID_RE.match(openid) or not WALL_ID_RE.match(wall_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
+        if len(text) > ECHO_TEXT_MAX:
+            return jsonify({'success': False, 'message': f'留言最多{ECHO_TEXT_MAX}字'})
+        if _rate_limited('echo', openid, 10, 60):
+            return jsonify({'success': False, 'message': '操作太频繁，请稍后再试'})
+        # 注入防护先拦一道(XSS/SQL注入模式),省一次微信检测额度
+        if not _field_safe(text):
+            return jsonify({'success': False, 'message': '内容含违规信息'})
+        # 内容安全:服务端自己送检(scene=2 评论),检测结果不信任客户端
+        try:
+            resp = _do_msg_sec_check(openid, text, 2)
+            checked = resp.get('errcode') == 0
+            safe = checked and (resp.get('result') or {}).get('suggest') == 'pass'
+        except Exception as e:
+            error_logger.warning(f'echo 留言送检异常(拒绝入库): {e}')
+            checked, safe = False, False
+        if not checked:
+            # 检测服务故障:宁可拒发也不放未检内容上墙(内容审核风险 > 体验)
+            return jsonify({'success': False, 'message': '内容检测暂不可用，请稍后再试'})
+        if not safe:
+            return jsonify({'success': False, 'message': '内容含违规信息'})
+
+        nickname = _check_nickname(str(data.get('nickname') or ''), openid)
+        with _db() as conn:
+            cur = conn.execute('''INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts)
+                VALUES (?, ?, ?, ?, 0, ?)''', (wall_id, openid, nickname, text, int(time.time())))
+            new_id = cur.lastrowid
+        return jsonify({'success': True, 'id': new_id})
+    except Exception as e:
+        error_logger.error(f'echo 发布异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/echo', methods=['GET'])
+def echo_list():
+    """弹幕墙留言列表。GET /echo?wall_id=20260906&limit=50(1~100,默认50)。
+
+    只回最近 ECHO_KEEP_DAYS 天,ts 倒序;openid 不出库(列表只有展示字段)。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        wall_id = (request.args.get('wall_id') or '').strip()
+        if not wall_id:
+            return jsonify({'success': False, 'message': '缺少 wall_id'})
+        if not WALL_ID_RE.match(wall_id):
+            return jsonify({'success': False, 'message': '参数格式不合法'})
+        limit = _parse_int(request.args.get('limit')) or 50
+        limit = max(1, min(limit, 100))
+        cutoff = int(time.time()) - ECHO_KEEP_DAYS * 86400
+        with _db() as conn:
+            rows = conn.execute('''SELECT id, text, nickname, hugs, ts FROM echo_wall
+                WHERE wall_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?''',
+                (wall_id, cutoff, limit)).fetchall()
+        return jsonify({'success': True,
+                        'list': [{'id': r['id'], 'text': r['text'],
+                                  'nickname': _safe_nick(r['nickname']),
+                                  'hugs': r['hugs'], 'ts': r['ts']} for r in rows]})
+    except Exception as e:
+        error_logger.error(f'echo 查询异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'})

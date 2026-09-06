@@ -200,6 +200,20 @@ def _wx_error_response(resp):
     }), 502
 
 
+def _do_msg_sec_check(openid, content, scene):
+    """调微信 msgSecCheck 2.0 检测文本,返回归一化后的响应 dict。
+
+    老协议违规码 87014(部分场景仍会返回)归一成 v2 形态 result.suggest='risky',
+    调用方只看 errcode 与 result.suggest,不必单独再处理 87014。
+    网络/凭证异常直接 raise,由调用方决定降级策略。
+    """
+    resp = _call_wx_api('/wxa/msg_sec_check', {
+        'version': 2, 'openid': openid, 'scene': scene, 'content': content})
+    if resp.get('errcode') == 87014:
+        resp = {'errcode': 0, 'result': {'suggest': 'risky', 'label': 21000}, 'detail': []}
+    return resp
+
+
 # --------------------------------------------------------------------------
 # 异步结果存储:trace_id → 状态(checking → pass/risky/review/error)
 # --------------------------------------------------------------------------
@@ -357,7 +371,8 @@ def msg_check():
     """文本同步检测(msgSecCheck 2.0)。
 
     body: {openid, content, scene?}(scene 1资料 2评论 3论坛 4社交日志,默认1)
-    返回: safe(仅 suggest==pass 为 true), suggest, label, label_name, detail
+    返回: safe(仅 suggest==pass 为 true;老协议违规码 87014 已归一为 safe=false),
+          suggest, label, label_name, detail
     """
     denied = _check_auth_key()
     if denied:
@@ -368,10 +383,15 @@ def msg_check():
         content = str(data.get('content') or '')
         if not content:
             return jsonify({'success': False, 'message': '缺少 content 参数'}), 400
-        scene = int(data.get('scene') or 1)
-        resp = _call_wx_api('/wxa/msg_sec_check', {
-            'version': 2, 'openid': openid, 'scene': scene, 'content': content,
-        })
+        # scene 固定枚举 1~4,服务端先拦(微信侧只会回难懂的 40129)
+        try:
+            scene = int(data.get('scene') or 1)
+        except (TypeError, ValueError):
+            scene = 0
+        if scene not in (1, 2, 3, 4):
+            return jsonify({'success': False,
+                            'message': 'scene 取值 1~4(1资料 2评论 3论坛 4社交日志)'}), 400
+        resp = _do_msg_sec_check(openid, content, scene)
         if resp.get('errcode') != 0:
             return _wx_error_response(resp)
         result = resp.get('result') or {}

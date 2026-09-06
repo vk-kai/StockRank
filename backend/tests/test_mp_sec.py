@@ -123,6 +123,14 @@ class MsgCheckTests(MpSecTestCase):
                                 json={'content': 'x', 'auth_key': 'key123'})
         self.assertEqual(resp.status_code, 400)
 
+    def test_invalid_scene_rejected(self):
+        # scene 固定枚举 1~4(传错微信侧回 40129),服务端先给干净的 400
+        for bad in (9, 0, '评论'):
+            resp = self.client.post('/api/mp/sec/msg-check',
+                                    json={'openid': 'oX', 'content': 'x', 'scene': bad,
+                                          'auth_key': 'key123'})
+            self.assertEqual(resp.status_code, 400, msg=repr(bad))
+
     def test_wechat_error_passed_through(self):
         self._ok_token()
         self.post_responses.append({'errcode': 61010, 'errmsg': 'code is expired'})
@@ -130,6 +138,19 @@ class MsgCheckTests(MpSecTestCase):
                                 json={'openid': 'oX', 'content': 'x', 'auth_key': 'key123'})
         self.assertEqual(resp.status_code, 502)
         self.assertEqual(resp.get_json()['errcode'], 61010)
+
+    def test_87014_normalized_to_risky(self):
+        # 老协议违规码 87014:按「检测不通过」(safe:false)而非接口错误,
+        # 否则小程序会把违规内容误判成「检测服务异常」
+        self._ok_token()
+        self.post_responses.append({'errcode': 87014, 'errmsg': 'content risky'})
+        resp = self.client.post('/api/mp/sec/msg-check',
+                                json={'openid': 'oX', 'content': 'x', 'auth_key': 'key123'})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body['success'])
+        self.assertFalse(body['safe'])
+        self.assertEqual(body['suggest'], 'risky')
 
 
 class MediaCheckFlowTests(MpSecTestCase):

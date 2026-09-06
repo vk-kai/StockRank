@@ -594,6 +594,18 @@ class StatsTests(MpAdminTestCase):
                               json={'password': 'pw', 'key': 'test_new'})
         self.assertEqual(r4.status_code, 404)
 
+    def test_echohug_keys_hidden_from_admin(self):
+        # 弹幕墙「抱抱」走 /stat/inc 的 echohug_<留言id> 技术计数:
+        # 每条留言一个key,量大且非业务内容 → 不进热力图/计数列表/导出条目口径
+        self._login()
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': 'echohug_7', 'openid': 'oA'})
+        d = self.client.get('/api/mp-admin/overview').get_json()['data']
+        self.assertNotIn('echohug_7', {i['key'] for i in d['hourly_top']['items']})
+        self.assertNotIn('echohug_7', {i['key'] for i in d['daily_top']['items']})
+        items = self.client.get('/api/mp-admin/stats').get_json()['data']['items']
+        self.assertNotIn('echohug_7', {i['key'] for i in items})
+
 
 class RoomsTests(MpAdminTestCase):
     def test_list_and_delete(self):

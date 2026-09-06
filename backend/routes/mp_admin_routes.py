@@ -215,12 +215,13 @@ def mp_admin_overview():
                 "SELECT strftime('%H', created_at, '+8 hours') AS h, COUNT(*) AS c FROM rooms "
                 "WHERE date(created_at, '+8 hours') = ? GROUP BY h", (today,))}
             # 今日热力:top15 计数key × 24小时(「12点哪个工具最热」),按今天总量排序
-            # article_* 是文章阅读计数(量大、口径与使用不同),不进测试/工具热力图,去数据管理列表看
+            # article_* 是文章阅读计数(量大、口径与使用不同),不进测试/工具热力图,去数据管理列表看;
+            # echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key),同理不进
             key_hour = {}
             for r in conn.execute(
                 "SELECT key, strftime('%H', ts, 'unixepoch', '+8 hours') AS h, COUNT(*) AS c "
                 "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') = ? "
-                "AND key NOT GLOB 'article_*' GROUP BY key, h",
+                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' GROUP BY key, h",
                 (today,)):
                 key_hour.setdefault(r['key'], {})[r['h']] = r['c']
             top_key_rows = sorted(key_hour.items(),
@@ -230,12 +231,12 @@ def mp_admin_overview():
                                 for k, hh in top_key_rows]
             hourly_top_max = max((c for _, hh in top_key_rows for c in hh.values()), default=0)
             # 近30天热力:top15 计数key × 30天(「哪天哪个测试/工具最热」),按30天总量排序
-            # 同上:article_* 阅读计数不进此图
+            # 同上:article_* 阅读计数与 echohug_* 技术计数不进此图
             key_day = {}
             for r in conn.execute(
                 "SELECT key, date(ts, 'unixepoch', '+8 hours') AS d, COUNT(*) AS c "
                 "FROM stat_log WHERE date(ts, 'unixepoch', '+8 hours') >= ? "
-                "AND key NOT GLOB 'article_*' GROUP BY key, d",
+                "AND key NOT GLOB 'article_*' AND key NOT GLOB 'echohug_*' GROUP BY key, d",
                 (day_from,)):
                 key_day.setdefault(r['key'], {})[r['d']] = r['c']
             top_key_day_rows = sorted(key_day.items(),
@@ -494,7 +495,10 @@ def mp_admin_quiz_rank():
 # --------------------------------------------------------------------------
 @mp_admin_bp.route('/stats', methods=['GET'])
 def mp_admin_stats():
-    """参与计数列表。?type=test|tool|article 按前缀过滤(测试/工具/文章),缺省全部。"""
+    """参与计数列表。?type=test|tool|article 按前缀过滤(测试/工具/文章),缺省全部。
+
+    echohug_* 是弹幕墙「抱抱」技术计数(每条留言一个key,量大且非业务内容),不列。
+    """
     resp = _require_admin()
     if resp:
         return resp
@@ -508,7 +512,8 @@ def mp_admin_stats():
                 'count': r['count'], 'updated_at': r['updated_at'],
             } for r in conn.execute('SELECT key, count, updated_at FROM stats '
                                     'ORDER BY count DESC, key')
-            if not prefix or r['key'].startswith(prefix)]
+            if (not prefix or r['key'].startswith(prefix))
+            and not r['key'].startswith('echohug_')]
         return jsonify({'success': True, 'data': {
             'items': items, 'total': len(items),
             'sum': sum(i['count'] for i in items),
@@ -792,9 +797,12 @@ def mp_admin_export():
                 'tools': sum(v for k, v in stat_counts.items() if k.startswith('tool_')),
                 'articles': sum(v for k, v in stat_counts.items()
                                 if k.startswith('article_')),
-                'key_total': len(stat_counts),
+                # echohug_*(弹幕墙抱抱技术计数)不算业务条目,否则「测试+工具+文章」口径失真
+                'key_total': sum(1 for k in stat_counts
+                                 if not k.startswith('echohug_')),
                 'active30': sum(1 for k in stat_counts
-                                if sum(key_day.get(k, {}).values()) > 0),
+                                if not k.startswith('echohug_')
+                                and sum(key_day.get(k, {}).values()) > 0),
             }
         # 综合排名与看板同源(60秒缓存)
         board = _overall_board_cached()
