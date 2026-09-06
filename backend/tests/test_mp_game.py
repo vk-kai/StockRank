@@ -807,7 +807,7 @@ class EchoSubPushTests(GameTestCase):
         self.assertFalse(r.get_json()['success'])
 
     def test_first_hug_pushes_to_author(self):
-        # 方案A:第一个抱抱就推;字段按「点赞提醒」模板映射,发送成功扣1条额度
+        # 方案B:首个抱抱立刻推;字段按「点赞提醒」模板映射,发送成功扣1条额度
         msg_id = self._post_msg(openid='oAuthor', text='今天也请为自己鼓掌')['id']
         self._sub('oAuthor')
         r = self._hug(msg_id, openid='oHugger')
@@ -818,7 +818,7 @@ class EchoSubPushTests(GameTestCase):
         self.assertEqual(p['touser'], 'oAuthor')
         self.assertEqual(p['template_id'], m.ECHO_HUG_TEMPLATE_ID)
         self.assertEqual(p['page'], 'pages/echoWall/echoWall')
-        self.assertEqual(p['miniprogram_state'], 'trial')
+        self.assertEqual(p['miniprogram_state'], 'formal')
         self.assertEqual(p['data']['thing3']['value'], '一位温暖的路人')
         self.assertEqual(p['data']['thing1']['value'], '今天也请为自己鼓掌')
         self.assertRegex(p['data']['time2']['value'], r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$')
@@ -868,15 +868,48 @@ class EchoSubPushTests(GameTestCase):
         self.assertEqual(len(self.sent), 1)
         self.assertEqual(self._quota('oA'), 1)
 
-    def test_each_new_hugger_pushes(self):
-        # 每个新抱抱者都推一次(第一个就推,额度逐条扣)
+    def test_milestone_batching(self):
+        # 方案B 防打扰:首个抱抱立刻推(一位温暖的路人);2~4 不推;
+        # 第5个跨里程碑5 → 叠加推「5位温暖的路人」;6~14 再静默
         msg_id = self._post_msg(openid='oA')['id']
         for _ in range(3):
             self._sub('oA')
         self._hug(msg_id, openid='h1')
         self._hug(msg_id, openid='h2')
+        self._hug(msg_id, openid='h3')
+        self._hug(msg_id, openid='h4')
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self._quota('oA'), 2)
+        self.assertEqual(self.sent[0]['data']['thing3']['value'], '一位温暖的路人')
+        self._hug(msg_id, openid='h5')              # 跨里程碑5
         self.assertEqual(len(self.sent), 2)
         self.assertEqual(self._quota('oA'), 1)
+        self.assertEqual(self.sent[1]['data']['thing3']['value'], '5位温暖的路人')
+        self._hug(msg_id, openid='h6')              # total=6,未跨15,静默
+        self.assertEqual(len(self.sent), 2)
+
+    def test_milestone_self_hug_records_silently(self):
+        # 自抱不推但里程碑照记:下次别人抱到6个时,不会补推过期的「5位」
+        msg_id = self._post_msg(openid='oA')['id']
+        self._sub('oA')
+        self._hug(msg_id, openid='oA')              # total=1,自抱,静默记账
+        self.assertEqual(self.sent, [])
+        self._hug(msg_id, openid='h2')              # total=2,里程碑1已被自抱记掉
+        self.assertEqual(self.sent, [])
+        for i in range(3, 6):                       # h3/h4/h5 → total=5
+            self._hug(msg_id, openid=f'h{i}')
+        self.assertEqual(len(self.sent), 1)         # 里程碑5正常推
+        self.assertEqual(self.sent[0]['data']['thing3']['value'], '5位温暖的路人')
+
+    def test_milestone_retry_when_no_quota(self):
+        # 无额度时里程碑不记账:下次抱抱(重新授权后)会重试同一档位
+        msg_id = self._post_msg(openid='oA')['id']
+        self._hug(msg_id, openid='h1')              # 无额度,跳过
+        self.assertEqual(self.sent, [])
+        self._sub('oA')
+        self._hug(msg_id, openid='h2')              # total=2,里程碑1仍在待推
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self.sent[0]['data']['thing3']['value'], '2位温暖的路人')
 
     def test_seed_message_no_push(self):
         # 种子留言无真实作者(is_seed=1):抱抱计数照常,不推送
