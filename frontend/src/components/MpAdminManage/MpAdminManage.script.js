@@ -2,7 +2,8 @@ import {
   getAuthSession,
   getMpAdminScores, mpAdminScoreUpdate, mpAdminScoreDelete, mpAdminScoreCreate,
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
-  getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData
+  getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData,
+  getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete
 } from '../../services/apiService'
 
 export default {
@@ -18,6 +19,10 @@ export default {
       statsType: 'test',   // 参与计数子分类:test测试 / tool工具 / article文章
       rooms: { items: [], page: 1, totalPages: 1, total: 0 },
       roomsDays: 7,
+      echo: { items: [], page: 1, totalPages: 1, total: 0 },
+      echoWall: '',
+      echoDays: 7,
+      echoCreate: { show: false, busy: false, wall_id: '', nickname: '', text: '' },
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -63,6 +68,7 @@ export default {
       if (tab === 'scores' && !this.scores.items.length) this.loadScores(1)
       if (tab === 'stats' && !this.stats.items.length) this.loadStats()
       if (tab === 'rooms' && !this.rooms.items.length) this.loadRooms(1)
+      if (tab === 'echo' && !this.echo.items.length) this.loadEcho(1)
     },
     switchStatsType(type) {
       if (this.statsType === type) return
@@ -118,6 +124,85 @@ export default {
       } catch (e) {
         this.showReqError(e, '加载失败')
       }
+    },
+    async loadEcho(page = 1) {
+      if (page < 1) return
+      try {
+        const res = await getMpAdminEcho({
+          page, pageSize: 20, days: this.echoDays,
+          wallId: this.echoWall.trim()
+        })
+        if (res && res.success) {
+          const d = res.data
+          this.echo = {
+            items: d.items,
+            page: d.page,
+            totalPages: d.total_pages,
+            total: d.total
+          }
+        }
+      } catch (e) {
+        this.showReqError(e, '加载失败')
+      }
+    },
+
+    // ---- 弹幕墙留言管理 ----
+    openEchoCreate() {
+      this.echoCreate = {
+        show: true, busy: false,
+        wall_id: this.echoWall.trim() || String(new Date().toISOString().slice(0, 10).replace(/-/g, '')),
+        nickname: '', text: ''
+      }
+    },
+    doEchoCreate() {
+      const s = this.echoCreate
+      if (!s.wall_id.trim()) { this.showToast('请填写 wall_id', 'error'); return }
+      if (!s.text.trim()) { this.showToast('请填写留言内容', 'error'); return }
+      if (s.text.trim().length > 50) { this.showToast('留言最多50字', 'error'); return }
+      this.openPwdModal('补录留言', `发布到墙 ${s.wall_id.trim()}(管理员内容,不过微信检测)`, async () => {
+        this.pwdModal.busy = true
+        try {
+          const res = await mpAdminEchoCreate(this.pwdModal.password, {
+            wall_id: s.wall_id.trim(),
+            text: s.text.trim(),
+            nickname: s.nickname.trim()
+          })
+          if (res && res.success) {
+            s.show = false
+            this.pwdModal.show = false
+            this.pwdModal.password = ''
+            s.text = ''
+            this.showToast('已发布', 'ok')
+            await this.loadEcho(1)
+          } else {
+            this.showToast((res && res.message) || '发布失败', 'error')
+          }
+        } catch (e) {
+          this.showReqError(e, '发布失败')
+        } finally {
+          this.pwdModal.busy = false
+        }
+      })
+    },
+    onEchoDelete(row) {
+      this.openPwdModal('删除留言', `删除「${row.text.slice(0, 20)}${row.text.length > 20 ? '…' : ''}」（抱抱 ${row.hugs}，不可恢复）`, async () => {
+        this.pwdModal.busy = true
+        try {
+          const res = await mpAdminEchoDelete(this.pwdModal.password, row.id)
+          if (res && res.success) {
+            this.pwdModal.show = false
+            this.pwdModal.password = ''
+            this.showToast('已删除', 'ok')
+            await this.loadEcho(this.echo.page)
+          } else {
+            this.showToast((res && res.message) || '删除失败', 'error')
+          }
+        } catch (e) {
+          this.showReqError(e, '删除失败')
+        } finally {
+          this.pwdModal.busy = false
+        }
+      })
     },
 
     // ---- 成绩新增/编辑/删除 ----

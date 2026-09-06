@@ -26,10 +26,12 @@
 """
 import os
 import json
+import re
 import time
 import uuid
 import hashlib
 import threading
+import unicodedata
 from datetime import datetime
 
 import requests
@@ -57,6 +59,37 @@ LABEL_NAMES = {
 IMAGE_EXTS = {'jpg', 'jpeg', 'png', 'bmp', 'gif'}
 AUDIO_EXTS = {'mp3', 'aac', 'ac3', 'wma', 'flac', 'wav', 'ogg', 'opus'}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 微信侧单文件上限 10M
+
+# --------------------------------------------------------------------------
+# 本地敏感词硬底线:msgSecCheck 对轻度辱骂可能判 pass(模型阈值/后台安全等级设置),
+# 实测有辱骂留言在 scene=2 下仍返回 suggest=pass,这层不依赖微信可用性与判定,
+# 先于微信调用本地拦截。词库保持克制——只收指向性辱骂/低俗,「废物/没用/去死」
+# 这类自我否定不拦(共鸣墙留言本来就常是自我倾诉,拦了误伤产品本意)。
+# --------------------------------------------------------------------------
+_LOCAL_BLOCK_CN = (
+    '傻逼', '傻b', '傻比', '煞笔', '煞逼', '傻笔', '傻批', '傻屄', '傻吊', '傻屌',
+    '傻叉', '傻缺', '二逼', '妈逼', '你妈逼', '你妈b', '尼玛', '草泥马', '操你妈',
+    '草你妈', '日你妈', '干你妈', '干你娘', '滚你妈', '你妈死了', '死全家', '婊子',
+    '婊砸', '娼妓', '骚逼', '贱逼', '贱比', '贱人', '贱货', '贱b', '杂种', '王八蛋',
+    '狗逼', '狗比', '狗娘养的', '脑残', '智障',
+)
+_LOCAL_BLOCK_EN = ('sb', 'nmsl', 'cnm', 'nmb', 'fuck')
+# 变体对抗:全角→半角(NFKC)、小写、去掉空白与常见分隔符(傻 逼/傻.逼/傻*逼 → 傻逼)
+_LOCAL_STRIP_RE = re.compile(
+    r'[\s·•.。,，、;；:：!！?？~\-—_#*\\/\|^$&@%()（）\[\]【】{}<>《》「」‘’“”\'"]+')
+# 拉丁词边界用 ASCII 环视:Python 的 \b 把中文也算 \w,「大sb」会漏;usb/sbti 不误伤
+_LOCAL_EN_RES = tuple(re.compile(rf'(?<![a-z0-9]){w}(?![a-z0-9])')
+                      for w in _LOCAL_BLOCK_EN)
+
+
+def local_text_blocked(text):
+    """文本命中本地敏感词返回 True。永远先于微信送检执行,不耗微信配额。"""
+    if not text:
+        return False
+    norm = unicodedata.normalize('NFKC', text).lower()
+    norm = _LOCAL_STRIP_RE.sub('', norm)
+    return any(w in norm for w in _LOCAL_BLOCK_CN) or \
+        any(r.search(norm) for r in _LOCAL_EN_RES)
 
 _token_lock = threading.Lock()
 _results_lock = threading.Lock()
@@ -209,6 +242,12 @@ def _do_msg_sec_check(openid, content, scene):
     """
     resp = _call_wx_api('/wxa/msg_sec_check', {
         'version': 2, 'openid': openid, 'scene': scene, 'content': content})
+    # 审计日志:只记判定与错误码,不记文本内容(隐私);排查「微信放行辱骂」靠它留证
+    logger.info(f'msgSecCheck: openid={openid[:6]}… scene={scene} '
+                f'errcode={resp.get("errcode")} '
+                f'suggest={(resp.get("result") or {}).get("suggest")} '
+                f'label={(resp.get("result") or {}).get("label")} '
+                f'trace_id={resp.get("trace_id")}')
     if resp.get('errcode') == 87014:
         resp = {'errcode': 0, 'result': {'suggest': 'risky', 'label': 21000}, 'detail': []}
     return resp
@@ -391,6 +430,12 @@ def msg_check():
         if scene not in (1, 2, 3, 4):
             return jsonify({'success': False,
                             'message': 'scene 取值 1~4(1资料 2评论 3论坛 4社交日志)'}), 400
+        # 本地敏感词硬底线:轻度辱骂微信可能判 pass,先拦且不耗微信配额
+        if local_text_blocked(content):
+            logger.info(f'msgSecCheck: 本地词库拦截 openid={openid[:6]}… scene={scene}')
+            return jsonify({'success': True, 'safe': False, 'suggest': 'risky',
+                            'label': 20003, 'label_name': '辱骂',
+                            'detail': [], 'trace_id': None, 'local': True})
         resp = _do_msg_sec_check(openid, content, scene)
         if resp.get('errcode') != 0:
             return _wx_error_response(resp)

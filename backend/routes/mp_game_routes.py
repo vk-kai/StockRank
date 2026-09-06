@@ -34,7 +34,9 @@ from flask import Blueprint, jsonify, request
 
 from core.config import DATA_DIR
 from core.logger import get_logger
-from routes.mp_sec_routes import _check_auth_key, _call_wx_api, _do_msg_sec_check
+from routes.mp_sec_routes import (
+    _check_auth_key, _call_wx_api, _do_msg_sec_check, local_text_blocked,
+)
 
 mp_game_bp = Blueprint('mp_game', __name__, url_prefix='/api/mp/game')
 logger = get_logger('system')
@@ -275,6 +277,10 @@ def _check_nickname(nickname, openid):
     # 命中XSS/SQL注入等模式直接回退默认昵称——顺带省一次检测额度
     if not _field_safe(nickname):
         logger.warning(f"昵称含攻击特征(回退默认): openid={openid[:6]}…")
+        return DEFAULT_NICKNAME
+    # 本地敏感词硬底线(轻度辱骂微信可能判 pass),先拦且不耗检测额度
+    if local_text_blocked(nickname):
+        logger.warning(f"昵称命中本地敏感词(回退默认): openid={openid[:6]}…")
         return DEFAULT_NICKNAME
     if nickname in _nick_ok_cache:
         return nickname
@@ -908,6 +914,11 @@ def echo_post():
         # 注入防护先拦一道(XSS/SQL注入模式),省一次微信检测额度
         if not _field_safe(text):
             return jsonify({'success': False, 'message': '内容含违规信息'})
+        # 本地敏感词硬底线:轻度辱骂微信 msgSecCheck 可能判 pass(实测),
+        # 不依赖微信可用性与判定,先拦——裸词/加空格/全角变体都拦
+        if local_text_blocked(text):
+            logger.info(f'echo 留言命中本地敏感词(拒绝): wall={wall_id} openid={openid[:6]}…')
+            return jsonify({'success': False, 'message': '内容含违规信息'})
         # 内容安全:服务端自己送检(scene=2 评论),检测结果不信任客户端
         try:
             resp = _do_msg_sec_check(openid, text, 2)
@@ -938,6 +949,8 @@ def echo_list():
     """弹幕墙留言列表。GET /echo?wall_id=20260906&limit=50(1~100,默认50)。
 
     只回最近 ECHO_KEEP_DAYS 天,ts 倒序;openid 不出库(列表只有展示字段)。
+    hugs 为实时抱抱数:从小程序走 /stat/inc 的 echohug_<留言id> 计数批量回填,
+    前端不必再拉一次 /stat 合并。
     """
     denied = _check_auth_key()
     if denied:
@@ -952,13 +965,21 @@ def echo_list():
         limit = max(1, min(limit, 100))
         cutoff = int(time.time()) - ECHO_KEEP_DAYS * 86400
         with _db() as conn:
-            rows = conn.execute('''SELECT id, text, nickname, hugs, ts FROM echo_wall
+            rows = conn.execute('''SELECT id, text, nickname, ts FROM echo_wall
                 WHERE wall_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?''',
                 (wall_id, cutoff, limit)).fetchall()
+            # 实时抱抱数:echohug_<留言id> 批量查一把(≤100个key,PK索引)
+            hug = {}
+            if rows:
+                keys = [f'echohug_{r["id"]}' for r in rows]
+                marks = ','.join('?' * len(keys))
+                hug = {r['key']: r['count'] for r in conn.execute(
+                    f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
         return jsonify({'success': True,
                         'list': [{'id': r['id'], 'text': r['text'],
                                   'nickname': _safe_nick(r['nickname']),
-                                  'hugs': r['hugs'], 'ts': r['ts']} for r in rows]})
+                                  'hugs': hug.get(f'echohug_{r["id"]}', 0),
+                                  'ts': r['ts']} for r in rows]})
     except Exception as e:
         error_logger.error(f'echo 查询异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})

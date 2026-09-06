@@ -131,6 +131,29 @@ class MsgCheckTests(MpSecTestCase):
                                           'auth_key': 'key123'})
             self.assertEqual(resp.status_code, 400, msg=repr(bad))
 
+    def test_local_wordlist_blocks_without_wx_call(self):
+        # 硬底线:轻度辱骂微信可能判 pass(实测),本地先拦且不发起任何微信请求(省配额)
+        for evil in ('你就是个傻逼', '我 傻 逼 你呢', '大sb', 'nmsl'):
+            resp = self.client.post('/api/mp/sec/msg-check',
+                                    json={'openid': 'oX', 'content': evil, 'scene': 2,
+                                          'auth_key': 'key123'})
+            self.assertEqual(resp.status_code, 200, msg=evil)
+            body = resp.get_json()
+            self.assertTrue(body['success'], msg=evil)
+            self.assertFalse(body['safe'], msg=evil)
+            self.assertTrue(body.get('local'), msg=evil)
+        self.assertEqual(self._wx_calls, [])   # 连 token 请求都没发
+
+    def test_local_wordlist_variants_and_no_false_positives(self):
+        # 变体全拦:加空格/标点分隔、全角拉丁
+        for evil in ('傻.逼', 'ＳＢ玩意', '你妈死了', 'f u c k', '贱人'):
+            self.assertTrue(m.local_text_blocked(evil), msg=evil)
+        # 不误伤:共鸣墙常是自我否定倾诉(产品本意),只拦指向性辱骂;
+        # 拉丁词不误伤 usb/sbti 这类正常串
+        for ok in ('我今天也是个废物', '有时觉得自己好没用', 'USB线坏了怎么办',
+                   '做个sbti人格测试', '气死我了想骂人'):
+            self.assertFalse(m.local_text_blocked(ok), msg=ok)
+
     def test_wechat_error_passed_through(self):
         self._ok_token()
         self.post_responses.append({'errcode': 61010, 'errmsg': 'code is expired'})

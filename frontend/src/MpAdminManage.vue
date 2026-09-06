@@ -22,6 +22,7 @@
         <span :class="['sub-tab', { active: tab === 'scores' }]" @click="switchTab('scores')">成绩记录</span>
         <span :class="['sub-tab', { active: tab === 'stats' }]" @click="switchTab('stats')">参与计数</span>
         <span :class="['sub-tab', { active: tab === 'rooms' }]" @click="switchTab('rooms')">PK房间</span>
+        <span :class="['sub-tab', { active: tab === 'echo' }]" @click="switchTab('echo')">弹幕墙</span>
       </nav>
 
       <!-- ===== 成绩记录 ===== -->
@@ -143,6 +144,45 @@
           <button :disabled="rooms.page >= rooms.totalPages" @click="loadRooms(rooms.page + 1)">下一页</button>
         </div>
       </section>
+
+      <!-- ===== 弹幕墙 ===== -->
+      <section v-if="tab === 'echo'" class="card">
+        <div class="toolbar">
+          <input v-model="echoWall" placeholder="按 wall_id 过滤，如 20260906" class="filter-input"
+                 @keyup.enter="loadEcho(1)" />
+          <select v-model.number="echoDays" class="count-input" @change="loadEcho(1)">
+            <option :value="7">近7天</option>
+            <option :value="30">近30天</option>
+            <option :value="0">全部</option>
+          </select>
+          <button class="gen-btn" @click="loadEcho(1)">查询</button>
+          <button class="gen-btn" @click="openEchoCreate">补录留言</button>
+        </div>
+        <div v-if="!echo.items.length" class="empty">暂无留言</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>ID</th><th>墙</th><th>留言</th><th>昵称</th><th>抱抱</th><th>发布时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in echo.items" :key="row.id">
+              <td class="code-text">{{ row.id }}</td>
+              <td class="code-text">{{ row.wall_id }}</td>
+              <td class="echo-text">{{ row.text }}</td>
+              <td>{{ row.nickname }} <small class="dim">{{ shortOpenid(row.openid) }}</small></td>
+              <td>🤗 {{ row.hugs }}</td>
+              <td>{{ fmtEpoch(row.ts) }}</td>
+              <td>
+                <button class="del-btn" @click="onEchoDelete(row)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="echo.totalPages > 1" class="pager">
+          <button :disabled="echo.page <= 1" @click="loadEcho(echo.page - 1)">上一页</button>
+          <span>{{ echo.page }} / {{ echo.totalPages }} 页 · 共 {{ echo.total }} 条</span>
+          <button :disabled="echo.page >= echo.totalPages" @click="loadEcho(echo.page + 1)">下一页</button>
+        </div>
+      </section>
     </div>
 
     <!-- 新增成绩弹窗 -->
@@ -179,6 +219,21 @@
           <button class="ok-btn" :disabled="scoreEdit.busy" @click="doScoreEdit">
             {{ scoreEdit.busy ? '处理中…' : '保存' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 补录留言弹窗 -->
+    <div v-if="echoCreate.show" class="pwd-overlay" @click.self="echoCreate.show = false">
+      <div class="pwd-card">
+        <h3>补录留言</h3>
+        <p class="pwd-desc">管理员内容不过微信检测，但本地敏感词/注入检测照拦</p>
+        <label class="edit-row">wall_id <input v-model="echoCreate.wall_id" placeholder="如 20260906" /></label>
+        <label class="edit-row">昵称 <input v-model="echoCreate.nickname" maxlength="12" placeholder="默认 匿名测试者" /></label>
+        <label class="edit-row">留言 <input v-model="echoCreate.text" maxlength="50" placeholder="最多50字" /></label>
+        <div class="pwd-actions">
+          <button class="cancel-btn" @click="echoCreate.show = false">取消</button>
+          <button class="ok-btn" @click="doEchoCreate">保存</button>
         </div>
       </div>
     </div>

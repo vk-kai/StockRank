@@ -13,6 +13,9 @@
   POST /api/mp-admin/stats/delete    删计数
   GET  /api/mp-admin/rooms           PK房间列表(分页,默认近7天;过期房间统一展示为已过期)
   POST /api/mp-admin/rooms/delete    删房间
+  GET  /api/mp-admin/echo            弹幕墙留言列表(分页,wall_id/days过滤,hugs=实时抱抱数)
+  POST /api/mp-admin/echo/create     补录留言(管理员内容,本地敏感词/注入检测照拦)
+  POST /api/mp-admin/echo/delete     删留言(连带清掉对应 echohug_ 计数)
   POST /api/mp-admin/cleanup-dev-data  清理开发联调脏数据(可重复执行)
 
 鉴权注意:url_prefix 必须是 /api/mp-admin 而不能挂 /api/mp/ 下——
@@ -31,9 +34,10 @@ from core.logger import get_logger
 from routes.auth_routes import is_authenticated, verify_password
 from routes.mp_game_routes import (
     _db, _rank_cache, _overall_cache, _overall_board_cached, _stat_cache,
-    STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME,
+    STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
     _field_safe, _safe_nick,
 )
+from routes.mp_sec_routes import local_text_blocked
 
 mp_admin_bp = Blueprint('mp_admin', __name__, url_prefix='/api/mp-admin')
 logger = get_logger('system')
@@ -656,6 +660,123 @@ def mp_admin_room_delete():
         return jsonify({'success': True, 'message': '已删除'})
     except Exception as e:
         error_logger.error(f'mp-admin room delete 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 六、弹幕墙留言管理（echo wall）
+# --------------------------------------------------------------------------
+@mp_admin_bp.route('/echo', methods=['GET'])
+def mp_admin_echo():
+    """弹幕墙留言列表。?wall_id= 过滤,?days= 时间窗(默认7,0=全部),分页;
+    hugs=实时抱抱数(通用计数 echohug_<留言id> 回填,与小程序 GET /echo 同口径)。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        wall_id = (request.args.get('wall_id') or '').strip()
+        page, page_size = _parse_page_args()
+        try:
+            days = int(request.args.get('days', 7))
+        except (TypeError, ValueError):
+            days = 7
+        where, params = [], []
+        if wall_id:
+            where.append('wall_id = ?')
+            params.append(wall_id)
+        if days > 0:
+            where.append('ts >= ?')
+            params.append(int(time.time()) - days * 86400)
+        cond = ('WHERE ' + ' AND '.join(where)) if where else ''
+        with _db() as conn:
+            total = conn.execute(f'SELECT COUNT(*) AS c FROM echo_wall {cond}',
+                                 params).fetchone()['c']
+            rows = conn.execute(
+                f'''SELECT id, wall_id, openid, nickname, text, ts FROM echo_wall {cond}
+                    ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?''',
+                params + [page_size, (page - 1) * page_size]).fetchall()
+            # 实时抱抱数:echohug_<留言id> 批量回填
+            hug = {}
+            if rows:
+                keys = [f'echohug_{r["id"]}' for r in rows]
+                marks = ','.join('?' * len(keys))
+                hug = {r['key']: r['count'] for r in conn.execute(
+                    f'SELECT key, count FROM stats WHERE key IN ({marks})', keys)}
+        items = [{'id': r['id'], 'wall_id': r['wall_id'], 'openid': r['openid'],
+                  'nickname': _safe_nick(r['nickname']), 'text': r['text'],
+                  'hugs': hug.get(f'echohug_{r["id"]}', 0), 'ts': r['ts']} for r in rows]
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': total, 'page': page, 'page_size': page_size,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo 列表异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/echo/create', methods=['POST'])
+def mp_admin_echo_create():
+    """补录留言(造氛围/补内容)。管理员内容不走微信送检(与补录成绩同口径),
+    但本地敏感词与注入检测照拦——墙上内容是公开回显的。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        resp = _require_password(data)
+        if resp:
+            return resp
+        wall_id = str(data.get('wall_id') or '').strip()
+        text = str(data.get('text') or '').strip()
+        nickname = str(data.get('nickname') or '').strip()
+        if not wall_id or not text:
+            return jsonify({'success': False, 'message': '缺少 wall_id 或 text'}), 400
+        if not WALL_ID_RE.match(wall_id):
+            return jsonify({'success': False, 'message': 'wall_id 格式不合法'}), 400
+        if len(text) > ECHO_TEXT_MAX:
+            return jsonify({'success': False, 'message': f'留言最多{ECHO_TEXT_MAX}字'}), 400
+        if not _field_safe(text) or local_text_blocked(text):
+            return jsonify({'success': False, 'message': '内容含违规信息'}), 400
+        if nickname and (not _field_safe(nickname) or local_text_blocked(nickname)):
+            nickname = ''
+        with _db() as conn:
+            cur = conn.execute('''INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts)
+                VALUES (?, ?, ?, ?, 0, ?)''',
+                (wall_id, 'admin', nickname or DEFAULT_NICKNAME, text, int(time.time())))
+            new_id = cur.lastrowid
+        logger.info(f'[mp-admin] 补录留言: wall={wall_id} id={new_id}')
+        return jsonify({'success': True, 'id': new_id})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo create 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/echo/delete', methods=['POST'])
+def mp_admin_echo_delete():
+    """删留言(按 id)。连带清掉对应 echohug_<id> 计数,避免留下孤儿计数条目。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        resp = _require_password(data)
+        if resp:
+            return resp
+        try:
+            msg_id = int(data.get('id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': '缺少 id'}), 400
+        hug_key = f'echohug_{msg_id}'
+        with _db() as conn:
+            cur = conn.execute('DELETE FROM echo_wall WHERE id = ?', (msg_id,))
+            if cur.rowcount == 0:
+                return jsonify({'success': False, 'message': '留言不存在'}), 404
+            conn.execute('DELETE FROM stats WHERE key = ?', (hug_key,))
+        _stat_cache.pop(hug_key, None)
+        logger.info(f'[mp-admin] 删除留言: id={msg_id}')
+        return jsonify({'success': True, 'message': '已删除'})
+    except Exception as e:
+        error_logger.error(f'mp-admin echo delete 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

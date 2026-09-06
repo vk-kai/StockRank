@@ -1322,6 +1322,32 @@ export async function mpAdminRoomDelete(password, roomCode) {
   return response.data
 }
 
+/** 弹幕墙留言列表(分页;wallId 过滤,days 默认7,0=全部;hugs=实时抱抱数) */
+export async function getMpAdminEcho({ wallId = '', page = 1, pageSize = 20, days = 7 } = {}) {
+  try {
+    const params = { page, page_size: pageSize, days }
+    if (wallId) params.wall_id = wallId
+    const response = await apiClient.get('/mp-admin/echo', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取弹幕墙留言失败:', error)
+    throw error
+  }
+}
+
+/** 补录留言:{password, wall_id, text, nickname?} */
+export async function mpAdminEchoCreate(password, payload) {
+  const response = await apiClient.post('/mp-admin/echo/create',
+    { ...payload, password })
+  return response.data
+}
+
+/** 删留言(连带清对应 echohug_ 计数) */
+export async function mpAdminEchoDelete(password, id) {
+  const response = await apiClient.post('/mp-admin/echo/delete', { password, id })
+  return response.data
+}
+
 /** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
 export async function mpAdminCleanupDevData(password) {
   const response = await apiClient.post('/mp-admin/cleanup-dev-data', { password })

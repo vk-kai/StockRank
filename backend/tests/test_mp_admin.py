@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -652,6 +653,61 @@ class RoomsTests(MpAdminTestCase):
         self.assertEqual(default['data']['items'][0]['state'], 'expired')
         all_days = self.client.get('/api/mp-admin/rooms?days=0').get_json()
         self.assertEqual(all_days['data']['total'], 2)
+
+
+class EchoAdminTests(MpAdminTestCase):
+    """弹幕墙留言管理:补录/列表(实时抱抱数)/删除(连带清 echohug_ 计数)。"""
+
+    def test_list_create_delete(self):
+        self._login()
+        r = self.client.post('/api/mp-admin/echo/create', json={
+            'password': 'pw', 'wall_id': '20260906', 'text': '管理员补录', 'nickname': '小编'
+        }).get_json()
+        self.assertTrue(r['success'])
+        admin_id = r['id']
+        # 补录辱骂被本地词库拦(管理员内容不走微信送检,但本地硬底线照拦)
+        bad = self.client.post('/api/mp-admin/echo/create', json={
+            'password': 'pw', 'wall_id': '20260906', 'text': '你就是个傻逼'})
+        self.assertEqual(bad.status_code, 400)
+        # 玩家留言直接入库(绕开需要微信送检的 /game/echo)+ 抱抱计数
+        with m._db() as conn:
+            cur = conn.execute(
+                "INSERT INTO echo_wall(wall_id, openid, nickname, text, hugs, ts) "
+                "VALUES ('20260906', 'oA', '甲', '玩家留言', 0, ?)", (int(time.time()),))
+            player_id = cur.lastrowid
+            conn.execute("INSERT INTO stats(key, count) VALUES (?, 3)",
+                         (f'echohug_{player_id}',))
+        d = self.client.get('/api/mp-admin/echo?wall_id=20260906').get_json()['data']
+        self.assertEqual(d['total'], 2)
+        by_id = {i['id']: i for i in d['items']}
+        self.assertEqual(by_id[player_id]['hugs'], 3)     # 实时抱抱数回填
+        self.assertEqual(by_id[player_id]['openid'], 'oA')
+        self.assertEqual(by_id[admin_id]['nickname'], '小编')
+        self.assertEqual(self.client.get('/api/mp-admin/echo?days=0')
+                         .get_json()['data']['total'], 2)
+        # 删除:连带清 echohug_ 计数,不留孤儿条目
+        r2 = self.client.post('/api/mp-admin/echo/delete',
+                              json={'password': 'pw', 'id': player_id}).get_json()
+        self.assertTrue(r2['success'])
+        with m._db() as conn:
+            self.assertIsNone(conn.execute('SELECT * FROM echo_wall WHERE id = ?',
+                                           (player_id,)).fetchone())
+            self.assertIsNone(conn.execute('SELECT * FROM stats WHERE key = ?',
+                                           (f'echohug_{player_id}',)).fetchone())
+        r3 = self.client.post('/api/mp-admin/echo/delete',
+                              json={'password': 'pw', 'id': player_id})
+        self.assertEqual(r3.status_code, 404)
+
+    def test_echo_write_requires_admin_and_password(self):
+        r0 = self.client.post('/api/mp-admin/echo/create',
+                              json={'password': 'pw', 'wall_id': 'w', 'text': 'x'})
+        self.assertEqual(r0.status_code, 401)             # 未登录
+        self._login()
+        r1 = self.client.post('/api/mp-admin/echo/create',
+                              json={'password': '', 'wall_id': 'w', 'text': 'x'})
+        self.assertEqual(r1.status_code, 401)             # 密码错
+        r2 = self.client.get('/api/mp-admin/echo')
+        self.assertEqual(r2.status_code, 200)             # 只读有登录即可
 
 
 class CleanupTests(MpAdminTestCase):

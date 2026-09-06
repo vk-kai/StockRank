@@ -591,6 +591,35 @@ class EchoWallTests(GameTestCase):
         self.assertFalse(r['success'])
         self.assertEqual(r['message'], '内容含违规信息')
 
+    def test_local_insult_blocked_even_if_wx_passes(self):
+        # 事故回归:微信对轻度辱骂实测返回 pass,本地敏感词硬底线照样拦
+        self._check()
+        for evil in ('你就是个傻逼', '我 傻 逼 你呢', 'nmsl'):
+            r = self._post(text=evil)
+            self.assertFalse(r['success'], msg=evil)
+            self.assertEqual(r['message'], '内容含违规信息')
+        self.assertEqual(self._list()['list'], [])
+
+    def test_hugs_filled_from_stat_counts(self):
+        # hugs 字段=实时抱抱数:从通用计数 echohug_<留言id> 回填,前端免二次 /stat
+        self._check()
+        msg_id = self._post(openid='oA', text='第一条')['id']
+        self._post(openid='oB', text='第二条')
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': f'echohug_{msg_id}', 'openid': 'h1'})
+        self.client.post('/api/mp/game/stat/inc',
+                         json={'key': f'echohug_{msg_id}', 'openid': 'h2'})
+        lst = {x['id']: x for x in self._list()['list']}
+        self.assertEqual(lst[msg_id]['hugs'], 2)
+        self.assertEqual(lst[msg_id]['text'], '第一条')
+
+    def test_nickname_local_insult_falls_back(self):
+        # 昵称命中本地敏感词:回退默认昵称(微信送检都可能放行,本地先拦)
+        self._check()
+        self._post(openid='oA', text='正文正常', nickname='大傻逼')
+        item = self._list()['list'][0]
+        self.assertEqual(item['nickname'], '匿名测试者')
+
     def test_bad_params(self):
         self._check()
         self.assertFalse(self._post(wall='')['success'])
