@@ -920,6 +920,10 @@ def stat_inc():
                     push_msg = conn.execute(
                         'SELECT openid, text FROM echo_wall WHERE id = ? AND is_seed = 0',
                         (int(msg_id),)).fetchone()
+                    if push_msg is None:
+                        logger.info(f'抱抱推送跳过: 留言不存在或是种子留言 id={msg_id}')
+                else:
+                    logger.info(f'抱抱推送跳过: key 非法(非数字留言id) key={key}')
         # 写库成功后才登记防刷窗口,失败可立即重试
         with _stat_lock:
             _stat_dedup[(openid, key)] = now
@@ -1010,16 +1014,22 @@ def _send_echo_hug_push(author_openid, msg_text, hugger_openid):
 
     作者有剩余额度才发,发送成功扣1条额度;自己抱自己/无额度/发送失败一律
     静默跳过(抱抱计数主流程不受影响)。thing 关键词上限20字,超长截断。
+    每个判定点都打日志:联调期靠日志定位「为什么没推」。
     """
     try:
         if not author_openid or author_openid == hugger_openid:
-            return                    # 自己抱自己不推(计数照常)
+            logger.info(f'抱抱推送跳过: 自己抱自己(计数照常) hugger={hugger_openid[:6]}…')
+            return
         sub_key = _subs_key(author_openid, ECHO_HUG_TEMPLATE_ID)
         with _db() as conn:
             row = conn.execute('SELECT count FROM stats WHERE key = ?', (sub_key,)).fetchone()
         if not row or row['count'] <= 0:
-            return                    # 未授权/额度用尽:静默跳过
+            logger.info(f'抱抱推送跳过: 作者无订阅额度(未授权或已用完) '
+                        f'author={author_openid[:6]}… hugger={hugger_openid[:6]}…')
+            return
         bj_now = datetime.now(timezone(timedelta(hours=8)))
+        logger.info(f'抱抱推送发送中: author={author_openid[:6]}… '
+                    f'hugger={hugger_openid[:6]}… quota={row["count"]} state={ECHO_HUG_PUSH_STATE}')
         resp = _call_wx_api('/cgi-bin/message/subscribe/send', {
             'touser': author_openid,
             'template_id': ECHO_HUG_TEMPLATE_ID,
@@ -1037,10 +1047,11 @@ def _send_echo_hug_push(author_openid, msg_text, hugger_openid):
                 conn.execute('''UPDATE stats SET count = count - 1,
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
                     WHERE key = ? AND count > 0''', (sub_key,))
-            logger.info(f'抱抱推送成功: to={author_openid[:6]}…')
+            logger.info(f'抱抱推送成功: to={author_openid[:6]}… (服务通知可查)')
         else:
             # 43101=用户未订阅/授权耗尽等:微信侧未消耗授权,本地额度不扣
-            logger.info(f'抱抱推送未发出(errcode={resp.get("errcode")}),静默跳过')
+            logger.info(f'抱抱推送未发出(errcode={resp.get("errmsg")}|{resp.get("errcode")}),'
+                        f'静默跳过 author={author_openid[:6]}…')
     except Exception as e:
         error_logger.warning(f'抱抱推送异常(静默跳过,不影响计数): {e}')
 
