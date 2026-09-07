@@ -615,8 +615,19 @@ def check_pending_orders(max_age_hours=PENDING_QUERY_MAX_HOURS, batch_limit=50):
     return handled
 
 
+def cleanup_expired_pending_orders():
+    """删除超过10分钟仍未支付的 pending 订单。"""
+    ten_mins_ago = (datetime.now() - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+    with _db() as conn:
+        cursor = conn.execute("DELETE FROM vpay_orders WHERE status = 'pending' AND created_at < ?", (ten_mins_ago,))
+        deleted = cursor.rowcount
+    if deleted > 0:
+        logger.info(f'虚拟支付:清理超过10分钟未支付订单 {deleted} 条')
+    return deleted
+
+
 def vpay_check_loop(interval=PENDING_CHECK_INTERVAL):
-    """后台线程:每 5 分钟兜底查单(推送丢失时补发货)。"""
+    """后台线程:每 5 分钟兜底查单(推送丢失时补发货),并清理超时未支付订单。"""
     from monitors.thread_monitor import register_thread, heartbeat
     register_thread('vpay_pending_checker')
     time.sleep(60)  # 启动避让,别与其他采集线程抢资源
@@ -624,6 +635,7 @@ def vpay_check_loop(interval=PENDING_CHECK_INTERVAL):
         heartbeat('vpay_pending_checker')
         try:
             check_pending_orders()
+            cleanup_expired_pending_orders()
         except Exception as e:
             error_logger.error(f'虚拟支付:兜底查单线程异常: {e}')
         time.sleep(interval)
