@@ -8,6 +8,7 @@ from core.logger import get_logger
 
 _last_morning_summary_date = None
 _last_afternoon_summary_date = None
+_last_cleanup_date = None
 # 板块资金采集窗口机制：每个5分钟区间(如 9:40-9:45)内，首轮失败后每分钟再试一次，
 # 每次内部仍尝试3次。只有进入下一个区间，上一个区间才算真正失败。
 _last_sector_window_start = None   # 当前正在重试的区间起点(整5分钟, 'YYYY-MM-DD HH:MM')
@@ -80,7 +81,7 @@ def should_generate_afternoon_summary(now):
     return False
 
 def data_collection_thread():
-    global _last_morning_summary_date, _last_afternoon_summary_date
+    global _last_morning_summary_date, _last_afternoon_summary_date, _last_cleanup_date
     global _last_sector_window_start, _sector_window_last_attempt, _sector_window_attempt_count, _sector_window_succeeded
     register_thread('data_collector')
     system_logger.info("启动数据采集线程，每5分钟采集一次数据，区间内失败每隔1分钟重试直到下一个5分钟点...")
@@ -99,7 +100,8 @@ def data_collection_thread():
             if trading_now:
                 refresh_market_summary_cache()
             
-            if current_hour == 0 and current_minute == 0:
+            # 每天 0 点清理任务（通过日期变更触发）
+            if _last_cleanup_date != today:
                 yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
                 
                 if _last_afternoon_summary_date != yesterday:
@@ -113,13 +115,14 @@ def data_collection_thread():
                         else:
                             data_summary_logger.error(f"生成昨天({yesterday})的每日汇总失败")
                     
-                    cleanup_result = cleanup_old_data()
-                    if cleanup_result['cleaned']:
-                        cleanup_logger.info(f"资金流向数据清理完成: 每日数据 {cleanup_result['daily_deleted']} 个, "
-                                          f"实时数据 {cleanup_result['realtime_deleted']} 个, "
-                                          f"释放空间 {cleanup_result['freed_bytes']} 字节")
-                    else:
-                        cleanup_logger.info(f"资金流向数据无需清理: {cleanup_result['reason']}")
+                cleanup_result = cleanup_old_data()
+                if cleanup_result['cleaned']:
+                    cleanup_logger.info(f"资金流向数据清理完成: 每日数据 {cleanup_result['daily_deleted']} 个, "
+                                      f"实时数据 {cleanup_result['realtime_deleted']} 个, "
+                                      f"释放空间 {cleanup_result['freed_bytes']} 字节")
+                else:
+                    cleanup_logger.info(f"资金流向数据无需清理: {cleanup_result['reason']}")
+                _last_cleanup_date = today
             
             if should_generate_morning_summary(now):
                 data_summary_logger.info(f"上午收盘后生成今日({today})的上午汇总...")

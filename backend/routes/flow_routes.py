@@ -508,21 +508,12 @@ def get_current_flow():
                 })
 
             system_logger.warning("No cached flow data; skipped synchronous crawl in /api/flow/current")
-            new_data = []
-            if new_data:
-                return jsonify({
-                    'success': True,
-                    'data': new_data,
-                    'timestamp': datetime.now().astimezone().isoformat(),
-                    'message': '交易时间，成功获取最新板块数据'
-                })
-            else:
-                return jsonify({
-                    'success': True,
-                    'data': [],
-                    'timestamp': datetime.now().astimezone().isoformat(),
-                    'message': '交易时间，无可用数据'
-                })
+            return jsonify({
+                'success': True,
+                'data': [],
+                'timestamp': datetime.now().astimezone().isoformat(),
+                'message': '交易时间，无可用数据'
+            })
     except Exception as e:
         error_logger.error(f"API /api/flow/current 异常: {e}")
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")

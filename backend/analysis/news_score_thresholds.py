@@ -72,4 +72,8 @@ def compute_overall_score(pos_scores, neg_scores):
         return round(50 + (total_positive - total_negative) / directional * 50)
 
     all_scores = pos + neg
+    # 为了真正避免小样本产生极端分，补充 (MIN_DIRECTIONAL_SAMPLES - directional) 个 50 分作为中性锚点
+    dummy_count = MIN_DIRECTIONAL_SAMPLES - directional
+    if dummy_count > 0:
+        all_scores.extend([50.0] * dummy_count)
     return round(sum(all_scores) / len(all_scores))

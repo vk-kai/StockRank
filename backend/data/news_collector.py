@@ -532,43 +532,43 @@ def news_collection_thread():
             current_hour = now.hour
             current_minute = now.minute
 
-            # 每晚8点自动触发新闻热点总结
-            if current_hour == 20 and current_minute == 0:
+            # 每晚20点自动触发新闻热点总结（留有一定的容差范围）
+            if current_hour == 20:
                 if _last_news_summary_date != today:
                     _last_news_summary_date = today
                     try:
                         _run_news_summary(auto=True)
                     except Exception as e:
-                        error_logger.error(f"每晚11点自动新闻总结失败: {e}")
+                        error_logger.error(f"每晚20点自动新闻总结失败: {e}")
 
-            if current_hour == 0 and current_minute == 0:
-                if _last_cleanup_date != today:
-                    cleanup_logger.info("开始执行每日清理任务...")
-                    
-                    # 清理新闻数据
-                    news_cleanup_result = cleanup_old_news()
-                    if news_cleanup_result['cleaned']:
-                        cleanup_logger.info(f"新闻数据清理完成: 删除 {news_cleanup_result['deleted_count']} 个文件，"
-                                          f"释放空间 {news_cleanup_result['freed_bytes']} 字节")
-                    else:
-                        cleanup_logger.info(f"新闻数据无需清理: {news_cleanup_result['reason']}")
-                    
-                    # 清理新闻AI分析缓存（每天凌晨清空）
-                    ai_cache_cleaned = clear_news_analysis_cache()
-                    if ai_cache_cleaned:
-                        cleanup_logger.info("新闻AI分析缓存已清空，第二天将重新分析")
-                    else:
-                        cleanup_logger.info("新闻AI分析缓存清理失败或无需清理")
-                    
-                    # 清理日志文件
-                    log_cleanup_result = cleanup_old_logs(hours=48)
-                    if log_cleanup_result:
-                        cleanup_logger.info(f"日志文件清理完成: 删除 {len(log_cleanup_result)} 个文件: {', '.join(log_cleanup_result)}")
-                    else:
-                        cleanup_logger.info("日志文件无需清理: 无过期文件")
-                    
-                    _last_cleanup_date = today
-                    cleanup_logger.info("每日清理任务执行完成")
+            # 每天 0 点清理任务（通过日期变更触发）
+            if _last_cleanup_date != today:
+                cleanup_logger.info("开始执行每日清理任务...")
+                
+                # 清理新闻数据
+                news_cleanup_result = cleanup_old_news()
+                if news_cleanup_result['cleaned']:
+                    cleanup_logger.info(f"新闻数据清理完成: 删除 {news_cleanup_result['deleted_count']} 个文件，"
+                                      f"释放空间 {news_cleanup_result['freed_bytes']} 字节")
+                else:
+                    cleanup_logger.info(f"新闻数据无需清理: {news_cleanup_result['reason']}")
+                
+                # 清理新闻AI分析缓存（每天凌晨清空）
+                ai_cache_cleaned = clear_news_analysis_cache()
+                if ai_cache_cleaned:
+                    cleanup_logger.info("新闻AI分析缓存已清空，第二天将重新分析")
+                else:
+                    cleanup_logger.info("新闻AI分析缓存清理失败或无需清理")
+                
+                # 清理日志文件
+                log_cleanup_result = cleanup_old_logs(hours=48)
+                if log_cleanup_result:
+                    cleanup_logger.info(f"日志文件清理完成: 删除 {len(log_cleanup_result)} 个文件: {', '.join(log_cleanup_result)}")
+                else:
+                    cleanup_logger.info("日志文件无需清理: 无过期文件")
+                
+                _last_cleanup_date = today
+                cleanup_logger.info("每日清理任务执行完成")
             
             news_data = get_news_data(page=1, pagesize=30)
             

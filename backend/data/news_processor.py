@@ -263,11 +263,19 @@ def cleanup_old_news():
         result['reason'] = f"清理失败: {str(e)}"
         return result
 
-def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_time=None):
+_news_memory_cache = {
+    'time': 0,
+    'data': []
+}
+
+def _get_all_unique_news_cached():
+    import time
+    now = time.time()
+    if now - _news_memory_cache['time'] < 30 and _news_memory_cache['data']:
+        return _news_memory_cache['data']
+
     ensure_news_dir()
-    
     all_news = []
-    
     try:
         for filename in os.listdir(NEWS_DIR):
             if filename.endswith('.json'):
@@ -277,15 +285,9 @@ def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_
                         continue
                     with open(file_path, 'r', encoding='utf-8') as f:
                         news_data = json.load(f)
-                        
-                        if not isinstance(news_data, list):
-                            continue
-                        
-                        all_news.extend(news_data)
-                except json.JSONDecodeError:
-                    continue
-                except Exception as e:
-                    error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
+                        if isinstance(news_data, list):
+                            all_news.extend(news_data)
+                except Exception:
                     continue
         
         seen_keys = set()
@@ -298,7 +300,7 @@ def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_
                 if news_key not in seen_keys:
                     seen_keys.add(news_key)
                     unique_news.append(news)
-        
+                    
         def get_sort_time(news):
             time_val = news.get('time', 0)
             if isinstance(time_val, str) and time_val.isdigit():
@@ -306,8 +308,19 @@ def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_
             elif isinstance(time_val, (int, float)):
                 return int(time_val)
             return 0
-        
+            
         unique_news.sort(key=get_sort_time, reverse=True)
+        
+        _news_memory_cache['data'] = unique_news
+        _news_memory_cache['time'] = now
+        return unique_news
+    except Exception as e:
+        error_logger.error(f"读取新闻文件缓存失败: {e}")
+        return []
+
+def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_time=None):
+    try:
+        unique_news = _get_all_unique_news_cached()
         
         if importance is not None:
             unique_news = [news for news in unique_news if news.get('importance') == importance]
@@ -320,7 +333,16 @@ def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_
                 if end_time is not None and t >= end_time:
                     return False
                 return True
-            unique_news = [news for news in unique_news if _in_range(get_sort_time(news))]
+                
+            def _get_sort_time(news):
+                time_val = news.get('time', 0)
+                if isinstance(time_val, str) and time_val.isdigit():
+                    return int(time_val)
+                elif isinstance(time_val, (int, float)):
+                    return int(time_val)
+                return 0
+                
+            unique_news = [news for news in unique_news if _in_range(_get_sort_time(news))]
 
         total_count = len(unique_news)
         
@@ -345,8 +367,6 @@ def get_recent_news(page=1, page_size=40, importance=None, start_time=None, end_
         }
 
 def search_news(keyword, page=1, page_size=40, importance=None):
-    ensure_news_dir()
-    
     if not keyword or not keyword.strip():
         return {
             'news': [],
@@ -357,38 +377,9 @@ def search_news(keyword, page=1, page_size=40, importance=None):
         }
     
     keyword = keyword.strip().lower()
-    all_news = []
     
     try:
-        for filename in os.listdir(NEWS_DIR):
-            if filename.endswith('.json'):
-                file_path = os.path.join(NEWS_DIR, filename)
-                try:
-                    if os.path.getsize(file_path) == 0:
-                        continue
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        news_data = json.load(f)
-                        
-                        if not isinstance(news_data, list):
-                            continue
-                        
-                        all_news.extend(news_data)
-                except json.JSONDecodeError:
-                    continue
-                except Exception as e:
-                    error_logger.error(f"读取新闻文件失败 ({filename}): {e}")
-                    continue
-        
-        seen_keys = set()
-        unique_news = []
-        for news in all_news:
-            news_title = news.get('title', '').strip()
-            news_content = news.get('content', '').strip()
-            if news_title and news_content:
-                news_key = (news_title, news_content)
-                if news_key not in seen_keys:
-                    seen_keys.add(news_key)
-                    unique_news.append(news)
+        unique_news = _get_all_unique_news_cached()
         
         search_results = []
         for news in unique_news:
@@ -400,16 +391,6 @@ def search_news(keyword, page=1, page_size=40, importance=None):
                 # 检查重要性筛选
                 if importance is None or news.get('importance') == importance:
                     search_results.append(news)
-        
-        def get_sort_time(news):
-            time_val = news.get('time', 0)
-            if isinstance(time_val, str) and time_val.isdigit():
-                return int(time_val)
-            elif isinstance(time_val, (int, float)):
-                return int(time_val)
-            return 0
-        
-        search_results.sort(key=get_sort_time, reverse=True)
         
         total_count = len(search_results)
         
