@@ -293,10 +293,10 @@ export default {
           valueFormatter: (v) => (v == null ? '-' : v)
         },
         legend: {
-          top: 0, right: 8, itemWidth: 14, itemHeight: 8,
+          top: 0, left: 'center', itemWidth: 14, itemHeight: 8,
           textStyle: { color: AXIS_LABEL, fontSize: 11 }
         },
-        grid: { left: 10, right: 16, top: 30, bottom: 10, containLabel: true },
+        grid: { left: 10, right: 16, top: 40, bottom: 10, containLabel: true },
         xAxis: {
           type: 'category',
           data: d.days.map(x => x.slice(5)),
@@ -306,15 +306,15 @@ export default {
         },
         yAxis: [
           {
-            type: 'value', name: '笔数', minInterval: 1,
+            type: 'value', name: '笔数', minInterval: 1, alignTicks: true,
             nameTextStyle: { color: AXIS_LABEL, fontSize: 11 },
-            axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+            axisLabel: { color: AXIS_LABEL, fontSize: 11, formatter: '{value} 笔' },
             splitLine: SPLIT_LINE
           },
           {
-            type: 'value', name: '收入(元)',
+            type: 'value', name: '收入(元)', alignTicks: true,
             nameTextStyle: { color: AXIS_LABEL, fontSize: 11 },
-            axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+            axisLabel: { color: AXIS_LABEL, fontSize: 11, formatter: '¥{value}' },
             splitLine: { show: false }
           }
         ],
