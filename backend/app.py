@@ -12,7 +12,7 @@ from data.data_collector import data_collection_thread as data_collection_func
 from data.news_collector import news_collection_thread as news_collection_func, init_news_data
 from data.margin_collector import margin_collection_thread as margin_collection_func
 from monitors.health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
-from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp
 from routes.auth_routes import install_auth_guard
 from core.session_secret import load_session_secret
 from monitors.thread_monitor import get_all_status, register_thread
@@ -86,6 +86,7 @@ def create_app():
     app.register_blueprint(mp_sec_bp)
     app.register_blueprint(mp_game_bp)
     app.register_blueprint(mp_admin_bp)
+    app.register_blueprint(mp_vpay_bp)
     install_auth_guard(app)
     
     # ==================== SocketIO 事件 ====================
@@ -264,7 +265,12 @@ if __name__ == '__main__':
         from monitors.stock_price_monitor import stock_price_loop
         threading.Thread(target=stock_price_loop, daemon=True).start()
         system_logger.info("价格异动监控线程已启动")
-        
+
+        # 虚拟支付兜底查单线程:每5分钟扫描 pending 订单,推送丢失时补发货
+        from routes.mp_vpay_routes import vpay_check_loop
+        threading.Thread(target=vpay_check_loop, daemon=True).start()
+        system_logger.info("虚拟支付兜底查单线程已启动")
+
         system_logger.info("Flask-SocketIO服务器启动")
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
         

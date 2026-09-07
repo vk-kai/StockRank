@@ -242,12 +242,15 @@ def _do_msg_sec_check(openid, content, scene):
     """
     resp = _call_wx_api('/wxa/msg_sec_check', {
         'version': 2, 'openid': openid, 'scene': scene, 'content': content})
-    # 审计日志:只记判定与错误码,不记文本内容(隐私);排查「微信放行辱骂」靠它留证
-    logger.info(f'msgSecCheck: openid={openid[:6]}… scene={scene} '
-                f'errcode={resp.get("errcode")} '
-                f'suggest={(resp.get("result") or {}).get("suggest")} '
-                f'label={(resp.get("result") or {}).get("label")} '
-                f'trace_id={resp.get("trace_id")}')
+    # 审计日志:只记判定与错误码,不记文本内容(隐私);pass 降 debug 降噪,
+    # risky/errcode 异常保留 info 留证(排查「微信放行辱骂」靠它)
+    suggest = (resp.get('result') or {}).get('suggest')
+    log = logger.debug if resp.get('errcode') == 0 and suggest == 'pass' else logger.info
+    log(f'msgSecCheck: openid={openid[:6]}… scene={scene} '
+        f'errcode={resp.get("errcode")} '
+        f'suggest={suggest} '
+        f'label={(resp.get("result") or {}).get("label")} '
+        f'trace_id={resp.get("trace_id")}')
     if resp.get('errcode') == 87014:
         resp = {'errcode': 0, 'result': {'suggest': 'risky', 'label': 21000}, 'detail': []}
     return resp
@@ -616,16 +619,24 @@ def callback_receive():
     if not _check_push_signature(request.args):
         logger.warning('内容安全回调签名校验失败,已拒绝')
         return 'forbidden', 403
+    raw = request.get_data(as_text=True) or ''
+    trimmed = raw.strip()
+    # 虚拟支付发货/退款推送为 XML 格式(与 JSON 模式共用同一消息推送URL),分流到 vpay 模块处理
+    if trimmed.startswith('<'):
+        from routes.mp_vpay_routes import handle_xpay_push_request
+        return handle_xpay_push_request(trimmed)
     try:
         data = request.get_json(silent=True)
         if data is None:
-            raw = request.get_data(as_text=True) or ''
-            data = json.loads(raw) if raw.strip().startswith('{') else {}
+            data = json.loads(trimmed) if trimmed.startswith('{') else {}
     except Exception:
         data = {}
     event = (data or {}).get('Event') or (data or {}).get('event') or ''
     if event == 'wxa_media_check' or data.get('trace_id'):
         _apply_callback_result(data or {})
+    elif str(event).startswith('xpay_'):
+        from routes.mp_vpay_routes import handle_xpay_push
+        return handle_xpay_push(data or {}, was_xml=False)
     else:
-        logger.info(f'收到未处理的消息推送事件: {event or "(无Event)"}')
+        logger.debug(f'收到未处理的消息推送事件: {event or "(无Event)"}')
     return 'success', 200

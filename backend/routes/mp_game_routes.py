@@ -928,7 +928,7 @@ def stat_inc():
                         'SELECT openid, text, hugs FROM echo_wall WHERE id = ? AND is_seed = 0',
                         (int(msg_id),)).fetchone()
                     if row is None:
-                        logger.info(f'抱抱推送跳过: 留言不存在或是种子留言 id={msg_id}')
+                        logger.debug(f'抱抱推送跳过: 留言不存在或是种子留言 id={msg_id}')
                     else:
                         real_cnt = conn.execute(
                             'SELECT COUNT(*) AS c FROM echo_hugs WHERE hug_key = ?',
@@ -1041,23 +1041,23 @@ def _send_echo_hug_push(author_openid, msg_text, msg_id, total_hugs, hugger_open
         reached = max((m for m in ECHO_HUG_MILESTONES if last_mile < m <= total_hugs),
                       default=None)
         if reached is None:
-            logger.info(f'抱抱推送跳过: 未跨里程碑 total={total_hugs} 已记={last_mile} '
-                        f'hugger={hugger_openid[:6]}…')
+            logger.debug(f'抱抱推送跳过: 未跨里程碑 total={total_hugs} 已记={last_mile} '
+                         f'hugger={hugger_openid[:6]}…')
             return
         if author_openid == hugger_openid:
             # 自抱不推,但里程碑照记,避免下次抱抱推出过期数字
             with _db() as conn:
                 conn.execute(_MILE_UPSERT_SQL, (mile_key, reached))
-            logger.info(f'抱抱推送跳过: 自己抱自己,里程碑{reached}已默默记账')
+            logger.debug(f'抱抱推送跳过: 自己抱自己,里程碑{reached}已默默记账')
             return
         if not row or row['count'] <= 0:
             # 额度未记里程碑:等下次抱抱(作者可能重新授权)再重试同一档位
-            logger.info(f'抱抱推送跳过: 作者无订阅额度(未授权或已用完) '
-                        f'author={author_openid[:6]}… milestone={reached}(暂记,下次重试)')
+            logger.debug(f'抱抱推送跳过: 作者无订阅额度(未授权或已用完) '
+                         f'author={author_openid[:6]}… milestone={reached}(暂记,下次重试)')
             return
         bj_now = datetime.now(timezone(timedelta(hours=8)))
-        logger.info(f'抱抱推送发送中: author={author_openid[:6]}… total={total_hugs} '
-                    f'quota={row["count"]} state={ECHO_HUG_PUSH_STATE}')
+        logger.debug(f'抱抱推送发送中: author={author_openid[:6]}… total={total_hugs} '
+                     f'quota={row["count"]} state={ECHO_HUG_PUSH_STATE}')
         resp = _call_wx_api('/cgi-bin/message/subscribe/send', {
             'touser': author_openid,
             'template_id': ECHO_HUG_TEMPLATE_ID,
@@ -1077,7 +1077,7 @@ def _send_echo_hug_push(author_openid, msg_text, msg_id, total_hugs, hugger_open
                     updated_at = CAST(strftime('%s','now') AS INTEGER)
                     WHERE key = ? AND count > 0''', (sub_key,))
                 conn.execute(_MILE_UPSERT_SQL, (mile_key, reached))
-            logger.info(f'抱抱推送成功: to={author_openid[:6]}… 累计{total_hugs}个抱抱')
+            logger.debug(f'抱抱推送成功: to={author_openid[:6]}… 累计{total_hugs}个抱抱')
         else:
             # 43101=用户未订阅/授权耗尽等:微信侧未消耗授权,本地额度不扣、里程碑不记
             logger.info(f'抱抱推送未发出(errcode={resp.get("errmsg")}|{resp.get("errcode")}),'
