@@ -1258,6 +1258,42 @@ export async function getMpAdminQuizRank({ quizId, page = 1, pageSize = 20 } = {
   }
 }
 
+/** 虚拟支付(去广告终身卡)看板:收入汇总 + 近30天趋势 + 订单明细(分页)。
+ *  env='0' 只统计正式环境订单;'all' 含沙箱联调单 */
+export async function getMpAdminVpay({ page = 1, pageSize = 10, env = '0' } = {}) {
+  try {
+    const params = { page, page_size: pageSize, env }
+    const response = await apiClient.get('/mp-admin/vpay', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取虚拟支付看板失败:', error)
+    throw error
+  }
+}
+
+/** 退款撤销已支付订单(收回去广告权益;仅本地记录,不发起微信真实退款) */
+export async function mpAdminVpayRevoke(outTradeNo) {
+  const response = await apiClient.post('/mp-admin/vpay/revoke', { out_trade_no: outTradeNo })
+  return response.data
+}
+
+/** 删除待支付/已关闭的垃圾订单记录 */
+export async function mpAdminVpayDeleteOrder(outTradeNo) {
+  const response = await apiClient.post('/mp-admin/vpay/delete', { out_trade_no: outTradeNo })
+  return response.data
+}
+
+/** 导出虚拟支付订单Excel(blob):用户ID/购买时间/金额/状态 */
+export async function exportMpAdminVpay(env = '0') {
+  try {
+    return await apiClient.get('/mp-admin/vpay/export',
+      { params: { env }, responseType: 'blob', timeout: 60000 })
+  } catch (error) {
+    console.error('导出虚拟支付Excel失败:', error)
+    throw error
+  }
+}
+
 /** 新增成绩:{password, quiz_id, openid, nickname, score, full_score, duration_ms} */
 export async function mpAdminScoreCreate(payload) {
   const response = await apiClient.post('/mp-admin/scores/create', payload)

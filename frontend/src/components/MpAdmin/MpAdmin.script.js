@@ -1,5 +1,8 @@
 import * as echarts from 'echarts'
-import { getAuthSession, getMpAdminOverview, getMpAdminQuizRank, exportMpAdminReport } from '../../services/apiService'
+import {
+  getAuthSession, getMpAdminOverview, getMpAdminQuizRank, getMpAdminVpay,
+  mpAdminVpayRevoke, mpAdminVpayDeleteOrder, exportMpAdminVpay, exportMpAdminReport
+} from '../../services/apiService'
 
 // 图表公共暗色样式(与 HouseKline/首页一致)
 const AXIS_LINE = '#3a4a6b'
@@ -27,6 +30,13 @@ export default {
       hourlyChart: null,
       hourlyTopChart: null,
       dailyTopChart: null,
+      // 虚拟支付(去广告终身卡)看板
+      vpay: null,
+      vpayLoading: false,
+      vpayError: null,
+      vpayAllEnv: false,   // true = 含沙箱联调单(env=1)
+      vpayChart: null,
+      vpayExporting: false,
       // 测试排行榜弹窗(点开测试名查看)
       rankModal: {
         show: false, loading: false, error: null,
@@ -60,6 +70,10 @@ export default {
     // 文章阅读榜(article_* 与测试/工具同接口,仅前缀不同)
     articleCounts() {
       return (this.overview && this.overview.article_counts) || []
+    },
+    // 终身卡现价(分→元,读自后台商品配置)
+    vpayPriceYuan() {
+      return this.vpay && this.vpay.product ? this.fen2yuan(this.vpay.product.goods_price) : '--'
     }
   },
   async mounted() {
@@ -71,6 +85,7 @@ export default {
       if (this.hourlyChart) this.hourlyChart.resize()
       if (this.hourlyTopChart) this.hourlyTopChart.resize()
       if (this.dailyTopChart) this.dailyTopChart.resize()
+      if (this.vpayChart) this.vpayChart.resize()
     }
     window.addEventListener('resize', this._onResize)
     try {
@@ -78,6 +93,7 @@ export default {
       this.isAdmin = !!(session && session.is_admin)
       if (this.isAdmin) {
         await this.fetchOverview()
+        this.loadVpay(1)   // 支付区块独立加载,不阻塞主看板
       }
     } catch (e) {
       this.isAdmin = false
@@ -95,6 +111,7 @@ export default {
     if (this.hourlyChart) { this.hourlyChart.dispose(); this.hourlyChart = null }
     if (this.hourlyTopChart) { this.hourlyTopChart.dispose(); this.hourlyTopChart = null }
     if (this.dailyTopChart) { this.dailyTopChart.dispose(); this.dailyTopChart = null }
+    if (this.vpayChart) { this.vpayChart.dispose(); this.vpayChart = null }
   },
   methods: {
     goBack() {
@@ -173,6 +190,145 @@ export default {
       } catch (e) {
         return s
       }
+    },
+    // ---- 虚拟支付(去广告终身卡)看板 ----
+    async loadVpay(page) {
+      if (this.vpayLoading) return
+      this.vpayLoading = true
+      this.vpayError = null
+      try {
+        const res = await getMpAdminVpay({
+          page: page || 1, pageSize: 10,
+          env: this.vpayAllEnv ? 'all' : '0'
+        })
+        if (res && res.success) {
+          this.vpay = res.data
+          this.$nextTick(() => this.renderVpayChart())
+        } else {
+          this.vpayError = (res && res.message) || '支付数据加载失败'
+        }
+      } catch (e) {
+        const data = e && e.response && e.response.data
+        this.vpayError = (data && data.message) || '支付数据加载失败，请稍后重试'
+      } finally {
+        this.vpayLoading = false
+      }
+    },
+    fen2yuan(fen) {
+      return ((Number(fen) || 0) / 100).toFixed(2)
+    },
+    // 退款撤销:订单改已退款 + 收回去广告权益(仅本地记录,不发起真实退款)
+    async revokeOrder(order) {
+      const ok = confirm(
+        `确认退款撤销该订单？\n用户：${order.nickname || order.openid}\n单号：${order.out_trade_no}\n\n` +
+        '该用户的去广告权益将被收回，订单改为「已退款」（仅本地记录，不发起微信真实退款）。')
+      if (!ok) return
+      try {
+        const res = await mpAdminVpayRevoke(order.out_trade_no)
+        alert((res && res.message) || (res && res.success ? '已撤销' : '操作失败'))
+      } catch (e) {
+        const data = e && e.response && e.response.data
+        alert((data && data.message) || '操作失败，请稍后重试')
+      }
+      this.loadVpay(this.vpay ? this.vpay.orders.page : 1)
+    },
+    // 删除垃圾单(仅待支付/已关闭)
+    async deleteOrder(order) {
+      const ok = confirm(`确认删除该订单记录？\n单号：${order.out_trade_no}\n状态：${order.status_name}\n\n删除后不可恢复。`)
+      if (!ok) return
+      try {
+        const res = await mpAdminVpayDeleteOrder(order.out_trade_no)
+        alert((res && res.message) || (res && res.success ? '已删除' : '操作失败'))
+      } catch (e) {
+        const data = e && e.response && e.response.data
+        alert((data && data.message) || '操作失败，请稍后重试')
+      }
+      this.loadVpay(this.vpay ? this.vpay.orders.page : 1)
+    },
+    // 导出支付订单Excel(blob下载,文件名取响应头)
+    async exportVpay() {
+      if (this.vpayExporting) return
+      this.vpayExporting = true
+      try {
+        const res = await exportMpAdminVpay(this.vpayAllEnv ? 'all' : '0')
+        const cd = (res.headers && res.headers['content-disposition']) || ''
+        const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)
+        const name = (m ? decodeURIComponent(m[1].replace(/"/g, ''))
+                        : `vpay_orders_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        const url = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      } catch (e) {
+        alert('导出失败，请稍后重试（' + ((e && e.message) || '网络异常') + '）')
+      } finally {
+        this.vpayExporting = false
+      }
+    },
+    statusClass(status) {
+      return {
+        delivered: 'badge-paid',
+        refunded: 'badge-refund',
+        pending: 'badge-pending',
+        closed: 'badge-closed'
+      }[status] || 'badge-closed'
+    },
+    renderVpayChart() {
+      if (!this.vpay) return
+      const d = this.vpay.daily
+      if (!d) return
+      const dom = this.$refs.vpayChart
+      if (!dom) return
+      if (this.vpayChart) this.vpayChart.dispose()
+      this.vpayChart = echarts.init(dom)
+      const revenue = d.revenue_fen.map(fen => Math.round(fen) / 100)
+      this.vpayChart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis', ...TOOLTIP,
+          valueFormatter: (v) => (v == null ? '-' : v)
+        },
+        legend: {
+          top: 0, right: 8, itemWidth: 14, itemHeight: 8,
+          textStyle: { color: AXIS_LABEL, fontSize: 11 }
+        },
+        grid: { left: 10, right: 16, top: 30, bottom: 10, containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: d.days.map(x => x.slice(5)),
+          axisLine: { lineStyle: { color: AXIS_LINE } },
+          axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+          axisTick: { show: false }
+        },
+        yAxis: [
+          {
+            type: 'value', name: '笔数', minInterval: 1,
+            nameTextStyle: { color: AXIS_LABEL, fontSize: 11 },
+            axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+            splitLine: SPLIT_LINE
+          },
+          {
+            type: 'value', name: '收入(元)',
+            nameTextStyle: { color: AXIS_LABEL, fontSize: 11 },
+            axisLabel: { color: AXIS_LABEL, fontSize: 11 },
+            splitLine: { show: false }
+          }
+        ],
+        series: [
+          { name: '支付笔数', type: 'bar', data: d.paid, barMaxWidth: 14,
+            itemStyle: { color: '#52e0a1', borderRadius: [3, 3, 0, 0] } },
+          { name: '当日收入(元)', type: 'line', yAxisIndex: 1, smooth: true,
+            symbol: 'circle', symbolSize: 5, data: revenue,
+            itemStyle: { color: '#ffd56b' }, lineStyle: { width: 2 } },
+          { name: '退款笔数', type: 'line', smooth: true, symbol: 'circle',
+            symbolSize: 5, data: d.refunded,
+            itemStyle: { color: '#ff7875' }, lineStyle: { width: 2, type: 'dashed' } }
+        ]
+      })
     },
     async fetchOverview() {
       this.error = null

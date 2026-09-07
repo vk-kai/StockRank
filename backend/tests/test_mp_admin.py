@@ -900,6 +900,150 @@ class EchoSubsAdminTests(MpAdminTestCase):
         self.assertIsNone(it['last_ts'])
 
 
+class VpayAdminTests(MpAdminTestCase):
+    """虚拟支付后台接口:看板env口径/退款撤销/删单/Excel导出。"""
+
+    def setUp(self):
+        super().setUp()
+        import routes.mp_vpay_routes as vpay
+        import routes.mp_admin_routes as admin
+        self.vpay = vpay
+        self.admin = admin
+        tmp = tempfile.mkdtemp()
+        # vpay 库:routes.mp_admin_routes 里 `_db as _vpay_db` 与 _vpay_conn_ro
+        # 分两个模块引用同一文件名,测试隔离需两处同替
+        vpay.VPAY_DB_FILE = os.path.join(tmp, 'mp_vpay.db')
+        admin.VPAY_DB_FILE = vpay.VPAY_DB_FILE
+        vpay.VPAY_CONFIG_FILE = os.path.join(tmp, 'mp_vpay_config.json')
+        with open(vpay.VPAY_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'app_key': 'k', 'offer_id': '1450640154', 'product_id': 'adfree_test',
+                       'product_name': '去广告终身卡', 'goods_price': 600, 'env': 0}, f)
+
+    def _mk_order(self, out_trade_no='VP1', openid='oA', status='delivered', env=0,
+                  nickname=None):
+        now = _utcnow_str()
+        with self.vpay._db() as conn:
+            conn.execute('''INSERT INTO vpay_orders(out_trade_no, wx_order_id, openid, product_id,
+                            quantity, goods_price, env, status, delivered_at, refunded_at,
+                            created_at, updated_at)
+                            VALUES (?, ?, ?, 'adfree_test', 1, 600, ?, ?, ?, ?, ?, ?)''',
+                         (out_trade_no, 'WX' + out_trade_no, openid, env, status,
+                          now if status in ('delivered', 'refunded') else None,
+                          now if status == 'refunded' else None, now, now))
+            if status == 'delivered':
+                conn.execute('''INSERT OR IGNORE INTO vpay_entitlements(openid, status,
+                                out_trade_no, wx_order_id, granted_at, updated_at)
+                                VALUES (?, 'active', ?, 'WX' || ?, ?, ?)''',
+                             (openid, out_trade_no, out_trade_no, now, now))
+
+    def _orders(self):
+        with self.vpay._db() as conn:
+            return [dict(r) for r in conn.execute('SELECT * FROM vpay_orders ORDER BY id')]
+
+    def _ent_status(self, openid='oA'):
+        with self.vpay._db() as conn:
+            row = conn.execute('SELECT status FROM vpay_entitlements WHERE openid = ?',
+                               (openid,)).fetchone()
+            return row['status'] if row else None
+
+    def test_requires_login(self):
+        for method, url in (('get', '/api/mp-admin/vpay'),
+                            ('get', '/api/mp-admin/vpay/export'),
+                            ('post', '/api/mp-admin/vpay/revoke'),
+                            ('post', '/api/mp-admin/vpay/delete')):
+            r = getattr(self.client, method)(url, json={'out_trade_no': 'VP1'})
+            self.assertEqual(r.status_code, 401, msg=url)
+
+    def test_list_env_scope_and_summary(self):
+        self._login()
+        self._mk_order('VP1', 'oA', 'delivered', env=0)
+        self._mk_order('VP2', 'oB', 'delivered', env=1)   # 沙箱单默认不计
+        self._add_score(openid='oA', nickname='甲')
+        r = self.client.get('/api/mp-admin/vpay').get_json()
+        self.assertTrue(r['success'])
+        d = r['data']
+        self.assertEqual(d['summary']['paid_count'], 1)           # 只算正式单
+        self.assertEqual(d['summary']['revenue_fen'], 600)
+        self.assertEqual(d['summary']['active_entitlements'], 2)  # 权益表不分env,沙箱发货同样计入
+        self.assertEqual(len(d['orders']['items']), 1)
+        self.assertEqual(d['orders']['items'][0]['nickname'], '甲')  # 昵称回填
+        self.assertEqual(d['orders']['items'][0]['status_name'], '已支付')
+        # 含沙箱单口径
+        r2 = self.client.get('/api/mp-admin/vpay?env=all').get_json()
+        self.assertEqual(r2['data']['summary']['paid_count'], 2)
+        self.assertEqual(len(r2['data']['orders']['items']), 2)
+
+    def test_revoke_delivered_order_revokes_entitlement(self):
+        self._login()
+        self._mk_order('VP1', 'oA', 'delivered')
+        r = self.client.post('/api/mp-admin/vpay/revoke', json={'out_trade_no': 'VP1'}).get_json()
+        self.assertTrue(r['success'])
+        self.assertIn('权益已收回', r['message'])
+        self.assertEqual(self._orders()[0]['status'], 'refunded')
+        self.assertEqual(self._ent_status('oA'), 'revoked')
+
+    def test_revoke_keeps_entitlement_when_other_paid_order_exists(self):
+        # 撤旧买新:用户还有另一张已支付单时,权益不动(与平台退款推送同口径)
+        self._login()
+        self._mk_order('VP1', 'oA', 'delivered')
+        self._mk_order('VP2', 'oA', 'delivered')
+        r = self.client.post('/api/mp-admin/vpay/revoke', json={'out_trade_no': 'VP1'}).get_json()
+        self.assertTrue(r['success'])
+        self.assertNotIn('权益已收回', r['message'])
+        self.assertEqual(self._ent_status('oA'), 'active')
+
+    def test_revoke_rejects_non_delivered_and_missing(self):
+        self._login()
+        self._mk_order('VP1', 'oA', 'pending')
+        r = self.client.post('/api/mp-admin/vpay/revoke', json={'out_trade_no': 'VP1'}).get_json()
+        self.assertFalse(r['success'])                       # 待支付不能撤销
+        r2 = self.client.post('/api/mp-admin/vpay/revoke',
+                              json={'out_trade_no': 'NOPE'}).get_json()
+        self.assertFalse(r2['success'])                      # 不存在
+        self.assertEqual(self._ent_status('oA'), None)       # 未误伤
+
+    def test_delete_pending_and_closed_only(self):
+        self._login()
+        self._mk_order('VP1', 'oA', 'pending')
+        self._mk_order('VP2', 'oB', 'closed')
+        self._mk_order('VP3', 'oC', 'delivered')
+        r = self.client.post('/api/mp-admin/vpay/delete', json={'out_trade_no': 'VP1'}).get_json()
+        self.assertTrue(r['success'])
+        r2 = self.client.post('/api/mp-admin/vpay/delete', json={'out_trade_no': 'VP2'}).get_json()
+        self.assertTrue(r2['success'])
+        r3 = self.client.post('/api/mp-admin/vpay/delete', json={'out_trade_no': 'VP3'}).get_json()
+        self.assertFalse(r3['success'])                      # 已支付必须走退款撤销
+        self.assertEqual([o['out_trade_no'] for o in self._orders()], ['VP3'])
+
+    def test_export_xlsx_content(self):
+        self._login()
+        self._mk_order('VP1', 'oA', 'delivered', env=0)
+        self._mk_order('VP2', 'oB', 'refunded', env=0)
+        self._mk_order('VP3', 'oC', 'delivered', env=1)      # 沙箱单默认不导出
+        self._add_score(openid='oA', nickname='甲')
+        r = self.client.get('/api/mp-admin/vpay/export')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('spreadsheetml', r.mimetype)
+        fname = r.headers.get('Content-Disposition', '')
+        self.assertIn('.xlsx', fname)
+        from io import BytesIO
+        from openpyxl import load_workbook
+        wb = load_workbook(BytesIO(r.data))
+        self.assertEqual(wb.sheetnames, ['支付订单', '去广告权益'])
+        ws = wb['支付订单']
+        self.assertEqual([c.value for c in ws[1]][:5],
+                         ['用户ID(openid)', '昵称', '购买时间', '金额(元)', '状态'])
+        rows = {row[0].value: row for row in ws.iter_rows(min_row=2)}
+        self.assertEqual(len(rows), 2)                       # 沙箱单被过滤
+        self.assertEqual(rows['oA'][1].value, '甲')
+        self.assertEqual(rows['oA'][3].value, 6.0)           # 600分→6元
+        self.assertEqual(rows['oA'][4].value, '已支付')
+        self.assertEqual(rows['oB'][4].value, '已退款')
+        # 权益sheet:仅 oA 有 active 权益
+        ent = {row[0].value: row for row in wb['去广告权益'].iter_rows(min_row=2)}
+        self.assertEqual(ent['oA'][2].value, '生效中')
+
+
 class CleanupTests(MpAdminTestCase):
     def test_cleanup_dev_data(self):
         self._login()

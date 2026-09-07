@@ -140,6 +140,94 @@
         </table>
       </section>
 
+      <!-- 虚拟支付:去广告终身卡 -->
+      <section class="card">
+        <h2>
+          去广告终身卡 · 支付
+          <small class="dim">（{{ vpay && vpay.product ? vpay.product.product_name : '' }} · 现价 ¥{{ vpayPriceYuan }} · 一次性买断）</small>
+          <span class="card-tools">
+            <label class="env-toggle" title="沙箱联调单不产生真实扣费,默认不计入统计">
+              <input type="checkbox" v-model="vpayAllEnv" @change="loadVpay(1)" /> 含沙箱单
+            </label>
+            <button class="vpay-export-btn" :disabled="vpayExporting" @click="exportVpay">
+              {{ vpayExporting ? '导出中…' : '⬇ 导出Excel' }}
+            </button>
+          </span>
+        </h2>
+        <div v-if="vpayLoading" class="empty">支付数据加载中…</div>
+        <div v-else-if="vpayError" class="empty">{{ vpayError }}</div>
+        <template v-else-if="vpay">
+          <div class="vpay-summary">
+            <div class="vpay-item">
+              <b>¥{{ fen2yuan(vpay.summary.revenue_fen) }}</b>
+              <span>有效收入 <small>（不含已退款）</small></span>
+            </div>
+            <div class="vpay-item">
+              <b>{{ vpay.summary.paid_count }}</b>
+              <span>有效支付笔数 <small>（当前享有权益）</small></span>
+            </div>
+            <div class="vpay-item">
+              <b>{{ vpay.summary.refunded_count }}</b>
+              <span>已退款 <small v-if="vpay.summary.refund_fen">（¥{{ fen2yuan(vpay.summary.refund_fen) }}）</small></span>
+            </div>
+            <div class="vpay-item">
+              <b>{{ vpay.summary.pending_count }}</b>
+              <span>待支付 <small>（下单未付/支付中）</small></span>
+            </div>
+            <div class="vpay-item">
+              <b>{{ vpay.summary.active_entitlements }}</b>
+              <span>去广告生效人数</span>
+            </div>
+          </div>
+
+          <div ref="vpayChart" class="chart-box"></div>
+
+          <div v-if="!vpay.orders.items.length" class="empty">还没有支付订单</div>
+          <table v-else class="data-table">
+            <thead>
+              <tr><th>支付时间</th><th>用户</th><th>金额</th><th>状态</th><th>单号</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="o in vpay.orders.items" :key="o.out_trade_no">
+                <td>
+                  {{ o.delivered_at || '--' }}
+                  <small v-if="o.delivered_at" class="dim">（下单 {{ o.created_at }}）</small>
+                  <small v-else class="dim">（{{ o.created_at }} 创建）</small>
+                </td>
+                <td>
+                  {{ o.nickname || '未知昵称' }}
+                  <small class="openid-text">{{ o.openid }}</small>
+                  <small v-if="o.env === 1" class="badge badge-sandbox">沙箱</small>
+                </td>
+                <td class="vpay-amount">¥{{ fen2yuan(o.goods_price) }}</td>
+                <td><span class="badge" :class="statusClass(o.status)">{{ o.status_name }}</span></td>
+                <td>
+                  <span class="code-text">{{ o.out_trade_no }}</span>
+                  <small v-if="o.wx_order_id" class="dim openid-text">平台单 {{ o.wx_order_id }}</small>
+                </td>
+                <td>
+                  <button v-if="o.status === 'delivered'" class="row-action danger"
+                          title="订单改为已退款并收回去广告权益(不动微信侧真实资金)"
+                          @click="revokeOrder(o)">退款撤销</button>
+                  <button v-else-if="o.status === 'pending' || o.status === 'closed'"
+                          class="row-action" title="删除该订单记录,不可恢复"
+                          @click="deleteOrder(o)">删除</button>
+                  <span v-else class="dim">--</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="vpay.orders.total_pages > 1" class="pager">
+            <button :disabled="vpay.orders.page <= 1 || vpayLoading"
+                    @click="loadVpay(vpay.orders.page - 1)">上一页</button>
+            <span>{{ vpay.orders.page }} / {{ vpay.orders.total_pages }} 页 · 共 {{ vpay.orders.total }} 单</span>
+            <button :disabled="vpay.orders.page >= vpay.orders.total_pages || vpayLoading"
+                    @click="loadVpay(vpay.orders.page + 1)">下一页</button>
+          </div>
+          <p class="vpay-note">支付时间为服务器记录时间（北京时间，直接展示）；「退款撤销」= 订单改为已退款并收回去广告权益（仅本地记录，不发起微信真实退款）；待支付/已关闭的垃圾单可直接删除。</p>
+        </template>
+      </section>
+
       <div class="footnote">
         说明：「测试完成次数 / 工具使用次数 / 文章阅读次数」每用一次就 +1，重复使用照常计入；
         文章为 article_* 前缀计数（key=article_文章id，名称=文章标题），口径与测试/工具一致；

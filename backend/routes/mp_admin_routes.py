@@ -22,6 +22,10 @@
   GET  /api/mp-admin/echo/bans       封禁列表(分页,含状态)
   GET  /api/mp-admin/echo/subs       订阅额度列表(剩余额度>0的用户+首次/最近订阅时间)
   POST /api/mp-admin/cleanup-dev-data  清理开发联调脏数据(可重复执行)
+  GET  /api/mp-admin/vpay            虚拟支付(去广告终身卡)看板:收入汇总/近30天趋势/订单明细(分页)
+  POST /api/mp-admin/vpay/revoke     退款撤销已支付订单(收回去广告权益;仅本地记录,不发起真实退款)
+  POST /api/mp-admin/vpay/delete     删除待支付/已关闭的垃圾订单记录(测试期清理)
+  GET  /api/mp-admin/vpay/export     导出支付订单Excel(用户ID/购买时间/金额/状态)
 
 鉴权注意:url_prefix 必须是 /api/mp-admin 而不能挂 /api/mp/ 下——
 后者被 install_auth_guard 的 PUBLIC_PATH_PREFIXES 整段放行(小程序接口无登录态)。
@@ -30,6 +34,8 @@
 删除类操作由前端二次确认框兜底)。复用 mp_game_routes 的 _db()(同一 SQLite,
 WAL)与缓存,改完主动清缓存。
 """
+import os
+import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -45,6 +51,7 @@ from routes.mp_game_routes import (
     SUBS_KEY_PREFIX, ECHO_HUG_TEMPLATE_ID,
 )
 from routes.mp_sec_routes import local_text_blocked
+from routes.mp_vpay_routes import VPAY_DB_FILE, _db as _vpay_db, load_vpay_config
 
 mp_admin_bp = Blueprint('mp_admin', __name__, url_prefix='/api/mp-admin')
 logger = get_logger('system')
@@ -1051,6 +1058,300 @@ def mp_admin_cleanup_dev_data():
         return jsonify({'success': True, 'message': '清理完成', 'result': result})
     except Exception as e:
         error_logger.error(f'mp-admin cleanup 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 七、虚拟支付看板(去广告终身卡):收入汇总 + 近30天趋势 + 订单明细
+#     vpay 库(mp_vpay.db)与游戏库分开;时间字段为服务器本地时间(北京时间),
+#     与 _bj_days 同口径,前端直接展示不转 UTC。
+# --------------------------------------------------------------------------
+_VPAY_STATUS_NAMES = {
+    'pending': '待支付', 'delivered': '已支付', 'refunded': '已退款', 'closed': '已关闭',
+}
+
+
+def _vpay_conn_ro():
+    """只读打开虚拟支付库;库文件不存在(尚无人下过单)时返回 None。"""
+    if not os.path.exists(VPAY_DB_FILE):
+        return None
+    conn = sqlite3.connect(f'file:{VPAY_DB_FILE.replace(os.sep, "/")}?mode=ro', uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _nicknames_for(conn, openids):
+    """openid → 昵称(取成绩表最近一次使用的昵称,纯展示;查不到回空串)。"""
+    out = {}
+    uniq = [o for o in dict.fromkeys(openids) if o]
+    if not uniq:
+        return out
+    marks = ','.join('?' * len(uniq))
+    try:
+        # created_at 升序遍历,同名 openid 后出现的昵称覆盖前面的 → 最近昵称
+        for r in conn.execute(f'SELECT openid, nickname FROM scores '
+                              f'WHERE openid IN ({marks}) ORDER BY created_at ASC', uniq):
+            if r['nickname']:
+                out[r['openid']] = r['nickname']
+    except Exception:
+        pass
+    return out
+
+
+@mp_admin_bp.route('/vpay', methods=['GET'])
+def mp_admin_vpay():
+    """虚拟支付(去广告终身卡)看板。
+
+    GET ?page=&page_size=&env=0|all
+    env 默认 0:只统计正式环境订单(沙箱联调单不污染收入);env=all 时全部计入。
+    金额字段为分;订单状态:pending 待支付 / delivered 已支付 / refunded 已退款 / closed 已关闭。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    page, page_size = _parse_page_args()
+    env_scope = 'all' if str(request.args.get('env', '0')).lower() == 'all' else '0'
+    env_clause = '' if env_scope == 'all' else ' AND env = 0'
+    try:
+        summary = {'paid_count': 0, 'refunded_count': 0, 'pending_count': 0,
+                   'closed_count': 0, 'revenue_fen': 0, 'refund_fen': 0,
+                   'active_entitlements': 0}
+        daily = {'days': _bj_days(TREND_DAYS), 'paid': [0] * TREND_DAYS,
+                 'revenue_fen': [0] * TREND_DAYS, 'refunded': [0] * TREND_DAYS}
+        orders = {'items': [], 'total': 0, 'page': page, 'page_size': page_size, 'total_pages': 1}
+
+        conn = _vpay_conn_ro()
+        if conn is not None:
+            with conn:
+                day_idx = {d: i for i, d in enumerate(daily['days'])}
+                # 1) 按状态汇总(退款单已从 delivered 挪走,revenue_fen 即当前有效收入)
+                for r in conn.execute('''SELECT status, COUNT(*) AS c,
+                                                COALESCE(SUM(goods_price), 0) AS s
+                                         FROM vpay_orders WHERE 1=1''' + env_clause +
+                                      ' GROUP BY status'):
+                    if r['status'] == 'delivered':
+                        summary['paid_count'] = r['c']
+                        summary['revenue_fen'] = r['s']
+                    elif r['status'] == 'refunded':
+                        summary['refunded_count'] = r['c']
+                        summary['refund_fen'] = r['s']
+                    elif r['status'] == 'pending':
+                        summary['pending_count'] = r['c']
+                    elif r['status'] == 'closed':
+                        summary['closed_count'] = r['c']
+                # 2) 近30天趋势:支付按 delivered_at(含后来退款的),退款按 refunded_at
+                for r in conn.execute('''SELECT substr(delivered_at, 1, 10) AS d, COUNT(*) AS c,
+                                                COALESCE(SUM(goods_price), 0) AS s
+                                         FROM vpay_orders WHERE delivered_at IS NOT NULL''' +
+                                      env_clause + ' GROUP BY d'):
+                    i = day_idx.get(r['d'])
+                    if i is not None:
+                        daily['paid'][i] = r['c']
+                        daily['revenue_fen'][i] = r['s']
+                for r in conn.execute('''SELECT substr(refunded_at, 1, 10) AS d, COUNT(*) AS c
+                                         FROM vpay_orders WHERE refunded_at IS NOT NULL''' +
+                                      env_clause + ' GROUP BY d'):
+                    i = day_idx.get(r['d'])
+                    if i is not None:
+                        daily['refunded'][i] = r['c']
+                # 3) 生效权益数(去广告人数)
+                summary['active_entitlements'] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM vpay_entitlements WHERE status = 'active'"
+                ).fetchone()['c']
+                # 4) 订单明细(分页,最新在前)+ 昵称回填
+                orders['total'] = conn.execute(
+                    'SELECT COUNT(*) AS c FROM vpay_orders WHERE 1=1' + env_clause
+                ).fetchone()['c']
+                orders['total_pages'] = max(1, (orders['total'] + page_size - 1) // page_size)
+                page = min(page, orders['total_pages'])
+                orders['page'] = page
+                rows = conn.execute('''SELECT out_trade_no, wx_order_id, openid, goods_price,
+                                              status, env, source, delivered_at, refunded_at, created_at
+                                       FROM vpay_orders WHERE 1=1''' + env_clause +
+                                    ' ORDER BY id DESC LIMIT ? OFFSET ?',
+                                    (page_size, (page - 1) * page_size)).fetchall()
+                with _db() as gconn:
+                    nick_map = _nicknames_for(gconn, [r['openid'] for r in rows])
+                orders['items'] = [dict(r, nickname=nick_map.get(r['openid'], ''),
+                                        status_name=_VPAY_STATUS_NAMES.get(r['status'], r['status']))
+                                   for r in rows]
+            conn.close()
+
+        return jsonify({'success': True, 'data': {
+            'product': {k: load_vpay_config().get(k) for k in
+                        ('product_id', 'product_name', 'goods_price', 'env')},
+            'summary': summary,
+            'daily': daily,
+            'orders': orders,
+            'env_scope': env_scope,
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin vpay 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/vpay/revoke', methods=['POST'])
+def mp_admin_vpay_revoke():
+    """退款撤销已支付订单(管理员手工;测试期自测/客服场景)。
+
+    仅改本地记录:订单 delivered → refunded,并在该用户没有其他已支付
+    订单时收回去广告权益(防误伤重新购买的新权益)。不调微信接口、
+    不动真实资金——真实退款仍以平台 xpay_refund_notify 推送为准。
+    body: {out_trade_no}
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    data = request.get_json(silent=True) or {}
+    out_trade_no = str(data.get('out_trade_no') or '').strip()
+    if not out_trade_no:
+        return jsonify({'success': False, 'message': '缺少 out_trade_no'}), 400
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with _vpay_db() as conn:
+            order = conn.execute('SELECT * FROM vpay_orders WHERE out_trade_no = ?',
+                                 (out_trade_no,)).fetchone()
+            if order is None:
+                return jsonify({'success': False, 'message': '订单不存在'}), 404
+            if order['status'] != 'delivered':
+                cur_name = _VPAY_STATUS_NAMES.get(order['status'], order['status'])
+                return jsonify({'success': False,
+                                'message': f'仅「已支付」订单可退款撤销(当前:{cur_name})'}), 400
+            conn.execute('''UPDATE vpay_orders SET status = 'refunded', refunded_at = ?,
+                            updated_at = ?, query_note = '管理员退款撤销'
+                            WHERE id = ?''', (now, now, order['id']))
+            # 该用户还有其他已支付单(撤旧买新)时不收权益,与平台退款推送同口径
+            other = conn.execute('''SELECT COUNT(*) AS c FROM vpay_orders
+                                    WHERE openid = ? AND status = 'delivered' AND id != ?''',
+                                  (order['openid'], order['id'])).fetchone()['c']
+            revoked = False
+            if other == 0:
+                cur = conn.execute('''UPDATE vpay_entitlements SET status = 'revoked',
+                                      revoked_at = ?, updated_at = ?
+                                      WHERE openid = ? AND status = 'active' ''',
+                                   (now, now, order['openid']))
+                revoked = cur.rowcount > 0
+        logger.info(f'[mp-admin] 退款撤销 order={out_trade_no} '
+                    f'openid={order["openid"][:6]}… 权益收回={revoked}')
+        return jsonify({'success': True, 'message':
+                        '已撤销并记录退款' + ('，去广告权益已收回' if revoked else '')})
+    except Exception as e:
+        error_logger.error(f'mp-admin vpay revoke 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/vpay/delete', methods=['POST'])
+def mp_admin_vpay_delete():
+    """删除订单记录(仅待支付/已关闭的垃圾单;已支付请用退款撤销保留对账)。
+
+    body: {out_trade_no}
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    data = request.get_json(silent=True) or {}
+    out_trade_no = str(data.get('out_trade_no') or '').strip()
+    if not out_trade_no:
+        return jsonify({'success': False, 'message': '缺少 out_trade_no'}), 400
+    try:
+        with _vpay_db() as conn:
+            order = conn.execute('SELECT * FROM vpay_orders WHERE out_trade_no = ?',
+                                 (out_trade_no,)).fetchone()
+            if order is None:
+                return jsonify({'success': False, 'message': '订单不存在'}), 404
+            if order['status'] not in ('pending', 'closed'):
+                cur_name = _VPAY_STATUS_NAMES.get(order['status'], order['status'])
+                return jsonify({'success': False,
+                                'message': f'仅「待支付/已关闭」订单可删除(当前:{cur_name});'
+                                           '已支付请用退款撤销'}), 400
+            conn.execute('DELETE FROM vpay_orders WHERE id = ?', (order['id'],))
+        logger.info(f'[mp-admin] 删除订单 order={out_trade_no} openid={order["openid"][:6]}…')
+        return jsonify({'success': True, 'message': '已删除'})
+    except Exception as e:
+        error_logger.error(f'mp-admin vpay delete 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/vpay/export', methods=['GET'])
+def mp_admin_vpay_export():
+    """导出支付订单 Excel(全量,不分页):用户ID/昵称/购买时间/金额/状态。
+
+    ?env=0|all 与看板同口径,默认只导正式环境;另附「去广告权益」sheet。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    # openpyxl 延迟导入:未安装时只影响本接口
+    try:
+        from io import BytesIO
+        from openpyxl import Workbook
+    except ImportError:
+        error_logger.error('mp-admin vpay export 失败: 服务器未安装 openpyxl')
+        return jsonify({'success': False,
+                        'message': '服务器未安装 openpyxl,pip install openpyxl 后重启即可'}), 500
+    env_scope = 'all' if str(request.args.get('env', '0')).lower() == 'all' else '0'
+    env_clause = '' if env_scope == 'all' else ' AND env = 0'
+    try:
+        now_bj = datetime.now(BEIJING_TZ)
+        with _vpay_db() as conn:
+            rows = conn.execute('''SELECT out_trade_no, wx_order_id, openid, goods_price,
+                                   status, env, delivered_at, refunded_at, created_at
+                                   FROM vpay_orders WHERE 1=1''' + env_clause +
+                                ' ORDER BY id DESC').fetchall()
+            ents = conn.execute('''SELECT openid, status, out_trade_no, granted_at, revoked_at
+                                   FROM vpay_entitlements ORDER BY id DESC''').fetchall()
+        with _db() as gconn:
+            nick_map = _nicknames_for(gconn, [r['openid'] for r in rows])
+
+        def sheet(ws, header, data_rows):
+            """与 /export 报表同风格:深蓝表头 + 按内容估列宽。"""
+            from openpyxl.styles import Alignment, Font, PatternFill
+            from openpyxl.utils import get_column_letter
+            ws.append(header)
+            for c in ws[1]:
+                c.fill = PatternFill('solid', fgColor='1F3864')
+                c.font = Font(bold=True, color='FFFFFF')
+                c.alignment = Alignment(horizontal='center', vertical='center')
+            for r in data_rows:
+                ws.append(r)
+            for i in range(1, len(header) + 1):
+                vals = [len(str(header[i - 1]))] + \
+                       [len(str(r[i - 1])) * 2 for r in data_rows if r[i - 1] is not None]
+                ws.column_dimensions[get_column_letter(i)].width = \
+                    min(max(max(vals) + 2, 10), 44)
+
+        wb = Workbook()
+        order_rows = [[
+            r['openid'], nick_map.get(r['openid'], ''),
+            r['delivered_at'] or '', round(r['goods_price'] / 100, 2),
+            _VPAY_STATUS_NAMES.get(r['status'], r['status']),
+            '沙箱' if r['env'] == 1 else '正式',
+            r['out_trade_no'], r['wx_order_id'] or '',
+            r['created_at'] or '', r['refunded_at'] or '',
+        ] for r in rows]
+        sheet(wb.active, ['用户ID(openid)', '昵称', '购买时间', '金额(元)', '状态',
+                          '环境', '业务单号', '平台单号', '下单时间', '退款时间'], order_rows)
+        wb.active.title = '支付订单'
+
+        ent_rows = [[
+            e['openid'], nick_map.get(e['openid'], ''),
+            '生效中' if e['status'] == 'active' else '已撤销',
+            e['granted_at'] or '', e['revoked_at'] or '', e['out_trade_no'] or '',
+        ] for e in ents]
+        sheet(wb.create_sheet('去广告权益'),
+              ['用户ID(openid)', '昵称', '权益状态', '授权时间', '撤销时间', '来源订单号'], ent_rows)
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"vpay_orders_{now_bj.strftime('%Y%m%d_%H%M')}.xlsx"
+        logger.info(f'[mp-admin] 导出虚拟支付Excel: {fname} 订单数={len(order_rows)}')
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True, download_name=fname)
+    except Exception as e:
+        error_logger.error(f'mp-admin vpay export 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

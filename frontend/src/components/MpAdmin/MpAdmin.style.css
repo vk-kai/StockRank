@@ -250,3 +250,87 @@
   font-size: 12px;
 }
 .rank-card .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- 去广告终身卡 · 支付 ---- */
+.env-toggle {
+  float: right;
+  font-size: 12px;
+  color: #9db0ca;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 400;
+}
+.env-toggle input { vertical-align: -2px; margin-right: 4px; }
+
+.vpay-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.vpay-item {
+  background: rgba(16, 24, 39, 0.55);
+  border: 1px solid rgba(111, 142, 190, 0.18);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.vpay-item b {
+  display: block;
+  font-size: 20px;
+  color: #7cc4ff;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+.vpay-item span { font-size: 12px; color: #9db0ca; }
+.vpay-item span small { color: #6b7d99; }
+
+.vpay-amount {
+  color: #ffd56b;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.openid-text {
+  display: block;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: #8ba4c7;
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.badge-paid { color: #52e0a1; background: rgba(82, 224, 161, 0.12); }
+.badge-refund { color: #ff7875; background: rgba(255, 120, 117, 0.12); }
+.badge-pending { color: #ffd56b; background: rgba(255, 213, 107, 0.12); }
+.badge-closed { color: #8ba4c7; background: rgba(139, 164, 199, 0.14); }
+.badge-sandbox { color: #b37feb; background: rgba(179, 127, 235, 0.14); margin-left: 4px; }
+
+.mpadmin-body .pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: #8ba4c7;
+  font-size: 12px;
+}
+.mpadmin-body .pager button {
+  border: 1px solid rgba(111, 142, 190, 0.4);
+  background: rgba(16, 24, 39, 0.9);
+  color: #d7e4f5;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.mpadmin-body .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.vpay-note {
+  margin: 10px 0 0;
+  color: #6b7d99;
+  font-size: 12px;
+  line-height: 1.6;
+}
