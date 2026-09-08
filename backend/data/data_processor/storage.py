@@ -393,9 +393,10 @@ def load_recent_daily_data_with_accumulation(days):
         for sector_name, stats in sector_stats.items():
             stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
 
+        # 排名口径与 /flow/accumulated 一致:按窗口累计净流入(而非流入毛值)排序
         sorted_sectors = sorted(
             sector_stats.values(),
-            key=lambda x: x['total_flow'],
+            key=lambda x: x['total_net_flow'],
             reverse=True
         )
 
@@ -469,16 +470,23 @@ def get_accumulated_top_sectors(days):
         for sector_name, stats in sector_stats.items():
             stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
 
-        sorted_sectors = sorted(
+        # 2026-09-08 修复:榜单口径从 total_flow(流入毛值)改为 total_net_flow(净流入)。
+        # 原先毛流入大的板块(如半导体)即使窗口内累计净流出也能排第一,与"累计净流入榜"语义相悖。
+        # 结构改为 净流入TOP5(净额最大) + 净流出TOP5(净额最负),flow_group 供前端红/绿着色分组。
+        by_net_desc = sorted(
             sector_stats.values(),
-            key=lambda x: x['total_flow'],
+            key=lambda x: x['total_net_flow'],
             reverse=True
         )
+        top_in = [s for s in by_net_desc if s['total_net_flow'] >= 0][:5]
+        top_out = sorted(
+            [s for s in sector_stats.values() if s['total_net_flow'] < 0],
+            key=lambda x: x['total_net_flow']
+        )[:5]
 
-        top_sectors = []
-        for i, sector in enumerate(sorted_sectors[:10]):
-            top_sectors.append({
-                'rank': i + 1,
+        def _item(rank, sector, group):
+            return {
+                'rank': rank,
                 'name': sector['name'],
                 'flow': sector['total_flow'],
                 'net_flow': sector['total_net_flow'],
@@ -486,9 +494,15 @@ def get_accumulated_top_sectors(days):
                 'total_flow': sector['total_flow'],
                 'total_net_flow': sector['total_net_flow'],
                 'accumulated_change_percent': sector['accumulated_change_percent'],
-                'appearances': sector['appearances']
-            })
-        
+                'appearances': sector['appearances'],
+                'flow_group': group,
+            }
+
+        top_sectors = (
+            [_item(i + 1, s, 'net_in') for i, s in enumerate(top_in)]
+            + [_item(i + 1, s, 'net_out') for i, s in enumerate(top_out)]
+        )
+
         return top_sectors
     except Exception as e:
         error_logger.error(f"获取累计流入TOP板块失败: {e}")

@@ -1057,6 +1057,11 @@ button:active:not(:disabled) {
   font-weight: bold;
 }
 
+/* 累计净流入为负(多日模式):红涨绿跌惯例,负值显绿色 */
+.sector-card .flow.net-negative {
+  color: #91cc75;
+}
+
 .sector-card .net-flow {
   color: #ffa726;
   font-size: 12px;

@@ -273,20 +273,33 @@
       </div>
     </div>
 
-    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange !== 'today' && accumulatedData.length > 0">
-      <h3 class="sector-title">{{ selectedTimeRange }}日累计资金净流入TOP10</h3>
+    <!-- 多日模式(7/15/30天): 累计净流入TOP5 + 净流出TOP5,卡片结构与当天模式同款(红/绿着色) -->
+    <div class="sector-list" ref="sectorList" v-if="selectedTimeRange !== 'today' && accumulatedTop10Sectors.length > 0">
+      <h3 class="sector-title">{{ accumulatedTitle }}</h3>
       <div class="sector-grid">
-        <div 
-          v-for="sector in accumulatedData" 
-          :key="sector.rank"
+        <div
+          v-for="sector in accumulatedTop10Sectors"
+          :key="`${sector.flow_direction}-${sector.rank}-${sector.name}`"
           class="sector-card"
-          :class="{ 'top-3': sector.rank <= 3 }"
+          :class="{
+            'top-3': sector.rank <= 3,
+            'net-in-card': (sector.flow_direction || sector.flow_group) !== 'out' && (sector.flow_direction || sector.flow_group) !== 'net_out',
+            'net-out-card': (sector.flow_direction || sector.flow_group) === 'out' || (sector.flow_direction || sector.flow_group) === 'net_out'
+          }"
+          :style="{
+            '--flow-alpha': sector.flow_alpha || 0.22,
+            '--flow-deep-alpha': sector.flow_deep_alpha || 0.25,
+            '--flow-border-alpha': sector.flow_border_alpha || 0.31,
+            '--flow-strength': sector.flow_strength || 0.5
+          }"
           @mouseenter="highlightSector(sector.name)"
           @mouseleave="unhighlightSector()"
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">累计净流入: {{ formatFlow(sector.total_net_flow ?? sector.total_flow) }}</div>
+          <div class="flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">
+            累计净流入: {{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}
+          </div>
           <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
             {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             <span class="trend-arrow">

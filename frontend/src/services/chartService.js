@@ -244,9 +244,21 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
   return [...netIn, ...netOut].map(item => item.name)
 }
 
-export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false) {
+// options.valueMode:
+//   'net'(默认) = 当天模式,曲线值取 net_flow(日内累计净流入),行为与原先完全一致;
+//   'cum'       = 多日模式(7/15/30天),曲线值取 cum_net_flow(窗口内截至该日累计净流入),
+//                 tooltip 换成累计口径(累计净流入/当日净流入/当日涨跌)。
+export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false, options = {}) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
+  const valueMode = options.valueMode === 'cum' ? 'cum' : 'net'
+  const getValue = (item) => {
+    if (!item) return null
+    if (valueMode === 'cum') {
+      return item.cum_net_flow ?? item.net_flow ?? null
+    }
+    return getFlowValue(item)
+  }
   
   const topSectors = Array.isArray(fixedTopSectors) && fixedTopSectors.length > 0
     ? fixedTopSectors
@@ -273,7 +285,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     displayTimeData.forEach(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
-      const flow = sectorItem ? getFlowValue(sectorItem) : null
+      const flow = sectorItem ? getValue(sectorItem) : null
       if (flow !== null && flow !== undefined) {
         allFlowValues.push(flow)
       }
@@ -325,7 +337,7 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     const data = displayTimeData.map((timeKey, idx) => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
-      const flow = sectorItem ? getFlowValue(sectorItem) : null
+      const flow = sectorItem ? getValue(sectorItem) : null
 
       if (flow !== null && flow !== undefined) {
         seen = true
@@ -340,7 +352,8 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         realValue: displayFlow,
         inflow: sectorItem?.flow ?? null,
         outflow: sectorItem?.outflow ?? null,
-        netFlow: sectorItem?.net_flow ?? displayFlow,
+        // 多日模式当日净流入缺失就是缺失,不许回落到曲线值(那是累计口径)
+        netFlow: valueMode === 'cum' ? (sectorItem?.net_flow ?? null) : (sectorItem?.net_flow ?? displayFlow),
         change: sectorItem?.change ?? null,
         totalFlow: sectorItem?.total_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? null,
@@ -559,11 +572,32 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
         list.forEach(param => {
           const change = param.data?.change
-          const netFlow = param.data?.realValue ?? param.data?.netFlow ?? param.data?.value
           const inflow = param.data?.inflow
           const outflow = param.data?.outflow
           const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
           const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
+
+          if (valueMode === 'cum') {
+            // 多日模式:曲线值=窗口累计净流入(realValue),另展示当日净流入/当日涨跌
+            const cumFlow = param.data?.realValue ?? null
+            const dayNet = param.data?.netFlow ?? null
+            const cumColor = cumFlow === null || cumFlow === undefined ? '#94a3b8' : (cumFlow >= 0 ? '#ff7875' : '#7ec699')
+            const dayColor = dayNet === null || dayNet === undefined ? '#94a3b8' : (dayNet >= 0 ? '#ff7875' : '#7ec699')
+            result += `
+            <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:340px;">
+              <span style="color:#cbd5e1;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
+                ${param.seriesName}
+              </span>
+              <span style="color:${cumColor};font-weight:600;">累计净流入 ${formatNetFlow(cumFlow)}</span>
+              <span style="color:${dayColor}">当日净流入 ${formatNetFlow(dayNet)}</span>
+              <span style="color:${changeColor};font-weight:600;">${changeText}</span>
+            </div>
+          `
+            return
+          }
+
+          const netFlow = param.data?.realValue ?? param.data?.netFlow ?? param.data?.value
           const netColor = netFlow === null || netFlow === undefined ? '#94a3b8' : (netFlow >= 0 ? '#ff7875' : '#7ec699')
           result += `
             <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
@@ -614,450 +648,3 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     series
   }
 }
-
-export function generateChartOption(timeData, series, topSectors, oldSelected, colors, isToday) {
-  const validSelected = {}
-  const topSectorsSet = new Set(topSectors)
-  for (const [name, selected] of Object.entries(oldSelected)) {
-    if (topSectorsSet.has(name)) {
-      validSelected[name] = selected
-    }
-  }
-
-  const allFlowValues = []
-  series.forEach(s => {
-    if (s.data && Array.isArray(s.data)) {
-      s.data.forEach(item => {
-        if (item && item.value !== null && item.value !== undefined) {
-          allFlowValues.push(item.value)
-        }
-      })
-    }
-  })
-  const minFlow = allFlowValues.length > 0 ? Math.min(...allFlowValues) : 0
-  let maxFlow = allFlowValues.length > 0 ? Math.max(5, ...allFlowValues) : 5
-  const flowRange = maxFlow - minFlow
-
-  const useBrokenAxis = flowRange > 15
-
-  let axisMapping = null
-  if (useBrokenAxis) {
-    const distribution = analyzeDataDistribution(allFlowValues)
-    axisMapping = buildDynamicAxisMapping(distribution)
-  }
-
-  function mapValueToAxis(value) {
-    if (value === null || value === undefined) return null
-    if (!useBrokenAxis) return value
-    if (axisMapping) {
-      return axisMapping.mapValueToAxis(value)
-    }
-    if (value <= 100) {
-      return value * 0.15 / 100
-    } else if (value <= 400) {
-      return 0.15 + (value - 100) * 0.6 / 300
-    } else {
-      const extra = value - 400
-      const maxExtra = maxFlow - 400
-      return 0.75 + (extra / maxExtra) * 0.25
-    }
-  }
-
-  const mappedSeries = series.map(s => {
-    if (!useBrokenAxis) return s
-    
-    return {
-      ...s,
-      data: s.data.map(item => {
-        if (!item) return item
-        return {
-          ...item,
-          value: mapValueToAxis(item.value),
-          realValue: item.value
-        }
-      })
-    }
-  })
-
-  if (mappedSeries.length > 0) {
-    mappedSeries[0] = {
-      ...mappedSeries[0],
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        data: [{ yAxis: useBrokenAxis ? mapValueToAxis(0) : 0 }],
-        label: { show: false },
-        lineStyle: {
-          color: 'rgba(148, 163, 184, 0.35)',
-          type: 'dashed',
-          width: 1
-        }
-      }
-    }
-  }
-
-  let yAxisConfig
-  if (useBrokenAxis) {
-    let tickValues = []
-    
-    if (axisMapping && axisMapping.segments.length > 0) {
-      axisMapping.segments.forEach(segment => {
-        const [start, end] = segment.range
-        const [axisStart, axisEnd] = segment.axisRange
-        const midValue = (start + end) / 2
-        const midAxis = (axisStart + axisEnd) / 2
-        
-        tickValues.push({ axisValue: axisStart, realValue: start })
-        tickValues.push({ axisValue: midAxis, realValue: midValue })
-      })
-      
-      const lastSegment = axisMapping.segments[axisMapping.segments.length - 1]
-      tickValues.push({ 
-        axisValue: lastSegment.axisRange[1], 
-        realValue: lastSegment.range[1] 
-      })
-    } else {
-      tickValues = [0, 50, 100, 150, 200, 250, 300, 350, 400]
-      if (maxFlow > 400) {
-        const step = Math.ceil((maxFlow - 400) / 3 / 100) * 100
-        for (let v = 400 + step; v <= maxFlow; v += step) {
-          tickValues.push(v)
-        }
-      }
-    }
-
-    yAxisConfig = {
-      type: 'value',
-      min: 0,
-      max: 1,
-      interval: 0.1,
-      axisLine: {
-        onZero: false,
-        show: false
-      },
-      axisTick: {
-        show: false
-      },
-      axisLabel: {
-        color: '#8ba4c7',
-        formatter: (value) => {
-          if (axisMapping) {
-            return axisMapping.getAxisLabel(value)
-          }
-          
-          let realValue
-          if (value <= 0.15) {
-            realValue = value * 100 / 0.15
-          } else if (value <= 0.75) {
-            realValue = 100 + (value - 0.15) * 300 / 0.6
-          } else {
-            const extra = (value - 0.75) * (maxFlow - 400) / 0.25
-            realValue = 400 + extra
-          }
-          
-          return formatAxisFlow(realValue)
-        }
-      }
-    }
-  } else {
-    yAxisConfig = {
-      type: 'value',
-      axisLine: {
-        onZero: false,
-        show: false
-      },
-      axisTick: {
-        show: false
-      },
-      axisLabel: {
-        color: '#8ba4c7',
-        formatter: (value) => {
-          return formatAxisFlow(value)
-        }
-      }
-    }
-  }
-
-  // 十字光标：纵轴标签反算回真实资金净流入（断轴时由 axisMapping 反映射，线性时直接格式化）
-  yAxisConfig.axisPointer = {
-    label: {
-      formatter: (params) => {
-        const v = (params && typeof params === 'object' && 'value' in params) ? params.value : params
-        if (useBrokenAxis) return axisMapping ? axisMapping.getAxisLabel(v) : formatAxisFlow(v)
-        return formatAxisFlow(v)
-      }
-    }
-  }
-
-  return {
-    backgroundColor: '#111827',
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        snap: true,
-        lineStyle: {
-          color: 'rgba(84, 112, 198, 0.55)',
-          width: 1
-        },
-        crossStyle: {
-          color: 'rgba(84, 112, 198, 0.55)',
-          width: 1
-        },
-        label: {
-          backgroundColor: '#334155',
-          color: '#fff',
-          borderWidth: 0
-        }
-      },
-      backgroundColor: 'rgba(20,25,45,0.95)',
-      borderColor: '#3a4a6b',
-      borderWidth: 1,
-      formatter: (params) => {
-        let result = `<div style="font-weight:bold;margin-bottom:6px;color:#fff;">${params[0]?.name || ''}</div>`
-
-        params.forEach(param => {
-          if (!param.data || param.data === null) return
-
-          const change = param.data.change
-          const totalFlow = param.data.totalFlow
-          const totalNetFlow = param.data.totalNetFlow
-          const accumulatedChangePercent = param.data.accumulatedChangePercent
-          const appearances = param.data.appearances
-          const displayValue = useBrokenAxis ? (param.data.realValue ?? param.data.value) : param.data.value
-          // 非当天模式 netFlow=当日净流入(可能缺失)；当天模式才允许回落到曲线值
-          const netFlow = param.data.netFlow ?? (isToday ? displayValue : null)
-          const netFlowMissing = netFlow === null || netFlow === undefined
-          const inflow = param.data.inflow
-          const outflow = param.data.outflow
-
-          let changeHtml = '-'
-          if (change !== null && change !== undefined) {
-            const color = change >= 0 ? '#ee6666' : '#91cc75'
-            changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
-          }
-          const netColor = netFlowMissing ? '#8ba4a7' : (netFlow >= 0 ? '#ee6666' : '#91cc75')
-
-          result += `
-            <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
-              <span style="color:#8ba4a7;">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
-                ${param.seriesName}
-              </span>
-              <span style="color:#8ba4a7;">流入 ${formatFlow(inflow)}</span>
-              <span style="color:#8ba4a7;">流出 ${formatFlow(outflow)}</span>
-              <span style="color:${netColor};font-weight:bold;">${isToday ? '净流入' : '当日净流入'} ${netFlowMissing ? '-' : formatNetFlow(netFlow)}</span>
-              <span style="color:#8ba4a7;">
-                ${changeHtml}
-              </span>
-            </div>
-          `
-
-          if (!isToday && totalFlow !== null && totalFlow !== undefined) {
-            let accumulatedChangeHtml = '-'
-            if (accumulatedChangePercent !== null && accumulatedChangePercent !== undefined) {
-              const color = accumulatedChangePercent >= 0 ? '#ee6666' : '#91cc75'
-              accumulatedChangeHtml = `<b style="color:${color}">${(accumulatedChangePercent * 100).toFixed(2)}%</b>`
-            }
-
-            let totalFlowHtml = '-'
-            // 净流入口径优先(2026-09-08 起 /flow/history 与 /flow/accumulated 均带 total_net_flow)
-            const totalNetFlowValue = totalNetFlow ?? totalFlow
-            if (totalNetFlowValue !== null && totalNetFlowValue !== undefined) {
-              totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalNetFlowValue)}</b>`
-            }
-
-            const appearancesHtml = appearances ? `<b>${appearances}</b>次` : '-'
-
-            result += `
-              <div style="border-top:1px dashed #3a4a6b;margin:6px 0;padding-top:6px;">
-                <div style="color:#8ba4a7;">累计净流入: ${totalFlowHtml}</div>
-                <div style="color:#8ba4a7;">累计涨跌: ${accumulatedChangeHtml}</div>
-                <div style="color:#8ba4a7;">出现天数: ${appearancesHtml}</div>
-              </div>
-            `
-          }
-        })
-
-        return result
-      }
-    },
-    legend: {
-      data: topSectors,
-      textStyle: {
-        color: '#8ba4c7'
-      },
-      selectedMode: true,
-      selected: topSectors.reduce((acc, name, index) => {
-        acc[name] = validSelected[name] !== undefined ? validSelected[name] : (index < 5)
-        return acc
-      }, {})
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '15%',
-      top: '15%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: timeData,
-      axisLine: {
-        onZero: false,
-        lineStyle: {
-          color: 'rgba(148, 163, 184, 0.35)'
-        }
-      },
-      axisTick: {
-        show: false
-      },
-      axisLabel: {
-        color: '#8ba4c7'
-      },
-      splitLine: {
-        show: false
-      }
-    },
-    yAxis: yAxisConfig,
-    series: mappedSeries
-  }
-}
-
-export function generateSeries(topSectors, timeData, allData, colors, isToday) {
-  return topSectors.map((sectorName, index) => {
-    let seen = false
-    let lastFlow = null
-    let lastChange = 0
-    let lastCumNet = null
-
-    const data = timeData.map(timeKey => {
-      const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-      const sectorItem = timeDataItem.find(item => item.name === sectorName)
-      const flow = getFlowValue(sectorItem)
-      const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : lastChange
-      // 非当天模式：净流入累计曲线(cum_net_flow)，与当天模式的"日内累计净流入"
-      // 语义对齐，曲线终点=整窗口累计净流入。缺失日沿用最近一次累计值。
-      const cumNetFlow = !isToday
-        ? (sectorItem?.cum_net_flow ?? sectorItem?.net_flow ?? null)
-        : null
-
-      if (flow !== null && flow !== undefined) {
-        seen = true
-        lastFlow = flow
-        lastChange = change
-      }
-      if (cumNetFlow !== null && cumNetFlow !== undefined) {
-        lastCumNet = cumNetFlow
-      }
-
-      if (!seen) return null
-      const displayFlow = flow !== null && flow !== undefined ? flow : lastFlow
-
-      if (isToday) {
-        return {
-          value: displayFlow,
-          inflow: sectorItem?.flow ?? null,
-          outflow: sectorItem?.outflow ?? null,
-          netFlow: sectorItem?.net_flow ?? displayFlow,
-          change,
-          carried: flow === null || flow === undefined
-        }
-      }
-
-      return {
-        value: cumNetFlow ?? lastCumNet ?? displayFlow,
-        inflow: sectorItem?.flow ?? null,
-        outflow: sectorItem?.outflow ?? null,
-        netFlow: sectorItem?.net_flow ?? null,
-        cumNetFlow: sectorItem?.cum_net_flow ?? null,
-        change,
-        totalFlow: sectorItem?.total_flow ?? 0,
-        totalNetFlow: sectorItem?.total_net_flow ?? null,
-        accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
-        appearances: sectorItem?.appearances ?? 0,
-        carried: flow === null || flow === undefined
-      }
-    })
-
-    return {
-      name: sectorName,
-      type: 'line',
-      smooth: true,
-      connectNulls: true,
-      showSymbol: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      data,
-      lineStyle: {
-        width: 2,
-        color: colors[index % colors.length]
-      },
-      itemStyle: {
-        color: colors[index % colors.length]
-      },
-      emphasis: {
-        focus: 'series',
-        scale: 1.5,
-        lineStyle: {
-          width: 4,
-          shadowBlur: 10,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        },
-        itemStyle: {
-          borderWidth: 3,
-          borderColor: '#fff',
-          shadowBlur: 10,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        }
-      }
-    }
-  })
-}
-
-export function collectAllSectors(timeData, allData, isToday) {
-  const sectorStats = new Map()
-
-  timeData.forEach(timeKey => {
-    const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
-    timeDataItem.forEach((item) => {
-      const name = item.name
-      if (!name) return
-
-      if (!sectorStats.has(name)) {
-        sectorStats.set(name, {
-          name,
-          count: 0,
-          totalFlow: 0,
-          latestFlow: 0,
-          latestChange: 0
-        })
-      }
-
-      const stats = sectorStats.get(name)
-      stats.count++
-
-      const flow = getFlowValue(item)
-      if (flow !== undefined && flow !== null) {
-        stats.totalFlow += flow
-        stats.latestFlow = flow
-      }
-
-      if (item.change !== undefined && item.change !== null) {
-        stats.latestChange = item.change
-      }
-    })
-  })
-
-  return Array.from(sectorStats.values())
-    .sort((a, b) => {
-      if (b.latestFlow !== a.latestFlow) {
-        return b.latestFlow - a.latestFlow
-      }
-      return b.count - a.count
-    })
-    .map(s => s.name)
-}
-

@@ -2,7 +2,7 @@ import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi } from '../../services/apiService'
-import { generateChartOption, generateSeries, collectAllSectors, generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
+import { generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -96,6 +96,9 @@ export default {
       autoGrowCursor: null,
       autoGrowTimer: null,
       autoGrowSpeed: 200,
+      // 多日模式(7/15/30天)逐日生长动画:切到多日后曲线按日期一天天长出来
+      multiDayCursor: null,
+      multiDayTimer: null,
       marketSummary: null,
       marketSummaryError: null,
       kospiIndex: null,
@@ -327,6 +330,49 @@ export default {
         ? '今日净流入TOP5 / 净流出TOP5'
         : `${this.replayDate}净流入TOP5 / 净流出TOP5`
     },
+    // 多日模式(7/15/30天)榜单:窗口累计净流入TOP5 + 净流出TOP5,
+    // 卡片结构/着色变量与当天模式 replayTop10Sectors 完全同款。
+    accumulatedTop10Sectors() {
+      if (this.selectedTimeRange === 'today') return []
+      const items = this.accumulatedData.filter(item => item && item.name)
+      const netValue = item => Number(item.total_net_flow ?? item.net_flow ?? item.flow ?? 0) || 0
+
+      const grouped = items.reduce((groups, item) => {
+        const group = item.flow_group || (netValue(item) < 0 ? 'net_out' : 'net_in')
+        ;(group === 'net_out' ? groups.out : groups.in).push(item)
+        return groups
+      }, { in: [], out: [] })
+
+      const inflowItems = grouped.in
+        .sort((a, b) => netValue(b) - netValue(a))
+        .slice(0, 5)
+      const outflowItems = grouped.out
+        .sort((a, b) => netValue(a) - netValue(b))
+        .slice(0, 5)
+      const maxInflow = Math.max(...inflowItems.map(item => Math.abs(netValue(item))), 1)
+      const maxOutflow = Math.max(...outflowItems.map(item => Math.abs(netValue(item))), 1)
+      const rankGroup = (list, direction, maxValue) => list.map((item, index) => {
+        const strength = Math.max(0.2, Math.min(1, Math.abs(netValue(item)) / maxValue))
+        return {
+          ...item,
+          rank: index + 1,
+          flow_direction: direction,
+          flow_strength: strength,
+          flow_alpha: (0.18 + strength * 0.5).toFixed(3),
+          flow_deep_alpha: (0.22 + strength * 0.55).toFixed(3),
+          flow_border_alpha: (0.28 + strength * 0.6).toFixed(3)
+        }
+      })
+
+      return [
+        ...rankGroup(inflowItems, 'in', maxInflow),
+        ...rankGroup(outflowItems, 'out', maxOutflow)
+      ]
+    },
+    accumulatedTitle() {
+      if (this.selectedTimeRange === 'today') return ''
+      return `近${this.selectedTimeRange}天累计净流入TOP5 / 净流出TOP5`
+    },
     renderedAIAnalysis() {
       if (!this.aiAnalysisResult) return ''
       return marked.parse(this.aiAnalysisResult)
@@ -390,6 +436,9 @@ export default {
     }
     if (this.autoGrowTimer) {
       clearInterval(this.autoGrowTimer)
+    }
+    if (this.multiDayTimer) {
+      clearInterval(this.multiDayTimer)
     }
     if (this.marketSummaryInterval) {
       clearInterval(this.marketSummaryInterval)
@@ -978,14 +1027,15 @@ export default {
         const response = await getHistoryData(days)
         if (response.success) {
           this.historyData = response.data
-          
+
           const dates = Object.keys(this.historyData).sort()
           if (dates.length > 0) {
             const latestDate = dates[dates.length - 1]
             this.currentData = this.historyData[latestDate] || []
           }
-          
-          this.updateChart()
+
+          // 逐日生长动画(与当天 autoGrow 同款);日期不足2天则直接整图渲染
+          this.startMultiDayGrow()
         }
       } catch (err) {
         this.error = '获取历史数据失败: ' + err.message
@@ -1065,7 +1115,8 @@ export default {
         this.autoGrowTimer = null
         this.autoGrowCursor = null
       }
-      
+      this.stopMultiDayGrow()
+
       if (this.selectedTimeRange !== 'today') {
         this.stopTodayReplay(false)
         this.replayCursor = null
@@ -1218,102 +1269,66 @@ export default {
         return
       }
 
-      const oldOption = this.chartInstance.getOption()
-      const oldSelected = oldOption?.legend?.[0]?.selected || {}
+      // 多日累计模式(7/15/30天):2026-09-08 起与当天模式共用同一图表实现
+      // (断轴/末端标签/十字光标/移动端适配全部同款),曲线值取窗口累计净流入
+      // (cum_net_flow),支持逐日生长动画(multiDayCursor)。替换掉原先独立的
+      // generateChartOption 路径——该路径在负值场景下渲染异常(坐标轴消失)。
+      const timeData = Object.keys(this.historyData).sort()
+      const fixedTopSectors = this.accumulatedTop10Sectors.map(s => s.name)
 
-      let timeData, allData
-
-      if (this.selectedTimeRange === 'today') {
-        timeData = Object.keys(this.minuteData).sort().filter(key => {
-          const parts = key.split(':')
-          if (parts.length !== 2) return false
-          const minute = parseInt(parts[1], 10)
-          return minute % 5 === 0
-        })
-        allData = this.minuteData
-      } else {
-        timeData = Object.keys(this.historyData).sort()
-        allData = this.historyData
-      }
-
-      let option
-      if (timeData.length === 0) {
-        option = {
-          tooltip: {
-            trigger: 'item',
-            backgroundColor: 'rgba(20,25,45,0.95)',
-            borderColor: '#3a4a6b',
-            borderWidth: 1
-          },
-          legend: {
-            data: [],
-            textStyle: {
-              color: '#8ba4c7'
-            }
-          },
-          grid: {
-            left: '3%',
-            right: '4%',
-            bottom: '15%',
-            top: '15%',
-            containLabel: true
-          },
-          xAxis: {
-            type: 'category',
-            boundaryGap: false,
-            data: ['暂无数据'],
-            axisLabel: {
-              color: '#8ba4c7'
-            }
-          },
-          yAxis: {
-            type: 'value',
-            name: '资金流入(亿)',
-            axisLabel: {
-              color: '#8ba4c7',
-              formatter: (value) => {
-                if (Math.abs(value) >= 1) {
-                  return value.toFixed(1) + '亿'
-                }
-                return (value * 10000).toFixed(0) + '万'
-              }
-            }
-          },
-          series: []
-        }
-      } else {
-        const isToday = this.selectedTimeRange === 'today'
-        
-        let allSectors
-        if (isToday && this.currentData.length > 0) {
-          // 使用净流入TOP5 + 净流出TOP5，和下方列表保持一致
-          allSectors = this.replayTop10Sectors.map(s => s.name)
-        } else if (!isToday && this.accumulatedData.length > 0) {
-          allSectors = this.accumulatedData.slice(0, 10).map(s => s.name)
-        } else {
-          // 从所有时间点数据中收集出现过的板块
-          allSectors = collectAllSectors(timeData, allData, isToday)
-          // 限制最多5个板块
-          allSectors = allSectors.slice(0, 10)
-        }
-        
-        // 生成 series
-        const series = generateSeries(allSectors, timeData, allData, this.colors, isToday)
-        
-        // 使用实际有数据的板块作为最终列表
-        const finalTopSectors = series.map(s => s.name)
-        
-        option = generateChartOption(timeData, series, finalTopSectors, oldSelected, this.colors, isToday)
-      }
+      const option = generateLiveReplayChartOption(
+        timeData,
+        this.historyData,
+        this.colors,
+        this.multiDayCursor,
+        10,
+        fixedTopSectors.length > 0 ? fixedTopSectors : null,
+        false,
+        { valueMode: 'cum' }
+      )
 
       try {
         this.chartInstance.setOption(option, {
-          notMerge: true,
+          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
           lazyUpdate: true
         })
       } catch (e) {
         console.error('setOption 失败:', e)
       }
+    },
+
+    // 多日模式逐日生长动画:切到 7/15/30 天后曲线按日期一天天长出来,
+    // 与当天模式的 autoGrow 同款体验、同款速度。
+    startMultiDayGrow() {
+      this.stopMultiDayGrow()
+      const dates = Object.keys(this.historyData).sort()
+      if (dates.length <= 1) {
+        this.updateChart()
+        return
+      }
+      this.multiDayCursor = 0
+      this.multiDayTimer = setInterval(() => {
+        if (this.multiDayCursor === null) {
+          this.multiDayCursor = 0
+          return
+        }
+        if (this.multiDayCursor >= Object.keys(this.historyData).length - 1) {
+          clearInterval(this.multiDayTimer)
+          this.multiDayTimer = null
+          this.multiDayCursor = null
+          return
+        }
+        this.multiDayCursor += 1
+        this.updateChart()
+      }, this.autoGrowSpeed)
+    },
+
+    stopMultiDayGrow() {
+      if (this.multiDayTimer) {
+        clearInterval(this.multiDayTimer)
+        this.multiDayTimer = null
+      }
+      this.multiDayCursor = null
     },
 
     async startTodayReplay() {
