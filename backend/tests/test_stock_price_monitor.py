@@ -83,6 +83,79 @@ class DetectionTests(unittest.TestCase):
         self.assertIsNone(m._amplitude(now, cfg))
 
 
+class LowPriceLimitTests(unittest.TestCase):
+    """低价股涨跌停按交易所涨停价比价:昨收×(1±幅度)四舍五入到分。
+
+    低价 ST(±5%)涨幅被价格取整压低(2.02 -> 涨停价 2.12 仅 +4.95%),
+    旧 pct>=limit*0.995(=4.975%) 判定漏报。"""
+
+    def test_low_price_st_limit_up_detected(self):
+        q = _q(2.12, 2.02, pct=4.95)
+        hits = m.detect_hits(q, [q], state={}, alerts_cfg=m.DEFAULT_ALERTS_CFG,
+                             limit=5.0, name='某某ST')
+        self.assertIn('limit_up', [h['type'] for h in hits])
+
+    def test_low_price_st_limit_down_detected(self):
+        # 跌停价 = round(2.02*0.95, 2) = 1.92,仅 -4.95%
+        q = _q(1.92, 2.02, pct=-4.95)
+        hits = m.detect_hits(q, [q], state={}, alerts_cfg=m.DEFAULT_ALERTS_CFG,
+                             limit=5.0, name='某某ST')
+        self.assertIn('limit_down', [h['type'] for h in hits])
+
+    def test_one_tick_below_limit_not_fired(self):
+        # 2.11(涨停价下方一分)不算涨停
+        q = _q(2.11, 2.02, pct=4.46)
+        hits = m.detect_hits(q, [q], state={}, alerts_cfg=m.DEFAULT_ALERTS_CFG,
+                             limit=5.0, name='某某ST')
+        self.assertNotIn('limit_up', [h['type'] for h in hits])
+
+    def test_low_price_seal_hysteresis_keeps_working(self):
+        # 低价 ST 封板后,回落到 2.11(< 5*0.99=4.95% 对应价) = 开板,重新封板再报
+        state = {}
+        at_limit = _q(2.12, 2.02, pct=4.95)
+        h1 = m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG,
+                           limit=5.0, name='某某ST')
+        self.assertIn('limit_up', [h['type'] for h in h1])
+        pulled = _q(2.11, 2.02, pct=4.46)
+        m.detect_hits(pulled, [pulled], state, m.DEFAULT_ALERTS_CFG,
+                      limit=5.0, name='某某ST')
+        self.assertFalse(state.get('limit_up_sealed'))
+        h3 = m.detect_hits(at_limit, [at_limit], state, m.DEFAULT_ALERTS_CFG,
+                           limit=5.0, name='某某ST')
+        self.assertIn('limit_up', [h['type'] for h in h3])
+
+    def test_limit_price_rounding_half_up(self):
+        # ST 5%:4.10*1.05=4.305 四舍五入到 4.31(非银行家舍入的 4.30)
+        self.assertEqual(m._limit_price(4.10, 5.0, up=True), 4.31)
+        # 跌停方向:4.10*0.95=3.895 -> 3.90
+        self.assertEqual(m._limit_price(4.10, 5.0, up=False), 3.90)
+        # 主板 10%:4.10*1.10=4.51
+        self.assertEqual(m._limit_price(4.10, 10.0, up=True), 4.51)
+
+
+class GapOpenTsTests(unittest.TestCase):
+    """高低开窗口判定依赖时间戳:无 ts 时跳过,而非全天放行误报。"""
+
+    def test_gap_open_in_window_fires(self):
+        q = _q(10.5, 10.0, pct=5.0)
+        q['open'] = 10.5  # _q 默认 open=prev_close,这里造 5% 高开
+        hit = m._gap_open(q, {}, m.DEFAULT_ALERTS_CFG)
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit['type'], 'gap_open')
+
+    def test_gap_open_without_ts_skipped(self):
+        q = _q(10.5, 10.0, pct=5.0)
+        q['open'] = 10.5
+        q['ts'] = ''
+        self.assertIsNone(m._gap_open(q, {}, m.DEFAULT_ALERTS_CFG))
+
+    def test_gap_open_outside_window_skipped(self):
+        q = _q(10.5, 10.0, pct=5.0)
+        q['open'] = 10.5
+        q['ts'] = '2026-07-14 14:00:00'  # 午后,不在开盘 30 分钟窗口
+        self.assertIsNone(m._gap_open(q, {}, m.DEFAULT_ALERTS_CFG))
+
+
 class CooldownTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

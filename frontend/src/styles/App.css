@@ -1,7 +1,7 @@
 .dashboard {
   min-height: 100vh;
-  padding: 20px;
-  background: linear-gradient(135deg, #0f1219 0%, #1a1d29 50%, #0f1219 100%);
+  padding: 24px;
+  background: #0a0e17;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   position: relative;
 }
@@ -10,7 +10,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   gap: 15px;
 }
 
@@ -31,13 +31,12 @@
 }
 
 .header h1 {
-  font-size: 22px;
-  color: #fff;
-  font-weight: 700;
+  font-size: 19px;
+  color: #e6edf7;
+  font-weight: 600;
   text-align: center;
   margin: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  letter-spacing: 2px;
+  letter-spacing: 1px;
 }
 
 .github-link {
@@ -150,18 +149,18 @@
 .market-summary-panel {
   width: min(760px, calc(100vw - 780px));
   margin: 0 auto 4px;
-  padding: 5px 10px;
+  padding: 8px 14px;
   display: grid;
   grid-template-columns: auto 84px minmax(120px, 1fr) 84px auto;
   grid-template-areas:
     "ts down bar up up2"
     "ts limit turnover limit2 limit3";
   align-items: center;
-  gap: 3px 10px;
-  background: linear-gradient(135deg, rgba(22, 32, 56, 0.55) 0%, rgba(28, 36, 60, 0.55) 100%);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  gap: 4px 10px;
+  background: rgba(15, 20, 33, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 .market-index-strip {
@@ -217,9 +216,9 @@
 .ai-chain-arrow { color: #8ba4c7; margin-left: 2px; }
 /* 综合环境灯配色：偏多=红(A股惯例红涨)、偏空=绿、中性=灰 */
 .ai-chain-strip.ai-bull { border-color: rgba(239, 83, 80, 0.6); background: rgba(239, 83, 80, 0.12); color: #ef5350; }
-.ai-chain-strip.ai-bull .ai-chain-dot { background: #ef5350; box-shadow: 0 0 6px #ef5350; }
+.ai-chain-strip.ai-bull .ai-chain-dot { background: #ef5350; }
 .ai-chain-strip.ai-bear { border-color: rgba(34, 197, 94, 0.55); background: rgba(34, 197, 94, 0.12); color: #22c55e; }
-.ai-chain-strip.ai-bear .ai-chain-dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.ai-chain-strip.ai-bear .ai-chain-dot { background: #22c55e; }
 .ai-chain-strip.ai-neutral { border-color: rgba(139, 164, 199, 0.4); color: #cbd5e1; }
 .ai-chain-strip.ai-neutral .ai-chain-dot { background: #8ba4c7; }
 
@@ -374,13 +373,13 @@ button:active:not(:disabled) {
 }
 
 .chart-container {
-  background: #111827;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
+  background: #111827; /* 与 echarts 画布底色一致,保持不变避免图表四周露色 */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   padding: 14px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   margin-top: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -821,7 +820,6 @@ button:active:not(:disabled) {
 
 .chart-replay-button:hover:not(:disabled) {
   background: rgba(16, 185, 129, 0.28);
-  transform: translateY(-1px);
 }
 
 .chart-replay-button.active {
@@ -961,8 +959,9 @@ button:active:not(:disabled) {
 }
 
 .sector-list {
-  background: rgba(20, 25, 45, 0.6);
-  border-radius: 8px;
+  background: rgba(15, 20, 33, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
   padding: 20px;
   margin-top: -40px;
   overflow: visible;
@@ -976,8 +975,9 @@ button:active:not(:disabled) {
 
 .sector-title {
   text-align: center;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
+  color: #8ba4c7;
   margin-bottom: 20px;
 }
 
@@ -989,27 +989,26 @@ button:active:not(:disabled) {
 }
 
 .sector-card {
-  background: linear-gradient(135deg, rgba(30, 35, 60, 0.9) 0%, rgba(20, 25, 45, 0.9) 100%);
-  border-radius: 8px;
+  background: rgba(15, 20, 33, 0.9);
+  border-radius: 10px;
   padding: 15px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s ease, border-color 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   min-width: 0;
   text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   position: relative;
   overflow: hidden;
 }
 
+/* 红/绿资金流着色保留(数据语义),彩色投影光晕移除 */
 .sector-card.net-in-card {
   background:
     linear-gradient(135deg,
       rgba(239, 83, 80, var(--flow-alpha, 0.22)) 0%,
       rgba(120, 24, 36, var(--flow-deep-alpha, 0.25)) 100%),
-    linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
+    rgba(15, 20, 33, 0.92);
   border-color: rgba(239, 83, 80, var(--flow-border-alpha, 0.31));
-  box-shadow: 0 2px 10px rgba(239, 83, 80, calc(var(--flow-strength, 0.5) * 0.5));
 }
 
 .sector-card.net-out-card {
@@ -1017,54 +1016,28 @@ button:active:not(:disabled) {
     linear-gradient(135deg,
       rgba(103, 194, 58, var(--flow-alpha, 0.22)) 0%,
       rgba(18, 97, 72, var(--flow-deep-alpha, 0.25)) 100%),
-    linear-gradient(135deg, rgba(30, 35, 60, 0.92) 0%, rgba(20, 25, 45, 0.92) 100%);
+    rgba(15, 20, 33, 0.92);
   border-color: rgba(103, 194, 58, var(--flow-border-alpha, 0.31));
-  box-shadow: 0 2px 10px rgba(103, 194, 58, calc(var(--flow-strength, 0.5) * 0.5));
-}
-
-.sector-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #4fc3f7 0%, #29b6f6 100%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
 }
 
 .sector-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(79, 195, 247, 0.5);
-  box-shadow: 0 4px 16px rgba(79, 195, 247, 0.2);
-}
-
-.sector-card:hover::before {
-  opacity: 1;
+  filter: brightness(1.12); /* 用提亮代替换背景,避免盖掉红/绿资金流着色 */
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .sector-card.top-3 {
-  border-color: rgba(255, 215, 0, 0.5);
-  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.35), 0 2px 10px rgba(0, 0, 0, 0.2);
-}
-
-.sector-card.top-3::before {
-  background: linear-gradient(90deg, #ffd700 0%, #ffea00 100%);
-  opacity: 1;
+  border-color: rgba(255, 215, 0, 0.45);
 }
 
 .sector-card .rank {
-  font-size: 24px;
-  font-weight: bold;
-  color: #4fc3f7;
+  font-size: 22px;
+  font-weight: 700;
+  color: #7d94b8;
   margin-bottom: 6px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .sector-card.top-3 .rank {
   color: #ffd700;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
 }
 
 .sector-card .name {
@@ -1082,7 +1055,6 @@ button:active:not(:disabled) {
   font-size: 13px;
   margin-bottom: 6px;
   font-weight: bold;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .sector-card .net-flow {
@@ -1090,7 +1062,6 @@ button:active:not(:disabled) {
   font-size: 12px;
   margin-bottom: 6px;
   font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .sector-card .net-flow.net-negative {
@@ -1478,8 +1449,6 @@ button:active:not(:disabled) {
 
 .ticker-label.clickable:hover {
   background: rgba(255, 82, 82, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3);
 }
 
 .ticker-content {
@@ -1553,20 +1522,21 @@ button:active:not(:disabled) {
 }
 
 .config-button {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 14px;
+  border-radius: 6px;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .config-button:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .replay-button {
@@ -1598,90 +1568,83 @@ button:active:not(:disabled) {
 }
 
 .log-button {
-  background: rgba(79, 195, 247, 0.2);
-  color: #4fc3f7;
-  border: 1px solid rgba(79, 195, 247, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.3s ease;
-}
-
-.log-button:hover {
-  background: rgba(79, 195, 247, 0.3);
-  transform: translateY(-2px);
-}
-
-.house-button {
-  background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
-  border: 1px solid rgba(255, 193, 7, 0.5);
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.3s ease;
-}
-
-.house-button:hover {
-  background: rgba(255, 193, 7, 0.3);
-  transform: translateY(-2px);
-}
-
-.quant-button {
-  background: linear-gradient(135deg, #1890ff, #096dd9);
-  color: #fff;
-  border: 1px solid #40a9ff;
-  padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.log-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.house-button {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.house-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.quant-button {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
 }
 
 .quant-button:hover {
-  background: linear-gradient(135deg, #40a9ff, #1890ff);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .flow-alert-button {
   position: relative;
-  background: linear-gradient(135deg, #ff4d4f, #cf1322);
-  color: #fff;
-  border: 1px solid #ff7875;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
 }
 .flow-alert-button:hover {
-  background: linear-gradient(135deg, #ff7875, #ff4d4f);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
-/* 有新异动时按钮整体醒目抖动 + 强化光晕（叠加右上角红点脉冲） */
+/* 有新异动：不再抖动/大光晕，改为红色描边轻提示（红点脉冲仍是主信号） */
 .flow-alert-button.has-new {
-  animation: fa-button-shake 1.1s ease-in-out infinite;
-  box-shadow: 0 0 14px rgba(255, 77, 79, 0.85), 0 4px 12px rgba(255, 77, 79, 0.5);
-}
-@keyframes fa-button-shake {
-  0%, 100% { transform: translateX(0) rotate(0deg); }
-  15% { transform: translateX(-2px) rotate(-3deg); }
-  30% { transform: translateX(2px) rotate(3deg); }
-  45% { transform: translateX(-2px) rotate(-2deg); }
-  60% { transform: translateX(2px) rotate(2deg); }
-  80% { transform: translateX(-1px) rotate(-1deg); }
+  color: #ffb4b4;
+  border-color: rgba(255, 77, 79, 0.6);
+  background: rgba(255, 77, 79, 0.08);
 }
 /* 未读红点：有新异动时点亮，脉冲提示 */
 .flow-alert-button .unread-dot {
@@ -1690,36 +1653,34 @@ button:active:not(:disabled) {
   right: -3px;
   width: 10px;
   height: 10px;
-  background: #ffeb3b;
-  border: 2px solid #fff;
+  background: #ff4d4f;
+  border: 2px solid #0a0e17;
   border-radius: 50%;
-  box-shadow: 0 0 6px rgba(255, 77, 79, 0.9);
   animation: fa-unread-pulse 1.4s ease-in-out infinite;
   pointer-events: none;
 }
 @keyframes fa-unread-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 77, 79, 0.9); }
-  50% { transform: scale(1.35); box-shadow: 0 0 10px rgba(255, 77, 79, 1); }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.75; }
 }
 
 .yuntu-button {
-  background: linear-gradient(135deg, #722ed1, #531dab);
-  color: #fff;
-  border: 1px solid #9254de;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(114, 46, 209, 0.3);
 }
 
 .yuntu-button:hover {
-  background: linear-gradient(135deg, #9254de, #722ed1);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(114, 46, 209, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .timeline-button {
@@ -1743,23 +1704,22 @@ button:active:not(:disabled) {
 }
 
 .global-button {
-  background: linear-gradient(135deg, #0e7490, #0c4a6e);
-  color: #fff;
-  border: 1px solid #06b6d4;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
 }
 
 .global-button:hover {
-  background: linear-gradient(135deg, #06b6d4, #0e7490);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(6, 182, 212, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .more-menu-wrapper {
@@ -1767,21 +1727,22 @@ button:active:not(:disabled) {
 }
 
 .more-button {
-  background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
-  color: #e0e6f0;
-  border: 1px solid #4a5a7b;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 14px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   font-weight: 500;
 }
 
 .more-button:hover {
-  background: linear-gradient(135deg, #4a5a7b, #3a4a6b);
-  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .more-menu-overlay {
@@ -1912,21 +1873,18 @@ button:active:not(:disabled) {
   top: 20px;
   left: 20px;
   width: 350px;
-  background: linear-gradient(135deg, rgba(30, 35, 60, 0.95) 0%, rgba(20, 25, 45, 0.95) 100%);
+  background: rgba(15, 20, 33, 0.96);
   border-radius: 12px;
   padding: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: 100;
   cursor: pointer;
-  transition: all 0.3s ease;
-  transform: scale(0.9);
-  transform-origin: top left;
+  transition: border-color 0.2s ease;
 }
 
 .monitor-card-container:hover {
-  border-color: rgba(79, 195, 247, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .monitor-card-header {
@@ -1939,9 +1897,10 @@ button:active:not(:disabled) {
 }
 
 .monitor-card-label {
-  color: #4fc3f7;
-  font-size: 14px;
+  color: #8ba4c7;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .health-check-btn {
@@ -1991,25 +1950,21 @@ button:active:not(:disabled) {
 
 .monitor-ok .monitor-dot {
   background: #4caf50;
-  box-shadow: 0 0 8px #4caf50;
   animation: pulse-dot 2s infinite;
 }
 
 .monitor-error .monitor-dot {
   background: #f44336;
-  box-shadow: 0 0 8px #f44336;
   animation: blink-dot 1s infinite;
 }
 
 .monitor-partial .monitor-dot {
   background: #ff9800;
-  box-shadow: 0 0 8px #ff9800;
   animation: pulse-dot 2s infinite;
 }
 
 .monitor-unknown .monitor-dot {
   background: #9e9e9e;
-  box-shadow: 0 0 8px #9e9e9e;
 }
 
 .monitor-name {
@@ -2024,13 +1979,11 @@ button:active:not(:disabled) {
 
 .monitor-warning .monitor-dot {
   background: #ff9800;
-  box-shadow: 0 0 8px #ff9800;
   animation: blink-dot 1s infinite;
 }
 
 .monitor-loading .monitor-dot {
   background: #ffc107;
-  box-shadow: 0 0 6px #ffc107;
   animation: pulse-dot 1s infinite;
 }
 
@@ -2122,15 +2075,13 @@ button:active:not(:disabled) {
   top: 20px;
   right: 20px;
   width: 380px;
-  background: linear-gradient(135deg, rgba(30, 35, 60, 0.95) 0%, rgba(20, 25, 45, 0.95) 100%);
+  background: rgba(15, 20, 33, 0.96);
   border-radius: 12px;
   padding: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: 100;
   overflow: hidden;
-  transform: scale(0.9);
-  transform-origin: top right;
 }
 
 .news-ticker-header {
@@ -2342,17 +2293,18 @@ button:active:not(:disabled) {
   }
 }
 
-/* AI分析按钮样式 */
+/* AI分析按钮样式（2026-09-08 降噪:与其他顶栏按钮统一幽灵样式;
+   水波填充是分析进度反馈,保留;仅去除渐变底/彩色投影/悬停上浮） */
 .ai-analyze-button {
-  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
-  border: 1px solid rgba(124, 58, 237, 0.5);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #cbd5e1;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
   position: relative;
   overflow: hidden;
@@ -2416,9 +2368,9 @@ button:active:not(:disabled) {
 }
 
 .ai-analyze-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
-  border-color: rgba(124, 58, 237, 0.7);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .ai-analyze-button:disabled {

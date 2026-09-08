@@ -822,10 +822,13 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
 
           const change = param.data.change
           const totalFlow = param.data.totalFlow
+          const totalNetFlow = param.data.totalNetFlow
           const accumulatedChangePercent = param.data.accumulatedChangePercent
           const appearances = param.data.appearances
           const displayValue = useBrokenAxis ? (param.data.realValue ?? param.data.value) : param.data.value
-          const netFlow = param.data.netFlow ?? displayValue
+          // 非当天模式 netFlow=当日净流入(可能缺失)；当天模式才允许回落到曲线值
+          const netFlow = param.data.netFlow ?? (isToday ? displayValue : null)
+          const netFlowMissing = netFlow === null || netFlow === undefined
           const inflow = param.data.inflow
           const outflow = param.data.outflow
 
@@ -834,7 +837,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
             const color = change >= 0 ? '#ee6666' : '#91cc75'
             changeHtml = `<b style="color:${color}">${(change * 100).toFixed(2)}%</b>`
           }
-          const netColor = netFlow >= 0 ? '#ee6666' : '#91cc75'
+          const netColor = netFlowMissing ? '#8ba4a7' : (netFlow >= 0 ? '#ee6666' : '#91cc75')
 
           result += `
             <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
@@ -844,7 +847,7 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
               </span>
               <span style="color:#8ba4a7;">流入 ${formatFlow(inflow)}</span>
               <span style="color:#8ba4a7;">流出 ${formatFlow(outflow)}</span>
-              <span style="color:${netColor};font-weight:bold;">净流入 ${formatNetFlow(netFlow)}</span>
+              <span style="color:${netColor};font-weight:bold;">${isToday ? '净流入' : '当日净流入'} ${netFlowMissing ? '-' : formatNetFlow(netFlow)}</span>
               <span style="color:#8ba4a7;">
                 ${changeHtml}
               </span>
@@ -859,15 +862,17 @@ export function generateChartOption(timeData, series, topSectors, oldSelected, c
             }
 
             let totalFlowHtml = '-'
-            if (totalFlow !== null && totalFlow !== undefined) {
-              totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalFlow)}</b>`
+            // 净流入口径优先(2026-09-08 起 /flow/history 与 /flow/accumulated 均带 total_net_flow)
+            const totalNetFlowValue = totalNetFlow ?? totalFlow
+            if (totalNetFlowValue !== null && totalNetFlowValue !== undefined) {
+              totalFlowHtml = `<b style="color:#4fc3f7">${formatFlow(totalNetFlowValue)}</b>`
             }
 
             const appearancesHtml = appearances ? `<b>${appearances}</b>次` : '-'
 
             result += `
               <div style="border-top:1px dashed #3a4a6b;margin:6px 0;padding-top:6px;">
-                <div style="color:#8ba4a7;">累计流入: ${totalFlowHtml}</div>
+                <div style="color:#8ba4a7;">累计净流入: ${totalFlowHtml}</div>
                 <div style="color:#8ba4a7;">累计涨跌: ${accumulatedChangeHtml}</div>
                 <div style="color:#8ba4a7;">出现天数: ${appearancesHtml}</div>
               </div>
@@ -926,17 +931,26 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
     let seen = false
     let lastFlow = null
     let lastChange = 0
+    let lastCumNet = null
 
     const data = timeData.map(timeKey => {
       const timeDataItem = allData[timeKey]?.data || allData[timeKey] || []
       const sectorItem = timeDataItem.find(item => item.name === sectorName)
       const flow = getFlowValue(sectorItem)
       const change = sectorItem?.change !== undefined && sectorItem?.change !== null ? sectorItem.change : lastChange
+      // 非当天模式：净流入累计曲线(cum_net_flow)，与当天模式的"日内累计净流入"
+      // 语义对齐，曲线终点=整窗口累计净流入。缺失日沿用最近一次累计值。
+      const cumNetFlow = !isToday
+        ? (sectorItem?.cum_net_flow ?? sectorItem?.net_flow ?? null)
+        : null
 
       if (flow !== null && flow !== undefined) {
         seen = true
         lastFlow = flow
         lastChange = change
+      }
+      if (cumNetFlow !== null && cumNetFlow !== undefined) {
+        lastCumNet = cumNetFlow
       }
 
       if (!seen) return null
@@ -954,12 +968,14 @@ export function generateSeries(topSectors, timeData, allData, colors, isToday) {
       }
 
       return {
-        value: displayFlow,
+        value: cumNetFlow ?? lastCumNet ?? displayFlow,
         inflow: sectorItem?.flow ?? null,
         outflow: sectorItem?.outflow ?? null,
-        netFlow: sectorItem?.net_flow ?? displayFlow,
+        netFlow: sectorItem?.net_flow ?? null,
+        cumNetFlow: sectorItem?.cum_net_flow ?? null,
         change,
         totalFlow: sectorItem?.total_flow ?? 0,
+        totalNetFlow: sectorItem?.total_net_flow ?? null,
         accumulatedChangePercent: sectorItem?.accumulated_change_percent ?? 0,
         appearances: sectorItem?.appearances ?? 0,
         carried: flow === null || flow === undefined

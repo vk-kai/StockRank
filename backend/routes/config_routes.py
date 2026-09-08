@@ -655,7 +655,9 @@ def _load_datasource_config():
 @config_bp.route('/datasource', methods=['GET'])
 def get_datasource_config():
     try:
-        sources = _load_datasource_config()
+        # 2026-09-08 起如实展示:采集URL内置于代码,自定义覆盖不生效,
+        # 直接返回内置清单,避免展示保存在本地却不被任何采集线程读取的旧URL误导排查。
+        sources = [dict(ds) for ds in DEFAULT_DATASOURCES]
         return jsonify({'success': True, 'data': sources})
     except Exception as e:
         error_logger.error(f"获取数据源配置失败: {e}")
@@ -676,86 +678,100 @@ def update_datasource_config():
         error_logger.error(f"更新数据源配置失败: {e}")
         return jsonify({'success': False, 'message': '更新数据源配置失败'}), 500
 
+def _build_test_headers(ds):
+    """根据数据源类型构造请求头（与业务请求完全一致）。串行调用，避免cookie状态竞争。"""
+    test_url = ds.get('test_url', '')
+    provider = ds.get('provider', '')
+    if '东方财富' in provider:
+        return get_eastmoney_headers()
+    elif '同花顺' in provider:
+        # 使用与业务请求相同的cookie生成逻辑
+        try:
+            from data.data_processor import attach_fresh_ths_cookie, generate_random_headers, normalize_ths_sector_headers
+            host = 'data.10jqka.com.cn'
+            if 'q.10jqka' in test_url:
+                host = 'q.10jqka.com.cn'
+            elif 'dq.10jqka' in test_url:
+                host = 'dq.10jqka.com.cn'
+            elif 'news.10jqka' in test_url:
+                host = 'news.10jqka.com.cn'
+            if 'hyzjl' in test_url or 'field' in test_url:
+                return attach_fresh_ths_cookie(normalize_ths_sector_headers())
+            return attach_fresh_ths_cookie(generate_random_headers(host=host))
+        except Exception:
+            return {
+                'User-Agent': get_random_user_agent(),
+                'Referer': 'https://data.10jqka.com.cn/',
+                'Accept': '*/*',
+            }
+    elif '新浪' in provider:
+        return {
+            'User-Agent': get_random_user_agent(),
+            'Referer': 'https://finance.sina.com.cn/',
+        }
+    elif '腾讯' in provider:
+        return {
+            'User-Agent': get_random_user_agent(),
+            'Referer': 'https://gu.qq.com/',
+        }
+    elif '金融界' in provider:
+        return {
+            'User-Agent': get_random_user_agent(),
+            'Referer': 'https://www.jrj.com.cn/',
+        }
+    return {'User-Agent': get_random_user_agent()}
+
+
+def _probe_datasource(ds, headers):
+    """发起单个数据源探测请求。返回 {ok, status_code, latency_ms, error}。"""
+    import time as _t
+    test_url = ds.get('test_url', '')
+    provider = ds.get('provider', '')
+    start = _t.time()
+    try:
+        if '东方财富' in provider:
+            # 使用em_request支持代理自动切换(与生产同路径)；超时收紧到6s。
+            # 代理池加载已有10分钟负缓存，最坏单源耗时也远小于前端120s超时。
+            from core.config import em_request
+            resp = em_request(test_url, headers=headers, timeout=6)
+            latency = int((_t.time() - start) * 1000)
+            if resp is None:
+                return {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '直连+代理均不可达'}
+            ok = resp.status_code == 200 and len(resp.content) > 10
+            return {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}' if resp.status_code != 200 else '响应内容为空'}
+        else:
+            resp = requests.get(test_url, headers=headers, timeout=6, allow_redirects=True)
+            latency = int((_t.time() - start) * 1000)
+            ok = resp.status_code == 200
+            return {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}'}
+    except requests.exceptions.Timeout:
+        return {'ok': False, 'status_code': None, 'latency_ms': int((_t.time() - start) * 1000), 'error': '超时'}
+    except Exception as e:
+        return {'ok': False, 'status_code': None, 'latency_ms': int((_t.time() - start) * 1000), 'error': str(e)[:80]}
+
+
 @config_bp.route('/datasource/test', methods=['POST'])
 def test_datasource():
-    """一键测试所有数据源可用性。返回 {key: {ok, status_code, latency_ms, error}}"""
+    """一键并发测试所有数据源可用性。返回 {key: {ok, status_code, latency_ms, error}}
+
+    2026-09-08 修复：原先串行测试19个源最坏4分钟+（东财源含代理池加载/双重重试），
+    前端60s超时后响应永远到不了、圆点停在"未知"。改为：请求头串行构造 +
+    ThreadPoolExecutor 并发探测(8) + 单源超时收紧，总耗时≈最慢单源。
+    """
     try:
+        from concurrent.futures import ThreadPoolExecutor
         sources = _load_datasource_config()
         results = {}
+        tasks = []
         for ds in sources:
-            key = ds['key']
-            test_url = ds.get('test_url', '')
-            if not test_url:
+            if not ds.get('test_url'):
                 # akshare等非HTTP接口，标记为跳过
-                results[key] = {'ok': None, 'status_code': None, 'latency_ms': None, 'error': '非HTTP接口，跳过测试'}
+                results[ds['key']] = {'ok': None, 'status_code': None, 'latency_ms': None, 'error': '非HTTP接口，跳过测试'}
                 continue
-            # 根据数据源类型选请求头（与业务请求完全一致）
-            provider = ds.get('provider', '')
-            if '东方财富' in provider:
-                headers = get_eastmoney_headers()
-            elif '同花顺' in provider:
-                # 使用与业务请求相同的cookie生成逻辑
-                try:
-                    from data.data_processor import attach_fresh_ths_cookie, generate_random_headers, normalize_ths_sector_headers
-                    host = 'data.10jqka.com.cn'
-                    if 'q.10jqka' in test_url:
-                        host = 'q.10jqka.com.cn'
-                    elif 'dq.10jqka' in test_url:
-                        host = 'dq.10jqka.com.cn'
-                    elif 'news.10jqka' in test_url:
-                        host = 'news.10jqka.com.cn'
-                    if 'hyzjl' in test_url or 'field' in test_url:
-                        headers = attach_fresh_ths_cookie(normalize_ths_sector_headers())
-                    else:
-                        headers = attach_fresh_ths_cookie(generate_random_headers(host=host))
-                except Exception:
-                    headers = {
-                        'User-Agent': get_random_user_agent(),
-                        'Referer': 'https://data.10jqka.com.cn/',
-                        'Accept': '*/*',
-                    }
-            elif '新浪' in provider:
-                headers = {
-                    'User-Agent': get_random_user_agent(),
-                    'Referer': 'https://finance.sina.com.cn/',
-                }
-            elif '腾讯' in provider:
-                headers = {
-                    'User-Agent': get_random_user_agent(),
-                    'Referer': 'https://gu.qq.com/',
-                }
-            elif '金融界' in provider:
-                headers = {
-                    'User-Agent': get_random_user_agent(),
-                    'Referer': 'https://www.jrj.com.cn/',
-                }
-            else:
-                headers = {'User-Agent': get_random_user_agent()}
-
-            import time as _t
-            start = _t.time()
-            try:
-                if '东方财富' in provider:
-                    # 使用em_request支持代理自动切换
-                    from core.config import em_request
-                    resp = em_request(test_url, headers=headers, timeout=10)
-                    latency = int((_t.time() - start) * 1000)
-                    if resp is None:
-                        results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '直连+代理均不可达'}
-                    else:
-                        ok = resp.status_code == 200 and len(resp.content) > 10
-                        results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}' if resp.status_code != 200 else '响应内容为空'}
-                else:
-                    resp = requests.get(test_url, headers=headers, timeout=8, allow_redirects=True)
-                    latency = int((_t.time() - start) * 1000)
-                    ok = resp.status_code == 200
-                    results[key] = {'ok': ok, 'status_code': resp.status_code, 'latency_ms': latency, 'error': None if ok else f'HTTP {resp.status_code}'}
-            except requests.exceptions.Timeout:
-                latency = int((_t.time() - start) * 1000)
-                results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': '超时'}
-            except Exception as e:
-                latency = int((_t.time() - start) * 1000)
-                results[key] = {'ok': False, 'status_code': None, 'latency_ms': latency, 'error': str(e)[:80]}
+            tasks.append((ds, _build_test_headers(ds)))
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for (ds, headers), result in zip(tasks, pool.map(lambda t: _probe_datasource(*t), tasks)):
+                results[ds['key']] = result
         return jsonify({'success': True, 'data': results})
     except Exception as e:
         error_logger.error(f"测试数据源失败: {e}")

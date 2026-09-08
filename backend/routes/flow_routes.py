@@ -544,7 +544,9 @@ def get_history():
                     'flow': item.get('flow', 0),
                     'net_flow': item.get('net_flow', 0),
                     'change': item.get('change', 0),
+                    'cum_net_flow': item.get('net_flow', 0) or 0,
                     'total_flow': item.get('flow', 0),
+                    'total_net_flow': item.get('net_flow', 0) or 0,
                     'accumulated_change_percent': item.get('change', 0),
                     'appearances': 1
                 })

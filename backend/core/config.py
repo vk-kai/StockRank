@@ -2,6 +2,7 @@ import os
 import random
 import string
 import json
+import time
 import requests
 from datetime import timedelta
 
@@ -221,11 +222,13 @@ if not os.path.exists(CONFIG_DIR):
 
 # ==================== 数据源默认配置 ====================
 # 每个数据源: key, name(显示名), category(分类), role(主/备/互补), url, test_url(测试可达性的URL), headers_hint(请求头提示)
+# 2026-09-08 按实际采集链路如实修正(角色/顺序与代码真实取数顺序一致):
+#   板块资金=同花顺净流入/净流出双榜(ths_client 每轮都拉); 涨跌家数=金融界主源+同花顺兜底
+#   (get_market_summary: get_jrj_market_breadth() or get_ths_market_breadth());
+#   成交额=同花顺分钟接口唯一来源; 云图行业库+市值=东方财富缓存, 实时涨跌=新浪。
+#   em_stock_list(板块资金类)已删:DATA_URL 无任何采集代码引用,该类目实际只用同花顺。
 DEFAULT_DATASOURCES = [
     # --- A股板块资金净流入 ---
-    {'key': 'em_stock_list', 'name': '东方财富-A股板块列表', 'category': '板块资金净流入',
-     'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
-     'test_url': 'https://push2.eastmoney.com/api/qt/clist/get', 'provider': '东方财富'},
     {'key': 'ths_sector_net_in', 'name': '同花顺-板块资金净流入', 'category': '板块资金净流入',
      'role': '主', 'url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/',
      'test_url': 'https://data.10jqka.com.cn/funds/hyzjl/field/je/order/DESC/ajax/1/free/1/', 'provider': '同花顺'},
@@ -262,26 +265,26 @@ DEFAULT_DATASOURCES = [
      'role': '主', 'url': 'https://news.10jqka.com.cn/tapp/news/push/stock/',
      'test_url': 'https://news.10jqka.com.cn/tapp/news/push/stock/', 'provider': '同花顺'},
 
-    # --- 行情快闪 ---
-    {'key': 'ths_index_flash', 'name': '同花顺-指数快闪', 'category': '行情快闪',
-     'role': '主', 'url': 'https://q.10jqka.com.cn/api.php?t=indexflash&',
-     'test_url': 'https://q.10jqka.com.cn/api.php?t=indexflash&', 'provider': '同花顺'},
-    {'key': 'ths_turnover_minute', 'name': '同花顺-分钟换手', 'category': '行情快闪',
-     'role': '互补', 'url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data',
-     'test_url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data', 'provider': '同花顺'},
-    {'key': 'jrj_market', 'name': '金融界-市场数据', 'category': '行情快闪',
-     'role': '互补', 'url': 'https://gateway.jrj.com/quot-dc/zdt/market',
+    # --- 行情快闪(涨跌家数/成交额) ---
+    {'key': 'jrj_market', 'name': '金融界-涨跌家数', 'category': '行情快闪',
+     'role': '主', 'url': 'https://gateway.jrj.com/quot-dc/zdt/market',
      'test_url': 'https://gateway.jrj.com/quot-dc/zdt/market', 'provider': '金融界'},
+    {'key': 'ths_turnover_minute', 'name': '同花顺-分钟成交额', 'category': '行情快闪',
+     'role': '主', 'url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data',
+     'test_url': 'https://dq.10jqka.com.cn/fuyao/market_analysis_api/chart/v1/get_chart_data', 'provider': '同花顺'},
+    {'key': 'ths_index_flash', 'name': '同花顺-指数快闪', 'category': '行情快闪',
+     'role': '备', 'url': 'https://q.10jqka.com.cn/api.php?t=indexflash&',
+     'test_url': 'https://q.10jqka.com.cn/api.php?t=indexflash&', 'provider': '同花顺'},
 
     # --- 大盘云图(行业板块+个股) ---
-    {'key': 'sina_sector_list', 'name': '新浪-行业板块列表', 'category': '大盘云图',
+    {'key': 'sina_sector_list', 'name': '新浪-行业板块实时涨跌', 'category': '大盘云图',
      'role': '主', 'url': 'https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php',
      'test_url': 'https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php', 'provider': '新浪'},
-    {'key': 'sina_sector_stocks', 'name': '新浪-板块个股', 'category': '大盘云图',
+    {'key': 'sina_sector_stocks', 'name': '新浪-板块个股下钻', 'category': '大盘云图',
      'role': '主', 'url': 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData',
      'test_url': 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData', 'provider': '新浪'},
-    {'key': 'em_all_stock', 'name': '东方财富-全A股列表', 'category': '大盘云图',
-     'role': '互补', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
+    {'key': 'em_all_stock', 'name': '东方财富-行业库+市值缓存', 'category': '大盘云图',
+     'role': '主', 'url': 'https://push2.eastmoney.com/api/qt/clist/get',
      'test_url': 'https://push2.eastmoney.com/api/qt/clist/get', 'provider': '东方财富'},
 
     # --- 股票搜索 ---
@@ -300,9 +303,17 @@ DEFAULT_DATASOURCES = [
 
 
 # ==================== 东方财富代理请求 ====================
-def load_em_proxy_pool():
+# 代理池上次加载时间：加载失败(代理源本身不可达)后10分钟内不重试，
+# 否则每次 em_request 都白等一次 15s 超时(2026-09-08 连通性测试超时根因之一)。
+EM_PROXY_POOL_LAST_LOAD = 0.0
+
+
+def load_em_proxy_pool(force=False):
     """从免费代理API获取国内HTTPS代理，供东方财富请求使用。"""
-    global EM_PROXY_POOL
+    global EM_PROXY_POOL, EM_PROXY_POOL_LAST_LOAD
+    if not force and time.time() - EM_PROXY_POOL_LAST_LOAD < 600:
+        return
+    EM_PROXY_POOL_LAST_LOAD = time.time()
     try:
         resp = requests.get("https://proxy.scdn.io/api/get_proxy.php", params={
             'protocol': 'https', 'count': 5, 'country_code': 'CN'
@@ -320,6 +331,7 @@ def em_request(url, params=None, headers=None, timeout=3, max_retries=1):
     典型场景：服务器IP被东方财富WAF封禁(Empty reply / Connection refused)，
     通过国内代理绕过。
     """
+    resp = None
     # 第一次直连
     try:
         resp = requests.get(url, params=params, headers=headers, timeout=timeout,
@@ -334,7 +346,7 @@ def em_request(url, params=None, headers=None, timeout=3, max_retries=1):
 
     # 直连失败，尝试代理
     if not EM_PROXY_ENABLED:
-        return resp  # 返回上一次的response(可能失败)
+        return resp  # 返回上一次的response(可能失败，可能None)
 
     # 懒加载代理池
     if not EM_PROXY_POOL:

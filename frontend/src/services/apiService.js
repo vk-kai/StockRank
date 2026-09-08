@@ -1031,7 +1031,8 @@ export async function saveDatasourceConfig(sources, password) {
 
 export async function testDatasource() {
   try {
-    const response = await apiClient.post('/config/datasource/test', null, { timeout: 60000 })
+    // 后端已改并发测试(总耗时≈最慢单源)；120s兜底防东财代理路径偶发慢
+    const response = await apiClient.post('/config/datasource/test', null, { timeout: 120000 })
     return response.data
   } catch (error) {
     console.error('测试数据源失败:', error)

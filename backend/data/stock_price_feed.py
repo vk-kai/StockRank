@@ -68,9 +68,20 @@ def parse_tencent(text, codes):
             high = _f(f[33]) if len(f) > 33 else price
             low = _f(f[34]) if len(f) > 34 else price
             openp = _f(f[5]) if len(f) > 5 else price
+            # 兜底源也必须带时间戳:腾讯 30=YYYYMMDD 31=HH:MM:SS,对齐新浪的
+            # '%Y-%m-%d %H:%M:%S'。原先恒为 '' -> 急涨急跌窗口/高低开窗口判定整体失效。
+            ts = ''
+            if len(f) > 31 and f[30] and f[31]:
+                d = f[30].strip()
+                if len(d) == 8 and d.isdigit():
+                    d = f'{d[:4]}-{d[4:6]}-{d[6:]}'
+                t = f[31].strip()
+                if len(t) == 5:
+                    t += ':00'
+                ts = f'{d} {t}'
             out[code] = {
                 'price': price, 'open': openp, 'prev_close': prev_close,
-                'high': high, 'low': low, 'pct': pct, 'ts': '',
+                'high': high, 'low': low, 'pct': pct, 'ts': ts,
             }
         except Exception as e:
             logger.warning(f'腾讯解析失败 {code}: {e}')

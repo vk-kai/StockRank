@@ -256,8 +256,8 @@
         <h2>🔌 数据源设置</h2>
         <div class="config-form">
           <div class="form-group">
-            <label>外部数据源URL配置</label>
-            <span class="hint">修改数据源URL后保存即可生效。角色标注：<b class="role-primary">主</b>=主要数据源，<b class="role-backup">备</b>=备用数据源(主源失败时启用)，<b class="role-complement">互补</b>=补充数据源(提供主源没有的部分数据)</span>
+            <label>当前实际使用的数据源</label>
+            <span class="hint">以下为代码内置的采集数据源（按真实取数顺序排列，URL只读），可一键测试连通性。角色标注：<b class="role-primary">主</b>=主要数据源，<b class="role-backup">备</b>=备用数据源(主源失败时启用)，<b class="role-complement">互补</b>=补充数据源(提供主源没有的部分数据)</span>
           </div>
 
           <div v-for="group in datasourceGroups" :key="group.category" class="ds-group">
@@ -281,12 +281,11 @@
                   <template v-else>{{ datasourceTestResults[ds.key].error }}</template>
                 </span>
               </div>
-              <input type="text" v-model="ds.url" class="datasource-url-input">
+              <input type="text" v-model="ds.url" class="datasource-url-input" readonly title="采集URL内置于代码，此处仅展示">
             </div>
           </div>
 
           <div class="form-actions">
-            <button @click="saveDatasourceConfigCfg" class="btn-primary">保存配置</button>
             <button @click="testDatasourceCfg" class="btn-secondary" :disabled="datasourceTesting">
               {{ datasourceTesting ? '测试中...' : '一键测试连通性' }}
             </button>

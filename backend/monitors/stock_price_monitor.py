@@ -9,6 +9,7 @@ import glob
 import time
 import threading
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 from core.config import REALTIME_DIR, STOCK_MONITOR_CONFIG_FILE
 from core.logger import get_logger
@@ -76,6 +77,30 @@ DEFAULT_ALERTS_CFG = {
     'amplitude':   {'enabled': True, 'pct': 7.0},
     'limit_break': {'enabled': True, 'back': 1.0},
 }
+
+
+def _limit_price(prev_close, limit_pct, up=True):
+    """交易所涨/跌停价:昨收×(1±幅度)四舍五入到分。
+
+    Decimal ROUND_HALF_UP 精确复现交易所四舍五入,避免二进制浮点在 .5 分边界出错。
+    """
+    sign = 1 if up else -1
+    factor = (Decimal('100') + Decimal(str(limit_pct)) * sign) / Decimal('100')
+    return float((Decimal(str(prev_close)) * factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+
+def _at_limit(q, limit, up=True):
+    """是否触及涨/跌停:优先与交易所涨停价比价。
+
+    低价股涨幅被价格取整压低(如 2.02 元 ST 涨停价 2.12,仅 +4.95%),
+    按 pct>=limit*0.995 判会漏;直接比价不受取整影响。无价格数据时退回 pct 阈值。
+    """
+    price = q.get('price') or 0
+    prev_close = q.get('prev_close') or 0
+    if price and prev_close:
+        limit_price = _limit_price(prev_close, limit, up=up)
+        return price >= limit_price - 0.001 if up else price <= limit_price + 0.001
+    return q['pct'] >= limit * 0.995 if up else q['pct'] <= -limit * 0.995
 
 
 def _find_ref(series, win_min):
@@ -287,16 +312,18 @@ def _gap_open(q, state, cfg):
         return None
     
     # 时间窗口检查：只在开盘后30分钟内检测（9:30-10:00 或 13:00-13:30）
+    # 无时间戳/解析失败时直接不判定——否则会退化成全天检测,午后的采样也会误报"高开/低开"。
     try:
         ts = q.get('ts', '')
-        if ts:
-            t = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-            hour, minute = t.hour, t.minute
-            # 只在早盘开盘后30分钟内检测（9:30-10:00）
-            if not (hour == 9 and minute >= 30 or hour == 10 and minute == 0):
-                return None
+        if not ts:
+            return None
+        t = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+        hour, minute = t.hour, t.minute
+        # 只在早盘开盘后30分钟内检测（9:30-10:00）
+        if not (hour == 9 and minute >= 30 or hour == 10 and minute == 0):
+            return None
     except Exception:
-        pass
+        return None
     
     # 检查是否当天已触发过（通过 alerts 记录）
     if state.get('gap_fired'):
@@ -342,9 +369,9 @@ def _amplitude(q, cfg, alerts=None, today=None):
 def _limit_break(q, limit, state, cfg):
     if not cfg['limit_break']['enabled']:
         return None
-    if q['pct'] >= limit * 0.995:
+    if _at_limit(q, limit, up=True):
         state['touched_up'] = True
-    if q['pct'] <= -limit * 0.995:
+    if _at_limit(q, limit, up=False):
         state['touched_down'] = True
     if state.get('touched_up') and q['pct'] <= limit - cfg['limit_break']['back']:
         return {'type': 'limit_break', 'label': f'炸板 回落至 {q["pct"]:+.2f}%'}
@@ -373,8 +400,9 @@ def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=No
     hits = []
     # 涨停/跌停去重改由"封板状态"负责(state['limit_up_sealed']/['limit_down_sealed']):
     # 封住期间不重复计入;只有明显开板(回落到 limit*0.99 以下)后重新封板,才再次计入。
-    # limit*0.995 为触线(含涨停价四舍五入容差),limit*0.99 与之构成滞回带,过滤边界报价抖动。
-    if alerts_cfg['limit_up']['enabled'] and q['pct'] >= limit * 0.995:
+    # 触线判定 _at_limit 与交易所涨停价比价(覆盖低价股取整导致的 pct 偏低),
+    # limit*0.99(开板线)与之构成滞回带,过滤边界报价抖动。
+    if alerts_cfg['limit_up']['enabled'] and _at_limit(q, limit, up=True):
         state['touched_up'] = True
         if not state.get('limit_up_sealed'):
             state['limit_up_sealed'] = True
@@ -383,7 +411,7 @@ def detect_hits(q, series, state, alerts_cfg, limit, name, alerts=None, today=No
         # 明显回落=开板,清除封板标记,下次重新封板才能再报
         state['limit_up_sealed'] = False
 
-    if alerts_cfg['limit_down']['enabled'] and q['pct'] <= -limit * 0.995:
+    if alerts_cfg['limit_down']['enabled'] and _at_limit(q, limit, up=False):
         state['touched_down'] = True
         if not state.get('limit_down_sealed'):
             state['limit_down_sealed'] = True

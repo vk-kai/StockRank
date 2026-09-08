@@ -369,45 +369,56 @@ def load_recent_daily_data_with_accumulation(days):
                     sector_stats[sector_name] = {
                         'name': sector_name,
                         'total_flow': 0,
+                        'total_net_flow': 0,
                         'accumulated_change': 1.0,
                         'appearances': 0,
                         'daily_records': []
                     }
-                
+
                 flow = item.get('flow', 0) or 0
+                net_flow = item.get('net_flow', 0) or 0
                 change = item.get('change', 0) or 0
-                
+
                 sector_stats[sector_name]['total_flow'] += flow
+                sector_stats[sector_name]['total_net_flow'] += net_flow
                 sector_stats[sector_name]['accumulated_change'] *= (1 + change)
                 sector_stats[sector_name]['appearances'] += 1
                 sector_stats[sector_name]['daily_records'].append({
                     'date': date_str,
                     'flow': flow,
+                    'net_flow': net_flow,
                     'change': change
                 })
-        
+
         for sector_name, stats in sector_stats.items():
             stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
-        
+
         sorted_sectors = sorted(
             sector_stats.values(),
             key=lambda x: x['total_flow'],
             reverse=True
         )
-        
+
         result = {}
         for i, sector in enumerate(sorted_sectors):
+            cum_net_flow = 0
             for record in sector['daily_records']:
                 date_str = record['date']
                 if date_str not in result:
                     result[date_str] = []
-                
+
+                # cum_net_flow: 窗口内截至该日的净流入累计(与当天模式的
+                # "日内累计净流入"语义对齐，曲线终点=整窗口累计净流入)
+                cum_net_flow += record['net_flow']
                 result[date_str].append({
                     'rank': i + 1,
                     'name': sector['name'],
                     'flow': record['flow'],
+                    'net_flow': record['net_flow'],
                     'change': record['change'],
+                    'cum_net_flow': cum_net_flow,
                     'total_flow': sector['total_flow'],
+                    'total_net_flow': sector['total_net_flow'],
                     'accumulated_change_percent': sector['accumulated_change_percent'],
                     'appearances': sector['appearances']
                 })
@@ -441,34 +452,39 @@ def get_accumulated_top_sectors(days):
                     sector_stats[sector_name] = {
                         'name': sector_name,
                         'total_flow': 0,
+                        'total_net_flow': 0,
                         'accumulated_change': 1.0,
                         'appearances': 0
                     }
-                
+
                 flow = item.get('flow', 0) or 0
+                net_flow = item.get('net_flow', 0) or 0
                 change = item.get('change', 0) or 0
-                
+
                 sector_stats[sector_name]['total_flow'] += flow
+                sector_stats[sector_name]['total_net_flow'] += net_flow
                 sector_stats[sector_name]['accumulated_change'] *= (1 + change)
                 sector_stats[sector_name]['appearances'] += 1
-        
+
         for sector_name, stats in sector_stats.items():
             stats['accumulated_change_percent'] = stats['accumulated_change'] - 1
-        
+
         sorted_sectors = sorted(
             sector_stats.values(),
             key=lambda x: x['total_flow'],
             reverse=True
         )
-        
+
         top_sectors = []
         for i, sector in enumerate(sorted_sectors[:10]):
             top_sectors.append({
                 'rank': i + 1,
                 'name': sector['name'],
                 'flow': sector['total_flow'],
+                'net_flow': sector['total_net_flow'],
                 'change': sector['accumulated_change_percent'],
                 'total_flow': sector['total_flow'],
+                'total_net_flow': sector['total_net_flow'],
                 'accumulated_change_percent': sector['accumulated_change_percent'],
                 'appearances': sector['appearances']
             })

@@ -22,7 +22,6 @@ import {
   getAnomalyBaseline,
   rebuildAnomalyBaseline,
   getDatasourceConfig,
-  saveDatasourceConfig,
   testDatasource,
   getOtpStatus,
   getOtpSetup,
@@ -391,27 +390,6 @@ export default {
         }
       } catch (e) { /* 401 handled by interceptor */ }
     },
-    async saveDatasourceConfigCfg() {
-      this.showPasswordModal(async (password) => {
-        try {
-          const sources = {}
-          this.datasourceList.forEach(ds => { sources[ds.key] = ds.url })
-          const res = await saveDatasourceConfig(sources, password)
-          if (res.success) {
-            this.showToast('数据源配置已保存', 'success')
-            await this.loadDatasourceConfig()
-          } else {
-            this.showToast(res.message || '保存失败', 'error')
-          }
-        } catch (e) {
-          if (e.response?.status === 401) {
-            this.showToast('密码错误', 'error')
-          } else {
-            this.showToast(e.response?.data?.message || '保存失败', 'error')
-          }
-        }
-      })
-    },
     async testDatasourceCfg() {
       this.datasourceTesting = true
       this.datasourceTestResults = {}
@@ -429,7 +407,11 @@ export default {
           this.showToast(res.message || '测试失败', 'error')
         }
       } catch (e) {
-        this.showToast('测试失败', 'error')
+        // 区分超时与普通失败：超时时后端可能仍在测，圆点保持未知而非误报
+        const msg = e && e.code === 'ECONNABORTED'
+          ? '测试超时：请稍后重试（个别数据源响应过慢）'
+          : '测试失败'
+        this.showToast(msg, 'error')
       } finally { this.datasourceTesting = false }
     },
     datasourceRoleClass(role) {

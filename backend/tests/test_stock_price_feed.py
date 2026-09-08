@@ -13,9 +13,10 @@ SINA_SAMPLE = (
 
 
 def _build_tencent_sample():
-    # 腾讯字段(以 ~ 分隔):1 名称,2 代码,3 现价,4 昨收,5 今开,...,33 最高,34 最低
+    # 腾讯字段(以 ~ 分隔):1 名称,2 代码,3 现价,4 昨收,5 今开,...,30 日期,31 时间,33 最高,34 最低
     fields = ['1', '贵州茅台', '600519', '1685.20', '1676.50', '1690.00', '50', '100']  # idx 0-7
-    fields += [''] * 25      # idx 8-32 占位
+    fields += [''] * 22      # idx 8-29 占位
+    fields += ['20260714', '09:30:00', '']  # idx 30 日期(YYYYMMDD), 31 时间, 32 占位
     fields += ['1698.00', '1680.00']  # idx 33 最高, 34 最低
     return 'v_sh600519="' + '~'.join(fields) + '";\n'
 
@@ -39,6 +40,19 @@ class FeedParseTests(unittest.TestCase):
         self.assertAlmostEqual(q['prev_close'], 1676.50)
         self.assertAlmostEqual(q['high'], 1698.00)
         self.assertAlmostEqual(q['low'], 1680.00)
+
+    def test_parse_tencent_synthesizes_ts(self):
+        # 兜底源也必须带时间戳(对齐新浪 '%Y-%m-%d %H:%M:%S'),
+        # 否则急涨急跌窗口/高低开窗口判定对兜底票整体失效(原 ts 恒为 '')
+        q = parse_tencent(TENCENT_SAMPLE, ['sh600519'])['sh600519']
+        self.assertEqual(q['ts'], '2026-07-14 09:30:00')
+
+    def test_parse_tencent_ts_empty_when_fields_missing(self):
+        # 30/31 字段缺失时退回空串,不抛异常
+        fields = ['1', '贵州茅台', '600519', '1685.20', '1676.50', '1690.00']  # 无日期时间字段
+        text = 'v_sh600519="' + '~'.join(fields) + '";\n'
+        q = parse_tencent(text, ['sh600519'])['sh600519']
+        self.assertEqual(q['ts'], '')
 
     def test_get_quotes_falls_back_to_tencent_when_sina_empty(self):
         calls = []

@@ -274,7 +274,7 @@
     </div>
 
     <div class="sector-list" ref="sectorList" v-if="selectedTimeRange !== 'today' && accumulatedData.length > 0">
-      <h3 class="sector-title">{{ selectedTimeRange }}日累计资金流入TOP10</h3>
+      <h3 class="sector-title">{{ selectedTimeRange }}日累计资金净流入TOP10</h3>
       <div class="sector-grid">
         <div 
           v-for="sector in accumulatedData" 
@@ -286,7 +286,7 @@
         >
           <div class="rank">{{ sector.rank }}</div>
           <div class="name">{{ sector.name }}</div>
-          <div class="flow">累计流入: {{ formatFlow(sector.total_flow) }}</div>
+          <div class="flow">累计净流入: {{ formatFlow(sector.total_net_flow ?? sector.total_flow) }}</div>
           <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
             {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             <span class="trend-arrow">
