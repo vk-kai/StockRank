@@ -24,6 +24,7 @@ from data.margin_collector import get_stock_margin_series, trigger_ondemand_upda
 from analysis.ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from analysis.industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
 from analysis.intraday_timeline import get_stock_hover_summary
+from analysis.intraday_series import get_stock_intraday_series
 from data.market_map_snapshot import get_points_status, get_snapshot as get_market_map_snapshot, SNAPSHOT_TIMES
 from data.market_map_push_store import load_market_map_push, save_market_map_push, clear_market_map_push
 from analysis import stock_scorer
@@ -338,6 +339,22 @@ def stock_hover_summary():
         error_logger.error(error_msg)
         error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
         system_logger.error(f"API错误 [/api/flow/stock-hover-summary]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/stock-intraday-series', methods=['GET'])
+def stock_intraday_series():
+    """大盘云图悬浮卡迷你分时:当日分钟级价格序列(东财主源+腾讯兜底,短缓存)。"""
+    code = request.args.get('code', '').strip()
+    if not code:
+        return jsonify({'success': False, 'error': '缺少参数 code'}), 400
+    try:
+        return jsonify(get_stock_intraday_series(code))
+    except Exception as e:
+        error_msg = f"个股分时接口错误: {str(e)}"
+        error_logger.error(error_msg)
+        error_logger.error(f"详细堆栈信息:\n{traceback.format_exc()}")
+        system_logger.error(f"API错误 [/api/flow/stock-intraday-series]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

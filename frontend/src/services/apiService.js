@@ -353,6 +353,19 @@ export async function getStockHoverSummary(code, sector, name, sectorName) {
   }
 }
 
+// 大盘云图悬浮卡迷你分时（东财主源/腾讯兜底；失败静默，前端不画图）
+export async function getStockIntradaySeries(code) {
+  try {
+    const response = await apiClient.get('/flow/stock-intraday-series', {
+      params: { code }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取个股分时失败:', error)
+    throw error
+  }
+}
+
 export async function getHistoryData(days) {
   try {
     const response = await apiClient.get('/flow/history', {

@@ -87,6 +87,28 @@
           {{ tooltip.name }}
           <span class="mm-tooltip-code" v-if="tooltip.code">{{ tooltip.code }}</span>
         </div>
+        <!-- 当日分时迷你折线：股票名之下、涨跌幅之上；拿不到数据就不占位 -->
+        <div
+          class="mm-tooltip-spark"
+          v-if="sparkline"
+          :title="`当日分时 · 截至 ${tooltip.trend.last_time}${tooltip.trend.stale ? '（缓存）' : ''}`"
+        >
+          <svg :viewBox="`0 0 ${sparkline.w} ${sparkline.h}`" preserveAspectRatio="none">
+            <line
+              v-if="sparkline.baseY"
+              :x1="0" :y1="sparkline.baseY" :x2="sparkline.w" :y2="sparkline.baseY"
+              class="mm-spark-base"
+            />
+            <polyline
+              :points="sparkline.points"
+              fill="none"
+              :stroke="sparkline.color"
+              stroke-width="1.5"
+              vector-effect="non-scaling-stroke"
+            />
+          </svg>
+        </div>
+        <div class="mm-tooltip-spark-loading" v-else-if="tooltip.trendLoading">分时加载中…</div>
         <div class="mm-tooltip-row">
           <span class="mm-tooltip-label">{{ colorMode === 'margin' ? '融资净流入' : (colorMode === 'score' ? 'AI评分' : (colorMode === 'cycle' ? '周期雷达' : '涨跌幅')) }}</span>
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
@@ -435,7 +457,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -789,7 +811,7 @@ export default {
       cycleStatus: { status: 'idle', progress: 0, step: '', current: '', total: 0, done: 0, failed: 0, message: '' },
       cycleEstimate: { total: 0, eta: '20-60' },
       cycleDialog: { visible: false, view: 'confirm', busy: false },
-      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '' },
+      tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '', trend: null, trendLoading: false },
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
@@ -813,6 +835,29 @@ export default {
     }
   },
   computed: {
+    // 悬浮卡当日分时迷你折线：有 pct(昨收基准)时画 0% 基线并按涨跌上色，
+    // 拿不到昨收时退化为价格归一化折线；点数不足则返回 null 不占位
+    sparkline() {
+      const pts = (this.tooltip.trend && this.tooltip.trend.points) || []
+      if (pts.length < 2) return null
+      const w = 240, h = 52, pad = 4
+      const usePct = pts.some(p => p.pct !== null && p.pct !== undefined)
+      const vals = pts.map(p => (usePct ? p.pct : p.price)).filter(v => v !== null && v !== undefined && !isNaN(v))
+      if (vals.length < 2) return null
+      let min = Math.min(...vals), max = Math.max(...vals)
+      if (usePct) { min = Math.min(min, 0); max = Math.max(max, 0) }
+      if (max === min) max = min + 1
+      const xAt = i => pad + (i / (pts.length - 1)) * (w - pad * 2)
+      const yAt = v => h - pad - ((v - min) / (max - min)) * (h - pad * 2)
+      const points = pts.map((p, i) => {
+        const v = usePct ? p.pct : p.price
+        if (v === null || v === undefined || isNaN(v)) return null
+        return `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`
+      }).filter(Boolean).join(' ')
+      const last = vals[vals.length - 1]
+      const up = usePct ? last >= 0 : last >= vals[0]
+      return { w, h, points, baseY: usePct ? yAt(0).toFixed(1) : null, color: up ? '#ff4d4f' : '#52c41a' }
+    },
     hasData() {
       return this.tree.length > 0
     },
@@ -1017,6 +1062,10 @@ export default {
     this.hoverSummaryCache = new Map()
     this.hoverSummaryTimer = null
     this.hoverSummarySeq = 0
+    // 悬浮分时迷你图：按 code 缓存（60s TTL，失败也缓存防打爆）
+    this.hoverTrendCache = new Map()
+    this.hoverTrendTimer = null
+    this.hoverTrendSeq = 0
     this.finChart = null   // 融资弹窗 ECharts 实例
     this._downX = 0        // mousedown 落点（判定单击/拖拽用）
     this._pushedCodeSet = null  // 推送股票代码Set，用于高亮筛选
@@ -2430,6 +2479,8 @@ export default {
         const n = hit.node
         const summaryKey = n.code ? `${n.code}|${n.sectorCode || ''}|${n.l2Name || n.l1Name || ''}` : ''
         const keepSummary = summaryKey && this.tooltip.summaryKey === summaryKey
+        // 分时只与 code 相关：同一只股票上移动鼠标不清掉已加载的分时
+        const keepTrend = n.code && this.tooltip.code === n.code
         // AI 打分：分数 + 颜色档 + 一句话理由（仅评分维度或已有分数时展示）
         const sv = this.scoreValue(n)
         const sEntry = sv != null ? this.scoreMap[extractDigits(n.code)] : null
@@ -2453,15 +2504,21 @@ export default {
           y: my + 14,
           loading: keepSummary ? this.tooltip.loading : false,
           summary: keepSummary ? this.tooltip.summary : null,
-          summaryKey: keepSummary ? this.tooltip.summaryKey : ''
+          summaryKey: keepSummary ? this.tooltip.summaryKey : '',
+          trend: keepTrend ? this.tooltip.trend : null,
+          trendLoading: keepTrend ? this.tooltip.trendLoading : false
         }
         if (n.code) this.queueHoverSummary(n)
+        if (n.code) this.queueHoverTrend(n)
         this.$refs.canvasEl.style.cursor = 'pointer'
       } else {
         this.tooltip.visible = false
         this.tooltip.summary = null
         this.tooltip.loading = false
+        this.tooltip.trend = null
+        this.tooltip.trendLoading = false
         if (this.hoverSummaryTimer) clearTimeout(this.hoverSummaryTimer)
+        if (this.hoverTrendTimer) clearTimeout(this.hoverTrendTimer)
         this.$refs.canvasEl.style.cursor = 'grab'
       }
     },
@@ -2501,6 +2558,41 @@ export default {
           }
         }
       }, 180)
+    },
+    // 悬浮分时迷你图：与 queueHoverSummary 同款防抖+缓存+序号防竞态，
+    // 失败结果也缓存 60s，避免在坏代码上反复打接口
+    queueHoverTrend(node) {
+      if (!node.code) return
+      const code = node.code
+      if (this.tooltip.code === code && (this.tooltip.trend || this.tooltip.trendLoading)) return
+      const cached = this.hoverTrendCache.get(code)
+      if (cached && Date.now() - cached.t < 60000) {
+        this.tooltip.trend = cached.data
+        this.tooltip.trendLoading = false
+        return
+      }
+      this.tooltip.trendLoading = true
+      this.tooltip.trend = null
+      if (this.hoverTrendTimer) clearTimeout(this.hoverTrendTimer)
+      const seq = ++this.hoverTrendSeq
+      this.hoverTrendTimer = setTimeout(async () => {
+        try {
+          const res = await getStockIntradaySeries(code)
+          if (seq !== this.hoverTrendSeq || !this.tooltip.visible || this.tooltip.code !== code) return
+          const trend = res && res.success ? res.data : null
+          this.hoverTrendCache.set(code, { t: Date.now(), data: trend })
+          this.tooltip.trend = trend
+        } catch (err) {
+          if (seq === this.hoverTrendSeq && this.tooltip.code === code) {
+            this.hoverTrendCache.set(code, { t: Date.now(), data: null })
+            this.tooltip.trend = null
+          }
+        } finally {
+          if (seq === this.hoverTrendSeq && this.tooltip.code === code) {
+            this.tooltip.trendLoading = false
+          }
+        }
+      }, 120)
     },
     hitTest(Lx, Ly) {
       if (this.industryMode) {
@@ -2635,6 +2727,19 @@ export default {
 }
 .mm-tooltip-name { font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 5px; }
 .mm-tooltip-code { font-weight: normal; font-size: 12px; color: #8ba4c7; margin-left: 6px; }
+/* 当日分时迷你折线：股票名之下、涨跌幅之上；宽度随 tooltip 自适应拉伸 */
+.mm-tooltip-spark {
+  width: 100%;
+  height: 52px;
+  margin: 0 0 6px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid rgba(58, 74, 107, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mm-tooltip-spark svg { display: block; width: 100%; height: 100%; }
+.mm-spark-base { stroke: rgba(139, 164, 199, 0.35); stroke-width: 1; }
+.mm-tooltip-spark-loading { font-size: 11px; color: #6a7a99; margin: 0 0 4px; }
 .mm-tooltip-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .mm-tooltip-label { font-size: 12px; color: #8ba4c7; }
 .mm-tooltip-val { font-size: 15px; font-weight: bold; }
