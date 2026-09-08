@@ -117,6 +117,38 @@ export async function refreshMarketMapCache() {
   }
 }
 
+// ==================== 演示模式（未登录访客，免鉴权，只读固定快照） ====================
+
+export async function getDemoStatus() {
+  try {
+    const response = await apiClient.get('/demo/status')
+    return response.data
+  } catch (error) {
+    console.error('获取演示快照状态失败:', error)
+    throw error
+  }
+}
+
+export async function getDemoHome() {
+  try {
+    const response = await apiClient.get('/demo/home')
+    return response.data
+  } catch (error) {
+    console.error('获取首页演示数据失败:', error)
+    throw error
+  }
+}
+
+export async function getDemoMarketMap() {
+  try {
+    const response = await apiClient.get('/demo/market-map')
+    return response.data
+  } catch (error) {
+    console.error('获取云图演示数据失败:', error)
+    throw error
+  }
+}
+
 /**
  * 获取板块下的个股（云图下钻）
  */
@@ -702,7 +734,8 @@ export async function getLogList() {
 
 export const fetchSecurityEvents = async (limit = 100) => {
   try {
-    const response = await apiClient.get('/api/jarvis/events', {
+    // baseURL 已是 /api，这里写相对路径（原 '/api/jarvis/events' 会拼成 /api/api/... 404）
+    const response = await apiClient.get('/jarvis/events', {
       params: { limit }
     })
     return response.data

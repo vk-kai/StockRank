@@ -131,7 +131,7 @@
       </div>
     </div>
 
-    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth" v-if="!needsAuth">
+    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth" v-if="!needsAuth && !demoMode">
       <div class="monitor-card-header">
         <span class="monitor-card-label">服务监控</span>
         <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
@@ -200,11 +200,20 @@
         </svg>
       </button>
       <div class="chart-controls" v-if="!needsAuth">
-        <div v-if="selectedTimeRange === 'today'" class="replay-date-selector">
+        <!-- 演示模式徽标：未登录访客只看固定历史快照，点击可登录看实时 -->
+        <span
+          v-if="demoMode"
+          style="display:inline-flex;align-items:center;background:rgba(240,185,11,.12);border:1px solid rgba(240,185,11,.4);color:#f0b90b;padding:3px 12px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;"
+          title="未登录演示：固定历史快照，不实时刷新"
+          @click="promptLogin"
+        >
+          演示数据 · {{ demoDate }} 快照（点击登录看实时）
+        </span>
+        <div v-if="selectedTimeRange === 'today' && !demoMode" class="replay-date-selector">
           <label>回放日期：</label>
-          <input 
-            type="date" 
-            v-model="replayDate" 
+          <input
+            type="date"
+            v-model="replayDate"
             :min="minReplayDate"
             :max="todayDate"
             @change="onReplayDateChange"

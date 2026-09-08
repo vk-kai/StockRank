@@ -22,6 +22,15 @@
         >{{ industryMode ? '← 个股云图' : '🏢 行业云图' }}</button>
       </div>
       <div class="mm-header-right">
+        <!-- 演示模式徽标：未登录访客只看固定历史快照，点击可登录看实时 -->
+        <span
+          v-if="demoMode"
+          style="display:inline-flex;align-items:center;background:rgba(240,185,11,.12);border:1px solid rgba(240,185,11,.4);color:#f0b90b;padding:3px 12px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;"
+          title="未登录演示：固定历史快照，不实时刷新"
+          @click="promptLogin"
+        >
+          演示数据 · {{ demoDate }} 快照（点击登录看实时）
+        </span>
         <span class="mm-stats" v-if="totalSectors">
           <template v-if="industryMode">{{ l2Count }} 个二级行业 · {{ totalStocks }} 只个股</template>
           <template v-else>{{ totalSectors }} 一级行业 · {{ totalStocks }} 只个股</template>
@@ -457,7 +466,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores, getAuthSession, getDemoMarketMap } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -764,6 +773,10 @@ export default {
   data() {
     return {
       cacheLoading: false,
+      // 演示模式：未登录访客只读固定快照，不进任何实时链路（15s轮询/复盘/AI打分/周期诊断）
+      demoMode: false,
+      demoDate: '',
+      liveStarted: false,
       refreshing: false,
       changesLoading: false,
       tree: [],
@@ -1079,22 +1092,21 @@ export default {
     this.ro = new ResizeObserver(() => this.onResize())
     if (this.$refs.wrapperEl) this.ro.observe(this.$refs.wrapperEl)
 
-    await this.loadPushedStateFromQuery()
-    await this.fetchData(true)
-    // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
-    // 新浪行情源本身约3-6秒更新一次，15秒轮询已足够跟手；后端每请求现拉无缓存，再快只是徒增请求
-    this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 15000)
-    // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
-    this.refreshReplayPoints()
-    this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
-    // AI 打分：恢复在跑任务轮询 + 预载已评分缓存（决定下拉是否出现"着色：AI打分"）+ 检查 AI 配置
-    this.checkScoringStatus()
-    this.loadScoreData()
-    this.checkAiEnabled()
-    this.checkCycleStatus()
-    this.loadCycleData()
+    // 登录态检查：未登录访客进演示模式（只读一次固定快照，跳过全部实时链路）
+    window.addEventListener('auth-login-success', this.onAuthLogin)
+    window.addEventListener('auth-logout', this.onAuthLogout)
+    try {
+      const session = await getAuthSession()
+      if (session && session.authenticated) {
+        this.startLiveMode()
+        return
+      }
+    } catch (e) { /* 会话检查失败按未登录处理，走演示 */ }
+    await this.loadDemoMap()
   },
   beforeUnmount() {
+    window.removeEventListener('auth-login-success', this.onAuthLogin)
+    window.removeEventListener('auth-logout', this.onAuthLogout)
     clearInterval(this.timer)
     clearInterval(this.replayPointsTimer)
     if (this.scoringTimer) clearInterval(this.scoringTimer)
@@ -1111,6 +1123,63 @@ export default {
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+
+    // ===== 演示模式（未登录访客）：只读固定快照，永远不刷新 =====
+    // 唤起登录框（Root.vue 全局监听 auth-request-login）
+    promptLogin() {
+      window.dispatchEvent(new CustomEvent('auth-request-login'))
+    },
+    async loadDemoMap() {
+      try {
+        const res = await getDemoMarketMap()
+        const d = res && res.success ? res.data : null
+        if (d && d.available && d.data) {
+          this.demoMode = true
+          this.demoDate = d.date || ''
+          this.applyData(d.data)
+        }
+      } catch (e) {
+        console.error('云图演示数据加载失败:', e)
+      }
+    },
+    onAuthLogin() {
+      // 演示态/实时链路未启动 → 登录成功后补齐全部实时链路（已在实时态则不动）
+      if (this.liveStarted) return
+      this.demoMode = false
+      this.startLiveMode()
+    },
+    onAuthLogout() {
+      // 登出：停掉全部实时链路，回到演示快照
+      this.stopLiveTimers()
+      this.liveStarted = false
+      this.demoMode = false
+      this.loadDemoMap()
+    },
+    stopLiveTimers() {
+      if (this.timer) { clearInterval(this.timer); this.timer = null }
+      if (this.replayPointsTimer) { clearInterval(this.replayPointsTimer); this.replayPointsTimer = null }
+      if (this.scoringTimer) { clearInterval(this.scoringTimer); this.scoringTimer = null }
+      if (this.cycleTimer) { clearInterval(this.cycleTimer); this.cycleTimer = null }
+      if (this.replayTimer) { clearTimeout(this.replayTimer); this.replayTimer = null }
+    },
+    // 实时全链路（原 mounted 尾部整体搬来；登录态启动与"演示→登录"补齐共用）
+    startLiveMode() {
+      this.liveStarted = true
+      this.loadPushedStateFromQuery()
+      this.fetchData(true)
+      // 实时轮询：复盘态下暂停，避免历史快照画面被实时数据覆盖
+      // 新浪行情源本身约3-6秒更新一次，15秒轮询已足够跟手；后端每请求现拉无缓存，再快只是徒增请求
+      this.timer = setInterval(() => { if (!this.replayMode) this.fetchData(false) }, 15000)
+      // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
+      this.refreshReplayPoints()
+      this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
+      // AI 打分：恢复在跑任务轮询 + 预载已评分缓存（决定下拉是否出现"着色：AI打分"）+ 检查 AI 配置
+      this.checkScoringStatus()
+      this.loadScoreData()
+      this.checkAiEnabled()
+      this.checkCycleStatus()
+      this.loadCycleData()
     },
 
     // 图例多选：点击区间只切换"勾选"状态（不立即过滤），可勾多个；点"确定"才应用到云图
@@ -1264,6 +1333,8 @@ export default {
       return { stocks, l1s, l2s }
     },
     async fetchData(showLoading) {
+      // 演示态不拉实时行情，点刷新即唤起登录
+      if (this.demoMode) { this.promptLogin(); return }
       if (this.refreshing) return
       this.refreshing = true
       try {
@@ -1345,6 +1416,7 @@ export default {
       }
     },
     async refreshCache() {
+      if (this.demoMode) { this.promptLogin(); return }
       // 行业库更新要从东方财富重抓全市场约5000只股票的行业+市值，耗时较长且低频需要，
       // 加二次确认防止误触（按钮和"刷新行情"挨得近，容易点错）。
       if (!window.confirm('确认更新行业库？\n\n将重新抓取全市场约5000只股票的行业分类与市值，耗时约1-2分钟，期间云图继续用旧缓存显示。\n\n行业分类变化极少，通常无需频繁更新；如只是想看最新涨跌，请点「刷新行情」。')) {
@@ -1510,6 +1582,11 @@ export default {
     },
     async onColorModeChange(mode) {
       if (mode === this.colorMode) return
+      // 演示态只允许涨跌幅着色：融资/AI/周期维度都要拉实时鉴权数据
+      if (this.demoMode && mode !== 'change') {
+        this.promptLogin()
+        return
+      }
       this.colorMode = mode
       this.legendSel = []
       this.legendApplied = []
@@ -1585,6 +1662,7 @@ export default {
 
     // ===== AI 批量打分：弹窗 / 启动 / 轮询 / 停止（镜像 App.script.js 的 analyze-daily 轮询）=====
     openScoreDialog() {
+      if (this.demoMode) { this.promptLogin(); return }
       this.scoreDialog.busy = false
       // 按当前任务状态决定首屏视图
       if (this.scoringRunning || this.scoringStatus.status === 'running') {
@@ -1703,6 +1781,7 @@ export default {
 
     // 批量诊断弹窗
     openCycleDialog() {
+      if (this.demoMode) { this.promptLogin(); return }
       this.cycleDialog.busy = false
       // 统计二级行业数量
       const l2Names = this._collectL2Names()

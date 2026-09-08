@@ -59,7 +59,8 @@ PUBLIC_EXACT_PATHS = {'/health'}
 # 登录/登出/会话查询本身必须放行，否则无法完成登录
 # /api/mp/ 是微信小程序专用接口(内容安全代理 sec + 游戏化 game)：小程序端无登录态，
 # 接口自带 X-Auth-Key 共享密钥校验，sec 的 callback 由微信服务器调用(仅签名校验)，均不走本站登录
-PUBLIC_PATH_PREFIXES = ('/api/auth/', '/api/mp/')
+# /api/demo/ 是演示模式：未登录访客只读固定历史快照(收盘后固化，永不含实时数据)
+PUBLIC_PATH_PREFIXES = ('/api/auth/', '/api/mp/', '/api/demo/')
 
 
 def install_auth_guard(app):

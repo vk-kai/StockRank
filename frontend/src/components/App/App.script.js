@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome } from '../../services/apiService'
 import { generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -118,6 +118,9 @@ export default {
       aiAnalysisStep: '',
       aiAnalysisPollTimer: null,
       needsAuth: false,
+      // 演示模式：未登录访客只看固定历史快照(折线图/top/新闻/摘要),不进任何实时链路
+      demoMode: false,
+      demoDate: '',
       isAdmin: false
     }
   },
@@ -389,7 +392,7 @@ export default {
       this.updateLayoutHeight()
     })
 
-    // 先检查登录态：未登录则不发起数据请求（避免一进首页就触发 401 弹框）
+    // 先检查登录态：未登录先尝试演示模式(只读固定快照),快照不可用才回到登录提示态
     try {
       const session = await getAuthSession()
       this.isAdmin = !!(session && session.is_admin)
@@ -397,10 +400,10 @@ export default {
         this.needsAuth = false
         this.bootstrapData()
       } else {
-        this.needsAuth = true
+        await this.tryLoadDemoData()
       }
     } catch (e) {
-      this.needsAuth = true
+      await this.tryLoadDemoData()
     }
   },
   beforeUnmount() {
@@ -460,6 +463,20 @@ export default {
     onAuthLogin() {
       // 登录成功后刷新 admin 标志（vk 登录才显示体验码菜单）
       this.refreshIsAdmin()
+      // 演示态 → 登录态：停掉演示轮播，走正常实时链路
+      if (this.demoMode) {
+        this.demoMode = false
+        if (this.newsScrollInterval) {
+          clearInterval(this.newsScrollInterval)
+          this.newsScrollInterval = null
+        }
+        this.currentNewsIndex = 0
+        this.needsAuth = false
+        this.error = null
+        this.bootstrapData()
+        this.$nextTick(() => this.updateLayoutHeight())
+        return
+      }
       if (this.needsAuth) {
         this.needsAuth = false
         this.error = null
@@ -490,8 +507,59 @@ export default {
       if (this.chartInstance) {
         this.chartInstance.clear()
       }
+      if (this.newsScrollInterval) {
+        clearInterval(this.newsScrollInterval)
+        this.newsScrollInterval = null
+      }
+      // 登出后访客重新回到演示快照（不可用则维持登录提示态）
+      this.tryLoadDemoData()
       // 登出后监控卡/新闻条会消失，重新计算图表高度
       this.$nextTick(() => this.updateLayoutHeight())
+    },
+    // 演示模式：未登录访客加载固定快照(免鉴权 /api/demo/home)。
+    // 数据按"历史回放"方式渲染——整天折线+top 静态展示,不启动任何实时轮询/自动刷新。
+    // 快照不可用(如刚部署还没到首个捕获点)则回退登录提示态。
+    async tryLoadDemoData() {
+      try {
+        const res = await getDemoHome()
+        const data = res && res.success ? res.data : null
+        if (data && data.available && data.minute && Object.keys(data.minute).length > 0) {
+          this.demoMode = true
+          this.demoDate = data.date || ''
+          this.needsAuth = false
+          this.selectedTimeRange = 'today'
+          this.replayDate = this.demoDate
+          this.minuteData = data.minute
+          this.historicalMinuteData = data.minute
+          const keys = Object.keys(data.minute).sort()
+          this.lastTimeKeys = keys
+          this.currentData = (this.minuteData[keys[keys.length - 1]] || {}).data || []
+          this.lastUpdate = `${this.demoDate} ${keys[keys.length - 1] || ''}`.trim()
+          if (Array.isArray(data.news)) {
+            this.latestNews = data.news
+            this.latestNewsCount = data.news.length
+            if (data.news.length > 0) this.lastNewsId = data.news[0].id
+          }
+          if (data.market_summary) this.marketSummary = data.market_summary
+          this.updateChart()
+          this.startDemoNewsRotation()
+          return
+        }
+      } catch (e) {
+        console.error('演示数据加载失败:', e)
+      }
+      this.needsAuth = true
+    },
+    // 演示态新闻条：只做 4s 轮播展示,30s 拉新不启动(快照永远不刷新)
+    startDemoNewsRotation() {
+      if (this.newsScrollInterval) {
+        clearInterval(this.newsScrollInterval)
+      }
+      this.newsScrollInterval = setInterval(() => {
+        if (this.latestNews.length > 0) {
+          this.currentNewsIndex = (this.currentNewsIndex + 1) % Math.min(this.latestNews.length, 5)
+        }
+      }, 4000)
     },
     // 已登录后拉取首页全部数据（从原 mounted 拆出）
     bootstrapData() {
@@ -507,9 +575,9 @@ export default {
       this.startAiChainRefresh()
       this.checkAIAnalysisStatus()
     },
-    // 点击数据相关按钮时，如未登录则唤起登录框
+    // 点击数据相关按钮时，如未登录（含演示态）则唤起登录框——演示快照永远不刷实时
     requireAuthOrPrompt() {
-      if (this.needsAuth) {
+      if (this.needsAuth || this.demoMode) {
         window.dispatchEvent(new CustomEvent('auth-request-login'))
         return true
       }

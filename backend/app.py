@@ -12,7 +12,7 @@ from data.data_collector import data_collection_thread as data_collection_func
 from data.news_collector import news_collection_thread as news_collection_func, init_news_data
 from data.margin_collector import margin_collection_thread as margin_collection_func
 from monitors.health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
-from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp, demo_bp
 from routes.auth_routes import install_auth_guard
 from core.session_secret import load_session_secret
 from monitors.thread_monitor import get_all_status, register_thread
@@ -87,6 +87,7 @@ def create_app():
     app.register_blueprint(mp_game_bp)
     app.register_blueprint(mp_admin_bp)
     app.register_blueprint(mp_vpay_bp)
+    app.register_blueprint(demo_bp)
     install_auth_guard(app)
     
     # ==================== SocketIO 事件 ====================
@@ -270,6 +271,11 @@ if __name__ == '__main__':
         from monitors.trendzen_arb_monitor import trendzen_arb_loop
         threading.Thread(target=trendzen_arb_loop, daemon=True).start()
         system_logger.info("TrendZen套利背离接入线程已启动")
+
+        # 演示模式快照:每个交易日收盘后固化首页+云图数据,未登录访客只读这份快照
+        from data.demo_snapshot import demo_snapshot_loop
+        threading.Thread(target=demo_snapshot_loop, daemon=True).start()
+        system_logger.info("演示快照线程已启动")
 
         # 虚拟支付兜底查单线程:每5分钟扫描 pending 订单,推送丢失时补发货
         from routes.mp_vpay_routes import vpay_check_loop
