@@ -19,6 +19,9 @@ class SecurityMiddleware:
         self.enabled = self.config.get('enabled', True)
         self.whitelist = self.config.get('whitelist', ['127.0.0.1', '::1'])
         self.exempt_routes = self.config.get('exempt_routes', ['/api/health', '/api/ping'])
+        # 用户输入会被回显的端点(如小程序弹幕墙):携带有效 X-Auth-Key 的正常请求
+        # 豁免全局攻击记录,内容由端点自身防御兜底;无 key 的裸扫描不豁免
+        self.trusted_bypass_routes = self.config.get('trusted_bypass_routes', [])
         self.log_func = self.config.get('log_func', None)
         
         if app:
@@ -43,6 +46,20 @@ class SecurityMiddleware:
         except ValueError:
             return ip_str in self.whitelist
     
+    def _trusted_key_bypass(self, request):
+        """trusted_bypass_routes 内的端点且携带有效 X-Auth-Key 时返回 True。
+        校验链路异常按"不豁免"处理——宁可让端点自身防御兜底也不放过扫描。"""
+        if not self.trusted_bypass_routes:
+            return False
+        if not any(request.path.startswith(p) for p in self.trusted_bypass_routes):
+            return False
+        try:
+            from routes.mp_sec_routes import has_valid_auth_key
+            return has_valid_auth_key()
+        except Exception as e:
+            self._log('warning', f'可信请求校验异常(按不豁免处理): {e}')
+            return False
+
     def init_app(self, app, checker=None, ip_manager=None):
         from .security import SecurityChecker
         from .ip_manager import IPManager
@@ -84,7 +101,14 @@ class SecurityMiddleware:
                     }), 403
                 
                 attack_result = self.checker.check_request(request)
-                
+
+                # 弹幕墙等回显端点:携带有效 X-Auth-Key 的小程序正常请求即使文字
+                # 撞上攻击正则也不计入攻击记录(自有敏感词/内容安全防御兜底);
+                # 无 key 的裸扫描不满足条件,照常记录并计入封禁
+                if attack_result and self._trusted_key_bypass(request):
+                    self._log('info', f"可信请求豁免攻击记录: {request.path} ({attack_result.get('type', 'unknown')})")
+                    return None
+
                 if attack_result:
                     attack_type = attack_result.get('type', 'unknown')
                     attack_name = self.checker.get_attack_type_name(attack_type)

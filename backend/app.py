@@ -66,6 +66,10 @@ def create_app():
         'attempt_window': 300,
         'whitelist': ['127.0.0.1', '::1'],
         'exempt_routes': ['/health', '/api/jarvis'],
+        # 弹幕墙留言会被原样回显,正常用户文字撞上攻击正则会被误封:
+        # 携带有效 X-Auth-Key 的小程序请求豁免攻击记录(端点自有敏感词/内容安全防御),
+        # 无 key 的裸扫描不豁免,照常记录封禁
+        'trusted_bypass_routes': ['/api/mp/game/echo'],
         'data_dir': os.path.join(DATA_DIR, 'jarvis'),
         'log_dir': LOG_DIR,
         'log_func': lambda level, msg: system_logger.info(f"[Jarvis] {msg}") if level == 'info' else system_logger.warning(f"[Jarvis] {msg}")

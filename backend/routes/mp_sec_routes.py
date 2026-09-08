@@ -334,20 +334,29 @@ def _apply_callback_result(data):
 # --------------------------------------------------------------------------
 # 鉴权:auth_key(小程序→本代理);签名(微信→callback)
 # --------------------------------------------------------------------------
-def _check_auth_key():
-    """auth_key 已配置时校验请求方。放行则返回None,拒绝则返回401响应。"""
+def has_valid_auth_key():
+    """请求是否携带与配置一致的有效 X-Auth-Key。
+    auth_key 未配置时恒为 False(无 key 可验,宁严勿松)——
+    供 Jarvis 攻击记录豁免(弹幕墙回显场景)判定"小程序正常请求"用。"""
     cfg = load_mp_sec_config()
     expected = (cfg.get('auth_key') or '').strip()
     if not expected:
-        return None
+        return False
     provided = (request.headers.get('X-Auth-Key') or '').strip()
     if not provided:
         body = request.get_json(silent=True) or {}
         provided = str(body.get('auth_key') or '').strip()
-    if provided != expected:
-        return jsonify({'success': False, 'error': 'invalid_auth_key',
-                        'message': 'X-Auth-Key 校验失败'}), 401
-    return None
+    return provided == expected
+
+
+def _check_auth_key():
+    """auth_key 已配置时校验请求方。放行则返回None,拒绝则返回401响应。"""
+    if has_valid_auth_key():
+        return None
+    if not (load_mp_sec_config().get('auth_key') or '').strip():
+        return None
+    return jsonify({'success': False, 'error': 'invalid_auth_key',
+                    'message': 'X-Auth-Key 校验失败'}), 401
 
 
 def _check_push_signature(args):
