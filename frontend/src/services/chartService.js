@@ -248,10 +248,14 @@ export function buildReplaySectorOrder(timeData, allData, limit = 10) {
 //   'net'(默认) = 当天模式,曲线值取 net_flow(日内累计净流入),行为与原先完全一致;
 //   'cum'       = 多日模式(7/15/30天),曲线值取 cum_net_flow(窗口内截至该日累计净流入),
 //                 tooltip 换成累计口径(累计净流入/当日净流入/当日涨跌)。
+// options.animate:
+//   默认 true。多日逐日生长动画的中间 tick 传 false——每个 tick 直接渲染当前前缀,
+//   否则 echarts 每 200ms 触发一次"从起点重画"动画、每次播到 1/4 被打断,看起来像抽搐。
 export function generateLiveReplayChartOption(timeData, allData, colors, replayCursor = null, limit = 10, fixedTopSectors = null, isReplayMode = false, options = {}) {
   const fullTimeData = Array.isArray(timeData) ? timeData : []
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
   const valueMode = options.valueMode === 'cum' ? 'cum' : 'net'
+  const animate = options.animate !== false
   const getValue = (item) => {
     if (!item) return null
     if (valueMode === 'cum') {
@@ -530,12 +534,15 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
   }
 
   const animationDuration = isReplayMode ? 8000 : 700
-  
+
   return {
     backgroundColor: '#111827',
-    animation: true,
-    animationDuration: animationDuration,
-    animationDurationUpdate: animationDuration,
+    // 多日逐日生长的中间 tick 传 animate:false——replaceMerge 会重建 series、
+    // 每 200ms 重播一次 700ms 入场动画且每次只播到 ~1/4 被打断(表现为"抽搐")。
+    // 当天模式不传该参数,默认 true,行为不变。
+    animation: animate,
+    animationDuration: animate ? animationDuration : 0,
+    animationDurationUpdate: animate ? animationDuration : 0,
     animationEasing: 'linear',
     animationEasingUpdate: 'linear',
     title: { show: false },

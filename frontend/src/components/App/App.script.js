@@ -1284,7 +1284,9 @@ export default {
         10,
         fixedTopSectors.length > 0 ? fixedTopSectors : null,
         false,
-        { valueMode: 'cum' }
+        // 生长动画进行中(multiDayCursor !== null)禁用 echarts 动画:
+        // 每 tick 瞬间渲染当前前缀,否则入场动画反复被打断重播,像"抽搐"
+        { valueMode: 'cum', animate: this.multiDayCursor === null }
       )
 
       try {
@@ -1307,6 +1309,7 @@ export default {
         return
       }
       this.multiDayCursor = 0
+      this.updateChart()   // 先渲染第1天,此后每个 tick 增加一天(原实现首帧直接跳到第2天)
       this.multiDayTimer = setInterval(() => {
         if (this.multiDayCursor === null) {
           this.multiDayCursor = 0
