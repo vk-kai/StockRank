@@ -1675,7 +1675,12 @@ export default {
     guardedGoToIndustryCycle() { if (this.requireAuthOrPrompt()) return; this.goToIndustryCycle() },
     guardedGoToRedeemCode() { if (this.requireAuthOrPrompt()) return; this.$router.push('/redeem-code') },
     guardedGoToMpAdmin() { if (this.requireAuthOrPrompt()) return; this.$router.push('/mp-admin') },
-    guardedGotoMarketMap() { if (this.requireAuthOrPrompt()) return; this.goToMarketMap() },
+    // 云图按钮：演示态直达云图页（云图页未登录有自己的演示快照），其余未登录态仍先登录
+    guardedGotoMarketMap() {
+      if (this.demoMode) { this.goToMarketMap(); return }
+      if (this.requireAuthOrPrompt()) return
+      this.goToMarketMap()
+    },
     guardedGotoFlowAlert() { if (this.requireAuthOrPrompt()) return; this.$router.push('/flow-alert') },
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
     guardedGotoAiChain() { if (this.requireAuthOrPrompt()) return; this.$router.push('/ai-chain') },

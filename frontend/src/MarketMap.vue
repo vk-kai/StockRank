@@ -2377,6 +2377,8 @@ export default {
 
     // ===== 融资趋势弹窗（单击个股触发）=====
     async openFinancing(node) {
+      // 演示态点击个股=操作:弹登录,不发鉴权请求
+      if (this.demoMode) { this.promptLogin(); return }
       this.finModal.code = node.code || ''
       this.finModal.name = node.name || ''
       this.finModal.period = 60
@@ -2602,6 +2604,7 @@ export default {
       }
     },
     queueHoverSummary(node) {
+      if (this.demoMode) return  // 演示态悬浮不打鉴权接口,只看画布已有信息
       const key = `${node.code}|${node.sectorCode || ''}|${node.l2Name || node.l1Name || ''}`
       if (this.tooltip.summaryKey === key && (this.tooltip.summary || this.tooltip.loading)) return
       this.tooltip.summaryKey = key
@@ -2642,6 +2645,7 @@ export default {
     // 失败结果也缓存 60s，避免在坏代码上反复打接口
     queueHoverTrend(node) {
       if (!node.code) return
+      if (this.demoMode) return  // 演示态悬浮不打鉴权接口
       const code = node.code
       if (this.tooltip.code === code && (this.tooltip.trend || this.tooltip.trendLoading)) return
       const cached = this.hoverTrendCache.get(code)
