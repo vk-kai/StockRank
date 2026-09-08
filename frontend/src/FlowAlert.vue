@@ -69,7 +69,7 @@
         <div v-else class="fa-timeline stagger-in">
           <template v-for="(group, gidx) in groupedFindings" :key="gidx">
             <!-- 普通板块异动（无折叠） -->
-            <div v-if="group.type !== 'stock'" class="fa-card" v-for="(f, idx) in group.items" :key="gidx+'-'+idx"
+            <div v-if="group.type === 'sector'" class="fa-card" v-for="(f, idx) in group.items" :key="gidx+'-'+idx"
                  :style="{ '--i': Math.min(gidx + idx, 15) }">
               <div class="fa-card-head">
                 <span class="fa-time">{{ f.date }} {{ f.time }}</span>
@@ -93,6 +93,44 @@
                   {{ hitIcon(h) }} {{ h.label }}
                   <span class="fa-hit-sub">{{ hitSub(h) }}</span>
                 </span>
+              </div>
+            </div>
+            <!-- TrendZen套利背离（同股折叠）：来源 monitors/trendzen_arb_monitor.py -->
+            <div v-else-if="group.type === 'arb'" class="fa-card fa-card-stock" :style="{ '--i': Math.min(gidx, 15) }">
+              <div class="fa-card-head" @click="toggleStockGroup(group.key)" style="cursor:pointer">
+                <span class="fa-time">{{ group.latest.date }} {{ group.latest.time }}</span>
+                <span class="fa-sector">{{ group.latest.name }} {{ group.latest.code }}</span>
+                <span class="fa-stock-tag">🎯 套利背离</span>
+                <span v-if="group.items.length > 1" class="fa-expand-hint">{{ expandedStocks[group.key] ? '收起' : `共${group.items.length}条 ▶` }}</span>
+              </div>
+              <div class="fa-card-meta">
+                <span class="fa-chg" :class="group.latest.change_pct >= 0 ? 'pos' : 'neg'">
+                  个股 {{ group.latest.change_pct >= 0 ? '+' : '' }}{{ fmt(group.latest.change_pct) }}%
+                </span>
+                <span class="fa-chg" :class="group.latest.bench_pct >= 0 ? 'pos' : 'neg'">
+                  基准 {{ group.latest.bench_label }} {{ group.latest.bench_pct >= 0 ? '+' : '' }}{{ fmt(group.latest.bench_pct) }}%
+                </span>
+              </div>
+              <div class="fa-hits">
+                <span v-for="(h, i) in group.latest.hits" :key="i" :class="['fa-hit', 'hit-price']">
+                  {{ hitIcon('arb') }} {{ h.label }}
+                </span>
+              </div>
+              <div v-if="group.latest.reason" style="margin-top:6px;font-size:12px;line-height:1.5;opacity:.75">
+                {{ group.latest.reason }}
+              </div>
+              <!-- 展开的历史告警 -->
+              <div v-if="expandedStocks[group.key] && group.items.length > 1" class="fa-stock-history">
+                <div v-for="(f, idx) in group.items.slice(1)" :key="idx" class="fa-stock-hist-item">
+                  <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                  <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
+                    个股 {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
+                  </span>
+                  <span class="fa-chg" :class="f.bench_pct >= 0 ? 'pos' : 'neg'">
+                    基准 {{ f.bench_label }} {{ f.bench_pct >= 0 ? '+' : '' }}{{ fmt(f.bench_pct) }}%
+                  </span>
+                  <div v-if="f.reason" style="margin-top:4px;font-size:12px;line-height:1.5;opacity:.75">{{ f.reason }}</div>
+                </div>
               </div>
             </div>
             <!-- 价格异动（同股折叠） -->
@@ -183,7 +221,8 @@ const DIM_META = {
   surge:      { icon: '💥', label: '巨量' },
   spike:      { icon: '⚡', label: '突变' },
   streak:     { icon: '🔁', label: '连续' },
-  price:      { icon: '📈', label: '价格异动' }
+  price:      { icon: '📈', label: '价格异动' },
+  arb:        { icon: '🎯', label: '套利背离' }
 }
 
 export default {
@@ -210,6 +249,7 @@ export default {
       const c = {}
       this.findings.forEach(f => {
         if (f.kind === 'stock') { c.price = (c.price || 0) + 1; return }
+        if (f.kind === 'arb') { c.arb = (c.arb || 0) + 1; return }
         f.hits.forEach(h => { c[h.type] = (c[h.type] || 0) + 1 })
       })
       return c
@@ -218,32 +258,34 @@ export default {
       const list = this.filter === 'all' ? this.findings
         : this.filter === 'price'
           ? this.findings.filter(f => f.kind === 'stock')
-          : this.findings.filter(f => f.kind !== 'stock' && f.hits.some(h => h.type === this.filter))
+          : this.filter === 'arb'
+            ? this.findings.filter(f => f.kind === 'arb')
+            : this.findings.filter(f => f.kind === 'sector' && f.hits.some(h => h.type === this.filter))
       return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
     },
     shownFindings() { return this.filteredFindings.slice(0, this.showLimit) },
     groupedFindings() {
-      // 将 filteredFindings 分组：同一股票的价格异动折叠
+      // 将 filteredFindings 分组：同一股票的价格异动/套利背离各自折叠
       const shown = this.shownFindings
       const groups = []
-      const stockMap = new Map() // code -> group index
+      const stockMap = new Map() // 分组key -> group index（价格异动与套利背离用不同前缀，避免同代码互相吞并）
       for (const f of shown) {
-        if (f.kind === 'stock') {
-          const code = f.code || f.name
+        if (f.kind === 'stock' || f.kind === 'arb') {
+          const code = (f.kind === 'arb' ? 'arb:' : '') + (f.code || f.name)
           if (stockMap.has(code)) {
             const gidx = stockMap.get(code)
             groups[gidx].items.push(f)
           } else {
             stockMap.set(code, groups.length)
-            groups.push({ type: 'stock', key: code, items: [f], latest: f })
+            groups.push({ type: f.kind, key: code, items: [f], latest: f })
           }
         } else {
           groups.push({ type: 'sector', items: [f] })
         }
       }
-      // 每个stock group按时间倒序，latest是最新的
+      // 每个stock/arb group按时间倒序，latest是最新的
       for (const g of groups) {
-        if (g.type === 'stock') {
+        if (g.type === 'stock' || g.type === 'arb') {
           g.items.sort((a, b) => (a.time < b.time ? 1 : -1))
           g.latest = g.items[0]
         }

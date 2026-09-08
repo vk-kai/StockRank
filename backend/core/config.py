@@ -147,6 +147,8 @@ WECHAT_CONFIG_FILE = os.path.join(CONFIG_DIR, 'wechat_config.json')
 # 微信小程序内容安全代理(msgSecCheck/mediaCheckAsync)配置
 MP_SEC_CONFIG_FILE = os.path.join(CONFIG_DIR, 'mp_sec_config.json')
 STOCK_MONITOR_CONFIG_FILE = os.path.join(CONFIG_DIR, 'stock_monitor.json')
+# TrendZen 套利背离接入:轮询其免鉴权 feed 拉告警→微信推送→ack 回执(见 monitors/trendzen_arb_monitor.py)
+TRENDZEN_ARB_CONFIG_FILE = os.path.join(CONFIG_DIR, 'trendzen_arb.json')
 AI_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_prompt.txt')
 AI_DAILY_PROMPT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_prompt.txt')
 AI_DAILY_RESULT_FILE = os.path.join(CONFIG_DIR, 'ai_daily_result.md')

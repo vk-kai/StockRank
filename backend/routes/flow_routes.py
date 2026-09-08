@@ -1070,7 +1070,8 @@ def flow_dates():
 @flow_bp.route('/anomaly/run', methods=['GET'])
 def anomaly_run():
     """资金异动检测：默认扫描全天所有 5 分钟时点，返回当日整体异动；
-    传入 date + time 时仅检测该单一时点。同时合并自选股价格异动(kind='stock')。"""
+    传入 date + time 时仅检测该单一时点。同时合并自选股价格异动(kind='stock')
+    与 TrendZen 套利背离告警(kind='arb')。"""
     try:
         date_str = request.args.get('date')
         time_key = request.args.get('time')
@@ -1101,6 +1102,29 @@ def anomaly_run():
                 'net_flow': None, 'change_pct': a.get('pct'),
                 'price': a.get('price'),
                 'hits': [{'type': a.get('type'), 'label': a.get('label', '')}],
+            })
+
+        # 合并 TrendZen 套利背离告警(同一异动流展示;来源见 monitors/trendzen_arb_monitor.py)
+        try:
+            from monitors.trendzen_arb_monitor import list_alerts as list_arb_alerts
+            arb_date = snapshot.get('date') or date_str
+            arb_alerts = list_arb_alerts(date_str=arb_date, limit=500) if arb_date else []
+        except Exception as _e:
+            error_logger.error(f"合并套利背离告警失败: {_e}")
+            arb_alerts = []
+        for a in arb_alerts:
+            findings.append({
+                'kind': 'arb',
+                'sector': f"{a.get('name', '')} {a.get('code', '')}",
+                'name': a.get('name', ''), 'code': a.get('code', ''),
+                'time': a.get('time', ''), 'date': a.get('date', ''),
+                'net_flow': None, 'change_pct': a.get('stock_pct'),
+                'bench_label': a.get('bench_label', ''),
+                'bench_pct': a.get('bench_pct'),
+                'reason': a.get('reason', ''),
+                'direction': a.get('direction', ''),
+                'pushed': a.get('pushed'),
+                'hits': [{'type': 'arb', 'label': a.get('label') or '套利背离'}],
             })
 
         return jsonify({'success': True, 'data': findings, 'count': len(findings), 'snapshot': snapshot})

@@ -266,6 +266,11 @@ if __name__ == '__main__':
         threading.Thread(target=stock_price_loop, daemon=True).start()
         system_logger.info("价格异动监控线程已启动")
 
+        # TrendZen 套利背离告警接入:轮询 feed → 微信推送 → 入库 → ack 回执闭环
+        from monitors.trendzen_arb_monitor import trendzen_arb_loop
+        threading.Thread(target=trendzen_arb_loop, daemon=True).start()
+        system_logger.info("TrendZen套利背离接入线程已启动")
+
         # 虚拟支付兜底查单线程:每5分钟扫描 pending 订单,推送丢失时补发货
         from routes.mp_vpay_routes import vpay_check_loop
         threading.Thread(target=vpay_check_loop, daemon=True).start()

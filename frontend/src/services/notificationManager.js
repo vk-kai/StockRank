@@ -115,6 +115,27 @@ function sendPriceAlertNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
+function sendArbAlertNotification(a) {
+  try {
+    // TrendZen 套利背离:买点/偏多=红(看涨机会),卖点/偏空=绿,与价格异动的红涨绿跌一致
+    const bullish = String(a.direction || '').includes('buy')
+    const icon = bullish ? '🔴' : '🟢'
+    const pct = a.stock_pct != null ? (a.stock_pct >= 0 ? '+' : '') + Number(a.stock_pct).toFixed(2) + '%' : ''
+    const bench = a.bench_pct != null
+      ? ` 基准${a.bench_label || ''} ${a.bench_pct >= 0 ? '+' : ''}${Number(a.bench_pct).toFixed(2)}%`
+      : ''
+    const n = new Notification(`${icon} ${a.name || a.code}套利背离 ${a.label || ''} ${pct}`, {
+      body: `${a.reason || ''}${bench ? '\n' + bench : ''}`,
+      icon: ICON,
+      tag: a.tz_id ? `tz-arb-${a.tz_id}` : a.timestamp,
+      requireInteraction: true
+    })
+    n.onclick = () => { window.focus(); n.close() }
+    const mode = getSoundMode()
+    if (mode === 'all' || mode === 'important') playSound('important')
+  } catch (e) { /* 忽略 */ }
+}
+
 function sendTestNotification(data) {
   // 手动「测试」按钮触发：走真实 WebSocket 通道到达，弹一条桌面通知用于人眼验证。
   try {
@@ -164,6 +185,9 @@ function handlePushEvent(msg) {
       break
     case 'price_alert':
       if (msg.data) sendPriceAlertNotification(msg.data)
+      break
+    case 'arb_alert':
+      if (msg.data) sendArbAlertNotification(msg.data)
       break
     case 'push_test':
       if (msg.data) sendTestNotification(msg.data)
