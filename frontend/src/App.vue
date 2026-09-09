@@ -478,7 +478,7 @@
           </div>
           <div v-else-if="!flowAlertList.length" class="fa-quick-empty">
             <p>今日暂无已推送异动</p>
-            <p class="fa-quick-empty-sub">交易时段每 5 分钟采集后自动触发</p>
+            <p class="fa-quick-empty-sub">交易时段每 5 分钟采集（异动时自动加密到 1 分钟）后触发</p>
           </div>
           <div v-else class="fa-quick-list">
             <div class="fa-quick-card" v-for="(a, idx) in flowAlertList" :key="idx">

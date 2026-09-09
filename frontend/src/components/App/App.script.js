@@ -385,6 +385,9 @@ export default {
     window.addEventListener('auth-required', this.onAuthRequired)
     window.addEventListener('auth-login-success', this.onAuthLogin)
     window.addEventListener('auth-logout', this.onAuthLogout)
+    // 后端采集落盘的 WS 通知：自适应频率下异动时段最快1分钟一发，
+    // 节流拉一次分钟数据让折线实时加密，不用干等5分钟整页刷新
+    window.addEventListener('ws-data-update', this.onWsDataUpdate)
 
     this.initChart()
     window.addEventListener('resize', this.handleResize)
@@ -411,6 +414,7 @@ export default {
     window.removeEventListener('auth-required', this.onAuthRequired)
     window.removeEventListener('auth-login-success', this.onAuthLogin)
     window.removeEventListener('auth-logout', this.onAuthLogout)
+    window.removeEventListener('ws-data-update', this.onWsDataUpdate)
     if (this.chartInstance) {
       this.chartInstance.dispose()
       this.chartInstance = null
@@ -454,6 +458,19 @@ export default {
     }
   },
   methods: {
+    // 后端采集落盘通知(≥1分钟一发)：当天模式下拉取分钟数据，配合放开的时间点
+    // 过滤，异动时段折线逐分钟长出来。45s节流防同分钟多点/异常重连刷屏
+    async onWsDataUpdate() {
+      if (this.selectedTimeRange !== 'today' || this.needsAuth || this.demoMode) return
+      const nowTs = Date.now()
+      if (this._lastWsFetchAt && nowTs - this._lastWsFetchAt < 45000) return
+      this._lastWsFetchAt = nowTs
+      try {
+        await this.fetchMinuteData()
+      } catch (e) {
+        /* 单次拉取失败忽略，等下一发通知或5分钟整页刷新 */
+      }
+    },
     // 登录态变化回调
     onAuthRequired() {
       this.needsAuth = true
@@ -1307,12 +1324,13 @@ export default {
         }
 
         const allTimeKeys = Object.keys(this.minuteData).sort()
-        // 过滤掉非5分钟间隔的异常时间点
+        // 只挡格式异常的时间点。自适应采集后异动时段是1分钟采样点，
+        // 不再按 %5 过滤，否则加密采样的点全被丢掉、折线还是5分钟一格
         const timeData = allTimeKeys.filter(key => {
           const parts = key.split(':')
           if (parts.length !== 2) return false
           const minute = parseInt(parts[1], 10)
-          return minute % 5 === 0
+          return !Number.isNaN(minute) && minute >= 0 && minute <= 59
         })
         
         let cursor = null

@@ -17,6 +17,18 @@ _sector_window_attempt_count = 0    # 当前区间内已实际发起的尝试轮
 _sector_window_succeeded = False    # 当前区间是否已成功拿到数据
 SECTOR_WINDOW_RETRY_MINUTES = 1     # 同一区间内失败后，隔多少分钟再试
 SECTOR_WINDOW_MAX_ATTEMPTS = 5      # 一个5分钟区间内最多尝试多少轮(含首轮)
+
+# ── 自适应采集频率（异动加密采样）──
+# 平稳时维持5分钟一采；某板块相邻采样间净流入出现"大规模异动"（量级突变，
+# 如 +15亿 → -80亿；稳定有规律的 10→15→20亿不算）时，采集区间切到1分钟，
+# 首页折线在异动时段自动加密；连续 CALM_ROUNS 轮采样无新异动后回落回5分钟。
+ADAPTIVE_FAST_WINDOW_MINUTES = 1    # 异动态采集间隔(分钟)——vk 定的硬上限，不许更快
+ADAPTIVE_CALM_ROUNDS_TO_RELAX = 3   # 连续N轮平静采样后回落到5分钟
+ADAPTIVE_JUMP_ABS_FLOOR = 20.0      # 单板块相邻采样 |Δ净流入| 绝对地板(亿)，低于此绝不判异动
+ADAPTIVE_JUMP_RATIO = 4.0           # |Δ| 还需大于该板块当日近期 |Δ| 中位数的该倍数(有历史时)
+ADAPTIVE_RHYTHM_SAMPLES = 8         # 参与节奏中位数计算的近期采样步数
+_fast_mode = False                  # 当前是否处于1分钟加密采样态
+_fast_calm_rounds = 0               # 加密态下连续"平静"的采样轮数
 cleanup_logger = get_logger('cleanup_flow')
 data_summary_logger = get_logger('data_summary')
 
@@ -80,12 +92,87 @@ def should_generate_afternoon_summary(now):
     
     return False
 
+def _sector_net(sec):
+    """取板块净流入(亿)，字段缺失/脏值返回 None。"""
+    for key in ('net_flow', 'flow', 'total_flow'):
+        try:
+            value = float(sec.get(key))
+        except (TypeError, ValueError):
+            continue
+        if value == value:  # 排除 NaN
+            return value
+    return None
+
+
+def _evaluate_flow_jump(data, today, minute_key):
+    """本轮采样相对上一采样是否出现"大规模资金异动"。
+
+    口径对齐 vk 的描述：稳定有规律(10→15→20亿，步长接近)不算；
+    量级突变(15亿→-80亿)算。任一板块满足：
+      |Δ净流入| ≥ ADAPTIVE_JUMP_ABS_FLOOR(绝对地板)
+      且 (当日节奏历史不足，或 |Δ| > ADAPTIVE_JUMP_RATIO × 近期|Δ|中位数)
+    即判异动。返回 (是否异动, 描述文本)；任何异常都按"无异动"处理，绝不影响采集。
+    """
+    try:
+        realtime = load_realtime_data(today)
+        if not realtime or realtime.get('_invalid'):
+            return False, ''
+        keys = sorted(
+            k for k in realtime.keys()
+            if isinstance(k, str) and ':' in k and k != minute_key and isinstance(realtime.get(k), dict)
+        )
+        if not keys:
+            return False, ''
+
+        # 各板块当日 (时间, 净流入) 有序序列——节奏(近期步长)与上一采样都从这里取
+        history = {}
+        for k in keys:
+            for sec in (realtime[k].get('data') or []):
+                name = sec.get('name')
+                if name:
+                    history.setdefault(name, []).append((k, _sector_net(sec)))
+        prev_key = keys[-1]
+        cur_map = {}
+        for sec in (data or []):
+            name = sec.get('name')
+            if name:
+                cur_map[name] = _sector_net(sec)
+
+        worst = None  # (板块名, |Δ|, 上一值, 当前值)
+        for name, cur in cur_map.items():
+            series = history.get(name) or []
+            prev = series[-1][1] if series else None
+            if cur is None or prev is None:
+                continue
+            abs_d = abs(cur - prev)
+            if abs_d < ADAPTIVE_JUMP_ABS_FLOOR:
+                continue
+            rhythm = []
+            for (_, v1), (_, v2) in zip(series, series[1:]):
+                if v1 is None or v2 is None:
+                    continue
+                rhythm.append(abs(v2 - v1))
+            rhythm = rhythm[-ADAPTIVE_RHYTHM_SAMPLES:]
+            median = sorted(rhythm)[len(rhythm) // 2] if rhythm else 0.0
+            if abs_d > ADAPTIVE_JUMP_RATIO * max(median, 1e-9):
+                if worst is None or abs_d > worst[1]:
+                    worst = (name, abs_d, prev, cur)
+        if worst is None:
+            return False, ''
+        name, abs_d, prev, cur = worst
+        return True, f"{name} 净流入 {prev:+.2f}亿 → {cur:+.2f}亿(变动 {abs_d:.2f}亿)"
+    except Exception as e:
+        error_logger.error(f"异动判频评估异常(不影响采集): {e}")
+        return False, ''
+
+
 def data_collection_thread():
     global _last_morning_summary_date, _last_afternoon_summary_date, _last_cleanup_date
     global _last_sector_window_start, _sector_window_last_attempt, _sector_window_attempt_count, _sector_window_succeeded
+    global _fast_mode, _fast_calm_rounds
     register_thread('data_collector')
-    system_logger.info("启动数据采集线程，每5分钟采集一次数据，区间内失败每隔1分钟重试直到下一个5分钟点...")
-    
+    system_logger.info("启动数据采集线程，每5分钟采集一次(检测到大规模资金异动时自动加密到1分钟)，区间内失败每隔1分钟重试直到下一个采集点...")
+
     trading_now = False
 
     while True:
@@ -96,6 +183,11 @@ def data_collection_thread():
             current_minute = now.minute
             current_hour = now.hour
             trading_now = is_trading_day(now) and is_trading_time(now)
+
+            # 收盘/非交易日退出加密态（跨日不残留）
+            if not trading_now and _fast_mode:
+                _fast_mode = False
+                _fast_calm_rounds = 0
 
             if trading_now:
                 refresh_market_summary_cache()
@@ -179,8 +271,10 @@ def data_collection_thread():
                     data_summary_logger.error(f"生成今日({today})的每日汇总失败")
             
             # ── 板块资金采集窗口机制 ──
-            # 当前时间所属的5分钟区间起点(如 9:40-9:45 区间的起点为 9:40)
-            window_start_minute = current_minute - (current_minute % 5)
+            # 当前时间所属采集区间的起点：平稳态5分钟一格(如 9:40-9:45 起点 9:40)；
+            # 异动态1分钟一格(每分钟自成新区间 → 首轮立即采集，实现1分钟加密采样)
+            window_minutes = ADAPTIVE_FAST_WINDOW_MINUTES if _fast_mode else 5
+            window_start_minute = current_minute - (current_minute % window_minutes)
             window_start_key = now.replace(minute=window_start_minute, second=0, microsecond=0)
             window_start_str = window_start_key.strftime('%Y-%m-%d %H:%M')
 
@@ -243,6 +337,22 @@ def data_collection_thread():
                             detect_and_push(today, minute_key, data)
                         except Exception as _ae:
                             error_logger.error(f"异动检测调用失败（不影响采集）: {_ae}")
+                        # ── 自适应频率状态机：异动 → 1分钟加密采样；连续平静 → 回落5分钟 ──
+                        try:
+                            is_jump, jump_desc = _evaluate_flow_jump(data, today, minute_key)
+                        except Exception:
+                            is_jump, jump_desc = False, ''
+                        if is_jump:
+                            if not _fast_mode:
+                                data_logger.info(f"检测到资金大规模异动（{jump_desc}），采集频率 5分钟 → 1分钟")
+                            _fast_mode = True
+                            _fast_calm_rounds = 0
+                        elif _fast_mode:
+                            _fast_calm_rounds += 1
+                            if _fast_calm_rounds >= ADAPTIVE_CALM_ROUNDS_TO_RELAX:
+                                data_logger.info("资金流恢复平稳，采集频率回落 1分钟 → 5分钟")
+                                _fast_mode = False
+                                _fast_calm_rounds = 0
                     else:
                         data_logger.error(f"保存实时数据失败")
                 else:
