@@ -1264,6 +1264,11 @@ export default {
     },
 
     startCountdown() {
+      // 防重复启动:登录/登出切换会多次走到这里,旧的不清掉会变成双倍速倒计时
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval)
+        this.countdownInterval = null
+      }
       this.countdownInterval = setInterval(() => {
         if (this.isReplayingToday) {
           this.countdown = 300
@@ -1278,7 +1283,14 @@ export default {
         if (this.countdown > 0) {
           this.countdown--
         } else {
+          // F5 等效整页刷新。个别 webview(微信内置浏览器等)会静默忽略
+          // location.reload(),尤其 history 路由 pushState 之后;500ms 后页面
+          // 还在就再走一次 href 强制导航兜底——reload 成功时页面已在卸载,
+          // 这行永远到不了,不会造成二次刷新
           window.location.reload()
+          setTimeout(() => {
+            window.location.href = window.location.href
+          }, 500)
         }
       }, 1000)
     },
