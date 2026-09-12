@@ -7,6 +7,7 @@ get_stock_statistics 虽在远处但写 latest_market_data['stats']，一并在�
 """
 import os
 import json
+import time
 from datetime import datetime
 
 import requests
@@ -229,6 +230,12 @@ def _parse_sina_global_indices(sina_text, configs):
     return result
 
 
+# 全球指数内存缓存：前端 30 秒轮询一次，两次轮询间直接复用上次结果，
+# 避免每次都同步等新浪+东财两路 HTTP(超时上限 10s×2)，地图打开秒出。
+_GLOBAL_INDICES_MEM_CACHE = {'ts': 0.0, 'result': None}
+_GLOBAL_INDICES_MEM_TTL = 25.0  # 秒，略小于前端 30s 轮询间隔
+
+
 def get_global_market_indices():
     """获取全球主要股市指数(新浪主源 + AKShare 保底;少数无新浪代码的指数保留东财)。
 
@@ -238,6 +245,11 @@ def get_global_market_indices():
     - 无新浪代码的指数(沪深300/台湾加权/德法/马来/印尼/越南/澳洲/荷兰/瑞士/俄罗斯):
       东财是唯一可行源,保留(新浪无代码,AKShare 底层也是东财)
     """
+    # 内存缓存命中：TTL 内直接复用上次成功结果(前端 30s 轮询，两次轮询间秒回)
+    cached = _GLOBAL_INDICES_MEM_CACHE.get('result')
+    if cached is not None and time.time() - _GLOBAL_INDICES_MEM_CACHE['ts'] < _GLOBAL_INDICES_MEM_TTL:
+        return cached
+
     # 拆分:有新浪代码(走新浪,不用东财) vs 无新浪代码(只能东财)
     sina_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if cfg[2]]
     em_only_configs = [cfg for cfg in GLOBAL_INDICES_CONFIG if not cfg[2]]
@@ -329,11 +341,14 @@ def get_global_market_indices():
 
     indices = list(result.values())
     indices.sort(key=lambda x: x.get('change', 0), reverse=True)
-    return {
+    payload = {
         'indices': indices,
         'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'source': 'eastmoney' if em_ok else 'sina'
     }
+    _GLOBAL_INDICES_MEM_CACHE['ts'] = time.time()
+    _GLOBAL_INDICES_MEM_CACHE['result'] = payload
+    return payload
 
 
 def get_stock_statistics():

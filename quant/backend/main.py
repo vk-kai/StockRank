@@ -21,7 +21,13 @@ from backend.history_download_service import (
     start_history_download,
 )
 from backend import db
-from backend.config import ARB_MONITOR_INTERVAL_SECONDS, CORS_ORIGINS, REALTIME_PUSH_INTERVAL
+from backend.config import (
+    ARB_MONITOR_INTERVAL_SECONDS,
+    CORS_ORIGINS,
+    INTRADAY_KLINE_FRESH_WINDOW_SECONDS,
+    REALTIME_PUSH_INTERVAL,
+)
+from backend.kline_service import ensure_local_kline_cache
 from backend.api.market import router as market_router
 from backend.api.arb import router as arb_router
 from backend.api.trading import router as trading_router
@@ -404,6 +410,51 @@ async def auto_download_task():
             await asyncio.sleep(60)
 
 
+# 盘中预热间隔略小于日K盘中新鲜度窗口(5分钟):每轮预热时上次预热还"新鲜",
+# 不会触发远程刷新;真正需要补数据时(过期/缺历史)由 ensure 内部节流自行拉取。
+# 盘外日K按 8 小时刷新间隔自然节流,降频只做兜底补齐(夜间首次进入也有本地缓存)。
+WATCHLIST_KLINE_PRELOAD_INTERVAL = 4 * 60
+WATCHLIST_KLINE_PRELOAD_OFF_INTERVAL = 30 * 60
+
+
+def _preload_watchlist_daily_kline(codes: list[str], fresh_window_seconds: Optional[int]) -> None:
+    """在单个工作线程里串行预热全部自选股日K,避免逐股 to_thread 开销。"""
+    for code in codes:
+        try:
+            ensure_local_kline_cache(
+                code,
+                "daily",
+                limit=300,
+                security_kind="security",
+                fresh_window_seconds=fresh_window_seconds,
+            )
+        except Exception as e:
+            logger.warning(f"自选股日K预热失败 {code}: {e}")
+
+
+async def watchlist_kline_preload_task():
+    """自选股日K后台预热:盘中让本地 parquet 恒在新鲜窗口内,首次进入/切换个股
+    时 ensure_local_kline_cache 直接命中本地缓存,省掉请求内同步远程拉取的等待。
+    ensure 内部有节流(新鲜窗口未到期只读本地 parquet),不会打爆数据源。"""
+    while True:
+        try:
+            trading = _likely_trading_time()
+            watchlist = await asyncio.to_thread(db.list_watchlist)
+            codes = [item.get("code") for item in watchlist if item.get("code")]
+            if codes:
+                await asyncio.to_thread(
+                    _preload_watchlist_daily_kline,
+                    codes,
+                    INTRADAY_KLINE_FRESH_WINDOW_SECONDS if trading else None,
+                )
+            await asyncio.sleep(
+                WATCHLIST_KLINE_PRELOAD_INTERVAL if trading else WATCHLIST_KLINE_PRELOAD_OFF_INTERVAL
+            )
+        except Exception as e:
+            logger.error(f"自选股日K预热任务异常: {e}")
+            await asyncio.sleep(60)
+
+
 @app.on_event("startup")
 async def startup_event():
     ensure_runtime_db_ready()
@@ -422,6 +473,7 @@ async def startup_event():
     asyncio.create_task(auto_scan_task())
     asyncio.create_task(arb_monitor_task())
     asyncio.create_task(auto_download_task())
+    asyncio.create_task(watchlist_kline_preload_task())
     asyncio.create_task(asyncio.to_thread(pytdx_data.reconnect))
     asyncio.create_task(pi_node_health_task())
     logger.info("证券辅助决策终端启动")

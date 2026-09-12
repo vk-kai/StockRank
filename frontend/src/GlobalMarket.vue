@@ -325,9 +325,10 @@ export default {
       if (!list.length) return
       this.intradayLoading = true
       try {
-        // 逐个串行请求东方财富 trends2，每个间隔 500ms，避免并发触发 WAF 反爬
-        const fetched = []
-        for (const ix of list) {
+        // 分批并发(每批 4 个)抓东财 trends2:原先逐个串行 + 500ms 间隔要 8s+,
+        // 全并发又怕触发 WAF;分批折中,单只失败返回 null 滤掉,不影响其它。
+        // 每批完成即合并渲染,先到的指数先画线,不必等全部抓完。
+        const fetchOne = async (ix) => {
           try {
             const url = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(ix.code)}&fields1=f1,f2&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1`
             const body = await jsonp(url, 8000)
@@ -343,16 +344,22 @@ export default {
                 series.push({ t: t.length >= 16 ? t.slice(11, 16) : t, price })
               }
               if (series.length) {
-                fetched.push({ code: ix.code, name: ix.name, region: ix.region, series })
+                return { code: ix.code, name: ix.name, region: ix.region, series }
               }
             }
           } catch (e) {
             // 单只失败不影响其它
           }
-          // 间隔 500ms，避免触发东财 WAF
-          await new Promise(r => setTimeout(r, 500))
+          return null
         }
-        this.intraday = fetched
+        const CONCURRENCY = 4
+        const fetched = []
+        for (let i = 0; i < list.length; i += CONCURRENCY) {
+          const batch = list.slice(i, i + CONCURRENCY)
+          fetched.push(...await Promise.all(batch.map(fetchOne)))
+          // 渐进渲染:该批成功的结果立刻上屏
+          this.intraday = fetched.filter(Boolean)
+        }
         this.intradayUpdatedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       } catch (e) {
         console.error('前端获取分时失败', e)

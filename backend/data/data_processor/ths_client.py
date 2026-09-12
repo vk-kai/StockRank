@@ -579,15 +579,55 @@ def parse_ths_stock_html(html_content, request_url=''):
     return stocks
 
 def get_sector_stocks(sector_url):
-    # 内存缓存：同板块 5 分钟内复用，避免反复爬同花顺（个股列表日内变化小）
+    """同花顺板块个股详情。
+
+    缓存策略（解决"点开板块个股详情等半天"）：
+    - 10 分钟内命中 → 直接返回
+    - 过期 → stale-while-revalidate：立即返回旧值，后台线程刷新缓存，用户零等待
+    - 现场爬取失败 → 回退返回上一次成功旧值（有旧值时），不再凭空给空列表
+    """
     import time as _time
     if not hasattr(get_sector_stocks, '_cache'):
         get_sector_stocks._cache = {}
-    _cached = get_sector_stocks._cache.get(sector_url)
-    if _cached and _time.time() - _cached[0] < 300:
-        return _cached[1]
+    if not hasattr(get_sector_stocks, '_refreshing'):
+        get_sector_stocks._refreshing = set()
+    _SECTOR_STOCKS_TTL = 600  # 秒，个股列表日内变化小，10 分钟足够新鲜
 
-    from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle
+    cached = get_sector_stocks._cache.get(sector_url)
+    if cached:
+        _ts, data = cached
+        if _time.time() - _ts < _SECTOR_STOCKS_TTL:
+            return data
+        # 过期：先回旧值，后台异步刷新（并发去重，防止多请求同时拉起多个刷新线程）
+        if sector_url not in get_sector_stocks._refreshing:
+            get_sector_stocks._refreshing.add(sector_url)
+            threading.Thread(
+                target=_refresh_sector_stocks_cache, args=(sector_url,), daemon=True
+            ).start()
+        return data
+
+    stocks = _fetch_sector_stocks_now(sector_url)
+    if stocks:
+        get_sector_stocks._cache[sector_url] = (_time.time(), stocks)
+    return stocks
+
+
+def _refresh_sector_stocks_cache(sector_url):
+    """后台刷新板块个股缓存；成功更新缓存，失败静默（旧值继续服务）。"""
+    import time as _time
+    try:
+        stocks = _fetch_sector_stocks_now(sector_url)
+        if stocks:
+            get_sector_stocks._cache[sector_url] = (_time.time(), stocks)
+    except Exception as e:
+        error_logger.warning(f"后台刷新板块个股缓存失败 {sector_url}: {e}")
+    finally:
+        get_sector_stocks._refreshing.discard(sector_url)
+
+
+def _fetch_sector_stocks_now(sector_url):
+    """现场爬取同花顺板块个股列表（含重试）。成功返回列表，失败返回空列表。"""
+    from monitors.health_checker import set_crawler_working, set_crawler_idle
 
     if not sector_url:
         error_logger.error("板块URL为空")
@@ -633,7 +673,6 @@ def get_sector_stocks(sector_url):
             stocks = parse_ths_stock_html(response.text, sector_url)
             
             if stocks:
-                get_sector_stocks._cache[sector_url] = (_time.time(), stocks)
                 set_crawler_idle('stocks')
                 return stocks
             else:

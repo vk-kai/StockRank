@@ -267,10 +267,20 @@ def _sina_batch_one(batch):
     return result
 
 
+# 新浪实时涨跌幅短缓存：云图前端 15 秒轮询一次全量 /market-map，
+# 每次都要打 13 批新浪请求(~5000只)。TTL 内直接复用，两次轮询间毫秒级返回，
+# 新浪请求频率从 ~52次/分 降到 ~12次/分，页面打开也更跟手。
+_changes_cache = {'ts': 0.0, 'data': {}}
+_CHANGES_CACHE_TTL = 20.0  # 秒
+
+
 def _sina_batch_changes(sina_codes):
     """新浪并行批量获取实时涨跌幅。返回 {sina_code: 涨跌幅%}"""
     if not sina_codes:
         return {}
+    now = time.time()
+    if now - _changes_cache['ts'] < _CHANGES_CACHE_TTL and _changes_cache['data']:
+        return _changes_cache['data']
     batch_size = 400
     batches = [sina_codes[i:i + batch_size] for i in range(0, len(sina_codes), batch_size)]
     from concurrent.futures import ThreadPoolExecutor
@@ -278,6 +288,9 @@ def _sina_batch_changes(sina_codes):
     with ThreadPoolExecutor(max_workers=5) as executor:
         for batch_result in executor.map(_sina_batch_one, batches):
             result.update(batch_result)
+    if result:
+        _changes_cache['ts'] = now
+        _changes_cache['data'] = result
     return result
 
 

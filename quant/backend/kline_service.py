@@ -735,7 +735,27 @@ def _synthesize_today_bar_from_minute_df(code: str, prev_close: float, today_str
     }])
 
 
+# 盘中「当天实时bar」微缓存：日K盘中每请求都绕过响应缓存去远程取实时报价
+# （腾讯/pytdx，几百毫秒），快速切换个股时明显拖慢。日K单根bar 15 秒新鲜度足够。
+# 只缓存成功结果（空结果不缓存，失败下轮重试）。
+_today_bar_cache: dict = {}
+_TODAY_BAR_CACHE_TTL = 15.0
+
+
 def _fetch_today_realtime_bar_df(code: str, security_kind: str, today_str: str, prev_close: float = 0.0) -> pd.DataFrame:
+    """_fetch_today_realtime_bar_df_uncached 的微缓存包装（TTL 15s，仅缓存成功结果）。"""
+    import time as _time
+    key = (str(code).strip().zfill(6), str(security_kind), str(today_str), round(float(prev_close or 0), 4))
+    hit = _today_bar_cache.get(key)
+    if hit is not None and _time.time() - hit[0] < _TODAY_BAR_CACHE_TTL:
+        return hit[1].copy()
+    df = _fetch_today_realtime_bar_df_uncached(code, security_kind, today_str, prev_close)
+    if df is not None and not df.empty:
+        _today_bar_cache[key] = (_time.time(), df.copy())
+    return df
+
+
+def _fetch_today_realtime_bar_df_uncached(code: str, security_kind: str, today_str: str, prev_close: float = 0.0) -> pd.DataFrame:
     """盘中取当天实时日K（单根 bar），用于补充到历史日线末尾。
 
     用实时行情报价合成当天的 OHLCV，而不是用 pytdx 日线历史接口——
