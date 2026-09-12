@@ -12,7 +12,8 @@
 优点：5000 只毫秒级完成、可复现、无 token 开销；词表可直接在本文件维护。
 局限：无法像 LLM 一样"认识"具体公司，护城河/管理层等软信息不参与评分。
 
-切换开关：ai_config.json 设 "score_engine": "ai" 切回 LLM 打分；缺省 "local"。
+切换规则（无需额外配置）：AI 开关关闭 → 直接走本模块；AI 开启 → 先走 LLM 打分，
+LLM 失败/漏评的部分自动由本模块补齐（见 stock_scorer._run_scoring_background 的回退逻辑）。
 """
 import re
 

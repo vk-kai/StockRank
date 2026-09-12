@@ -147,9 +147,9 @@ def process_news_with_ai_and_push(news_list):
         from analysis.ai_analyzer import load_ai_config
         
         ai_config = load_ai_config()
-        # 本地词典引擎(news_engine=local，默认)不依赖 AI 开关——分析零成本，始终可用
-        news_engine = (ai_config or {}).get('news_engine') or 'local'
-        ai_enabled = news_engine == 'local' or bool(ai_config and ai_config.get('enabled', False))
+        # ai_enabled 仅表示"走 LLM"：开启 → AI 优先，失败自动回退本地(见 batch_analyze_news/analyze_news)；
+        # 关闭 → 分析函数内部直接走本地词典引擎，筛选/推送始终有分析结果可用
+        ai_enabled = bool(ai_config and ai_config.get('enabled', False))
         push_enabled = is_push_enabled()
         
         existing_news = load_today_news()
@@ -232,8 +232,8 @@ def process_news_with_ai_and_push(news_list):
         # 如果消息推送未启用，跳过所有推送逻辑
         if not push_enabled:
             ai_logger.info(f"消息推送已关闭，跳过重要新闻推送逻辑")
-            # 重要新闻仍然进行AI分析，但不推送
-            if important_items and ai_enabled:
+            # 重要新闻仍然进行分析(AI开启走LLM/关闭走本地)，但不推送
+            if important_items:
                 items_to_analyze = important_items[:5]
                 if len(important_items) > 5:
                     ai_logger.info(f"重要新闻数量较多({len(important_items)}条)，本次仅分析前5条")
@@ -262,21 +262,19 @@ def process_news_with_ai_and_push(news_list):
                     news_item['core_event'] = ''
         else:
             channels = get_enabled_news_channels()
+            # 无论 AI 开关，筛选模式都需要分析结果：AI 开启走 LLM(失败自动回退本地)，关闭直接本地词典引擎
             analysis_target_map = {}
-            if ai_enabled:
-                for channel in channels:
-                    if channel['mode'] == ALL_AI_FILTER:
-                        for item in new_items:
-                            news_id = item.get('id')
-                            if news_id:
-                                analysis_target_map[news_id] = item
-                    elif channel['mode'] == IMPORTANT_AI_FILTER:
-                        for item in important_items:
-                            news_id = item.get('id')
-                            if news_id:
-                                analysis_target_map[news_id] = item
-            elif any(channel['mode'] == ALL_AI_FILTER for channel in channels):
-                ai_logger.warning("存在“全部新闻AI筛选”推送模式，但AI未开启，相关渠道将跳过新闻推送")
+            for channel in channels:
+                if channel['mode'] == ALL_AI_FILTER:
+                    for item in new_items:
+                        news_id = item.get('id')
+                        if news_id:
+                            analysis_target_map[news_id] = item
+                elif channel['mode'] == IMPORTANT_AI_FILTER:
+                    for item in important_items:
+                        news_id = item.get('id')
+                        if news_id:
+                            analysis_target_map[news_id] = item
 
             analysis_results = {}
             items_to_analyze = list(analysis_target_map.values())
@@ -311,15 +309,10 @@ def process_news_with_ai_and_push(news_list):
                     elif mode == IMPORTANT_DIRECT and source_important:
                         direct_channels.append(channel)
                     elif mode == IMPORTANT_AI_FILTER and source_important:
-                        if ai_enabled:
-                            ai_channels.append(channel)
-                        else:
-                            direct_channels.append(channel)
+                        # 分析始终可用(AI优先/本地兜底)，统一走筛选通道
+                        ai_channels.append(channel)
                     elif mode == ALL_AI_FILTER:
-                        if ai_enabled:
-                            ai_channels.append(channel)
-                        else:
-                            record_ignored(news_item, 'AI未开启，无法执行全部新闻AI筛选', '未分析')
+                        ai_channels.append(channel)
 
                 # WebSocket实时推送：所有新闻都推送到前端，前端根据设置过滤
                 try:
@@ -344,7 +337,7 @@ def process_news_with_ai_and_push(news_list):
                         else:
                             record_ignored(news_item, analysis.get('reason', ''), analysis.get('level', ''))
                     else:
-                        record_ignored(news_item, 'AI分析失败', '未知')
+                        record_ignored(news_item, '新闻分析失败', '未知')
         
         # 股票匹配推送（仅在消息推送启用时执行）
         if push_enabled:

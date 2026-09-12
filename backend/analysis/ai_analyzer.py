@@ -195,37 +195,37 @@ def parse_ai_response(content):
                 results[item_id] = item
     return results
 
-def _news_engine(config):
-    """新闻分析引擎选择：'local'（默认，本地词典规则，零 token）/ 'ai'（LLM 分析）。
-    切换方式：ai_config.json 增删 "news_engine": "ai"。"""
-    return (config or {}).get('news_engine') or 'local'
-
-
 def batch_analyze_news(news_items):
-    global last_ai_call_time
-
+    """批量新闻分析统一入口（跟随「AI大模型配置」的启用开关）：
+    - AI 未启用 → 直接本地词典引擎（零 token，输出字段与 LLM 版同构）
+    - AI 启用 → 先走 LLM；预算耗尽/限流/超时/解析失败 → 自动回退本地，保证分析永不空手
+    """
     if not news_items:
         return {}
-
     config = load_ai_config()
-
-    # 本地词典引擎：零 AI 调用、无节流，输出字段与 LLM 版同构
-    if _news_engine(config) == 'local':
-        return analyze_batch_local(news_items)
-
     if not config or not config.get('enabled'):
-        return {}
-    
+        return analyze_batch_local(news_items)
+    results = _batch_analyze_news_ai(news_items, config)
+    if results:
+        return results
+    info_logger.warning("[新闻分析] AI批量分析失败，自动回退本地词典引擎")
+    return analyze_batch_local(news_items)
+
+
+def _batch_analyze_news_ai(news_items, config):
+    """AI 批量分析（LLM 原路径）。任何失败一律返回 {}，由上层 batch_analyze_news 回退本地。"""
+    global last_ai_call_time
+
     elapsed = time.time() - last_ai_call_time
     if elapsed < AI_CALL_INTERVAL:
         time.sleep(AI_CALL_INTERVAL - elapsed)
-    
+
     last_ai_call_time = time.time()
-    
+
     prompt = load_ai_prompt()
     if not prompt:
         return {}
-    
+
     api_url = config.get('api_url')
     api_key = config.get('api_key')
     model = config.get('model', 'gpt-3.5-turbo')
@@ -335,13 +335,18 @@ def batch_analyze_news(news_items):
                 continue
             return {}
             
+        except AIBudgetExceeded as e:
+            # 预算熔断：未发请求、无瞬态性，重试无意义，立即退出交上层回退本地
+            failure_reasons.append(f"第{attempt}次: 预算超限 - {e}")
+            break
+
         except Exception as e:
             failure_reasons.append(f"第{attempt}次: 异常 - {str(e)}")
             if attempt < retry_count:
                 time.sleep(retry_interval)
                 continue
             return {}
-    
+
     error_logger.error(f"AI分析失败，共重试{retry_count}次，失败原因:\n" + "\n".join(failure_reasons))
     if last_response_content:
         error_logger.error(f"AI返回内容(前500字符): {last_response_content[:500]}")
@@ -792,17 +797,23 @@ NEWS_ANALYSIS_PROMPT = """你是一名顶级产业分析师。
 
 
 def analyze_news(title, content):
-    """同步分析单条新闻"""
-    global last_ai_call_time
-
+    """同步分析单条新闻（跟随「AI大模型配置」的启用开关）：
+    - AI 未启用 → 直接本地词典引擎
+    - AI 启用 → 先走 LLM；失败（含预算超限）自动回退本地
+    返回 {success, analysis(markdown), duration}，markdown 标题行 `# X级（XX/100）` 供评分提取。"""
     config = load_ai_config()
-
-    # 本地词典引擎：零 AI 调用、无节流，返回结构 {success, analysis(markdown), duration} 与 LLM 版一致
-    if _news_engine(config) == 'local':
-        return analyze_news_local_sync(title, content)
-
     if not config or not config.get('enabled'):
-        return {'success': False, 'message': 'AI分析未启用'}
+        return analyze_news_local_sync(title, content)
+    result = _analyze_news_ai(title, content, config)
+    if result.get('success'):
+        return result
+    info_logger.warning(f"[新闻分析] AI单条分析失败({str(result.get('message', ''))[:60]})，自动回退本地词典引擎")
+    return analyze_news_local_sync(title, content)
+
+
+def _analyze_news_ai(title, content, config):
+    """AI 单条分析（LLM 原路径）。失败返回 {success: False, message}，由上层 analyze_news 回退本地。"""
+    global last_ai_call_time
 
     elapsed = time.time() - last_ai_call_time
     if elapsed < AI_CALL_INTERVAL:
@@ -889,6 +900,11 @@ def analyze_news(title, content):
                 time.sleep(retry_interval)
                 continue
             return {'success': False, 'message': f'连接失败'}
+
+        except AIBudgetExceeded as e:
+            # 预算熔断：未发请求、无瞬态性，重试无意义，立即交上层回退本地
+            error_logger.warning(f"新闻AI分析预算超限: {e}")
+            return {'success': False, 'message': f'AI预算超限: {e}'}
 
         except Exception as e:
             error_logger.error(f"新闻AI分析异常: {str(e)}")

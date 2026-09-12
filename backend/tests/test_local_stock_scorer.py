@@ -71,5 +71,53 @@ class LocalStockScorerTests(unittest.TestCase):
         self.assertEqual(score_batch(batch), score_batch(batch))
 
 
+class LocalScoringPipelineTests(unittest.TestCase):
+    """AI 开关关闭 → start_scoring 走本地引擎的端到端验证（临时目录，不碰真实 scores.json）。"""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        import analysis.stock_scorer as ss
+
+        self.ss = ss
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+        self._orig = {k: getattr(ss, k) for k in (
+            'STOCK_SCORES_DIR', 'STOCK_SCORES_FILE', 'STOCK_SCORE_STATUS_FILE',
+            'load_ai_config', 'get_all_market_map_stocks')}
+        self.addCleanup(self._restore)
+
+        ss.STOCK_SCORES_DIR = self.tmp
+        ss.STOCK_SCORES_FILE = self.tmp + '/scores.json'
+        ss.STOCK_SCORE_STATUS_FILE = self.tmp + '/status.json'
+        ss.load_ai_config = lambda: {'enabled': False}   # AI 关
+        ss.get_all_market_map_stocks = lambda: {
+            'sh600519': {'name': '贵州茅台', 'l1': '食品饮料', 'l2': '白酒', 'value': 20000e8, 'pe': 22},
+            'sz000002': {'name': '某地产', 'l1': '房地产', 'l2': '房地产开发', 'value': 200e8, 'pe': 8},
+            'sh688001': {'name': '某芯片', 'l1': '电子', 'l2': '半导体', 'value': 800e8, 'pe': 45},
+        }
+        ss._cancel_event.clear()
+        ss._score_status.update(ss._default_status())
+
+    def _restore(self):
+        for k, v in self._orig.items():
+            setattr(self.ss, k, v)
+
+    def test_start_scoring_local_pipeline(self):
+        ret = self.ss.start_scoring('all')
+        self.assertTrue(ret['success'])
+        self.assertIn('本地', ret['message'])
+        self.ss._worker_thread.join(timeout=10)
+        status = self.ss.get_status()
+        self.assertEqual(status['status'], 'completed')
+        self.assertEqual(status['done'], 3)
+        scores = self.ss.load_scores()
+        self.assertEqual(set(scores.keys()), {'600519', '000002', '688001'})
+        for v in scores.values():
+            self.assertIsNotNone(v['score'])
+            self.assertTrue(v['label'])
+
+
 if __name__ == '__main__':
     unittest.main()
