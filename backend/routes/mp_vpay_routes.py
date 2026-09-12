@@ -629,7 +629,8 @@ def cleanup_expired_pending_orders():
 def vpay_check_loop(interval=PENDING_CHECK_INTERVAL):
     """后台线程:每 5 分钟兜底查单(推送丢失时补发货),并清理超时未支付订单。"""
     from monitors.thread_monitor import register_thread, heartbeat
-    register_thread('vpay_pending_checker')
+    # 每轮心跳后 sleep 300s 且睡眠中无心跳:注册 900s 心跳超时,避免被 120s 默认阈值误判 stopped
+    register_thread('vpay_pending_checker', heartbeat_timeout=900)
     time.sleep(60)  # 启动避让,别与其他采集线程抢资源
     while True:
         heartbeat('vpay_pending_checker')

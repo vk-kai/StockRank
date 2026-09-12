@@ -9,16 +9,21 @@ _dead_logged = {}
 DEFAULT_TIMEOUT = 120
 BUSY_TIMEOUT = 600
 
-def register_thread(name):
+def register_thread(name, heartbeat_timeout=None):
+    """注册线程。heartbeat_timeout: 该线程的自定义心跳超时(秒)。
+    长睡眠线程(窗口外/周期间长 sleep 且睡眠中不发心跳)必须传更大值,
+    否则会被 DEFAULT_TIMEOUT(120s) 误判为 stopped。None → 用默认值。"""
     _thread_status[name] = {
         'alive': True,
         'last_heartbeat': time.time(),
         'start_time': time.time(),
         'busy': False,
-        'busy_since': None
+        'busy_since': None,
+        'timeout': heartbeat_timeout,
     }
     _dead_logged[name] = False
-    system_logger.info(f"[线程监控] 线程 {name} 已注册")
+    system_logger.info(f"[线程监控] 线程 {name} 已注册"
+                       + (f"(心跳超时 {heartbeat_timeout}s)" if heartbeat_timeout else ""))
 
 def heartbeat(name):
     if name in _thread_status:
@@ -49,8 +54,9 @@ def get_all_status():
     for name, status in _thread_status.items():
         elapsed = now - status['last_heartbeat']
         is_busy = status.get('busy', False)
-        
-        timeout = BUSY_TIMEOUT if is_busy else DEFAULT_TIMEOUT
+
+        # 忙碌用长超时；其次用线程注册时的自定义超时；都没有才用默认值
+        timeout = BUSY_TIMEOUT if is_busy else (status.get('timeout') or DEFAULT_TIMEOUT)
         is_alive = status['alive'] and elapsed < timeout
         
         if not is_alive and not _dead_logged.get(name, False):

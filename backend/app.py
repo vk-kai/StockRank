@@ -40,6 +40,12 @@ news_collection_thread = threading.Thread(target=news_collection_func, daemon=Tr
 margin_collection_thread = threading.Thread(target=margin_collection_func, daemon=True)
 mm_snapshot_thread = threading.Thread(target=market_map_snapshot_thread, daemon=True)
 
+# 可重启的长睡眠线程句柄(/api/system/restart 用;__main__ 启动时赋值)。
+# 原先这三个线程启动后丢弃句柄,重启接口无法拉起它们——真挂了只能人工重启容器。
+trendzen_arb_thread = None
+quant_signal_thread = None
+vpay_checker_thread = None
+
 def create_app():
     app = Flask(__name__)
     # 会话密钥：优先用持久化文件（开启 OTP 时旋转过），其次环境变量，最后默认值。
@@ -160,6 +166,7 @@ def create_app():
             return jsonify({'success': False, 'message': '缺少 thread 参数'}), 400
         
         global data_collection_thread, news_collection_thread, margin_collection_thread
+        global trendzen_arb_thread, quant_signal_thread, vpay_checker_thread
         
         if thread_name == 'data_collector':
             if data_collection_thread.is_alive():
@@ -190,6 +197,39 @@ def create_app():
             margin_collection_thread.start()
             system_logger.info(f"[重启] margin_collector 线程已重新启动")
             return jsonify({'success': True, 'message': 'margin_collector 线程已重启'})
+
+        elif thread_name == 'trendzen_arb_monitor':
+            if trendzen_arb_thread is not None and trendzen_arb_thread.is_alive():
+                system_logger.info(f"[重启] trendzen_arb_monitor 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from monitors.trendzen_arb_monitor import trendzen_arb_loop
+            trendzen_arb_thread = threading.Thread(target=trendzen_arb_loop, daemon=True)
+            trendzen_arb_thread.start()
+            system_logger.info(f"[重启] trendzen_arb_monitor 线程已重新启动")
+            return jsonify({'success': True, 'message': 'trendzen_arb_monitor 线程已重启'})
+
+        elif thread_name == 'quant_signal_bridge':
+            if quant_signal_thread is not None and quant_signal_thread.is_alive():
+                system_logger.info(f"[重启] quant_signal_bridge 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from monitors.quant_signal_bridge import quant_signal_bridge_loop
+            quant_signal_thread = threading.Thread(target=quant_signal_bridge_loop, daemon=True)
+            quant_signal_thread.start()
+            system_logger.info(f"[重启] quant_signal_bridge 线程已重新启动")
+            return jsonify({'success': True, 'message': 'quant_signal_bridge 线程已重启'})
+
+        elif thread_name == 'vpay_pending_checker':
+            if vpay_checker_thread is not None and vpay_checker_thread.is_alive():
+                system_logger.info(f"[重启] vpay_pending_checker 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from routes.mp_vpay_routes import vpay_check_loop
+            vpay_checker_thread = threading.Thread(target=vpay_check_loop, daemon=True)
+            vpay_checker_thread.start()
+            system_logger.info(f"[重启] vpay_pending_checker 线程已重新启动")
+            return jsonify({'success': True, 'message': 'vpay_pending_checker 线程已重启'})
 
         else:
             return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
@@ -273,12 +313,14 @@ if __name__ == '__main__':
 
         # TrendZen 套利背离告警接入:轮询 feed → 微信推送 → 入库 → ack 回执闭环
         from monitors.trendzen_arb_monitor import trendzen_arb_loop
-        threading.Thread(target=trendzen_arb_loop, daemon=True).start()
+        trendzen_arb_thread = threading.Thread(target=trendzen_arb_loop, daemon=True)
+        trendzen_arb_thread.start()
         system_logger.info("TrendZen套利背离接入线程已启动")
 
         # 量化扫描信号桥:水位线轮询 quant /scan/feed → 入库 → 统一总线 push_event('tz_signal')
         from monitors.quant_signal_bridge import quant_signal_bridge_loop
-        threading.Thread(target=quant_signal_bridge_loop, daemon=True).start()
+        quant_signal_thread = threading.Thread(target=quant_signal_bridge_loop, daemon=True)
+        quant_signal_thread.start()
         system_logger.info("量化扫描信号桥线程已启动")
 
         # 演示模式快照:每个交易日收盘后固化首页+云图数据,未登录访客只读这份快照
@@ -288,7 +330,8 @@ if __name__ == '__main__':
 
         # 虚拟支付兜底查单线程:每5分钟扫描 pending 订单,推送丢失时补发货
         from routes.mp_vpay_routes import vpay_check_loop
-        threading.Thread(target=vpay_check_loop, daemon=True).start()
+        vpay_checker_thread = threading.Thread(target=vpay_check_loop, daemon=True)
+        vpay_checker_thread.start()
         system_logger.info("虚拟支付兜底查单线程已启动")
 
         system_logger.info("Flask-SocketIO服务器启动")

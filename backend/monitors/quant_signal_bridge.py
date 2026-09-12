@@ -198,7 +198,8 @@ def _in_poll_window(now):
 
 
 def quant_signal_bridge_loop():
-    register_thread('quant_signal_bridge')
+    # 窗口外/周末单次 sleep 300s 且睡眠中无心跳:注册 900s 心跳超时,避免被 120s 默认阈值误判 stopped
+    register_thread('quant_signal_bridge', heartbeat_timeout=900)
     logger.info('量化扫描信号桥线程启动')
     _log_skip_count = 0  # 抑制重复日志
     while True:

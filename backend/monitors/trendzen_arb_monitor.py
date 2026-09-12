@@ -250,7 +250,8 @@ def _in_poll_window(now):
 
 
 def trendzen_arb_loop():
-    register_thread('trendzen_arb_monitor')
+    # 窗口外/周末单次 sleep 300s 且睡眠中无心跳:注册 900s 心跳超时,避免被 120s 默认阈值误判 stopped
+    register_thread('trendzen_arb_monitor', heartbeat_timeout=900)
     logger.info('TrendZen套利背离接入线程启动')
     _log_skip_count = 0  # 抑制重复日志
     while True:

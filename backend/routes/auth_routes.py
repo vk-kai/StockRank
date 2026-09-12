@@ -73,6 +73,17 @@ PUBLIC_EXACT_PATHS = {'/health'}
 PUBLIC_PATH_PREFIXES = ('/api/auth/', '/api/mp/', '/api/demo/')
 
 
+def is_monitor_request():
+    """线程监控进程(monitor.py,独立进程)的重启请求免登录放行：
+    请求头 X-Monitor-Key 携带每日动态密码(vk666+MMDD,与登录同源同强度)。
+    仅对 POST /api/system/restart 生效；OTP 开启时监控进程无法走 session 登录，
+    用此通道保证"线程真挂了能自动拉起"的兜底能力。"""
+    if request.method != 'POST' or (request.path or '') != '/api/system/restart':
+        return False
+    provided = (request.headers.get('X-Monitor-Key') or '').strip()
+    return bool(provided) and verify_password(provided)
+
+
 def install_auth_guard(app):
     @app.before_request
     def require_login():
@@ -91,6 +102,10 @@ def install_auth_guard(app):
 
         # 放行：Jarvis 手机管家 app 带 X-Jarvis-Token 共享密钥的请求
         if is_jarvis_request():
+            return None
+
+        # 放行：线程监控进程带 X-Monitor-Key(每日密码)调用重启接口
+        if is_monitor_request():
             return None
 
         # 仅 /api/ 开头的业务接口需要登录；静态资源、前端路由等一律不拦截

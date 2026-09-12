@@ -18,6 +18,10 @@ _fail_reset_time = {}
 _auth_session = None
 _auth_session_base_url = None
 MONITOR_USERNAME = os.environ.get('STOCKRANK_MONITOR_USERNAME', 'vk')
+# 同一线程"已停止"告警的冷却(秒):避免心跳误报场景下每 30 秒刷一条 CRITICAL
+# (真挂了也只损失 10 分钟内的重启延迟,restart_thread 自身还有冷却与失败熔断)
+STOP_ALERT_COOLDOWN = 600
+_last_stop_alert = {}
 
 def get_current_config():
     global _last_config_reload
@@ -98,11 +102,17 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
         system_logger.info(f"[监控] 尝试重启线程: {thread_name}, URL: {restart_url}")
         api_base_url = restart_url.rsplit('/api/system/restart', 1)[0]
         session = get_auth_session(api_base_url)
+        # X-Monitor-Key(每日密码):OTP 开启时监控进程无法走 session 登录,
+        # 后端守卫对该头单独放行重启接口,保证自动拉起兜底可用
+        restart_headers = {
+            'Content-Type': 'application/json',
+            'X-Monitor-Key': get_daily_password(),
+        }
         response = session.post(
-            restart_url, 
-            json={"thread": thread_name}, 
+            restart_url,
+            json={"thread": thread_name},
             timeout=10,
-            headers={'Content-Type': 'application/json'}
+            headers=restart_headers
         )
         if response.status_code == 401:
             reset_auth_session()
@@ -111,7 +121,7 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
                 restart_url,
                 json={"thread": thread_name},
                 timeout=10,
-                headers={'Content-Type': 'application/json'}
+                headers=restart_headers
             )
         if response.status_code == 200:
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
@@ -200,9 +210,19 @@ def monitor_loop():
                     continue
                 
                 if not alive or status == 'stopped':
+                    # 冷却去重:同一线程 10 分钟内只告警+尝试重启一次,
+                    # 心跳误报(长睡眠线程)不再每 30 秒刷 CRITICAL
+                    now_ts = time.time()
+                    if now_ts - _last_stop_alert.get(thread_name, 0) < STOP_ALERT_COOLDOWN:
+                        continue
+                    _last_stop_alert[thread_name] = now_ts
                     error_logger.critical(f"[监控] 线程 {thread_name} 已停止运行，状态: {status}, 尝试重启...")
                     restart_thread(thread_name, restart_url, restart_cooldown)
                 elif elapsed > alert_threshold:
+                    now_ts = time.time()
+                    if now_ts - _last_stop_alert.get(thread_name, 0) < STOP_ALERT_COOLDOWN:
+                        continue
+                    _last_stop_alert[thread_name] = now_ts
                     error_logger.critical(f"[监控] 线程 {thread_name} 心跳超时，已持续 {elapsed} 秒，尝试重启...")
                     restart_thread(thread_name, restart_url, restart_cooldown)
             
