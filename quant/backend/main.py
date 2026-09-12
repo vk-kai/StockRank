@@ -5,7 +5,7 @@ import math
 import mimetypes
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
