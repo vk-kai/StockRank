@@ -7,8 +7,13 @@ import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
 
 // 格式化日期为 YYYY-MM-DD
+// 本地日期格式化。勿用 toISOString():它是 UTC 日期,UTC+8 时区每天 00:00-08:00
+// 会把日期错移一天(如周日 00:30 算出的"上周五"变成周四),曾导致周末回放日期跳错
 function formatDate(date) {
-  return date.toISOString().split('T')[0]
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 // 获取最近的交易日（跳过周末，回退到周五）
@@ -2134,7 +2139,7 @@ export default {
         
         // 如果有今天的已完成结果，直接显示
         if (statusResponse.status === 'completed' && statusResponse.success) {
-          const today = new Date().toISOString().split('T')[0]
+          const today = formatDate(new Date())
           if (statusResponse.date === today) {
             this.aiAnalysisProgress = 100
             this.aiAnalysisStep = '完成'
@@ -2213,7 +2218,7 @@ export default {
           this.startAIAnalysisPolling()
         } else if (statusResponse.status === 'completed' && statusResponse.success) {
           // 上次任务已完成，检查是否是今天的结果
-          const today = new Date().toISOString().split('T')[0]
+          const today = formatDate(new Date())
           if (statusResponse.date === today) {
             this.aiAnalysisProgress = 100
             this.aiAnalysisStep = '完成'

@@ -1,6 +1,14 @@
 import { getDailyReport, getSectorStocks } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
+// 本地日期格式化。勿用 toISOString():UTC+8 每天 00:00-08:00 会把日期错移一天
+function localDateStr(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export default {
   name: 'DailyReport',
   components: {
@@ -8,7 +16,7 @@ export default {
   },
   data() {
     return {
-      selectedDate: this.$route.query.date || new Date().toISOString().split('T')[0],
+      selectedDate: this.$route.query.date || localDateStr(new Date()),
       reportData: null,
       loading: false,
       error: null,
