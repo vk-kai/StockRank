@@ -55,8 +55,11 @@ services:
       # 统一门禁(gateway 模式):与 nginx 的 tz_gate SECRET 一致
       - QUANT_GATE_MODE=1
       - QUANT_GATE_SECRET=vK-TzGate-9f2c7a1e
-      # 容器网内直连 Flask,不再绕公网
-      - MARKET_MAP_PUSH_URL=http://backend:5000/api/flow/market-map-push
+      # 业务库路径:容器内 /app/backend 不是仓库布局,必须显式指向挂载卷
+      # (与 Flask 容器的 ../data:/app/data 是同一个宿主机文件 /root/StockRank/data/stockrank.db)
+      - QUANT_DB_PATH=/app/data/stockrank.db
+      # 容器网内直连 Flask(用容器名,podman 网络保证注册)
+      - MARKET_MAP_PUSH_URL=http://a-stock-backend:5000/api/flow/market-map-push
     env_file:
       - ../quant/.env
     volumes:
