@@ -150,6 +150,9 @@ cd /root/TrendZen/docker && podman-compose up -d --build   # 旧栈文件还在 
 - **node-bridge 起来就 Exited(1)**:绑定的网关 IP 不是本机网段的网关。按 3.3 步查实际网关并改 .env。
 - **autoheal 起来就 Exited(1)**:宿主机没启用 podman socket。按 3.4 步 `systemctl enable --now podman.socket`。
 - **quant 容器反复重启**:看 `podman logs a-stock-quant`;多为 quant/.env 缺失或依赖没装全。
+- **容器读到的行数和宿主机 sqlite3 不一致**:quant 没指向统一库。核查 DB_PATH 应为
+  /app/unified_data/stockrank.db;若显示 /app/data/stockrank.db,说明容器还是旧配置,force-recreate 重建。
+  (注意 quant 的 /app/data 挂的是 quant/data,只放K线parquet/缓存,不是统一库)
 - **/quant/ 一直 302 回首页**:cookie 未带上;确认是从主站登录进入的(登录成功才下发 tz_gate)。
 - **nginx 起不来**:`podman exec a-stock-nginx nginx -t` 看报错;多为证书路径。
 - **套利监控连不上**:确认在容器网内 `podman exec a-stock-backend curl -s http://a-stock-quant:8000/health`;

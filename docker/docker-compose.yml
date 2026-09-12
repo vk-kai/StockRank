@@ -65,6 +65,8 @@ services:
     volumes:
       - ../quant/backend:/app/backend
       - ../quant/data:/app/data
+      # 统一业务库:与 Flask 的 ../data 是同一个宿主机目录(WAL 并发安全)
+      - ../data:/app/unified_data
       - ../logs/quant:/app/logs
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro

@@ -13,7 +13,8 @@ LOG_DIR = PROJECT_ROOT / "logs"
 # 合并进 StockRank 仓库后,业务库统一用仓库根的 data/stockrank.db
 # (与 Flask 侧 core/config.UNIFIED_DB_FILE 指向同一文件;WAL + busy_timeout 保证双进程并发安全)。
 # 注意:容器内 backend 挂载在 /app/backend,PROJECT_ROOT.parent 不是仓库根,
-# 故支持 QUANT_DB_PATH 显式注入(compose 已配 /app/data/stockrank.db);本地裸跑仍按目录推导。
+# 故支持 QUANT_DB_PATH 显式注入(compose 已配 /app/unified_data/stockrank.db,
+# 该目录挂的正是宿主机 <仓库根>/data,与 Flask 同库);本地裸跑仍按目录推导。
 MERGE_ROOT = PROJECT_ROOT.parent
 _env_db_path = os.environ.get("QUANT_DB_PATH", "").strip()
 TRADING_DB_PATH = Path(_env_db_path) if _env_db_path else MERGE_ROOT / "data" / "stockrank.db"
