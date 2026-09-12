@@ -190,6 +190,89 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual(result["signal"], "sell")
         self.assertIn("卖点", result["reason"])
 
+    def test_lunch_break_gap_blocks_fake_signal(self):
+        """A股午休(11:29→13:00 断档): KOSPI 午间大跌、个股未交易 → 断点后不得发假卖点。
+
+        回归场景: 旧口径把跨午休的价差跳变当 1 分钟增量,基准整个午休的行情
+        会在 13:00 首轮判定同时满足动量门+漂移门 → 假"抗跌"卖点(个股根本
+        没交易)。修复后漂移/动量窗口只在末段连续区间内取数,断点后自动重新
+        预热;午后若出现持续真背离,卖点正常恢复(不是一刀切锁死)。
+        上午带微小独立噪声(真实盘口必有): 保证 σ>0,走真实判定路径而非
+        "完全同步"flat 捷径——否则测试测不到断点逻辑本身。
+        """
+        m_times = minute_times(119, 9, 31)   # 09:31..11:29
+        a_times = minute_times(21, 13, 0)    # 13:00..13:20
+        m_wave = [wave_increment(k) for k in range(118)]
+        b_morning = cumsum(m_wave)           # 上午基准: 确定性波
+        s_morning = [b_morning[k] + (0.01 if k % 2 else -0.01) for k in range(119)]
+        b_aft_start = b_morning[-1] - 0.8    # 午休: KOSPI 累计 -0.8%,个股停牌
+        a_inc = [(-0.13 if k % 2 == 0 else -0.11) for k in range(20)]  # 午后持续下杀
+        b_after = list(cumsum(a_inc, b_aft_start))
+        s_after = [s_morning[-1] + (0.008 if k % 2 == 0 else -0.008) for k in range(21)]
+        merged = list(zip(m_times + a_times, s_morning + s_after, b_morning + b_after))
+        self.assertEqual(merged[118][0], "11:29")   # 午休缺口真实存在
+        self.assertEqual(merged[119][0], "13:00")
+
+        # 断点后第 1 根(尾段连续长度=1): 动量/漂移窗口不可用 → 不发任何信号。
+        # 若跨缺口差值被当增量,基准午休 -0.8% 会同时满足动量门+漂移门 → 假卖点。
+        r = divergence.evaluate(merged[:120], **self.KW)
+        self.assertEqual(r["status"], "ok")
+        self.assertIsNone(r["signal"])
+
+        # 午后持续真背离(尾段 21 点): 卖点正常恢复
+        r2 = divergence.evaluate(merged, **self.KW)
+        self.assertEqual(r2["status"], "ok")
+        self.assertEqual(r2["signal"], "sell")
+        self.assertIn("卖点", r2["reason"])
+
+    def test_opposite_trends_must_decouple(self):
+        """个股一路向右上、基准一路向右下(完全反向)→ 必须判脱钩,不许当吻合。
+
+        用户核心关切: 两条曲线完全不一样(方向都相反)的组合没有跟踪价值,
+        算法必须识别出来并停判,绝不能因为"都有波动"就当成一样、更不能
+        拿漂移门去推"补涨"假买点(反向个股根本不会补涨)。
+
+        回归场景(修复前 ρ 被算成 0.99): 错位搜索为"个股慢一两拍"设计,
+        但基准分钟增量带周期性负自相关(±0.1 方波在 lag=2 处自相关=-1)时,
+        镜像反向的组合会在 lag=±2 被伪造成"完全吻合"。保护口径: 长窗零错位
+        ρ ≤ -corr_min(整体反着走)直接判脱钩。附: 随机漫步型镜像(无周期性)
+        在修复前就能正确判脱钩,一并覆盖。
+        """
+        count = 120
+        wave = [wave_increment(k) for k in range(count - 1)]
+        # 不规则抖动打破"完全镜像",但周期波的负自相关仍在——修复前照样误判
+        j1 = [0.013 if (k * 7) % 5 < 2 else -0.011 for k in range(count - 1)]
+        j2 = [-0.012 if (k * 11) % 7 < 3 else 0.009 for k in range(count - 1)]
+        bench_incs = [w + 0.03 + j1[k] for k, w in enumerate(wave)]
+        stock_incs = [-(w + 0.03) + j2[k] for k, w in enumerate(wave)]
+        merged = list(zip(minute_times(count), cumsum(stock_incs), cumsum(bench_incs)))
+        result = divergence.evaluate(merged, **self.KW)
+        self.assertEqual(result["status"], "decoupled")
+        self.assertLessEqual(result["corr"], 0.5)
+        self.assertIsNone(result["signal"])
+        self.assertIn("反着走", result["reason"])  # 走的是反向对保护分支
+
+    def test_mirror_random_walk_decoupled(self):
+        """随机漫步型镜像(基准无周期性): 个股=−基准+微噪 → 脱钩,不给信号。
+
+        与上一用例互补: 排除"只有周期波才误判"的疑虑,纯粹反向在零错位下
+        ρ≈-1,错位搜索也救不回来。噪声用不可通约正弦叠加(确定性、无强周期)。
+        """
+        count = 120
+
+        def noise(k, seed):
+            import math
+            return (0.045 * math.sin(1.7 * k + seed * 2.1)
+                    + 0.03 * math.sin(0.83 * k + seed * 4.7)
+                    + 0.02 * math.sin(2.9 * k + seed * 0.7))
+
+        bench_incs = [0.02 + noise(k, 1) for k in range(count - 1)]
+        stock_incs = [-b + noise(k, 3) * 0.3 for k, b in enumerate(bench_incs)]
+        merged = list(zip(minute_times(count), cumsum(stock_incs), cumsum(bench_incs)))
+        result = divergence.evaluate(merged, **self.KW)
+        self.assertEqual(result["status"], "decoupled")
+        self.assertIsNone(result["signal"])
+
     def test_tiny_bench_move_no_signal(self):
         """波动极小时 z 值容易过阈,但基准 15 分钟实际只动 0.018%(<0.25% 门槛) → 不给信号。"""
         count = 120

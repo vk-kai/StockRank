@@ -12,6 +12,8 @@
    逐分钟硬对齐会被分钟级抖动/个股慢一两拍打散(肉眼看明明吻合),故取
    max(原始口径, 平滑 corr_smooth_window 分钟口径) × 0/±1..±corr_max_lag 分钟错位
    里的最好值——原始口径保底,平滑+错位只解困不误杀;
+   反向对保护: 长窗零错位 ρ ≤ -corr_min(整体反着走)直接判脱钩,错位搜索
+   无权放行——镜像反向+周期波动会被 lag 错位伪造成"完全吻合"。
 3. β = 增量 Theil-Sen 稳健斜率(近 beta_window 样本,点对斜率的中位数),
    clamp [beta_min, beta_max]——OLS 会被一两根大K线拖偏,单笔大单/跳价
    不再扭曲"个股相对基准的弹性";必须用原始增量(平滑会压低共同波形幅度);
@@ -176,8 +178,12 @@ def _robust_sigma(values: list[float]) -> float:
     中位数/中位绝对偏差统一取下中位(sorted[(n-1)//2]):最近邻秩分位数在
     q=0.5 受 round-half-to-even 影响,窗口长度奇偶变化时 σ 会在 MAD 与 std
     两种口径间跳 3 倍,窗口逐分钟增长的上午尤其要命。
-    退化保护: 超过半数样本完全相同(网格化报价/死水段)时 MAD=0,退回普通
+    退化保护: 超过半数样本相同(网格化报价/死水段)时 MAD=0,退回普通
     标准差(此时若真无波动仍为 0,由调用方走 flat 分支)。
+    注意 MAD 是浮点差:中位数恰好落在一个大簇上时(如窗口一半是 +x、
+    一半是 -x),中位绝对偏差只剩 ulp 级尾差(1e-16)而非精确 0,若照常
+    采用会把 σ 定成 1e-16,下游 z 值爆成天文数字或被"完全同步"flat 误判。
+    故 MAD ≤ 1e-12(远低于涨跌幅 1e-4 的数据网格)一律视同零走 std 兜底。
     """
     if not values:
         return 0.0
@@ -185,7 +191,7 @@ def _robust_sigma(values: list[float]) -> float:
     med = svals[(len(svals) - 1) // 2]
     devs = sorted(abs(v - med) for v in values)
     mad = devs[(len(devs) - 1) // 2]
-    if mad > 0:
+    if mad > 1e-12:
         return 1.4826 * mad
     mean = sum(values) / len(values)
     return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
@@ -242,8 +248,30 @@ def evaluate(
 
     S = [float(p[1]) for p in aligned]
     B = [float(p[2]) for p in aligned]
-    rS_raw = [S[i + 1] - S[i] for i in range(n - 1)]
-    rB_raw = [B[i + 1] - B[i] for i in range(n - 1)]
+    # 时间连续性: 跨缺口的差值不是 1 分钟增量。A股午休 90 分钟里 KOSPI 照常
+    # 交易,对齐序列从 11:29 直接跳到 13:00——若把这个跨缺口差值当 1 分钟增量,
+    # 基准整个午休的行情会在 13:00 首轮判定同时满足动量门(基准"15分钟"跌了
+    # 午休全程)和漂移门(价差跳变),而个股根本没交易、谈不上抗跌/滞涨 → 假信号。
+    # 处理: 增量序列(原始/平滑/价差)一律剔除跨缺口项;漂移/动量窗口只在
+    # "末段连续区间"(从最后一个点往前、相邻间隔≤2分钟)内取数,窗口随之收缩。
+    def _hhmm_to_min(t) -> int:
+        hh, mm = str(t).split(":")
+        return int(hh) * 60 + int(mm)
+
+    mins = [_hhmm_to_min(p[0]) for p in aligned]
+    valid_inc = [i for i in range(n - 1) if mins[i + 1] - mins[i] <= 2]
+    # contig[i] = 以 i 结尾的连续区间点数(相邻间隔≤2分钟)。两处用途:
+    # 1) 末段连续长度决定当前漂移/动量窗口上限——断点(午休)后自动重新预热,
+    #    断点后头几分钟窗口不足 3 根增量时干脆不判定,决不把跨缺口差值当增量;
+    # 2) 历史漂移定标要求整段跨度连续(contig[i] > 窗口),否则午休行情会把
+    #    "自身历史漂移分布"撑大,分位阈值失真,真背离反而过不了阈。
+    contig = [1] * n
+    for k in range(1, n):
+        if mins[k] - mins[k - 1] <= 2:
+            contig[k] = contig[k - 1] + 1
+    tail_incs = contig[-1] - 1  # 末段连续区间内的有效增量数
+    rS_raw = [S[i + 1] - S[i] for i in valid_inc]
+    rB_raw = [B[i + 1] - B[i] for i in valid_inc]
     if len(rS_raw) < 3:
         snap["reason"] = "数据还在积累,预热中"
         return snap
@@ -251,8 +279,8 @@ def evaluate(
     # 个股分钟级抖动/慢一拍在逐分钟对比下会误杀(肉眼明明吻合),平滑后按形状判。
     sS = _moving_average(S, corr_smooth_window)
     sB = _moving_average(B, corr_smooth_window)
-    rS = [sS[i + 1] - sS[i] for i in range(n - 1)]
-    rB = [sB[i + 1] - sB[i] for i in range(n - 1)]
+    rS = [sS[i + 1] - sS[i] for i in valid_inc]
+    rB = [sB[i + 1] - sB[i] for i in valid_inc]
 
     # 形态相关: 原始与平滑两种口径 × 0/±1..±corr_max_lag 分钟错位,取最好。
     # 原始口径保底(=旧行为): 平滑/错位只为抖动和慢一拍解困,
@@ -278,6 +306,23 @@ def evaluate(
         corr, corr_lag = max(candidates)
         snap["corr"] = round(corr, 4)
         snap["corr_lag"] = corr_lag
+    # 反向对保护(错位搜索的盲区): 错位搜索为"个股慢一两拍"设计,但当基准
+    # 分钟增量自身带周期性负自相关(分时波动常见)时,镜像反向的组合会在
+    # lag=±周期/2 处被伪造成 ρ≈1"完全吻合",进而被漂移门推"滞涨补涨"假买点
+    # (反向对个股根本不会补涨)。长窗零错位强负相关 = 整体反着走,直接判
+    # 脱钩,错位/平滑口径无权放行。只看长窗零错位: 短窗零错位负值可能只是
+    # 当前背离行情自身(基准突然下杀、个股尚未响应),那种场景长窗零错位
+    # 是强正相关,不受本保护影响。
+    r_long0 = _pearson(rS_raw[-long_win:], rB_raw[-long_win:])
+    if r_long0 is not None and r_long0 <= -corr_min:
+        snap["corr"] = round(r_long0, 4)
+        snap["corr_lag"] = 0
+        snap["status"] = "decoupled"
+        snap["reason"] = (
+            f"个股和基准近{long_win}分钟基本反着走(吻合度{r_long0:.2f}),"
+            f"没有滞涨/抗跌的观察价值,暂停判定"
+        )
+        return snap
 
     # β: 增量 Theil-Sen 稳健斜率,clamp(必须用原始增量——平滑会压低共同波形
     # 的幅度,斜率失真会连带价差/σ 全歪;平滑只服务于上面的脱钩闸门)。OLS 会被
@@ -305,7 +350,7 @@ def evaluate(
 
     # 价差与σ(MAD 稳健口径:跳变K线不撑大"典型波动",否则漂移 z 被压小漏报)
     spread_series = [S[i] - beta * B[i] for i in range(n)]
-    delta_s = [spread_series[i + 1] - spread_series[i] for i in range(n - 1)]
+    delta_s = [spread_series[i + 1] - spread_series[i] for i in valid_inc]
     sigma = _robust_sigma(delta_s[-sigma_window:])
     snap["spread"] = round(spread_series[-1], 4)
     snap["spread_sigma"] = round(sigma, 6) if sigma > 0 else 0.0
@@ -319,37 +364,45 @@ def evaluate(
 
     # 开盘急速通道:样本还铺不满整窗时,漂移/动量窗口收缩到已有样本数
     # (下限3分钟保底统计意义),刚开盘样本一过 min_samples 就能判定,
-    # 不用再等满 drift/bench_mom 整窗——开盘前几分正是套利背离最集中的时候
+    # 不用再等满 drift/bench_mom 整窗——开盘前几分正是套利背离最集中的时候。
+    # 午休断档同理:末段连续增量不足整窗时窗口收缩,不足 3 根则暂停判定
+    # (断点后重新预热),决不把跨缺口的差值当"近N分钟"行情。
     drift_window = min(drift_minutes, max(3, n - 1))
+    if tail_incs < drift_window:
+        drift_window = tail_incs if tail_incs >= 3 else 0
     z_s: Optional[float] = None
     drift: Optional[float] = None
     # 非 None = 启用"该对今天自身波动分布"的尾部阈值(自适应口径);
     # None = 自身样本不足,退回 σ 倍数(spread_k)口径,即旧行为。
     tail_threshold: Optional[float] = None
-    if n > drift_window:
+    if drift_window >= 3 and n > drift_window:
         drift = spread_series[-1] - spread_series[-1 - drift_window]
         z_s = drift / (sigma * math.sqrt(drift_window))
         snap["drift_z"] = round(z_s, 3)
         # 自身分布定标: 收集今天(排除最近 max(bench_mom_window, drift_window)
         # 分钟——当前这波行情不参与自己的定标)的同类漂移幅度,当前漂移进入
         # 自身前 (1-drift_tail_q) 尾部才算异常。统一 σ 倍数阈值对跳动的票太松、
-        # 对安静的票太紧,和自身比两头都解。
+        # 对安静的票太紧,和自身比两头都解。跨度内必须全程连续(contig[i] >
+        # drift_window),跨午休缺口的历史漂移混入会把分位阈值顶到失真。
         hist_abs: list[float] = []
         hist_end = n - max(bench_mom_window, drift_window)
         for i in range(drift_window, hist_end):
-            hist_abs.append(abs(spread_series[i] - spread_series[i - drift_window]))
+            if contig[i] > drift_window:
+                hist_abs.append(abs(spread_series[i] - spread_series[i - drift_window]))
         if len(hist_abs) >= drift_tail_min_samples:
             hist_abs.sort()
             threshold = _quantile(hist_abs, drift_tail_q)
             if threshold > 0:
                 tail_threshold = threshold
 
-    # 基准动量 z_B(σ_B 同 MAD 稳健口径,原始增量)
+    # 基准动量 z_B(σ_B 同 MAD 稳健口径,原始增量);窗口同样受末段连续长度约束
     sigma_b = _robust_sigma(rB_raw[-sigma_window:])
     mom_window = min(bench_mom_window, max(3, n - 1))
+    if tail_incs < mom_window:
+        mom_window = tail_incs if tail_incs >= 3 else 0
     z_b: Optional[float] = None
     d_bench = None
-    if sigma_b >= 1e-12 and n > mom_window:
+    if mom_window >= 3 and sigma_b >= 1e-12 and n > mom_window:
         d_bench = B[-1] - B[-1 - mom_window]
         z_b = d_bench / (sigma_b * math.sqrt(mom_window))
         snap["bench_mom_z"] = round(z_b, 3)
@@ -387,7 +440,7 @@ def evaluate(
         up_hit = z_s >= spread_k
         tail_note = ""
 
-    d_stock = S[-1] - S[-1 - mom_window] if n > mom_window else None
+    d_stock = S[-1] - S[-1 - mom_window] if mom_window >= 3 and n > mom_window else None
     stock_leg = f"个股{d_stock:+.2f}%" if d_stock is not None else "个股"
     mom_hit_up = z_b >= bench_mom_z and down_hit
     mom_hit_down = z_b <= -bench_mom_z and up_hit
