@@ -37,13 +37,25 @@ cp -a /root/TrendZen/backend/account.json /root/TrendZen/quant/backend/account.j
 ls -la backup/unify_db_$(date +%Y%m%d)/       # 确认备份非空
 ```
 
-## 第 2 步 数据库合并(幂等,可重跑)
+## 第 2 步 数据库合并 + 数据目录搬迁(幂等,可重跑)
 
 ```
 cd /root/StockRank
 python3 scripts/server_migration/migrate_unify_db.py
 # 脚本自动发现三库(含 /root/TrendZen/data/trading.db)+quant account.json,
 # 迁入 data/stockrank.db,输出表数/行数校验报告;旧库改名 .db.bak 保留
+
+# K线 parquet 与运行缓存不在 SQLite 里,必须从旧 TrendZen 数据目录拷过来:
+cp -a /root/TrendZen/data/kline /root/StockRank/quant/data/
+cp -a /root/TrendZen/data/pytdx_hosts.json /root/TrendZen/data/a_share_spot.json \
+      /root/TrendZen/data/download_universe.json /root/TrendZen/data/custom_etfs.json \
+      /root/TrendZen/data/removed_etfs.json /root/StockRank/quant/data/ 2>/dev/null
+
+# 核对业务库行数(自选/扫描/回测/持仓应非零):
+sqlite3 data/stockrank.db "SELECT 'watchlist',COUNT(*) FROM watchlist UNION ALL \
+ SELECT 'scan_signals',COUNT(*) FROM scan_signals UNION ALL \
+ SELECT 'backtest_results',COUNT(*) FROM backtest_results UNION ALL \
+ SELECT 'positions',COUNT(*) FROM positions;"
 ```
 
 ## 第 3 步 启动新栈
@@ -126,7 +138,7 @@ cd /root/StockRank/docker && podman-compose down
 cd /root/StockRank && git reset --hard <切换前的commit>   # 本地已推远端则 git push -f 恢复
 # 恢复备份:
 cp -a /root/StockRank/backup/unify_db_YYYYMMDD/. /root/StockRank/data/   # 按原路径放回
-cd /root/TrendZen/quant/docker && podman-compose up -d --build   # 旧栈文件还在 /root/TrendZen 独立仓库
+cd /root/TrendZen/docker && podman-compose up -d --build   # 旧栈文件还在 /root/TrendZen 独立仓库
 ```
 
 ## 常见问题
