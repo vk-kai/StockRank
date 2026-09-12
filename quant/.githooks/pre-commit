@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "Running frontend build before commit..."
+
+if command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path frontend/dist) { Remove-Item -Recurse -Force frontend/dist }; Set-Location frontend; npm run build"
+else
+  rm -rf frontend/dist
+  cd frontend
+  npm run build
+  cd ..
+fi
+
+git add frontend/dist

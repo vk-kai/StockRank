@@ -48,7 +48,7 @@ from datetime import datetime, timedelta
 import requests
 from flask import Blueprint, Response, jsonify, request
 
-from core.config import CONFIG_DIR, DATA_DIR
+from core.config import CONFIG_DIR, UNIFIED_DB_FILE
 from core.logger import get_logger
 from routes.mp_sec_routes import (
     WX_API_BASE,
@@ -63,7 +63,7 @@ mp_vpay_bp = Blueprint('mp_vpay', __name__, url_prefix='/api/mp/sec/vpay')
 logger = get_logger('system')
 error_logger = get_logger('error')
 
-VPAY_DB_FILE = os.path.join(DATA_DIR, 'mp_vpay.db')
+VPAY_DB_FILE = UNIFIED_DB_FILE  # 统一库: data/stockrank.db(含 vpay_* 表)
 VPAY_CONFIG_FILE = os.path.join(CONFIG_DIR, 'mp_vpay_config.json')
 
 # 支付模式:道具直购(一次性买断)

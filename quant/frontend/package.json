@@ -1,0 +1,26 @@
+{
+  "name": "etf-t0-terminal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "build:docker": "vite build",
+    "preview": "vite preview",
+    "test:biaoli": "tsc -p tsconfig.biaoli-test.json && node ../.tmp/biaoli-test/lib/biaoli.test.js"
+  },
+  "dependencies": {
+    "lightweight-charts": "^4.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}

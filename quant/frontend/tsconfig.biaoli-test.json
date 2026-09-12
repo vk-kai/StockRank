@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": "../.tmp/biaoli-test"
+  },
+  "include": ["src/lib/biaoli.ts", "src/lib/biaoli.test.ts"]
+}

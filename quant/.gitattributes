@@ -1,0 +1,3 @@
+docker/frontend.Dockerfile text eol=lf
+.githooks/* text eol=lf
+frontend/dist/** -diff -crlf

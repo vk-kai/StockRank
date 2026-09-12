@@ -19,6 +19,9 @@ REALTIME_DIR = os.path.join(DATA_DIR, 'realtime')
 NEWS_DIR = os.path.join(DATA_DIR, 'news')
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 CONFIG_DIR = os.path.join(BASE_DIR, 'config')
+# 统一业务数据库:量化(quant)与小程序(mp)共用一个 SQLite(WAL)。
+# 旧 mp_game.db / mp_vpay.db / quant 的 trading.db 由 server_migration 脚本合并迁入。
+UNIFIED_DB_FILE = os.path.join(DATA_DIR, 'stockrank.db')
 
 MAX_DAYS = 30
 MAX_NEWS_HOURS = 48

@@ -1,0 +1,8 @@
+=== Diagnostic Start === 
+ROOT=C:\Users\Administrator\Desktop\python项目\量化交易辅助决策\ 
+PYTHON_EXE=C:\Users\Administrator\Desktop\python项目\量化交易辅助决策\.venv\Scripts\python.exe 
+PYTHON_EXE exists=0 
+Step 1: Test Python... 
+Python OK
+Python exit code=0 
+Step 2: Test basic import... 

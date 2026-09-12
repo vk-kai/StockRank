@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
-from core.config import DATA_DIR
+from core.config import UNIFIED_DB_FILE
 from core.logger import get_logger
 from routes.mp_sec_routes import (
     _check_auth_key, _call_wx_api, _do_msg_sec_check, local_text_blocked,
@@ -43,7 +43,7 @@ mp_game_bp = Blueprint('mp_game', __name__, url_prefix='/api/mp/game')
 logger = get_logger('system')
 error_logger = get_logger('error')
 
-DB_FILE = os.path.join(DATA_DIR, 'mp_game.db')
+DB_FILE = UNIFIED_DB_FILE  # 统一库: data/stockrank.db(含 mp_* 表)
 DEFAULT_NICKNAME = '匿名测试者'
 ROOM_TTL_HOURS = 24
 ROOM_KEEP_DAYS = 7           # 过期房间再保留7天供后台查看,之后懒清理删除

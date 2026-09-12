@@ -1,0 +1,83 @@
+name: trendzen
+
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    container_name: trendzen-frontend
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - trendzen-network
+    ports:
+      - "8081:8081"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    container_name: trendzen-backend
+    init: true
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - ../.env
+    volumes:
+      - ../backend:/app/backend
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: always
+    labels:
+      - autoheal=true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    networks:
+      - trendzen-network
+    # 内部端口 8000, 映射到宿主机 8001 避免冲突
+    ports:
+      - "8001:8000"
+    # 让容器能访问宿主机（Pi 隧道绑在宿主机 127.0.0.1:8765）
+    # Podman 用 host.containers.internal，Docker 用 host.docker.internal
+    # 注意：host-gateway 只解决 DNS（解析成 docker0 网关 172.17.0.1），
+    # 隧道只监听宿主机 loopback，还需要下面的 node-bridge 摆渡一层才能真正连通
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.containers.internal:host-gateway"
+
+  # Pi 节点隧道摆渡：autossh 反向隧道因 sshd 加固（GatewayPorts no）只绑宿主机
+  # 127.0.0.1:8765，bridge 网络里的 backend 容器经 host.docker.internal 敲不到
+  # loopback。此容器用 host 网络在容器引擎的网桥网关地址上做 TCP 转发；
+  # 只绑网段内地址，不监听 0.0.0.0，不暴露公网。
+  # 网关 IP 因引擎而异：本服务器是 podman（docker0 不存在），trendzen-network
+  # 网关 10.89.0.1，已在 docker/.env 用 DOCKER_GATEWAY_IP 固定；
+  # 若是标准 Docker 则通常是 172.17.0.1。
+  node-bridge:
+    image: alpine/socat:latest
+    container_name: trendzen-node-bridge
+    network_mode: host
+    command: "TCP-LISTEN:8765,bind=${DOCKER_GATEWAY_IP:-172.17.0.1},fork,reuseaddr TCP:127.0.0.1:8765"
+    restart: always
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: trendzen-autoheal
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
+
+networks:
+  trendzen-network:
+    driver: bridge
