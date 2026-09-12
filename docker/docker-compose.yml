@@ -96,10 +96,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     depends_on:
-      backend:
-        condition: service_healthy
-      quant:
-        condition: service_started
+      - backend
+      - quant
     restart: unless-stopped
     networks:
       - stock-network

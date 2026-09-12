@@ -2,52 +2,63 @@
 
 > 维护窗口执行,全程约 10~15 分钟。任一步失败可按"回退"小节整体回退。
 > 本清单覆盖 M1.2 数据库统一 + M1.4 部署统一一次性切换。
+> 服务器容器引擎是 podman(命令用 podman/podman-compose);本清单所有命令已按服务器实际环境写。
 
 ## 前置确认
 
 ```
-cd /path/to/StockRank
+cd /root/StockRank
 git pull                       # 拿到合并后的代码(quant/ 已并入本仓库)
-docker ps                      # 记录当前运行的容器名(a-stock-backend / a-stock-nginx / trendzen-*)
+podman ps                      # 记录当前运行的容器名(a-stock-backend / a-stock-nginx / trendzen-*)
 df -h .                        # 确认磁盘余量(备份三库+account.json,总量很小)
+ls /root/TrendZen/.env         # 确认旧 TrendZen 仓库根下有 .env(第 0 步要用)
 ```
 
-## 第 1 步 停容器 + 备份
+## 第 0 步 补 quant/.env(新栈需要,一次性)
+
+旧栈的 secrets 在独立仓库 /root/TrendZen/.env;合并后 quant 容器从 StockRank/quant/.env 读:
 
 ```
-docker stop trendzen-backend trendzen-frontend 2>/dev/null
-docker stop a-stock-backend a-stock-nginx 2>/dev/null
+cp -a /root/TrendZen/.env /root/StockRank/quant/.env
+grep -c ALIPAY /root/StockRank/quant/.env   # 确认内容拷到位
+```
+
+## 第 1 步 停容器 + 删容器 + 备份
+
+```
+podman stop trendzen-backend trendzen-frontend a-stock-backend a-stock-nginx 2>/dev/null
+# 必须删掉(stop 不够):否则新栈 up 时报容器名已被占用
+podman rm -f trendzen-backend trendzen-frontend a-stock-backend a-stock-nginx 2>/dev/null
 
 mkdir -p backup/unify_db_$(date +%Y%m%d)
 cp -a data/stockrank.db backend/data/stockrank.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
-cp -a backend/data/mp_game.db backend/data/mp_vpay.db quant/backend/trading.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
-cp -a quant/backend/account.json backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
+cp -a backend/data/mp_game.db backend/data/mp_vpay.db /root/TrendZen/data/trading.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
+cp -a /root/TrendZen/backend/account.json /root/TrendZen/quant/backend/account.json quant/backend/account.json backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
 ls -la backup/unify_db_$(date +%Y%m%d)/       # 确认备份非空
 ```
 
 ## 第 2 步 数据库合并(幂等,可重跑)
 
 ```
-cd quant && python ../scripts/server_migration/migrate_unify_db.py && cd ..
-# 脚本自动发现三库+account.json,迁入 data/stockrank.db,输出表数/行数校验报告
-# 旧库改名 .db.bak 保留;account.json 导入后改名 .imported
+cd /root/StockRank
+python3 scripts/server_migration/migrate_unify_db.py
+# 脚本自动发现三库(含 /root/TrendZen/data/trading.db)+quant account.json,
+# 迁入 data/stockrank.db,输出表数/行数校验报告;旧库改名 .db.bak 保留
 ```
 
-## 第 3 步 切换 compose 并启动新栈
+## 第 3 步 启动新栈
 
 ```
-# 停干净旧栈(含旧 frontend 容器)
-docker rm -f trendzen-frontend 2>/dev/null
-cd docker
-docker compose up -d --build
-docker compose ps              # 应有 backend / quant / nginx / node-bridge / autoheal
+cd /root/StockRank/docker
+podman-compose up -d --build
+podman-compose ps             # 应有 backend / quant / nginx / node-bridge / autoheal
 ```
 
 要点:
 - quant 容器不再映射任何公网端口,只能被 nginx 在 stock-network 内网访问。
 - quant 容器注入 `QUANT_GATE_MODE=1` + `QUANT_GATE_SECRET`(与 nginx tz_gate SECRET 同值),
   量化登录/注册/支付入口即 410 下线,鉴权统一走主站。
-- quant 侧 secrets 仍读 `quant/.env`(原文件原样复用,无需改动)。
+- quant 侧 secrets 读 `quant/.env`(第 0 步从旧 TrendZen 仓库拷来)。
 
 ## 第 4 步 验证清单(逐项过)
 
@@ -68,17 +79,19 @@ docker compose ps              # 应有 backend / quant / nginx / node-bridge / 
 ## 回退(整体)
 
 ```
-cd docker && docker compose down
-git checkout <上一个tag/commit> -- .     # 或 git reset --hard 到切换前
+cd /root/StockRank/docker && podman-compose down
+cd /root/StockRank && git reset --hard <切换前的commit>   # 本地已推远端则 git push -f 恢复
 # 恢复备份:
-cp -a backup/unify_db_YYYYMMDD/. /path/to/对应位置/
-cd quant/docker && docker compose up -d --build   # 旧栈文件在 git 历史里
+cp -a /root/StockRank/backup/unify_db_YYYYMMDD/. /root/StockRank/data/   # 按原路径放回
+cd /root/TrendZen/quant/docker && podman-compose up -d --build   # 旧栈文件还在 /root/TrendZen 独立仓库
 ```
 
 ## 常见问题
 
-- **quant 容器反复重启**:看 `docker logs a-stock-quant`;多为 quant/.env 缺失或依赖没装全。
+- **up 报容器名已被占用**:`podman rm -f a-stock-backend a-stock-nginx trendzen-backend trendzen-frontend` 后重试。
+- **up 报 Env file ... does not exist**:没做第 0 步,`cp -a /root/TrendZen/.env /root/StockRank/quant/.env`。
+- **quant 容器反复重启**:看 `podman logs a-stock-quant`;多为 quant/.env 缺失或依赖没装全。
 - **/quant/ 一直 302 回首页**:cookie 未带上;确认是从主站登录进入的(登录成功才下发 tz_gate)。
-- **nginx 起不来**:`docker exec a-stock-nginx nginx -t` 看报错;多为证书路径。
-- **套利监控连不上**:确认在容器网内 `docker exec a-stock-backend curl -s http://quant:8000/health`;
+- **nginx 起不来**:`podman exec a-stock-nginx nginx -t` 看报错;多为证书路径。
+- **套利监控连不上**:确认在容器网内 `podman exec a-stock-backend curl -s http://quant:8000/health`;
   本地开发机需把 config/trendzen_arb.json 的 base_url 改为 http://127.0.0.1:8000。
