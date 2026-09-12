@@ -43,7 +43,8 @@ _DIRECTION_LABELS = {
 def load_config():
     default = {
         'enabled': True,
-        'base_url': 'https://0vk.top/TrendZen',
+        # 生产:Flask 容器经 stock-network 直连 quant 容器;本地开发可改成 http://127.0.0.1:8000
+        'base_url': 'http://quant:8000',
         'poll_interval_seconds': 60,
     }
     try:

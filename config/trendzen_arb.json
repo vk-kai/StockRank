@@ -1,5 +1,5 @@
 {
   "enabled": true,
-  "base_url": "https://0vk.top/TrendZen",
+  "base_url": "http://quant:8000",
   "poll_interval_seconds": 60
 }

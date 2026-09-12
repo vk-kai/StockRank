@@ -12,7 +12,7 @@ function toChunkName(value: string) {
 
 export default defineConfig({
   plugins: [react()],
-  base: '/TrendZen/',
+  base: '/quant/',
   build: {
     cssCodeSplit: true,
     chunkSizeWarningLimit: 350,

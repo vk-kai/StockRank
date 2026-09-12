@@ -16,8 +16,14 @@ taskkill /fi "windowtitle eq StockRank-Frontend*" /f >nul 2>&1
 echo [3/3] Stopping Mock News Server...
 taskkill /fi "windowtitle eq StockRank-MockNews*" /f >nul 2>&1
 
+echo Stopping Quant services...
+taskkill /fi "windowtitle eq StockRank-Quant*" /f >nul 2>&1
+
 echo Cleaning up ports...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5000 " ^| findstr "LISTENING"') do (
+    taskkill /pid %%a /f >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000 " ^| findstr "LISTENING"') do (
     taskkill /pid %%a /f >nul 2>&1
 )
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173 " ^| findstr "LISTENING"') do (

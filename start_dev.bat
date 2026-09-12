@@ -62,10 +62,22 @@ if /i "%MODE%"=="Y" (
 cd ..
 timeout /t 3 /nobreak >nul
 
+echo [2/3] Starting Quant Backend (uvicorn :8000)...
+cd quant
+start "StockRank-Quant" cmd /c "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+cd ..
+timeout /t 2 /nobreak >nul
+
 echo [3/3] Starting Frontend...
 cd frontend
 start "StockRank-Frontend" cmd /c "npm run dev"
 cd ..
+timeout /t 3 /nobreak >nul
+
+echo [+] Starting Quant Frontend (vite :5173)...
+cd quant\frontend
+start "StockRank-QuantFrontend" cmd /c "npm run dev"
+cd ..\..
 timeout /t 3 /nobreak >nul
 
 echo.
@@ -76,6 +88,8 @@ echo.
 echo  Mode:         %STOCKRANK_ENV%
 echo  Backend:      http://localhost:5000
 echo  Frontend:     http://localhost:3000
+echo  Quant API:    http://localhost:8000
+echo  Quant UI:     http://localhost:5173
 if /i "%MODE%"=="Y" (
 echo  Mock News:    http://localhost:8899
 )

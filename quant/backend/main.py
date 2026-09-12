@@ -479,17 +479,17 @@ def _serve_frontend_file(relative_path: str = ""):
     return FileResponse(index_file, media_type="text/html")
 
 
-@app.get("/TrendZen")
-async def trendzen_root_redirect():
+@app.get("/quant")
+async def quant_root_redirect():
     return _serve_frontend_file("index.html")
 
 
-@app.get("/TrendZen/")
-async def trendzen_root():
+@app.get("/quant/")
+async def quant_root():
     return _serve_frontend_file("index.html")
 
 
-@app.get("/TrendZen/{full_path:path}")
-async def trendzen_assets(full_path: str):
+@app.get("/quant/{full_path:path}")
+async def quant_assets(full_path: str):
     return _serve_frontend_file(full_path)
 

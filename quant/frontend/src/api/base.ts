@@ -1,4 +1,4 @@
-export const BASE = import.meta.env.MODE === 'production' ? '/TrendZen' : '';
+export const BASE = import.meta.env.MODE === 'production' ? '/quant' : '';
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = path.startsWith('http') ? path : `${BASE}${path}`;

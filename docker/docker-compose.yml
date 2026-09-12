@@ -1,5 +1,13 @@
 version: '3.8'
 
+# StockRank 统一部署栈(合并 TrendZen 后,M1.4):
+#   backend   Flask 主站(5000, 公网经 nginx /api)
+#   quant     FastAPI 量化区(仅内网,nginx /quant/ 转发,统一门禁 QUANT_GATE_MODE=1)
+#   nginx     80/443 单入口(/ 主站, /quant/ 量化区)
+#   node-bridge Pi 隧道摆渡(host 网络, socat)
+#   autoheal  容器自愈
+# 旧 trendzen 独立栈(quant/docker/docker-compose.yml)由本文件取代。
+
 services:
   backend:
     build:
@@ -34,6 +42,45 @@ services:
       retries: 5
       start_period: 30s
 
+  quant:
+    build:
+      context: ../quant
+      dockerfile: docker/backend.Dockerfile
+    container_name: a-stock-quant
+    init: true
+    # 不映射公网端口:仅 nginx 经 stock-network 内网转发(统一门禁第二道校验)
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+      # 统一门禁(gateway 模式):与 nginx 的 tz_gate SECRET 一致
+      - QUANT_GATE_MODE=1
+      - QUANT_GATE_SECRET=vK-TzGate-9f2c7a1e
+      # 容器网内直连 Flask,不再绕公网
+      - MARKET_MAP_PUSH_URL=http://backend:5000/api/flow/market-map-push
+    env_file:
+      - ../quant/.env
+    volumes:
+      - ../quant/backend:/app/backend
+      - ../quant/data:/app/data
+      - ../logs/quant:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    # Pi 节点隧道经 node-bridge 摆渡(host.containers.internal 指向网桥网关)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host.containers.internal:host-gateway"
+    restart: unless-stopped
+    labels:
+      - autoheal=true
+    networks:
+      - stock-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
   nginx:
     image: nginx:alpine
     container_name: a-stock-nginx
@@ -51,7 +98,35 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      quant:
+        condition: service_started
     restart: unless-stopped
+    networks:
+      - stock-network
+
+  # Pi 节点隧道摆渡：autossh 反向隧道因 sshd 加固（GatewayPorts no）只绑宿主机
+  # 127.0.0.1:8765，bridge 网络里的容器经 host.docker.internal 敲不到 loopback。
+  # 此容器用 host 网络在容器引擎的网桥网关地址上做 TCP 转发；
+  # 只绑网段内地址，不监听 0.0.0.0，不暴露公网。
+  # 网关 IP 因引擎而异：本服务器是 podman（docker0 不存在），已在 docker/.env
+  # 用 DOCKER_GATEWAY_IP 固定；若是标准 Docker 则通常是 172.17.0.1。
+  node-bridge:
+    image: alpine/socat:latest
+    container_name: a-stock-node-bridge
+    network_mode: host
+    command: "TCP-LISTEN:8765,bind=${DOCKER_GATEWAY_IP:-172.17.0.1},fork,reuseaddr TCP:127.0.0.1:8765"
+    restart: always
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: a-stock-autoheal
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
     networks:
       - stock-network
 
