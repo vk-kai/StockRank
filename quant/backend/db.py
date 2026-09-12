@@ -2040,6 +2040,27 @@ def list_scan_signals(limit: int = 100, owner_username: Optional[str] = None) ->
     return [_scan_signal_row_to_dict(row) for row in rows]
 
 
+def list_scan_signals_after(after_id: int, limit: int = 50) -> tuple[list[dict], int]:
+    """水位线增量读取:返回 id > after_id 的扫描信号(id 升序)与当前最大 id。
+
+    供 StockRank 消息总线(quant_signal_bridge)拉取;无副作用、不打投递标记。
+    """
+    normalized_after = max(0, int(after_id))
+    with get_connection() as conn:
+        max_row = conn.execute("SELECT COALESCE(MAX(id), 0) AS max_id FROM scan_signals").fetchone()
+        rows = conn.execute(
+            """
+            SELECT id, run_id, code, name, direction, price, signal_time, reason, strategy_name, owner_username, period, detected_at, run_slot
+            FROM scan_signals
+            WHERE id > ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (normalized_after, int(limit)),
+        ).fetchall()
+    return [_scan_signal_row_to_dict(row) for row in rows], int(max_row["max_id"]) if max_row else 0
+
+
 def list_scan_signals_by_ids(signal_ids: Iterable[int]) -> list[dict]:
     ids = [int(signal_id) for signal_id in signal_ids]
     if not ids:

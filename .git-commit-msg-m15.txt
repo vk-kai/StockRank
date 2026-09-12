@@ -1,0 +1,13 @@
+feat(bridge): 消息桥接,M1.5 完成 - 量化扫描信号接入统一总线
+
+- quant 新增 GET /api/market/scan/feed: 免鉴权增量投递口(id>after_id 升序),
+  返回 max_id 供首跑初始化水位线;端点无副作用、不打投递标记
+- db 新增 list_scan_signals_after(after_id, limit) 水位线增量读取
+- gateway 开放前缀加入 /api/market/scan/feed(Flask 内网轮询可达)
+- Flask 新增 monitors/quant_signal_bridge.py: 水位线轮询 → quant_signals.json
+  (kind='tz_signal',cap 500) → 统一总线 push_event('tz_signal');不发微信/飞书,
+  推送展示交给作战台事件流;轮询窗口与套利监控一致,窗口外信号由水位线保证不丢
+- app.py 启动 quant_signal_bridge_loop 线程
+- config/quant_signal_bridge.json 入库(base_url=quant:8000 容器直连)
+- 实测: 真实库增量查询 OK(946条存量);feed 端点 200;桥接首跑初始化/
+  新信号入库/水位线推进/重复跳过/按日过滤 全通过

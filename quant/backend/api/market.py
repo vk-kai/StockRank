@@ -924,6 +924,20 @@ def push_scan_run_to_market_map(request: Request, run_id: int):
     }
 
 
+@router.get("/scan/feed")
+def scan_feed(
+    after_id: int = Query(0, ge=0, description="水位线:只返回 id 大于该值的信号"),
+    limit: int = Query(50, ge=1, le=100),
+):
+    """给 StockRank 消息总线用的免鉴权增量投递口:返回 id > after_id 的扫描信号(id 升序)。
+
+    拉取侧(quant_signal_bridge)用水位线自行去重,本端点无副作用、不打标记;
+    max_id 供首跑初始化水位线(跳过历史存量,不回放旧信号)。
+    """
+    signals, max_id = db.list_scan_signals_after(int(after_id), limit=limit)
+    return {"success": True, "data": signals, "count": len(signals), "max_id": max_id}
+
+
 @router.post("/scan/track")
 def track_scan_signal(
     request: Request,

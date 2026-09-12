@@ -276,6 +276,11 @@ if __name__ == '__main__':
         threading.Thread(target=trendzen_arb_loop, daemon=True).start()
         system_logger.info("TrendZen套利背离接入线程已启动")
 
+        # 量化扫描信号桥:水位线轮询 quant /scan/feed → 入库 → 统一总线 push_event('tz_signal')
+        from monitors.quant_signal_bridge import quant_signal_bridge_loop
+        threading.Thread(target=quant_signal_bridge_loop, daemon=True).start()
+        system_logger.info("量化扫描信号桥线程已启动")
+
         # 演示模式快照:每个交易日收盘后固化首页+云图数据,未登录访客只读这份快照
         from data.demo_snapshot import demo_snapshot_loop
         threading.Thread(target=demo_snapshot_loop, daemon=True).start()

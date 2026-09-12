@@ -35,10 +35,11 @@ _DISABLED_PREFIXES = (
     "/api/alipay",
 )
 
-# 不做门禁校验的路径(健康检查 + Flask 侧带内部令牌轮询的套利 feed)
+# 不做门禁校验的路径(健康检查 + Flask 侧带内部令牌轮询的套利 feed 与扫描信号 feed)
 _OPEN_PREFIXES = (
     "/health",
     "/api/market/arb/feed",
+    "/api/market/scan/feed",
 )
 
 GATEWAY_USER = {
