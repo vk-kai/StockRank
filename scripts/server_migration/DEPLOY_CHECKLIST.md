@@ -49,9 +49,50 @@ python3 scripts/server_migration/migrate_unify_db.py
 ## 第 3 步 启动新栈
 
 ```
+cd /root/StockRank
+git pull                        # 先拉最新修正
+```
+
+### 3.1 彻底清理旧栈(podman 关键坑:容器挂在 pod 里,只删容器不够)
+
+```
 cd /root/StockRank/docker
+podman-compose down                        # 收掉半成品新栈
+podman pod ps                              # 看旧栈 pod(名字通常含 trendzen/docker_*)
+podman pod rm -f $(podman pod ps -q) 2>/dev/null   # 旧 pod 整个删(连带里面旧容器)
+podman rm -f a-stock-backend a-stock-nginx trendzen-backend trendzen-frontend 2>/dev/null
+podman network ls                          # 看残留网络(trendzen_*/docker_* )
+podman network rm trendzen_default docker_default docker_stock-network 2>/dev/null
+podman ps -a; podman network ls            # 确认无 a-stock/trendzen 残留
+```
+
+> 不删旧网络的话,它会占着 10.89.0.0/24 网段,新 stock-network 被迫换网段,
+> node-bridge 绑定旧网关 IP 会直接 Exited(1)。
+
+### 3.2 起新栈
+
+```
 podman-compose up -d --build
 podman-compose ps             # 应有 backend / quant / nginx / node-bridge / autoheal
+```
+
+### 3.3 node-bridge 网关校准(一次性)
+
+```
+podman network ls | grep stock-network        # 找实际网络名(如 stockrank_stock-network)
+podman network inspect <网络名> --format '{{(index .subnets 0).gateway}}'
+# 把查到的网关写进 .env 并重建 node-bridge:
+sed -i "s/^DOCKER_GATEWAY_IP=.*/DOCKER_GATEWAY_IP=<查到的网关>/" .env
+podman rm -f a-stock-node-bridge && podman-compose up -d node-bridge
+podman ps | grep node-bridge                  # 状态应为 Up
+```
+
+### 3.4 autoheal 前置:启用 podman socket(一次性)
+
+```
+systemctl enable --now podman.socket
+ls /run/podman/podman.sock                    # 确认 socket 存在
+podman rm -f a-stock-autoheal && podman-compose up -d autoheal
 ```
 
 要点:
@@ -59,6 +100,8 @@ podman-compose ps             # 应有 backend / quant / nginx / node-bridge / a
 - quant 容器注入 `QUANT_GATE_MODE=1` + `QUANT_GATE_SECRET`(与 nginx tz_gate SECRET 同值),
   量化登录/注册/支付入口即 410 下线,鉴权统一走主站。
 - quant 侧 secrets 读 `quant/.env`(第 0 步从旧 TrendZen 仓库拷来)。
+- 容器互访一律用容器名(a-stock-quant / a-stock-backend):podman 的 aardvark DNS
+  保证注册容器名,compose 服务名不保证。
 
 ## 第 4 步 验证清单(逐项过)
 
@@ -88,10 +131,14 @@ cd /root/TrendZen/quant/docker && podman-compose up -d --build   # 旧栈文件�
 
 ## 常见问题
 
+- **up 报 container has joined pod ... dependency container ... is not a member of the pod**:
+  旧栈容器没删干净(挂在旧 pod 里)。按 3.1 步 `podman pod rm -f` 连 pod 一起删后重试。
 - **up 报容器名已被占用**:`podman rm -f a-stock-backend a-stock-nginx trendzen-backend trendzen-frontend` 后重试。
 - **up 报 Env file ... does not exist**:没做第 0 步,`cp -a /root/TrendZen/.env /root/StockRank/quant/.env`。
+- **node-bridge 起来就 Exited(1)**:绑定的网关 IP 不是本机网段的网关。按 3.3 步查实际网关并改 .env。
+- **autoheal 起来就 Exited(1)**:宿主机没启用 podman socket。按 3.4 步 `systemctl enable --now podman.socket`。
 - **quant 容器反复重启**:看 `podman logs a-stock-quant`;多为 quant/.env 缺失或依赖没装全。
 - **/quant/ 一直 302 回首页**:cookie 未带上;确认是从主站登录进入的(登录成功才下发 tz_gate)。
 - **nginx 起不来**:`podman exec a-stock-nginx nginx -t` 看报错;多为证书路径。
-- **套利监控连不上**:确认在容器网内 `podman exec a-stock-backend curl -s http://quant:8000/health`;
+- **套利监控连不上**:确认在容器网内 `podman exec a-stock-backend curl -s http://a-stock-quant:8000/health`;
   本地开发机需把 config/trendzen_arb.json 的 base_url 改为 http://127.0.0.1:8000。

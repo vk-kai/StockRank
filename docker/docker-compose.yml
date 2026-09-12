@@ -123,7 +123,8 @@ services:
       - AUTOHEAL_INTERVAL=30
       - AUTOHEAL_START_PERIOD=60
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # podman 环境:宿主机先 systemctl enable --now podman.socket 生成此 socket
+      - /run/podman/podman.sock:/var/run/docker.sock
     restart: always
     networks:
       - stock-network

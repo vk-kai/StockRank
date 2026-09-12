@@ -40,8 +40,9 @@ _SLEEP_OFF_WINDOW = 300  # 窗口外/周末的轮询间隔(秒)
 def load_config():
     default = {
         'enabled': True,
-        # 生产:Flask 容器经 stock-network 直连 quant 容器;本地开发可改成 http://127.0.0.1:8000
-        'base_url': 'http://quant:8000',
+        # 生产:Flask 容器经 stock-network 直连 quant 容器(容器名,podman DNS 保证注册);
+        # 本地开发可改成 http://127.0.0.1:8000
+        'base_url': 'http://a-stock-quant:8000',
         'poll_interval_seconds': 60,
     }
     try:
