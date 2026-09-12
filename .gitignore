@@ -63,7 +63,7 @@ test/1.html
 test/1.data
 
 # quant(原TrendZen)运行时数据:模拟账户与统一库不入版本库
-quant/backend/account.json
+quant/backend/account.json*
 quant/data/trading.db*
 data/stockrank.db*
 data/migration_backup_*/
