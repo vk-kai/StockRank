@@ -434,7 +434,10 @@ def _run_tick_locked() -> list[dict]:
     for pair in pairs:
         pair_id = int(pair["id"])
         prev = prev_snapshots.get(pair_id)
-        if not active:
+        # 盘前提示按对开关: preopen_enabled=0 的对在盘前窗口按非活跃处理
+        # (保留最后快照/节流重建,不判定不推送);盘中判定不受它影响。
+        pair_active = active and not (preopen_phase and not bool(pair.get("preopen_enabled")))
+        if not pair_active:
             # 非交易时段(收盘后/午休/盘前等待)不清空数据:保留最后一刻的完整快照
             # (曲线/涨跌幅/判定状态);旧快照缺失或为错误态(如数据源瞬断时冻结的
             # "不可用"文案)时节流重建,自愈成"最后交易时段"的展示快照。

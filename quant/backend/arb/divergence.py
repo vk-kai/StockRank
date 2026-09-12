@@ -264,6 +264,16 @@ def evaluate(
         r, lag = _lagged_pearson(xs, ys, corr_window, corr_max_lag)
         if r is not None:
             candidates.append((r, lag))
+    # 长窗口形态相关(回看与 β 同尺度): 短窗会被"基准突然剧烈单边走"的几根
+    # 增量自毒化——那恰是最该出信号的瞬间(基准大跌个股抗跌=卖点,反之=买点):
+    # 短窗 ρ 被事件自己砸破门槛/个股零响应时 pearson 直接不可用 → 误判脱钩
+    # 或 flat、信号被吞,且个股死活不跟就一直吞。长窗回答"这对组合近期是否
+    # 稳定联动",瞬时背离交给漂移/动量门量化。同样取 max: 只放宽闸门不收紧;
+    # 真正全天脱钩的对长窗照样低,仍被拦。
+    long_win = max(corr_window, beta_window)
+    r_long, lag_long = _lagged_pearson(rS_raw, rB_raw, long_win, corr_max_lag)
+    if r_long is not None:
+        candidates.append((r_long, lag_long))
     if candidates:
         corr, corr_lag = max(candidates)
         snap["corr"] = round(corr, 4)
@@ -356,7 +366,8 @@ def evaluate(
         d_b = B[-1] - float(win[0][2])
         snap["reason"] = (
             f"近{corr_window}分钟({win[0][0]}~{win[-1][0]})个股{d_s:+.2f}%、基准{d_b:+.2f}%,"
-            f"两条折线的形态对不上(吻合度{corr:.2f},低于{corr_min:.2f}的门槛),暂停判定"
+            f"两条折线的形态持续对不上(最好口径吻合度{corr:.2f},拉长到{long_win}分钟"
+            f"也低于{corr_min:.2f}的门槛),暂停判定"
         )
         return snap
 

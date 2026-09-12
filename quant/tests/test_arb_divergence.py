@@ -152,6 +152,44 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual(result["signal"], "sell")
         self.assertIn("卖点", result["reason"])
 
+    def test_sudden_bench_crash_after_sync_not_decoupled(self):
+        """此前完全同步,基准尾段突然连续下杀而个股横盘 → 必须给卖点,不许判脱钩。
+
+        回归场景:基准单边下杀+个股零响应(带真实盘中必然有的微小噪声),
+        短窗(生产默认15分钟)ρ 被事件自身毒化 → 旧口径会报 decoupled 吞掉信号,
+        且下杀持续多久就吞多久;长窗口径(β 同尺度)看到"近期一直联动",
+        闸门保持放行,由漂移/动量门给出卖点。
+        """
+        count = 120
+        wave = [wave_increment(k) for k in range(count - 1)]
+        # 下杀段 18 分钟: 覆盖"短窗15+错位2"使任何短窗口径看不到前段耦合行情
+        # (背离刚开始、最该提示的阶段);两端各带独立噪声模拟真实盘口
+        bench_incs = [
+            wave[i] if i < 102 else (-0.12 + (0.02 if i % 3 == 0 else -0.01))
+            for i in range(count - 1)
+        ]
+        stock_incs = [
+            wave[i] if i < 102 else (0.008 if i % 2 else -0.008)  # 冻结段微小噪声
+            for i in range(count - 1)
+        ]
+        merged = list(zip(minute_times(count), cumsum(stock_incs), cumsum(bench_incs)))
+
+        # 记录旧行为:生产默认短窗(15分钟)全是下杀段,个股只剩与基准
+        # 不相关的噪声 → ρ 崩到门槛之下,旧口径 decoupled 吞信号
+        s = [p[1] for p in merged]
+        b = [p[2] for p in merged]
+        rS = [s[i + 1] - s[i] for i in range(len(s) - 1)]
+        rB = [b[i + 1] - b[i] for i in range(len(b) - 1)]
+        r_short, _ = divergence._lagged_pearson(rS, rB, 15, 2)
+        self.assertIsNotNone(r_short)
+        self.assertLess(r_short, 0.5)  # 旧口径会吞信号
+
+        result = divergence.evaluate(merged, **self.KW)
+        self.assertEqual(result["status"], "ok")  # 不许 decoupled
+        self.assertGreaterEqual(result["corr"], 0.5)
+        self.assertEqual(result["signal"], "sell")
+        self.assertIn("卖点", result["reason"])
+
     def test_tiny_bench_move_no_signal(self):
         """波动极小时 z 值容易过阈,但基准 15 分钟实际只动 0.018%(<0.25% 门槛) → 不给信号。"""
         count = 120
