@@ -19,7 +19,7 @@ ls /root/TrendZen/.env         # 确认旧 TrendZen 仓库根下有 .env(第 0 �
 旧栈的 secrets 在独立仓库 /root/TrendZen/.env;合并后 quant 容器从 StockRank/quant/.env 读:
 
 ```
-cp -a /root/TrendZen/.env /root/StockRank/quant/.env
+\cp -af /root/TrendZen/.env /root/StockRank/quant/.env
 grep -c ALIPAY /root/StockRank/quant/.env   # 确认内容拷到位
 ```
 
@@ -31,9 +31,9 @@ podman stop trendzen-backend trendzen-frontend a-stock-backend a-stock-nginx 2>/
 podman rm -f trendzen-backend trendzen-frontend a-stock-backend a-stock-nginx 2>/dev/null
 
 mkdir -p backup/unify_db_$(date +%Y%m%d)
-cp -a data/stockrank.db backend/data/stockrank.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
-cp -a backend/data/mp_game.db backend/data/mp_vpay.db /root/TrendZen/data/trading.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
-cp -a /root/TrendZen/backend/account.json /root/TrendZen/quant/backend/account.json quant/backend/account.json backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
+\cp -af data/stockrank.db backend/data/stockrank.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
+\cp -af backend/data/mp_game.db backend/data/mp_vpay.db /root/TrendZen/data/trading.db backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
+\cp -af /root/TrendZen/backend/account.json /root/TrendZen/quant/backend/account.json quant/backend/account.json backup/unify_db_$(date +%Y%m%d)/ 2>/dev/null
 ls -la backup/unify_db_$(date +%Y%m%d)/       # 确认备份非空
 ```
 
@@ -46,8 +46,9 @@ python3 scripts/server_migration/migrate_unify_db.py
 # 迁入 data/stockrank.db,输出表数/行数校验报告;旧库改名 .db.bak 保留
 
 # K线 parquet 与运行缓存不在 SQLite 里,必须从旧 TrendZen 数据目录拷过来:
-cp -a /root/TrendZen/data/kline /root/StockRank/quant/data/
-cp -a /root/TrendZen/data/pytdx_hosts.json /root/TrendZen/data/a_share_spot.json \
+# (\cp 绕过 root 常见的 cp -i 别名,-f 强制覆盖,免逐个确认)
+\cp -af /root/TrendZen/data/kline /root/StockRank/quant/data/
+\cp -af /root/TrendZen/data/pytdx_hosts.json /root/TrendZen/data/a_share_spot.json \
       /root/TrendZen/data/download_universe.json /root/TrendZen/data/custom_etfs.json \
       /root/TrendZen/data/removed_etfs.json /root/StockRank/quant/data/ 2>/dev/null
 
@@ -137,7 +138,7 @@ podman rm -f a-stock-autoheal && podman-compose up -d autoheal
 cd /root/StockRank/docker && podman-compose down
 cd /root/StockRank && git reset --hard <切换前的commit>   # 本地已推远端则 git push -f 恢复
 # 恢复备份:
-cp -a /root/StockRank/backup/unify_db_YYYYMMDD/. /root/StockRank/data/   # 按原路径放回
+\cp -af /root/StockRank/backup/unify_db_YYYYMMDD/. /root/StockRank/data/   # 按原路径放回
 cd /root/TrendZen/docker && podman-compose up -d --build   # 旧栈文件还在 /root/TrendZen 独立仓库
 ```
 
