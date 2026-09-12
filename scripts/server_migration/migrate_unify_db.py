@@ -15,6 +15,7 @@
   - 先备份:所有源库(含 -wal/-shm)拷贝到 <target_dir>/migration_backup_<时间戳>/
   - 后校验:逐表比对源/目标行数,目标行数只许多不许少,少了非零退出
   - account.json 不在本脚本处理:quant 的 account.py 首次启动发现空表时自行导入
+  - 兼容服务器旧版 Python(类型标注用 typing 写法,不用 PEP604 的 str|None)
 """
 import argparse
 import os
@@ -22,6 +23,7 @@ import shutil
 import sqlite3
 import sys
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 # 各源库的候选路径(按序探测,取第一个存在的)。相对路径基于本仓库根。
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,7 +45,7 @@ CANDIDATES = {
 }
 
 
-def discover(key: str, override: str | None) -> str | None:
+def discover(key: str, override: Optional[str]) -> Optional[str]:
     if override:
         return override if os.path.exists(override) else None
     for cand in CANDIDATES[key]:
@@ -52,7 +54,7 @@ def discover(key: str, override: str | None) -> str | None:
     return None
 
 
-def user_tables(conn: sqlite3.Connection) -> list[str]:
+def user_tables(conn: sqlite3.Connection) -> List[str]:
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).fetchall()
@@ -145,7 +147,7 @@ def main() -> int:
     target.execute("PRAGMA busy_timeout=30000")
 
     report, failed = [], []
-    seen_tables: dict[str, str] = {}
+    seen_tables: Dict[str, str] = {}
     for key, src_path in sources.items():
         src = sqlite3.connect(src_path, timeout=30)
         try:
