@@ -9,7 +9,10 @@ PROJECT_ROOT = BACKEND_DIR.parent
 DATA_DIR = PROJECT_ROOT / "data"
 LOG_DIR = PROJECT_ROOT / "logs"
 
-TRADING_DB_PATH = DATA_DIR / "trading.db"
+# 合并进 StockRank 仓库后,业务库统一用仓库根的 data/stockrank.db
+# (与 Flask 侧 core/config.UNIFIED_DB_FILE 指向同一文件;WAL + busy_timeout 保证双进程并发安全)。
+MERGE_ROOT = PROJECT_ROOT.parent
+TRADING_DB_PATH = MERGE_ROOT / "data" / "stockrank.db"
 CUSTOM_ETF_PATH = DATA_DIR / "custom_etfs.json"
 REMOVED_ETF_PATH = DATA_DIR / "removed_etfs.json"
 PYTDX_HOST_CACHE_PATH = DATA_DIR / "pytdx_hosts.json"
@@ -26,6 +29,11 @@ LEGACY_REMOVED_ETF_PATH = BACKEND_DIR / "removed_etfs.json"
 def ensure_data_dir() -> Path:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return DATA_DIR
+
+
+def ensure_unified_db_dir() -> Path:
+    TRADING_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return TRADING_DB_PATH.parent
 
 
 def ensure_log_dir() -> Path:
@@ -57,6 +65,9 @@ def _migrate_legacy_file(legacy_path: Path, new_path: Path):
 
 def ensure_runtime_storage_ready():
     ensure_data_dir()
-    _migrate_legacy_file(LEGACY_TRADING_DB_PATH, TRADING_DB_PATH)
+    ensure_unified_db_dir()
+    # 注意:旧 trading.db 不再自动拷到统一库路径——那会把只含量化表的文件
+    # 整个覆盖成 stockrank.db。历史数据迁移由 scripts/server_migration/
+    # migrate_unify_db.py 在服务器上一次性完成。
     _migrate_legacy_file(LEGACY_CUSTOM_ETF_PATH, CUSTOM_ETF_PATH)
     _migrate_legacy_file(LEGACY_REMOVED_ETF_PATH, REMOVED_ETF_PATH)

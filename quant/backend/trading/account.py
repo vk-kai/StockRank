@@ -8,7 +8,13 @@ from dataclasses import dataclass, field, asdict
 from backend.config import DEFAULT_BALANCE, BASE_DIR
 from backend.trading.fees import calc_a_share_fee_total
 
-ACCOUNT_FILE = os.path.join(BASE_DIR, "account.json")
+# 模拟账户已入库(统一库 data/stockrank.db 的 virtual_* 表)。
+# 旧 account.json 仅作一次性迁移源,导入成功后改名为 account.json.imported。
+LEGACY_ACCOUNT_FILE = os.path.join(BASE_DIR, "account.json")
+LEGACY_ACCOUNT_IMPORTED = LEGACY_ACCOUNT_FILE + ".imported"
+
+# 已落库的成交单 id 集合(避免 save_account 反复全量重插历史成交)
+_persisted_trade_ids: set = set()
 
 
 @dataclass
@@ -125,48 +131,155 @@ def get_t1_sellable_quantity(account: VirtualAccount, code: str, today: Optional
     return max(int(account.positions[code].quantity) - today_buy_quantity, 0)
 
 
+def _ensure_account_tables(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS virtual_account (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            balance REAL NOT NULL,
+            frozen REAL NOT NULL DEFAULT 0,
+            total_fee REAL NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS virtual_positions (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            avg_cost REAL NOT NULL,
+            current_price REAL NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS virtual_trades (
+            id TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            price REAL NOT NULL,
+            quantity INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            fee REAL NOT NULL,
+            time TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _load_legacy_account_json() -> Optional[dict]:
+    """读取旧 account.json(存在且未导入过时)。"""
+    if not os.path.exists(LEGACY_ACCOUNT_FILE) or os.path.exists(LEGACY_ACCOUNT_IMPORTED):
+        return None
+    try:
+        with open(LEGACY_ACCOUNT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
 def load_account() -> VirtualAccount:
-    if os.path.exists(ACCOUNT_FILE):
-        try:
-            with open(ACCOUNT_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            account = VirtualAccount(
-                balance=data.get("balance", DEFAULT_BALANCE),
-                frozen=data.get("frozen", 0.0),
-                total_fee=data.get("total_fee", 0.0),
-            )
-            for code, pos_data in data.get("positions", {}).items():
-                account.positions[code] = Position(
-                    code=pos_data["code"],
-                    name=pos_data["name"],
-                    quantity=pos_data["quantity"],
-                    avg_cost=pos_data["avg_cost"],
-                    current_price=pos_data.get("current_price", 0),
+    from backend import db
+
+    with db.get_connection() as conn:
+        _ensure_account_tables(conn)
+        state = conn.execute("SELECT * FROM virtual_account WHERE id = 1").fetchone()
+
+        # 首次运行:从旧 account.json 一次性导入(统一库无状态且旧文件在)
+        if state is None:
+            legacy = _load_legacy_account_json()
+            if legacy is not None:
+                account = VirtualAccount(
+                    balance=legacy.get("balance", DEFAULT_BALANCE),
+                    frozen=legacy.get("frozen", 0.0),
+                    total_fee=legacy.get("total_fee", 0.0),
                 )
-            for t in data.get("trades", []):
-                account.trades.append(TradeRecord(**t))
+                for code, pos_data in (legacy.get("positions") or {}).items():
+                    account.positions[code] = Position(
+                        code=pos_data["code"],
+                        name=pos_data["name"],
+                        quantity=pos_data["quantity"],
+                        avg_cost=pos_data["avg_cost"],
+                        current_price=pos_data.get("current_price", 0),
+                    )
+                for t in legacy.get("trades") or []:
+                    try:
+                        account.trades.append(TradeRecord(**t))
+                    except Exception:
+                        continue
+                save_account(account)
+                try:
+                    os.replace(LEGACY_ACCOUNT_FILE, LEGACY_ACCOUNT_IMPORTED)
+                except OSError:
+                    pass
+                return account
+            account = VirtualAccount()
+            save_account(account)
             return account
-        except Exception:
-            pass
-    return VirtualAccount()
+
+        account = VirtualAccount(
+            balance=state["balance"],
+            frozen=state["frozen"],
+            total_fee=state["total_fee"],
+        )
+        for row in conn.execute("SELECT * FROM virtual_positions").fetchall():
+            account.positions[row["code"]] = Position(
+                code=row["code"], name=row["name"], quantity=row["quantity"],
+                avg_cost=row["avg_cost"], current_price=row["current_price"],
+            )
+        for row in conn.execute(
+            "SELECT * FROM virtual_trades ORDER BY time, id"
+        ).fetchall():
+            account.trades.append(TradeRecord(
+                id=row["id"], code=row["code"], name=row["name"],
+                direction=row["direction"], price=row["price"],
+                quantity=row["quantity"], amount=row["amount"],
+                fee=row["fee"], time=row["time"],
+            ))
+            _persisted_trade_ids.add(row["id"])
+        return account
 
 
 def save_account(account: VirtualAccount):
-    data = {
-        "balance": account.balance,
-        "frozen": account.frozen,
-        "total_fee": account.total_fee,
-        "positions": {k: {
-            "code": v.code,
-            "name": v.name,
-            "quantity": v.quantity,
-            "avg_cost": v.avg_cost,
-            "current_price": v.current_price,
-        } for k, v in account.positions.items()},
-        "trades": [asdict(t) for t in account.trades],
-    }
-    with open(ACCOUNT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    from backend import db
+
+    ts = now_beijing().strftime("%Y-%m-%d %H:%M:%S")
+    with db.get_connection() as conn:
+        _ensure_account_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO virtual_account (id, balance, frozen, total_fee, updated_at)
+            VALUES (1, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                balance = excluded.balance,
+                frozen = excluded.frozen,
+                total_fee = excluded.total_fee,
+                updated_at = excluded.updated_at
+            """,
+            (account.balance, account.frozen, account.total_fee, ts),
+        )
+        conn.execute("DELETE FROM virtual_positions")
+        for v in account.positions.values():
+            conn.execute(
+                "INSERT OR REPLACE INTO virtual_positions "
+                "(code, name, quantity, avg_cost, current_price, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (v.code, v.name, v.quantity, v.avg_cost, v.current_price, ts),
+            )
+        for t in account.trades:
+            if t.id in _persisted_trade_ids:
+                continue
+            conn.execute(
+                "INSERT OR IGNORE INTO virtual_trades "
+                "(id, code, name, direction, price, quantity, amount, fee, time) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (t.id, t.code, t.name, t.direction, t.price, t.quantity, t.amount, t.fee, t.time),
+            )
+            _persisted_trade_ids.add(t.id)
 
 
 def execute_buy(account: VirtualAccount, code: str, name: str, price: float, quantity: int) -> dict:
@@ -244,6 +357,14 @@ def execute_sell(account: VirtualAccount, code: str, name: str, price: float, qu
 
 
 def reset_account() -> VirtualAccount:
+    from backend import db
+
+    with db.get_connection() as conn:
+        _ensure_account_tables(conn)
+        conn.execute("DELETE FROM virtual_trades")
+        conn.execute("DELETE FROM virtual_positions")
+        conn.execute("DELETE FROM virtual_account")
+    _persisted_trade_ids.clear()
     account = VirtualAccount()
     save_account(account)
     return account
