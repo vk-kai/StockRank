@@ -8,6 +8,7 @@ from core.config import AI_CONFIG_FILE, AI_PROMPT_FILE, AI_DAILY_PROMPT_FILE, AI
 from core.logger import get_logger
 from analysis.news_score_thresholds import get_score_label as classify_score_label
 from analysis.ai_json import extract_ai_json
+from analysis.news_lexicon import analyze_batch_local, analyze_news_local_sync
 
 error_logger = get_logger('error')
 info_logger = get_logger('ai')
@@ -194,14 +195,24 @@ def parse_ai_response(content):
                 results[item_id] = item
     return results
 
+def _news_engine(config):
+    """新闻分析引擎选择：'local'（默认，本地词典规则，零 token）/ 'ai'（LLM 分析）。
+    切换方式：ai_config.json 增删 "news_engine": "ai"。"""
+    return (config or {}).get('news_engine') or 'local'
+
+
 def batch_analyze_news(news_items):
     global last_ai_call_time
-    
+
     if not news_items:
         return {}
-    
+
     config = load_ai_config()
-    
+
+    # 本地词典引擎：零 AI 调用、无节流，输出字段与 LLM 版同构
+    if _news_engine(config) == 'local':
+        return analyze_batch_local(news_items)
+
     if not config or not config.get('enabled'):
         return {}
     
@@ -785,6 +796,10 @@ def analyze_news(title, content):
     global last_ai_call_time
 
     config = load_ai_config()
+
+    # 本地词典引擎：零 AI 调用、无节流，返回结构 {success, analysis(markdown), duration} 与 LLM 版一致
+    if _news_engine(config) == 'local':
+        return analyze_news_local_sync(title, content)
 
     if not config or not config.get('enabled'):
         return {'success': False, 'message': 'AI分析未启用'}

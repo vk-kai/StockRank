@@ -28,6 +28,7 @@ from core.config import (
     STOCK_SCORES_FILE, STOCK_SCORE_STATUS_FILE, STOCK_SCORES_DIR,
 )
 from analysis.ai_analyzer import load_ai_config, call_ai_api, parse_ai_response
+from analysis.local_stock_scorer import score_batch as local_score_batch
 from data.data_processor import get_all_market_map_stocks, error_logger
 from core.logger import get_logger
 
@@ -623,6 +624,56 @@ def _run_scoring_background(run_id, scope):
         _update_status(status='failed', progress=0, step='失败', message=f'打分失败: {str(e)[:100]}')
 
 
+# ============================== 本地多因子引擎（零 token） ==============================
+def _score_engine(config):
+    """打分引擎：'local'（默认，本地多因子规则，零 token 可复现）/ 'ai'（LLM）。
+    切换方式：ai_config.json 增删 "score_engine": "ai"。"""
+    return (config or {}).get('score_engine') or 'local'
+
+
+_LOCAL_CHUNK = 500   # 本地打分每批合并落盘的股票数（进度刷新粒度）
+
+
+def _run_local_scoring_background(run_id, scope):
+    """本地引擎后台线程：多因子规则打分（毫秒级/千只），复用同一套 status/scores.json 落盘，
+    前端 start/status/stop 与云图着色零改动。"""
+    try:
+        _update_status(status='running', run_id=run_id, step='加载股票清单', progress=1,
+                       total=0, done=0, failed=0, started_at=_now_iso(), ended_at=None)
+        stocks = _load_stock_list(scope=scope)
+        if not stocks:
+            _update_status(status='failed', progress=0, step='失败',
+                           message='无待评分股票（请先在大盘云图更新行业缓存）')
+            return
+        total = len(stocks)
+        _update_status(step=f'本地多因子打分（{total}只，零AI调用）', progress=2, total=total, done=0, failed=0)
+
+        done = 0
+        for i in range(0, total, _LOCAL_CHUNK):
+            if _cancel_event.is_set():
+                break
+            chunk = stocks[i:i + _LOCAL_CHUNK]
+            results = local_score_batch(chunk)
+            added = merge_batch_scores(results, run_id)
+            done += added
+            _update_status(done=done, failed=total - done,
+                           progress=2 + int(done / total * 96),
+                           step=f'已评分 {done}/{total}')
+
+        if _cancel_event.is_set():
+            _update_status(status='interrupted',
+                           progress=2 + int(done / total * 96) if total else 0,
+                           step='已停止',
+                           message=f'已手动停止：成功 {done} / 未完成 {total - done}')
+        else:
+            _update_status(status='completed', progress=100, done=done, failed=0, step='完成',
+                           message=f'完成：本地引擎成功 {done}/{total}（零 token）')
+            info_logger.info(f"[股票打分] 本地引擎 run {run_id} 完成: {done}/{total}")
+    except Exception as e:
+        error_logger.error(f"[股票打分] 本地引擎异常: {e}")
+        _update_status(status='failed', progress=0, step='失败', message=f'本地打分失败: {str(e)[:100]}')
+
+
 # ============================== 对外入口 ==============================
 def start_scoring(scope='all'):
     """启动一轮打分。scope: 'all' 全量 / 'missing' 仅未评分 / 'insufficient' 仅"信息不足"重评。
@@ -630,11 +681,13 @@ def start_scoring(scope='all'):
     global _worker_thread
     if scope not in ('all', 'missing', 'insufficient'):
         scope = 'all'
-    config = load_ai_config()
-    if not config or not config.get('enabled'):
-        return {'success': False, 'message': 'AI 未启用或配置不完整，请先在「AI大模型配置」中设置'}
-    if not (config.get('api_url') and config.get('api_key')):
-        return {'success': False, 'message': 'AI 配置不完整：缺少 api_url 或 api_key'}
+    config = load_ai_config() or {}
+    engine = _score_engine(config)
+    if engine == 'ai':
+        if not config.get('enabled'):
+            return {'success': False, 'message': 'AI 未启用或配置不完整，请先在「AI大模型配置」中设置'}
+        if not (config.get('api_url') and config.get('api_key')):
+            return {'success': False, 'message': 'AI 配置不完整：缺少 api_url 或 api_key'}
 
     with _status_lock:
         alive = _worker_thread is not None and _worker_thread.is_alive()
@@ -652,16 +705,24 @@ def start_scoring(scope='all'):
         _score_status['started_at'] = _now_iso()
         _write_status_atomic(dict(_score_status))
         _worker_thread = threading.Thread(
-            target=_run_scoring_background, args=(run_id, scope), daemon=True
+            target=_run_scoring_background if engine == 'ai' else _run_local_scoring_background,
+            args=(run_id, scope), daemon=True
         )
         _worker_thread.start()
 
-    # 估算（按 scope 的实际待评数量算；时长取决于 AI 端点单次响应速度）
+    # 估算（按 scope 的实际待评数量算；AI 引擎时长取决于端点响应速度，本地引擎秒级）
     total = len(_load_stock_list(scope=scope))
+    scope_cn = {'all': '全量', 'missing': '仅未评分', 'insufficient': '仅信息不足'}[scope]
+    if engine == 'local':
+        return {
+            'success': True, 'status': 'running', 'run_id': run_id,
+            'message': f'本地多因子打分已启动（{scope_cn}，共{total}只，零token，秒级完成）',
+            'estimate': {'total': total, 'batches': 0, 'batch_size': 0, 'workers': 1,
+                         'eta_minutes': '≤1', 'scope': scope},
+        }
     batch_size = int(config.get('score_batch_size') or DEFAULT_BATCH_SIZE)
     max_workers = max(1, int(config.get('score_max_workers') or DEFAULT_MAX_WORKERS))
     batches = (total + batch_size - 1) // batch_size if total else 0
-    scope_cn = {'all': '全量', 'missing': '仅未评分', 'insufficient': '仅信息不足'}[scope]
     return {
         'success': True, 'status': 'running', 'run_id': run_id,
         'message': f'打分任务已启动（{scope_cn}，共{total}只，'

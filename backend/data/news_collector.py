@@ -147,7 +147,9 @@ def process_news_with_ai_and_push(news_list):
         from analysis.ai_analyzer import load_ai_config
         
         ai_config = load_ai_config()
-        ai_enabled = ai_config and ai_config.get('enabled', False)
+        # 本地词典引擎(news_engine=local，默认)不依赖 AI 开关——分析零成本，始终可用
+        news_engine = (ai_config or {}).get('news_engine') or 'local'
+        ai_enabled = news_engine == 'local' or bool(ai_config and ai_config.get('enabled', False))
         push_enabled = is_push_enabled()
         
         existing_news = load_today_news()
