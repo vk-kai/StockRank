@@ -23,6 +23,11 @@ CONFIG_DIR = os.path.join(BASE_DIR, 'config')
 # 旧 mp_game.db / mp_vpay.db / quant 的 trading.db 由 server_migration 脚本合并迁入。
 UNIFIED_DB_FILE = os.path.join(DATA_DIR, 'stockrank.db')
 
+# 量化区统一门禁:登录/兑换成功后下发的 tz_gate cookie,值须与 docker/nginx.conf
+# 的 tz_gate SECRET 一致(nginx 据此放行 /TrendZen/ 与未来的 /quant/ 路由)。
+TZ_GATE_COOKIE = 'tz_gate'
+TZ_GATE_SECRET = 'vK-TzGate-9f2c7a1e'
+
 MAX_DAYS = 30
 MAX_NEWS_HOURS = 48
 

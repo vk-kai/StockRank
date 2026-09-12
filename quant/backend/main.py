@@ -34,6 +34,7 @@ from backend.security_service import ensure_runtime_db_ready
 from backend.node_state import pi_node_health_task
 from backend.time_utils import now_beijing
 from backend.trading.account import load_account, update_position_prices
+from backend import gateway
 
 
 def _configure_logging():
@@ -112,6 +113,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 统一门禁网关模式:仅 QUANT_GATE_MODE=1 时生效,standalone 零影响
+app.add_middleware(gateway.GatewayMiddleware)
+
 app.include_router(market_router)
 app.include_router(arb_router)
 app.include_router(trading_router)
@@ -176,6 +180,9 @@ def _build_realtime_payload_snapshot(codes: list[str]) -> tuple[dict, dict | Non
 
 @app.websocket("/ws/realtime")
 async def websocket_realtime(websocket: WebSocket):
+    if not gateway.websocket_gate_ok(websocket):
+        await websocket.close(code=4401)
+        return
     await manager.connect(websocket)
     try:
         while True:

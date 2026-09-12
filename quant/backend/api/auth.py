@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Request, Response
 
 from backend import auth_service
+from backend import gateway
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -61,6 +62,7 @@ def get_session(request: Request):
         "data": {
             "user": user,
             "default_strategy": auth_service.get_default_strategy_for_user(user),
+            "gateway": gateway.is_gateway_mode(),
         },
     }
 

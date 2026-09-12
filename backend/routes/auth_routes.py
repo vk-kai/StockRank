@@ -4,12 +4,22 @@ from flask import Blueprint, jsonify, request, session
 
 from core.daily_password import verify_password as _verify_daily_password
 from core.otp_service import is_otp_enabled, load_otp_config, verify_code
-from core.config import load_jarvis_token
+from core.config import load_jarvis_token, TZ_GATE_COOKIE, TZ_GATE_SECRET
 from core import redemption_code
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
 USERNAME = 'vk'
+
+
+def _grant_tz_gate(response):
+    """登录/兑换成功后下发量化区门禁 cookie(nginx 据此放行量化路由)。"""
+    response.set_cookie(
+        TZ_GATE_COOKIE, TZ_GATE_SECRET,
+        max_age=30 * 24 * 3600, path='/',
+        secure=True, httponly=True, samesite='Lax',
+    )
+    return response
 
 
 def verify_password(password):
@@ -124,11 +134,11 @@ def login():
 
     session['stockrank_user'] = USERNAME
     session.permanent = True
-    return jsonify({
+    return _grant_tz_gate(jsonify({
         'success': True,
         'authenticated': True,
         'username': USERNAME,
-    })
+    }))
 
 
 @auth_bp.route('/auth/redeem', methods=['POST'])
@@ -148,7 +158,7 @@ def redeem():
         session['redeem_code'] = code.upper()
         session['redeem_expire'] = result['expire_at']
         session.permanent = True
-        return jsonify(result), 200
+        return _grant_tz_gate(jsonify(result)), 200
     # 失败：统一 400
     return jsonify(result), 400
 
@@ -158,7 +168,10 @@ def logout():
     session.pop('stockrank_user', None)
     session.pop('redeem_code', None)
     session.pop('redeem_expire', None)
-    return jsonify({'success': True, 'authenticated': False})
+    resp = jsonify({'success': True, 'authenticated': False})
+    # 同步撤销量化区门禁 cookie
+    resp.delete_cookie(TZ_GATE_COOKIE, path='/')
+    return resp
 
 
 @auth_bp.route('/auth/session', methods=['GET'])

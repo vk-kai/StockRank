@@ -31,6 +31,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from backend import gateway
+
 
 SESSION_COOKIE_NAME = "trendzen_session"
 SESSION_DAYS = 7
@@ -231,6 +233,10 @@ def can_access_owner(owner_username: Optional[str], user: Optional[dict]) -> boo
 
 
 def get_current_user_from_request(request) -> Optional[dict]:
+    # gateway 模式:鉴权由 StockRank 统一门禁承担,应用内返回合成管理员
+    gateway_user = gateway.gateway_user_if_enabled()
+    if gateway_user is not None:
+        return gateway_user
     db.delete_expired_auth_records()
     token = request.cookies.get(SESSION_COOKIE_NAME) if request is not None else None
     if not token:

@@ -15,6 +15,8 @@ export interface AuthSessionData {
   user: AuthUser | null;
   default_strategy: string;
   expires_at?: string;
+  /** 后端是否运行在统一门禁(gateway)模式:登录/注册/VIP 购买已下线,需跳转 StockRank */
+  gateway?: boolean;
 }
 
 export interface QuickRegisterData {

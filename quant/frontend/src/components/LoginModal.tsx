@@ -17,6 +17,7 @@ export type LoginModalView = "login" | "vip" | "billing";
 
 interface Props {
   authUser: AuthUser | null;
+  isGateway?: boolean;
   initialView?: LoginModalView;
   onClose: () => void;
   onLogin: (data: AuthSessionData) => void;
@@ -24,7 +25,7 @@ interface Props {
   reason?: string;
 }
 
-export default function LoginModal({ authUser, initialView = "login", onClose, onLogin, onRequireLogin, reason }: Props) {
+export default function LoginModal({ authUser, isGateway = false, initialView = "login", onClose, onLogin, onRequireLogin, reason }: Props) {
   const [view, setView] = useState<LoginModalView>(initialView);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -484,6 +485,20 @@ export default function LoginModal({ authUser, initialView = "login", onClose, o
     </div>
   );
 
+  const renderGatewayRedirect = (target: "login" | "vip") => (
+    <div className="purchase-panel">
+      <div className="purchase-title">{target === "vip" ? "VIP 已并入 StockRank" : "统一登录"}</div>
+      <div className="purchase-desc">
+        {target === "vip"
+          ? "量化区已并入 StockRank 统一门禁，登录/注册/VIP 购买入口已下线；请在主站登录后直接使用全部策略。"
+          : "量化区已并入 StockRank 统一门禁，请前往主站登录；登录后即可直接访问本系统。"}
+      </div>
+      <button type="button" className="setting-primary-btn" onClick={() => { window.location.href = "/"; }}>
+        <span className="btn-text">前往 StockRank 登录</span>
+      </button>
+    </div>
+  );
+
   return (
     <div className="modal-backdrop login-modal-backdrop" onClick={closeDisabled ? undefined : onClose}>
       <div className="login-modal" onClick={(e) => e.stopPropagation()}>
@@ -494,8 +509,8 @@ export default function LoginModal({ authUser, initialView = "login", onClose, o
 
         {message && <div className="login-message">{message}</div>}
 
-        {view === "login" && renderLogin()}
-        {view === "vip" && renderVip()}
+        {view === "login" && (isGateway ? renderGatewayRedirect("login") : renderLogin())}
+        {view === "vip" && (isGateway ? renderGatewayRedirect("vip") : renderVip())}
         {view === "billing" && renderBilling()}
       </div>
     </div>

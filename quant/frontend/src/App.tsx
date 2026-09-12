@@ -275,6 +275,7 @@ export default function App() {
   const [showDataDownload, setShowDataDownload] = useState(false);
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [gatewayMode, setGatewayMode] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [defaultStrategy, setDefaultStrategy] = useState("MACD_Cross");
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -882,6 +883,7 @@ export default function App() {
   const applyAuthSession = useCallback((data: AuthSessionData) => {
     setAuthUser(data.user || null);
     setDefaultStrategy(data.default_strategy || "MACD_Cross");
+    setGatewayMode(!!data.gateway);
   }, []);
 
   const handleLoginSuccess = useCallback((data: AuthSessionData) => {
@@ -2502,6 +2504,7 @@ export default function App() {
       {showLoginModal && (
         <LoginModal
           authUser={authUser}
+          isGateway={gatewayMode}
           initialView={loginInitialView}
           reason={loginReason}
           onLogin={handleLoginSuccess}
