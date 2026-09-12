@@ -87,7 +87,7 @@ def clone_indexes(src: sqlite3.Connection, dst: sqlite3.Connection, table: str) 
             pass  # 表达式索引引用缺列等极端情况不阻塞迁移
 
 
-def copy_table(src: sqlite3.Connection, dst: sqlite3.Connection, table: str) -> tuple[int, int]:
+def copy_table(src: sqlite3.Connection, dst: sqlite3.Connection, table: str) -> Tuple[int, int]:
     before = table_rows(dst, table) if dst.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone() else 0
