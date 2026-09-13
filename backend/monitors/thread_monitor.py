@@ -72,6 +72,7 @@ def get_all_status():
             'last_heartbeat': status['last_heartbeat'],
             'status': 'running' if is_alive else 'stopped',
             'elapsed': round(elapsed, 1),
+            'timeout': timeout,
             'uptime': round(now - status.get('start_time', now), 1),
             'busy': is_busy
         }

@@ -204,11 +204,13 @@ def monitor_loop():
                 elapsed = thread_info.get('elapsed', 0)
                 alive = thread_info.get('alive', False)
                 is_busy = thread_info.get('busy', False)
-                
+                # 线程注册时的自定义心跳超时(长睡眠线程更大)优先;未注册则用全局阈值
+                eff_threshold = thread_info.get('timeout') or alert_threshold
+
                 if is_busy:
                     system_logger.debug(f"[监控] 线程 {thread_name} 处于忙碌状态，跳过重启检查")
                     continue
-                
+
                 if not alive or status == 'stopped':
                     # 冷却去重:同一线程 10 分钟内只告警+尝试重启一次,
                     # 心跳误报(长睡眠线程)不再每 30 秒刷 CRITICAL
@@ -218,12 +220,12 @@ def monitor_loop():
                     _last_stop_alert[thread_name] = now_ts
                     error_logger.critical(f"[监控] 线程 {thread_name} 已停止运行，状态: {status}, 尝试重启...")
                     restart_thread(thread_name, restart_url, restart_cooldown)
-                elif elapsed > alert_threshold:
+                elif elapsed > eff_threshold:
                     now_ts = time.time()
                     if now_ts - _last_stop_alert.get(thread_name, 0) < STOP_ALERT_COOLDOWN:
                         continue
                     _last_stop_alert[thread_name] = now_ts
-                    error_logger.critical(f"[监控] 线程 {thread_name} 心跳超时，已持续 {elapsed} 秒，尝试重启...")
+                    error_logger.critical(f"[监控] 线程 {thread_name} 心跳超时，已持续 {elapsed} 秒(阈值 {eff_threshold} 秒)，尝试重启...")
                     restart_thread(thread_name, restart_url, restart_cooldown)
             
         except Exception as e:
