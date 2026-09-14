@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """融资融券（融资净买入额）数据采集与缓存。
 
-数据源：akshare 的 stock_margin_detail_sse / stock_margin_detail_szse，
-分别取自**上交所 / 深交所官方**（不涉及东方财富，规避其反爬）。
-每个交易日两市各一次调用即可拿到当日全部标的，每日 09:05 增量更新一次。
+数据源（主备双路）：
+- 主：东方财富数据中心两融明细（RPTA_WEB_RZRQ_GGMX，沪深两市一次拿全，em_request 带 WAF 代理回退）。
+  背景：交易所官方接口对服务器 IP 风控时返回空表（akshare 解析空表抛 ValueError），EM 侧长期稳定。
+- 备：akshare 的 stock_margin_detail_sse / stock_margin_detail_szse（沪深交易所官方，原逻辑保留）。
 
-融资净买入额口径：
-- SSE：融资买入额 − 融资偿还额（接口直出两列）
-- SZSE：接口无"融资偿还额"，用 Δ融资余额（当日余额 − 上一交易日余额）等价得到
+每日 09:05 增量更新一次。
+
+融资净买入额口径：统一用 Δ融资余额（当日余额 − 上一交易日余额）在读取时计算，
+对两市均成立（余额今 = 余额昨 + 净买入）；融资偿还额 = 融资买入额 − 净买入。
 
 缓存到 REALTIME_DIR/stock_margin.json，按裸 6 位代码建键，每只股票保留最近
 KEEP_TRADING_DAYS 个交易日，控制文件体积。
@@ -18,7 +20,7 @@ import time
 import threading
 from datetime import datetime, timedelta
 
-from core.config import REALTIME_DIR
+from core.config import REALTIME_DIR, em_request
 from core.logger import get_logger
 from monitors.thread_monitor import heartbeat, register_thread, set_busy
 
@@ -33,6 +35,12 @@ MARGIN_MIN_STOCKS = 4000         # 单日融资融券标的数下限(低于此�
 MARGIN_FETCH_RETRIES = 3         # 单日采集标的不足时的重试次数
 DAILY_TRIGGER_HOUR = 9
 DAILY_TRIGGER_MINUTE = 5
+# 每日增量时:超过该自然日数的"缺失/残缺"历史日不再天天重试(更早的缺口交易所/EM接口大多已不提供,
+# 天天试只是刷 INFO 日志+浪费请求);首次回填仍按 BACKFILL_CALENDAR_DAYS 全窗口
+MARGIN_REPAIR_WINDOW_DAYS = 35
+
+# 东方财富数据中心两融明细(沪深两市一次拿全)
+EM_MARGIN_URL = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
 
 # akshare 返回列名（实测稳定）
 _SSE_CODE, _SSE_NAME = '标的证券代码', '标的证券简称'
@@ -91,13 +99,56 @@ def _atomic_write_json(path, obj):
     os.replace(tmp, path)
 
 
-def fetch_margin_for_date(date_str):
-    """抓取某日（YYYYMMDD）两市融资融券明细，取融资余额 + 融资买入额。
+def _fetch_margin_em(date_str):
+    """东方财富数据中心两融明细（沪深两市一次拿全）。date_str=YYYYMMDD。
 
-    返回 {code: {'n': name, 'b': 融资余额, 'm': 融资买入额}}。
-    融资净买入额统一用 Δ融资余额（当日余额 − 上一交易日余额）在读取时计算，
-    对两市均成立（余额今 = 余额昨 + 净买入）；融资偿还额 = 融资买入额 − 净买入。
+    返回 {code: {'n': name, 'b': 融资余额, 'm': 融资买入额}}；接口失败/无数据返回 {}。
+    分页 500/页，页间 0.25s 温和限速；em_request 直连失败自动走代理（防 EM WAF）。
     """
+    date_dash = f'{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://data.eastmoney.com/',
+    }
+    out = {}
+    page = 1
+    while page <= 40:  # 硬上限防死循环(4445只≈9页,余量充足)
+        try:
+            resp = em_request(
+                EM_MARGIN_URL,
+                params={
+                    'reportName': 'RPTA_WEB_RZRQ_GGMX', 'columns': 'ALL', 'source': 'WEB',
+                    'sortColumns': 'scode', 'sortTypes': '1',
+                    'pageSize': 500, 'pageNumber': page,
+                    'filter': "(date='%s')" % date_dash,
+                },
+                headers=headers, timeout=15,
+            )
+            res = (resp.json().get('result') or {})
+            rows = res.get('data') or []
+        except Exception as e:
+            system_logger.info(f"融资融券[EM] {date_str} 第{page}页抓取失败: {repr(e)[:120]}")
+            return out if out else {}
+        for row in rows:
+            code = _normalize_code(str(row.get('SCODE') or '').strip())
+            b = _to_float(row.get('RZYE'), default=None)
+            if not code or b is None:
+                continue
+            out[code] = {
+                'n': str(row.get('SECNAME') or ''),
+                'b': b,
+                'm': _to_float(row.get('RZMRE'), default=None),
+            }
+        pages = res.get('pages') or 0
+        if not rows or page >= pages:
+            break
+        page += 1
+        time.sleep(0.25)
+    return out
+
+
+def _fetch_margin_official(date_str):
+    """原 akshare 沪深官方两路采集（备用路：EM 失败时兜底）。"""
     import akshare as ak
     result = {}
 
@@ -135,18 +186,44 @@ def fetch_margin_for_date(date_str):
     return result
 
 
-def update_margin_cache(max_calendar_days=None, force_dates=None, heartbeat_name=None):
-    """串行化包装：定时线程与弹窗按需触发可能并发，加锁避免读-改-写互相覆盖。"""
+def fetch_margin_for_date(date_str):
+    """抓取某日（YYYYMMDD）两市融资融券明细，取融资余额 + 融资买入额。
+
+    返回 {code: {'n': name, 'b': 融资余额, 'm': 融资买入额}}。
+    融资净买入额统一用 Δ融资余额（当日余额 − 上一交易日余额）在读取时计算，
+    对两市均成立（余额今 = 余额昨 + 净买入）；融资偿还额 = 融资买入额 − 净买入。
+
+    主备双路：EM 数据中心优先（单接口两市全量，服务器 IP 被交易所风控时仍可用），
+    EM 拿不满/失败时回退沪深官方两路，哪路覆盖多用哪路。
+    """
+    result_em = _fetch_margin_em(date_str)
+    if len(result_em) >= MARGIN_MIN_STOCKS:
+        return result_em
+    result = _fetch_margin_official(date_str)
+    if len(result) > len(result_em):
+        return result
+    return result_em
+
+
+def update_margin_cache(max_calendar_days=None, force_dates=None, heartbeat_name=None,
+                        repair_window_days=None):
+    """串行化包装：定时线程与弹窗按需触发可能并发，加锁避免读-改-写互相覆盖。
+
+    repair_window_days: 每日增量传入 35 —— 超过 35 自然日的缺失/残缺历史日不再天天重试；
+    None(首次回填/按需) = 不设限，按 max_calendar_days 全窗口处理。"""
     with _update_lock:
-        return _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name)
+        return _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
+                                         repair_window_days)
 
 
-def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name):
+def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
+                              repair_window_days=None):
     """抓取尚未缓存的最近交易日并合并写回。
 
     - force_dates: 显式指定要抓的日期（YYYYMMDD 列表），仅抓其中未缓存的
     - max_calendar_days: 从今天往回看的自然日窗口（默认 BACKFILL_CALENDAR_DAYS）
     - heartbeat_name: 传入线程名则在逐日抓取间发心跳，避免长回填被判死
+    - repair_window_days: 残缺日/陈旧缺失日的重采窗口（自然日），None=不限
     返回更新到的最新日期；无更新返回原 latest_date。
     """
     max_cal = max_calendar_days if max_calendar_days is not None else BACKFILL_CALENDAR_DAYS
@@ -167,9 +244,29 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name):
             d = today - timedelta(days=back)
             if not _is_weekday(d):
                 continue
+            # 每日增量模式(repair_window_days 有值):太老的历史缺失日不再天天重试,
+            # 交易所/EM 接口对老日期基本不再提供,重试只是刷日志+浪费请求
+            if repair_window_days is not None and back > repair_window_days:
+                break
             ds = d.strftime('%Y%m%d')
             if ds not in cached_dates:
                 target_dates.append(ds)
+        # 残缺日自动重采:历史某日并入时只有单市数据(标的数 < 下限,如交易所接口风控期间),
+        # 重新纳入抓取目标;重抓后"同日取最后一次"去重,残缺记录自动被完整记录覆盖
+        if repair_window_days is not None:
+            day_counts = {}
+            for rec in stocks.values():
+                for row in rec.get('s', []):
+                    day_counts[row[0]] = day_counts.get(row[0], 0) + 1
+            for d, cnt in day_counts.items():
+                if cnt >= MARGIN_MIN_STOCKS or d in target_dates:
+                    continue
+                try:
+                    age_days = (today - datetime.strptime(d, '%Y%m%d')).days
+                except ValueError:
+                    continue
+                if age_days <= repair_window_days:
+                    target_dates.append(d)
         target_dates.sort()  # 远→近，便于做 SZSE Δ余额
 
     if not target_dates:
@@ -496,7 +593,9 @@ def margin_collection_thread():
                 system_logger.info(f"融资融券每日更新触发（{today}）…")
                 try:
                     set_busy('margin_collector', True)
-                    update_margin_cache(heartbeat_name='margin_collector')
+                    # 每日增量:35 天外的历史缺失/残缺日不再天天重试(见 MARGIN_REPAIR_WINDOW_DAYS)
+                    update_margin_cache(heartbeat_name='margin_collector',
+                                        repair_window_days=MARGIN_REPAIR_WINDOW_DAYS)
                     _last_margin_run_date = today
                     # 同步刷新全市场融资余额合计缓存(上交所官方,序列平滑不跳变)
                     try:
