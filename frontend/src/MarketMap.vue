@@ -1109,6 +1109,7 @@ export default {
     window.removeEventListener('auth-logout', this.onAuthLogout)
     clearInterval(this.timer)
     clearInterval(this.replayPointsTimer)
+    if (this.marginRefreshTimer) clearInterval(this.marginRefreshTimer)
     if (this.scoringTimer) clearInterval(this.scoringTimer)
     if (this.cycleTimer) clearInterval(this.cycleTimer)
     if (this.replayTimer) clearTimeout(this.replayTimer)
@@ -1159,6 +1160,7 @@ export default {
     stopLiveTimers() {
       if (this.timer) { clearInterval(this.timer); this.timer = null }
       if (this.replayPointsTimer) { clearInterval(this.replayPointsTimer); this.replayPointsTimer = null }
+      if (this.marginRefreshTimer) { clearInterval(this.marginRefreshTimer); this.marginRefreshTimer = null }
       if (this.scoringTimer) { clearInterval(this.scoringTimer); this.scoringTimer = null }
       if (this.cycleTimer) { clearInterval(this.cycleTimer); this.cycleTimer = null }
       if (this.replayTimer) { clearTimeout(this.replayTimer); this.replayTimer = null }
@@ -1174,6 +1176,13 @@ export default {
       // 复盘时间点状态：首拉一次 + 每 5 分钟刷新（盘中陆续点亮新抓取的按钮）
       this.refreshReplayPoints()
       this.replayPointsTimer = setInterval(() => this.refreshReplayPoints(), 5 * 60 * 1000)
+      // 融资净流入着色数据：每 30 分钟静默刷新（后端每日 09:05 更新一次；
+      // 页面跨天长开时只靠切入模式刷新会一直显示上一个交易日的数据）
+      this.marginRefreshTimer = setInterval(() => {
+        if (this.colorMode === 'margin' && !this.replayMode && this.marginLoaded) {
+          this.loadMarginData(true).then(ok => { if (ok) { this.buildLayout(); this.render() } })
+        }
+      }, 30 * 60 * 1000)
       // AI 打分：恢复在跑任务轮询 + 预载已评分缓存（决定下拉是否出现"着色：AI打分"）+ 检查 AI 配置
       this.checkScoringStatus()
       this.loadScoreData()
@@ -1590,14 +1599,22 @@ export default {
       this.colorMode = mode
       this.legendSel = []
       this.legendApplied = []
-      if (mode === 'margin' && !this.marginLoaded) await this.loadMarginData()
+      if (mode === 'margin') {
+        if (!this.marginLoaded) {
+          await this.loadMarginData()
+        } else {
+          // 已有缓存也要后台静默刷新：融资数据每日 09:05 才更新一次，
+          // 页面长开/跨天时旧缓存会一直显示上一个交易日的数据
+          this.loadMarginData(true).then(ok => { if (ok) { this.buildLayout(); this.render() } })
+        }
+      }
       if (mode === 'score' && !this.scoreLoaded) await this.loadScoreData()
       if (mode === 'cycle' && !this.cycleLoaded) await this.loadCycleData()
       this.buildLayout()
       this.render()
     },
-    async loadMarginData() {
-      this.marginLoading = true
+    async loadMarginData(silent = false) {
+      if (!silent) this.marginLoading = true
       try {
         const res = await getMarketMapMargin()
         if (res && res.success) {
@@ -1605,11 +1622,14 @@ export default {
           this.marginDate = res.latest_date || ''
           this.marginLoaded = true
           this.computeMarginColors()
+          return true
         }
+        return false
       } catch (e) {
         console.error('融资净流入加载失败', e)
+        return false
       } finally {
-        this.marginLoading = false
+        if (!silent) this.marginLoading = false
       }
     },
     // 按净流入大小排名映射深浅：正流入→红、净流出→绿，排名越靠前(绝对值越大)越深
