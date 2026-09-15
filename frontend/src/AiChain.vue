@@ -13,6 +13,17 @@
       </div>
     </header>
 
+    <!-- 页签: 环境温度计 / 大事日历 -->
+    <nav class="aic-tabs">
+      <button class="aic-tab" :class="{ active: activeTab === 'thermo' }" @click="activeTab = 'thermo'">
+        🌡️ 环境温度计
+      </button>
+      <button class="aic-tab" :class="{ active: activeTab === 'calendar' }" @click="activeTab = 'calendar'">
+        📅 大事日历
+      </button>
+    </nav>
+
+    <template v-if="activeTab === 'thermo'">
     <!-- 综合环境温度计 -->
     <section class="aic-thermo" :class="overallClass" v-if="summary">
       <div class="aic-thermo-main">
@@ -66,6 +77,10 @@
       <template v-if="!slowHint"><div class="aic-spinner"></div>加载中...</template>
       <div v-else class="aic-slow">数据获取较慢，部分指标（韩股）可能来自缓存或暂不可用，已为您加载可用的数据…</div>
     </div>
+    </template>
+
+    <!-- 大事日历页签 -->
+    <EventCalendar v-if="activeTab === 'calendar'" />
 
     <footer class="aic-footer">
       数据来源：东方财富(韩股) · 新浪财经(美股/美元) · 美国财政部(美债)　颜色按"对 AI 链利好/利空"判定（红=利好/绿=利空）　仅供投资参考
@@ -77,6 +92,7 @@
 <script>
 import { getAiChain } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
+import EventCalendar from './EventCalendar.vue'
 
 const SOURCE_MAP = {
   sina: '新浪',
@@ -87,9 +103,9 @@ const SOURCE_MAP = {
 
 export default {
   name: 'AiChain',
-  components: { SecurityAlert },
+  components: { SecurityAlert, EventCalendar },
   data() {
-    return { loading: false, data: null, timer: null, slowHint: false, _watchdog: null }
+    return { loading: false, data: null, timer: null, slowHint: false, _watchdog: null, activeTab: 'thermo' }
   },
   computed: {
     indicators() { return this.data?.indicators || [] },
@@ -220,6 +236,31 @@ export default {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .aic-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 页签: 环境温度计 / 大事日历 */
+.aic-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.aic-tab {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(58, 74, 107, 0.5);
+  background: rgba(26, 35, 53, 0.6);
+  color: #8ba4c7;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.aic-tab:hover { color: #e0e6f0; border-color: rgba(111, 142, 190, 0.6); }
+.aic-tab.active {
+  color: #fff;
+  background: rgba(24, 144, 255, 0.18);
+  border-color: rgba(24, 144, 255, 0.5);
+}
 
 /* 综合环境温度计 */
 .aic-thermo {

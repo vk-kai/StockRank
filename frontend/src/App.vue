@@ -70,6 +70,15 @@
           <span class="ai-chain-label">AI环境</span>
           <span class="ai-chain-overall">{{ aiChainOverallText }}</span>
           <span class="ai-chain-sub">{{ aiChainSubText }}</span>
+          <span
+            v-if="nextEvent"
+            class="ai-chain-event"
+            :class="{ 'ai-event-major': nextEvent.importance === 3 }"
+            :title="nextEventTitle"
+          >
+            <span class="ai-chain-event-sep">·</span>
+            📅 {{ nextEventLabel }}
+          </span>
           <span class="ai-chain-arrow">›</span>
         </div>
 

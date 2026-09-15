@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getEventCalendar, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts } from '../../services/apiService'
 import { generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -117,6 +117,8 @@ export default {
       marketSummaryInterval: null,
       aiChainSummary: null,
       aiChainInterval: null,
+      nextEvent: null,
+      nextEventTimer: null,
       aiAnalyzing: false,
       showMoreMenu: false,
       showAIAnalysisModal: false,
@@ -186,6 +188,33 @@ export default {
       const s = this.aiChainSummary
       if (!s) return ''
       return `需求${s.demand_signal} · 宏观${s.macro_signal}`
+    },
+    // 距离现在最近的一件尚未发生的大事（★3 重大事件在前端加粗+琥珀色强调）
+    nextEventLabel() {
+      const ev = this.nextEvent
+      if (!ev) return ''
+      const timeStr = String(ev.time || '') // "YYYY-MM-DD HH:MM" 北京时间
+      if (timeStr.length < 16) return ''
+      const dt = new Date(timeStr.replace(' ', 'T'))
+      if (Number.isNaN(dt.getTime())) return ''
+      const pad = (n) => String(n).padStart(2, '0')
+      const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      const today = new Date()
+      const dayDiff = Math.round((new Date(dayKey(dt)).getTime() - new Date(dayKey(today)).getTime()) / 86400000)
+      let dayLabel
+      if (dayDiff <= 0) dayLabel = '今天'
+      else if (dayDiff === 1) dayLabel = '明天'
+      else if (dayDiff === 2) dayLabel = '后天'
+      else if (dayDiff <= 7) dayLabel = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dt.getDay()]
+      else dayLabel = timeStr.slice(5, 10)
+      const hm = timeStr.slice(11, 16)
+      const name = ev.event.length > 14 ? ev.event.slice(0, 14) + '…' : ev.event
+      return `${dayLabel} ${hm} ${name}`
+    },
+    nextEventTitle() {
+      const ev = this.nextEvent
+      if (!ev) return ''
+      return `${ev.time} ${ev.region} · ${ev.event}${ev.importance === 3 ? '（重大）' : ''}`
     },
     healthDisplayItems() {
       // 服务监控卡片要展示的行：合并后的「同花顺数据」+「消息推送服务」
@@ -462,6 +491,9 @@ export default {
     if (this.aiChainInterval) {
       clearTimeout(this.aiChainInterval)
     }
+    if (this.nextEventTimer) {
+      clearInterval(this.nextEventTimer)
+    }
     if (this.aiAnalysisPollTimer) {
       clearInterval(this.aiAnalysisPollTimer)
     }
@@ -599,6 +631,7 @@ export default {
       this.startMarketSummaryRefresh()
       this.fetchAiChain()
       this.startAiChainRefresh()
+      this.startNextEventRefresh()
       this.checkAIAnalysisStatus()
     },
     // 点击数据相关按钮时，如未登录（含演示态）则唤起登录框——演示快照永远不刷实时
@@ -762,6 +795,27 @@ export default {
         }, 60000)
       }
       scheduleNext()
+    },
+
+    async fetchNextEvent() {
+      try {
+        const res = await getEventCalendar(7, 1)
+        if (res.success && Array.isArray(res.data)) {
+          // 后端按北京时间升序返回，取第一件还没发生的（浏览器即北京时间，可直接字符串比较）
+          const pad = (n) => String(n).padStart(2, '0')
+          const now = new Date()
+          const nowKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
+          this.nextEvent = res.data.find((it) => String(it.time || '') >= nowKey) || null
+        }
+      } catch (err) {
+        console.error('获取最近大事失败:', err)
+      }
+    },
+
+    startNextEventRefresh() {
+      // 日历变化很慢，30 分钟一刷足够（quant 侧同源数据还有 30 分钟缓存）
+      this.fetchNextEvent()
+      this.nextEventTimer = setInterval(() => this.fetchNextEvent(), 30 * 60 * 1000)
     },
 
     openMarginTotalModal() {

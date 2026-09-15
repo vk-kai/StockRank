@@ -213,6 +213,19 @@
 .ai-chain-label { color: #8ba4c7; font-weight: 600; }
 .ai-chain-overall { font-weight: 800; }
 .ai-chain-sub { color: #8ba4c7; font-weight: 600; font-size: 11px; }
+/* 胶囊内追加的最近大事：普通事件正常显示，★3 重大事件加粗+琥珀色突出 */
+.ai-chain-event {
+  color: #8ba4c7;
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ai-chain-event .ai-chain-event-sep { margin-right: 2px; }
+.ai-chain-event.ai-event-major {
+  color: #f0b90b;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(240, 185, 11, 0.35);
+}
 .ai-chain-arrow { color: #8ba4c7; margin-left: 2px; }
 /* 综合环境灯配色：偏多=红(A股惯例红涨)、偏空=绿、中性=灰 */
 .ai-chain-strip.ai-bull { border-color: rgba(239, 83, 80, 0.6); background: rgba(239, 83, 80, 0.12); color: #ef5350; }

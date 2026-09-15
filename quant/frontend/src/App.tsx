@@ -2068,8 +2068,8 @@ export default function App() {
               <span className="arb-alert-badge">{arbUnread > 99 ? "99+" : arbUnread}</span>
             )}
           </button>
-          <button 
-            className={`header-settings-btn ${historyDownloadStatus?.running ? 'progress-btn' : ''}`} 
+          <button
+            className={`header-settings-btn ${historyDownloadStatus?.running ? 'progress-btn' : ''}`}
             onClick={() => setShowDataDownload(true)}
             style={historyDownloadStatus?.running ? {
               '--progress-width': `${historyDownloadStatus?.progress_pct || 0}%`

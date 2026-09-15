@@ -79,6 +79,23 @@ export async function getAiChain() {
 }
 
 /**
+ * 重大事件日历（加息决议/CPI/非农/PMI 等宏观发布；quant 后端聚合，Flask 转发）
+ * 返回 {success, count, data:[{time,region,event,importance,forecast,previous,actual,source}]}
+ */
+export async function getEventCalendar(days = 7, minImportance = 1) {
+  try {
+    const response = await apiClient.get('/flow/events/calendar', {
+      params: { days, min_importance: minImportance },
+      timeout: 35000,
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取事件日历失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取大盘云图行业板块列表
  */
 export async function getMarketMap() {
