@@ -450,14 +450,20 @@
       </div>
     </div>
 
-    <!-- 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert） -->
+    <!-- 异动速览弹窗（首页一键瞄一眼：资金+个股两层面，深入看跳 /flow-alert） -->
     <div class="modal-overlay" v-if="showFlowAlertModal" @click="closeFlowAlertModal">
       <div class="flow-alert-modal" @click.stop>
-        <div class="modal-header">
-          <h3>🚨 资金异动速览</h3>
+        <div class="modal-header fa-quick-header">
+          <h3>🚨 异动速览</h3>
+          <div class="fa-quick-tabs">
+            <button :class="{active: quickTab==='fund'}" @click="quickTab='fund'">💰 资金</button>
+            <button :class="{active: quickTab==='pulse'}" @click="quickTab='pulse'">📈 个股</button>
+          </div>
           <button class="close-btn" @click="closeFlowAlertModal">×</button>
         </div>
         <div class="modal-body">
+          <!-- ===== 资金异动 ===== -->
+          <template v-if="quickTab==='fund'">
           <div class="fa-quick-stats" v-if="flowAlertSummary.total">
             <div class="fa-quick-stat">
               <span class="num">{{ flowAlertSummary.total }}</span>
@@ -495,11 +501,53 @@
               </div>
             </div>
           </div>
+          </template>
+          <!-- ===== 个股异动 ===== -->
+          <template v-else>
+            <div class="fa-quick-rank" v-if="pulseQuickSummary">
+              <div class="fa-quick-rank-line">
+                <span class="fa-quick-rank-tag pos">拉升 {{ pulseQuickSummary.rising_count || 0 }}</span>
+                <span v-for="s in (pulseQuickSummary.sectors_rising || [])" :key="'r'+s.level+s.sector" class="fa-quick-rank-item">
+                  {{ s.level === 'l2' && s.l1 && s.l1 !== s.sector ? s.l1 + '·' + s.sector : s.sector }}
+                  <b class="pos">{{ s.median_pct >= 0 ? '+' : '' }}{{ s.median_pct }}%</b>
+                </span>
+              </div>
+              <div class="fa-quick-rank-line">
+                <span class="fa-quick-rank-tag neg">跳水 {{ pulseQuickSummary.falling_count || 0 }}</span>
+                <span v-for="s in (pulseQuickSummary.sectors_falling || [])" :key="'f'+s.level+s.sector" class="fa-quick-rank-item">
+                  {{ s.level === 'l2' && s.l1 && s.l1 !== s.sector ? s.l1 + '·' + s.sector : s.sector }}
+                  <b class="neg">{{ s.median_pct }}%</b>
+                </span>
+              </div>
+              <div class="fa-quick-rank-time" v-if="!(pulseQuickSummary.sectors_rising || []).length && !(pulseQuickSummary.sectors_falling || []).length">最新一轮无板块聚集异动</div>
+              <div class="fa-quick-rank-time">采样：{{ pulseQuickSummary.date }} {{ pulseQuickSummary.time }}</div>
+            </div>
+            <div class="fa-quick-loading" v-if="pulseQuickLoading">
+              <div class="spinner"></div>
+              <p>加载中...</p>
+            </div>
+            <div v-else-if="!pulseQuickList.length" class="fa-quick-empty">
+              <p>今日暂无个股异动推送</p>
+              <p class="fa-quick-empty-sub">交易时段每 5 分钟采样全 A，板块聚集 / 涨停跌停时触发</p>
+            </div>
+            <div v-else class="fa-quick-list">
+              <div class="fa-quick-card pulse" v-for="(a, idx) in pulseQuickList" :key="idx">
+                <div class="fa-quick-head">
+                  <span class="fa-quick-time">{{ a.date }} {{ a.time }}</span>
+                  <span class="fa-quick-sector">{{ a.closing ? '📊 收盘总结' : '📈 个股异动' }}</span>
+                  <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '✓' : '✗' }}</span>
+                </div>
+                <div class="fa-quick-pulse-body">
+                  <div v-for="(line, li) in pulseQuickLines(a)" :key="li" class="fa-quick-pulse-line" :class="line.cls">{{ line.text }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
         <div class="modal-footer">
-          <button class="reanalyze-btn" @click="refreshFlowAlertModal" :disabled="flowAlertLoading">
-            <IconRefresh v-if="!flowAlertLoading" />
-            {{ flowAlertLoading ? '刷新中...' : '刷新' }}
+          <button class="reanalyze-btn" @click="refreshFlowAlertModal" :disabled="flowAlertLoading || pulseQuickLoading">
+            <IconRefresh v-if="!flowAlertLoading && !pulseQuickLoading" />
+            {{ (flowAlertLoading || pulseQuickLoading) ? '刷新中...' : '刷新' }}
           </button>
           <button class="fa-quick-viewall" @click="gotoFlowAlertPage">查看全天全部 →</button>
         </div>

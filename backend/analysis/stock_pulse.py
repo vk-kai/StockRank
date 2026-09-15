@@ -5,7 +5,7 @@
 - 盘中每 5 分钟用新浪批量接口采样全 A 涨跌幅（~5000 只，约 13 批请求）
 - 与上一轮快照对比，检测三类信号：
   1. 板块聚集异动：同行业（申万一级/二级）多只个股同时拉升 / 集体翻红 / 集体跳水
-  2. 个股异动：涨停 / 跌停（自动区分 10%/20%/30%/ST5% 限制）、单轮大幅拉升 / 跳水
+  2. 个股异动：涨停 / 跌停（自动区分 10%/20%/30%/ST5% 限制；单纯拉升/跳水不推）
   3. 热点汇总：整半点 + 收盘 15:00 推送市场温度（涨跌家数、行业涨幅中位数排行）
 
 防刷屏（参照资金异动三道闸思路）：
@@ -60,8 +60,6 @@ DEFAULT_CONFIG = {
     'cluster_dump_ratio': 0.08,
     'cluster_min_hits': 3,            # 小板块最少命中家数（防 3 只小板块误报）
     # ---- 个股 ----
-    'stock_surge_delta': 3.0,         # 单轮大幅拉升门槛
-    'stock_plunge_delta': 3.0,        # 单轮大幅跳水门槛
     'limit_tolerance': 0.998,         # pct >= limit*0.998 视为涨停（留浮点余量）
     # ---- 汇总 ----
     'summary_interval_minutes': 30,   # 热点汇总间隔（整半点轮附带）
@@ -321,6 +319,7 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
                 continue
 
             leaders = sorted(items, key=lambda x: -x[3])[:3]
+            losers = sorted(items, key=lambda x: x[3])[:3]
             findings.append({
                 'kind': 'pulse_sector',
                 'level': level_key,
@@ -332,6 +331,8 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
                 'median_delta': round(median([it[5] for it in items]), 2),
                 'leaders': [{'name': n, 'code': c, 'pct': round(p, 2), 'delta': round(d, 2)}
                             for c, n, _l1, p, _pp, d in leaders],
+                'losers': [{'name': n, 'code': c, 'pct': round(p, 2), 'delta': round(d, 2)}
+                           for c, n, _l1, p, _pp, d in losers],
                 'hits': hits,
                 'time': time_str,
                 'date': _today_str(),
@@ -345,7 +346,8 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
 # 检测：个股
 # --------------------------------------------------------------------------
 def _stock_findings(cur, prev, stocks, cfg, time_str):
-    """个股检测：涨停/跌停（仅状态翻转时触发）、单轮大幅拉升/跳水。"""
+    """个股检测：仅涨停/跌停（仅状态翻转时触发，封板期间不重复报）。
+    单纯拉升/跳水不推送（用户只关心涨跌停），由板块聚集覆盖整体异动。"""
     cfg = {**DEFAULT_CONFIG, **(cfg or {})}
     out = []
     tol = float(cfg['limit_tolerance'])
@@ -355,24 +357,18 @@ def _stock_findings(cur, prev, stocks, cfg, time_str):
             continue
         name = info.get('name', '')
         prev_pct = prev.get(code)
+        if prev_pct is None:
+            continue  # 涨停/跌停需对比上一轮，首轮无对比不触发
         limit = _limit_of(code, name)
-        hits = []
-        # 涨停/跌停：本轮达到且上一轮未达到（封板期间不重复报；首轮无对比不触发）
-        if prev_pct is not None and pct >= limit * tol and prev_pct < limit * tol:
-            hits.append({'type': 'limit_up', 'label': '涨停'})
-        elif prev_pct is not None and pct <= -limit * tol and prev_pct > -limit * tol:
-            hits.append({'type': 'limit_down', 'label': '跌停'})
-        # 单轮大幅拉升/跳水（涨停/跌停已覆盖时不重复报）
-        if prev_pct is not None and not hits:
-            delta = pct - prev_pct
-            if delta >= float(cfg['stock_surge_delta']):
-                hits.append({'type': 'surge', 'label': '大幅拉升', 'delta': round(delta, 2)})
-            elif delta <= -float(cfg['stock_plunge_delta']):
-                hits.append({'type': 'plunge', 'label': '大幅跳水', 'delta': round(delta, 2)})
-        for h in hits:
-            h.update({'code': code, 'name': name, 'sector': info.get('l1', ''),
-                      'pct': pct, 'kind': 'pulse_stock', 'time': time_str, 'date': _today_str()})
-        out.extend(hits)
+        hit = None
+        if pct >= limit * tol and prev_pct < limit * tol:
+            hit = {'type': 'limit_up', 'label': '涨停'}
+        elif pct <= -limit * tol and prev_pct > -limit * tol:
+            hit = {'type': 'limit_down', 'label': '跌停'}
+        if hit:
+            hit.update({'code': code, 'name': name, 'sector': info.get('l1', ''),
+                        'pct': pct, 'kind': 'pulse_stock', 'time': time_str, 'date': _today_str()})
+            out.append(hit)
     return out
 
 
@@ -423,12 +419,37 @@ def build_market_summary(pct_map, stocks, cfg=None):
 
 
 def get_latest_summary():
-    """最新一轮的市场温度（供 API /summary；不发起网络请求，读当日最后快照）。"""
+    """最新一轮概览（供 API /summary；不发起网络请求，读当日快照）。
+    除市场温度外，附带板块聚集活动：最新一轮有多少板块在集体拉升/跳水及各自中位涨幅。"""
     date_str, time_str, pct_map = latest_round()
     if not pct_map:
         return None
-    return {'date': date_str, 'time': time_str,
-            **build_market_summary(pct_map, _stocks_map())}
+    stocks = _stocks_map()
+    summary = {'date': date_str, 'time': time_str,
+               **build_market_summary(pct_map, stocks)}
+    # 板块聚集活动概览（基于最新两轮对比，与实时检测同一套阈值）
+    rising, falling = [], []
+    try:
+        prev_time, prev = load_prev_round(date_str, time_str)
+        if prev:
+            cfg = load_config()
+            for f in _sector_findings(pct_map, prev, stocks, cfg, time_str):
+                types = {h['type'] for h in f['hits']}
+                item = {'sector': f['sector'], 'l1': f['l1'], 'level': f['level'],
+                        'median_pct': f['median_pct'], 'total': f['total'],
+                        'hits': [{'type': h['type'], 'label': h['label'], 'count': h['count']}
+                                 for h in f['hits']]}
+                if 'cluster_dump' in types:
+                    falling.append(item)
+                elif types & {'cluster_surge', 'cluster_turn_red'}:
+                    rising.append(item)
+    except Exception as e:
+        logger.warning(f"[个股异动] 板块活动概览计算失败: {e}")
+    summary['rising_count'] = len(rising)
+    summary['falling_count'] = len(falling)
+    summary['sectors_rising'] = rising[:8]
+    summary['sectors_falling'] = falling[:8]
+    return summary
 
 
 # --------------------------------------------------------------------------
@@ -465,70 +486,92 @@ def _cooldown_keys(alerts, cooldown_sec, now_ts):
 
 
 def _format_round_message(record):
-    """飞书/企微 markdown：红涨绿跌（A股习惯）。"""
-    date, t = record.get('date', ''), record.get('time', '')
+    """飞书/企微 markdown：标题即最重要异动，正文紧凑分节，一眼可扫。
+    - 标题：时间 + 最显著的板块/涨跌停信号（通知栏不点开就知道发生了什么）
+    - 板块聚集：一行一板块，跳水显领跌、拉升显领涨
+    - 个股：涨跌停只列名字（幅度恒近涨停价，重复无信息量）
+    - 市场温度：一行家数 + 领涨领跌行业
+    """
+    t = record.get('time', '')
     closing = record.get('closing')
-    title = f"📊 收盘总结 {date}" if closing else f"📈 个股异动 {t}"
-    # 与上一轮间隔非 5 分钟（跨午休/补采样）时注明对比基准
-    gap_note = ''
+    cfg = load_config()
+    sectors = record.get('sectors') or []
+    stocks = record.get('stocks') or []
+    summary = record.get('summary')
+
+    # ---- 标题：最多 3 个信号片段 ----
+    title_bits = []
+    for f in sectors[:2]:
+        h = max(f['hits'], key=lambda x: x['count'])
+        title_bits.append(f"{f['sector']}{h['count']}只{h['label']}")
+    lu = sum(1 for s in stocks if s['type'] == 'limit_up')
+    ld = sum(1 for s in stocks if s['type'] == 'limit_down')
+    if lu:
+        title_bits.append(f"涨停{lu}只")
+    if ld:
+        title_bits.append(f"跌停{ld}只")
+    if not title_bits:
+        title_bits.append(f"上涨{summary['advance']} 涨停{summary['limit_up']}"
+                          if summary else "市场温度")
+    title = f"{'📊 收盘' if closing else '📈'} {t}｜{' · '.join(title_bits[:3])}"
+
+    # ---- 正文 ----
+    lines = []
+    # 对比基准非 5 分钟（跨午休/补采样）时注明，避免 Δ 误读
     prev_time = record.get('prev_time')
     if prev_time:
         try:
             hh, mm = map(int, t.split(':'))
             ph, pm = map(int, prev_time.split(':'))
             if (hh * 60 + mm) - (ph * 60 + pm) != 5:
-                gap_note = f"（vs {prev_time}）"
+                lines.append(f"> ⏱ 对比基准 {prev_time}（间隔非5分钟）")
         except Exception:
             pass
-    lines = [f"> 时间：**{date} {t}**" + ("（收盘）" if closing else "") + gap_note]
 
-    cfg = load_config()
-    sectors = record.get('sectors') or []
     if sectors:
-        lines.append("")
-        lines.append("**板块聚集**")
+        lines.append("> **🧲 板块聚集**")
         for f in sectors:
             sec_label = f"{f['l1']}·{f['sector']}" if f.get('level') == 'l2' and f.get('l1') != f['sector'] else f['sector']
             for h in f['hits']:
                 icon = '🔴' if h['type'] in ('cluster_surge', 'cluster_turn_red') else '🟢'
                 lead = ''
-                if f.get('leaders'):
-                    ld = f['leaders'][0]
-                    lead = f"，领涨 {ld['name']} {ld['pct']:+.2f}%"
+                if h['type'] == 'cluster_dump' and f.get('losers'):
+                    worst = f['losers'][0]
+                    lead = f"，领跌 {worst['name']} {worst['pct']:+.2f}%"
+                elif f.get('leaders'):
+                    best = f['leaders'][0]
+                    lead = f"，领涨 {best['name']} {best['pct']:+.2f}%"
                 lines.append(
                     f"> {icon} **{sec_label}**：{h['count']}/{f['total']} 只{h['label']}"
-                    f"（{f['median_pct']:+.2f}%）{lead}")
+                    f"（中位 {f['median_pct']:+.2f}%）{lead}")
 
-    stocks = record.get('stocks') or []
     if stocks:
-        lines.append("")
-        lines.append("**个股异动**")
         groups = {}
         for s in stocks:
             groups.setdefault(s['type'], []).append(s)
-        for typ, label, icon in (('limit_up', '涨停', '🔴'), ('limit_down', '跌停', '🟢'),
-                                 ('surge', '大幅拉升', '🔴'), ('plunge', '大幅跳水', '🟢')):
+        lines.append("> **🚨 个股涨跌停**")
+        top = int(cfg.get('stock_summary_top', 5))
+        for typ, label, icon in (('limit_up', '涨停', '🔴'), ('limit_down', '跌停', '🟢')):
             items = groups.get(typ)
             if not items:
                 continue
-            shown = items[:int(cfg.get('stock_summary_top', 5))]
-            names = '、'.join(f"{s['name']} {s['pct']:+.2f}%" for s in shown)
-            more = f" 等 {len(items)} 只" if len(items) > len(shown) else ""
-            lines.append(f"> {icon} {label}：{names}{more}")
+            shown = items[:top]
+            names = '、'.join(s['name'] for s in shown)
+            more = " 等" if len(items) > len(shown) else ""
+            lines.append(f"> {icon} {label} {len(items)} 只：{names}{more}")
 
-    summary = record.get('summary')
     if summary:
-        lines.append("")
-        lines.append(f"**市场温度**（上涨 {summary['advance']} / 下跌 {summary['decline']}"
-                     f" ｜ 涨停 {summary['limit_up']} / 跌停 {summary['limit_down']}）")
+        lines.append("> **🌡 市场温度**")
+        lines.append(f"> 上涨 {summary['advance']} / 下跌 {summary['decline']}"
+                     f" ｜ 涨停 {summary['limit_up']} / 跌停 {summary['limit_down']}")
         if summary.get('sectors_top'):
-            tops = '、'.join(f"{s['sector']} {s['median_pct']:+.2f}%（红盘{s['up_ratio']}%）"
+            tops = '、'.join(f"{s['sector']} {s['median_pct']:+.2f}%"
                              for s in summary['sectors_top'])
-            lines.append(f"> 🔴 领涨行业：{tops}")
+            lines.append(f"> 🔴 {tops}")
         if summary.get('sectors_bottom'):
             bots = '、'.join(f"{s['sector']} {s['median_pct']:+.2f}%"
                              for s in summary['sectors_bottom'])
-            lines.append(f"> 🟢 领跌行业：{bots}")
+            lines.append(f"> 🟢 {bots}")
 
     return title, "\n".join(lines)
 

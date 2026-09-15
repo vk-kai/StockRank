@@ -48,28 +48,32 @@
     <template v-else>
       <!-- ==================== 个股异动（Stock Pulse，盘中每5分钟采样） ==================== -->
       <template v-if="mainTab==='pulse'">
-        <!-- 市场温度 -->
-        <div class="fa-pulse-summary" v-if="pulseSummary">
-          <div class="fa-stats">
-            <div class="fa-stat"><div class="fa-stat-num pulse-pos">{{ pulseSummary.advance }}</div><div class="fa-stat-lbl">上涨</div></div>
-            <div class="fa-stat"><div class="fa-stat-num pulse-neg">{{ pulseSummary.decline }}</div><div class="fa-stat-lbl">下跌</div></div>
-            <div class="fa-stat"><div class="fa-stat-num pulse-pos">{{ pulseSummary.limit_up }}</div><div class="fa-stat-lbl">涨停</div></div>
-            <div class="fa-stat"><div class="fa-stat-num pulse-neg">{{ pulseSummary.limit_down }}</div><div class="fa-stat-lbl">跌停</div></div>
+        <!-- 板块聚集活动：多少板块在集体拉升/跳水及各自中位涨幅（不重复首页的涨跌家数） -->
+        <div class="fa-pulse-activity" v-if="pulseSummary">
+          <div class="fa-activity-head">
+            <span class="fa-activity-title">🧲 板块聚集活动</span>
+            <span class="fa-activity-time">{{ pulseSummary.date }} {{ pulseSummary.time }} 轮</span>
           </div>
-          <div class="fa-pulse-rank">
-            <div class="fa-rank-line" v-if="pulseSummary.sectors_top && pulseSummary.sectors_top.length">
-              <span class="fa-rank-tag rank-pos">领涨行业</span>
-              <span v-for="s in pulseSummary.sectors_top" :key="'t'+s.sector" class="fa-rank-item">
-                {{ s.sector }} <b :class="s.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ s.median_pct >= 0 ? '+' : '' }}{{ fmt(s.median_pct) }}%</b>（红盘 {{ s.up_ratio }}%）
-              </span>
-            </div>
-            <div class="fa-rank-line" v-if="pulseSummary.sectors_bottom && pulseSummary.sectors_bottom.length">
-              <span class="fa-rank-tag rank-neg">领跌行业</span>
-              <span v-for="s in pulseSummary.sectors_bottom" :key="'b'+s.sector" class="fa-rank-item">
-                {{ s.sector }} <b :class="s.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ fmt(s.median_pct) }}%</b>
-              </span>
-            </div>
-            <div class="fa-rank-time">市场温度采样：{{ pulseSummary.date }} {{ pulseSummary.time }}</div>
+          <div class="fa-activity-counts">
+            <span class="act-pos">拉升板块 {{ pulseSummary.rising_count || 0 }}</span>
+            <span class="act-neg">跳水板块 {{ pulseSummary.falling_count || 0 }}</span>
+          </div>
+          <div class="fa-rank-line" v-if="pulseSummary.sectors_rising && pulseSummary.sectors_rising.length">
+            <span class="fa-rank-tag rank-pos">拉升</span>
+            <span v-for="s in pulseSummary.sectors_rising" :key="'r'+s.level+s.sector" class="fa-rank-item">
+              {{ pulseSectorLabel(s) }} <b class="pulse-pos">{{ s.median_pct >= 0 ? '+' : '' }}{{ fmt(s.median_pct) }}%</b>
+              <em v-if="s.hits && s.hits.length">{{ s.hits[0].count }}/{{ s.total }} 只{{ s.hits[0].label }}</em>
+            </span>
+          </div>
+          <div class="fa-rank-line" v-if="pulseSummary.sectors_falling && pulseSummary.sectors_falling.length">
+            <span class="fa-rank-tag rank-neg">跳水</span>
+            <span v-for="s in pulseSummary.sectors_falling" :key="'f'+s.level+s.sector" class="fa-rank-item">
+              {{ pulseSectorLabel(s) }} <b class="pulse-neg">{{ fmt(s.median_pct) }}%</b>
+              <em v-if="s.hits && s.hits.length">{{ s.hits[0].count }}/{{ s.total }} 只{{ s.hits[0].label }}</em>
+            </span>
+          </div>
+          <div class="fa-activity-empty" v-if="!(pulseSummary.sectors_rising || []).length && !(pulseSummary.sectors_falling || []).length">
+            最新一轮无板块聚集异动，市场相对平静
           </div>
         </div>
         <div v-else-if="!pulseLoading" class="fa-empty"><p>当日暂无采样数据（交易时段每 5 分钟自动采样）</p></div>
@@ -86,7 +90,6 @@
               <button :class="{active: pulseFilter==='all'}" @click="pulseFilter='all'">全部</button>
               <button :class="{active: pulseFilter==='sector'}" @click="pulseFilter='sector'">🧲 板块聚集</button>
               <button :class="{active: pulseFilter==='limit'}" @click="pulseFilter='limit'">涨停/跌停</button>
-              <button :class="{active: pulseFilter==='move'}" @click="pulseFilter='move'">拉升/跳水</button>
             </div>
           </div>
         </div>
@@ -323,7 +326,7 @@
       实时推送在交易时段每 5 分钟采集后自动触发（去重冷却 30 分钟）。可在「系统配置 → 异动检测」调整阈值。
     </div>
     <div class="fa-footnote" v-else>
-      个股异动判定：板块聚集（同行业多只同时拉升/翻红/跳水）/ 涨停跌停 / 单轮大幅拉升跳水。盘中每 5 分钟采样一次，有异动才推送（同板块同类型冷却 40 分钟）。
+      个股异动判定：板块聚集（同行业多只同时拉升/翻红/跳水）/ 涨停跌停（单纯个股拉升跳水不推）。盘中每 5 分钟采样一次，有异动才推送（同板块同类型冷却 40 分钟）。
     </div>
 
     <SecurityAlert />
@@ -347,7 +350,7 @@ const DIM_META = {
 // 个股异动（Stock Pulse）触发类型图标：红涨绿跌
 const PULSE_ICONS = {
   cluster_surge: '🔴', cluster_turn_red: '🔴', cluster_dump: '🟢',
-  limit_up: '🔴', limit_down: '🟢', surge: '🔴', plunge: '🟢'
+  limit_up: '🔴', limit_down: '🟢'
 }
 
 export default {
@@ -430,7 +433,6 @@ export default {
       let list = this.pulseFindings
       if (f === 'sector') list = list.filter(x => x.kind === 'pulse_sector')
       else if (f === 'limit') list = list.filter(x => x.kind === 'pulse_stock' && (x.type === 'limit_up' || x.type === 'limit_down'))
-      else if (f === 'move') list = list.filter(x => x.kind === 'pulse_stock' && (x.type === 'surge' || x.type === 'plunge'))
       return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
     },
     // 个股异动分组：板块卡片独立、个股同代码折叠
@@ -464,12 +466,14 @@ export default {
     window.addEventListener('auth-required', this.onAuthRequired)
     window.addEventListener('auth-login-success', this.onAuthLogin)
     window.addEventListener('ws-stock-pulse', this.onPulsePush)
+    this._autoTimer = setInterval(this.autoRefresh, 60000)  // 60s 自动刷新，免手动
     await this.runDetect()
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.onAuthRequired)
     window.removeEventListener('auth-login-success', this.onAuthLogin)
     window.removeEventListener('ws-stock-pulse', this.onPulsePush)
+    if (this._autoTimer) clearInterval(this._autoTimer)
   },
   methods: {
     goBack() { this.$router.push('/') },
@@ -540,11 +544,22 @@ export default {
       if (v === 'pushed' && !this.pushed.length) this.loadPushed()
     },
     // ==================== 个股异动（Stock Pulse） ====================
+    autoRefresh() {
+      // 60s 静默自刷新（后端重放本地快照，开销小）；页面不可见/未登录时跳过
+      if (this.needsAuth || document.hidden) return
+      if (this.mainTab === 'fund') {
+        if (this.loading) return
+        if (this.view === 'pushed') { this.loadPushed(); return }
+        this.runDetect(true)
+      } else {
+        if (this.pulseLoading) return
+        this.runPulseDetect(true)
+      }
+    },
     switchMainTab(t) {
       this.mainTab = t
       if (t === 'pulse') {
-        if (!this.pulseSummary) this.loadPulseSummary()
-        if (!this.pulseFindings.length) this.runPulseDetect()
+        this.runPulseDetect()
       }
     },
     async loadPulseSummary() {
@@ -553,8 +568,8 @@ export default {
         if (res.success) this.pulseSummary = res.data
       } catch (e) { /* 401 已处理 */ }
     },
-    async runPulseDetect() {
-      this.pulseLoading = true
+    async runPulseDetect(silent = false) {
+      if (!silent) this.pulseLoading = true
       try {
         const res = await runStockPulseDetection()
         if (res.success) {
@@ -563,13 +578,13 @@ export default {
           else this.loadPulseSummary()
         }
       } catch (e) { /* 401 已处理 */ }
-      finally { this.pulseLoading = false }
+      finally { if (!silent) this.pulseLoading = false }
     },
     onPulsePush() {
       // WebSocket 收到新一轮推送：静默刷新温度与命中列表
       if (this.mainTab !== 'pulse') return
       this.loadPulseSummary()
-      this.runPulseDetect()
+      this.runPulseDetect(true)
     },
     pulseSectorLabel(f) {
       if (f.level === 'l2' && f.l1 && f.l1 !== f.sector) return `${f.l1}·${f.sector}`
@@ -577,7 +592,7 @@ export default {
     },
     pulseHitIcon(type) { return PULSE_ICONS[type] || '•' },
     pulseStockHitClass(s) {
-      return (s.type === 'limit_down' || s.type === 'plunge' || s.type === 'cluster_dump')
+      return (s.type === 'limit_down' || s.type === 'cluster_dump')
         ? 'hit-pulse-neg' : 'hit-pulse-pos'
     },
     async onDateChange() {
@@ -585,9 +600,9 @@ export default {
       if (this.view === 'detect') this.runDetect()
       else { this.pushed = []; this.loadPushed() }
     },
-    async runDetect() {
-      this.loading = true
-      this.findings = []
+    async runDetect(silent = false) {
+      // silent=true：自动刷新用，不清列表、不亮加载动画，静默替换数据
+      if (!silent) { this.loading = true; this.findings = [] }
       try {
         const res = await runAnomalyDetection()
         if (res.success) {
@@ -667,7 +682,9 @@ export default {
   background: linear-gradient(135deg, #3a4a6b, #2a3a5b); color: #e0e6f0;
   border: 1px solid #4a5a7b; border-radius: 4px; padding: 8px 14px; cursor: pointer; font-size: 14px;
 }
-.fa-header h1 { font-size: 22px; font-weight: 600; margin: 0; flex: 1; }
+.fa-header h1 { font-size: 22px; font-weight: 600; margin: 0; }
+/* 主 Tab 紧跟标题放在左侧；右侧按钮组 margin-left:auto 推到右边 */
+.fa-header .fa-header-right { margin-left: auto; }
 .fa-snapshot {
   margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
   background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5);
@@ -787,6 +804,16 @@ export default {
 .pulse-pos { color: #ff4d4f; }
 .pulse-neg { color: #13d17c; }
 .fa-pulse-summary { margin-bottom: 14px; }
+/* ===== 板块聚集活动卡片（替代原涨跌家数温度卡） ===== */
+.fa-pulse-activity { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+.fa-activity-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.fa-activity-title { font-weight: 600; color: #fff; }
+.fa-activity-time { font-size: 11px; color: #6a7a99; }
+.fa-activity-counts { display: flex; gap: 16px; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+.act-pos { color: #ff7875; }
+.act-neg { color: #13d17c; }
+.fa-activity-empty { color: #6a7a99; font-size: 12px; padding: 2px 0; }
+.fa-rank-item em { font-style: normal; color: #8ba4c7; font-size: 11px; margin-left: 2px; }
 .fa-pulse-rank { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
 .fa-rank-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
 .fa-rank-tag { font-size: 12px; border-radius: 10px; padding: 1px 10px; }

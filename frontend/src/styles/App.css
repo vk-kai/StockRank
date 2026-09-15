@@ -2432,7 +2432,92 @@ button:active:not(:disabled) {
   cursor: not-allowed;
 }
 
-/* ===== 资金异动速览弹窗 ===== */
+/* ===== 异动速览弹窗 ===== */
+.flow-alert-modal .modal-header.fa-quick-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.flow-alert-modal .modal-header.fa-quick-header h3 {
+  margin: 0;
+  flex-shrink: 0;
+}
+.fa-quick-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 3px;
+  margin-left: auto;
+}
+.fa-quick-tabs button {
+  background: transparent;
+  border: none;
+  color: #8ba4c7;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.fa-quick-tabs button.active {
+  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+  color: #fff;
+}
+.fa-quick-tabs button:not(.active):hover { color: #fff; }
+
+.fa-quick-rank {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fa-quick-rank-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.fa-quick-rank-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.fa-quick-rank-tag.pos { color: #ff7875; background: rgba(255, 77, 79, 0.15); }
+.fa-quick-rank-tag.neg { color: #13d17c; background: rgba(19, 209, 124, 0.15); }
+.fa-quick-rank-item { color: #c0cce0; white-space: nowrap; }
+.fa-quick-rank-item b { font-weight: 700; }
+.fa-quick-rank-item b.pos { color: #ff4d4f; }
+.fa-quick-rank-item b.neg { color: #13d17c; }
+.fa-quick-rank-time {
+  font-size: 10px;
+  color: #6a7a99;
+  text-align: right;
+}
+
+.fa-quick-pulse-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fa-quick-pulse-line {
+  font-size: 12px;
+  color: #c0cce0;
+  line-height: 1.5;
+}
+.fa-quick-pulse-line.pos { color: #ff9c9e; }
+.fa-quick-pulse-line.neg { color: #4ed99c; }
+
 .flow-alert-modal {
   background: linear-gradient(135deg, #2d3561 0%, #1a1f35 100%);
   border-radius: 12px;

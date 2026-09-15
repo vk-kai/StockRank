@@ -1246,13 +1246,15 @@ def stock_pulse_summary():
 def stock_pulse_run():
     """回放全天个股异动检测（不推送）。date 缺省为今天。"""
     try:
-        from analysis.stock_pulse import detect_full_day
+        from analysis.stock_pulse import detect_full_day, get_latest_summary
         date_str = request.args.get('date')
-        findings, latest_summary, rounds = detect_full_day(date_str=date_str, push=False)
+        findings, _ls, rounds = detect_full_day(date_str=date_str, push=False)
+        # summary 统一走 get_latest_summary（含板块聚集活动概览）
+        summary = get_latest_summary() if not date_str else _ls
         return jsonify({'success': True, 'data': findings,
-                        'snapshot': {'date': date_str or '', 'time': (latest_summary or {}).get('time', ''),
+                        'snapshot': {'date': date_str or '', 'time': (_ls or {}).get('time', ''),
                                      'rounds': rounds},
-                        'summary': latest_summary, 'count': len(findings)})
+                        'summary': summary, 'count': len(findings)})
     except Exception as e:
         error_logger.error(f"API /api/flow/stock-pulse/run 异常: {e}")
         return jsonify({'success': False, 'message': f'检测失败: {str(e)[:100]}'}), 500

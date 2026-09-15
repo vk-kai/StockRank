@@ -72,7 +72,7 @@ def _push_to_enabled_channels(pushers):
         success = push_func()
         results.append((channel_name, success))
         if success:
-            info_logger.info(f"{channel_name}推送成功")
+            info_logger.debug(f"{channel_name}推送成功")
         else:
             info_logger.error(f"{channel_name}推送失败")
 
@@ -116,7 +116,7 @@ def send_news_item_to_channels(news_item, analysis_result=None, channels=None, p
         success = channel['send'](title, content, analysis_result, url)
         results.append((channel['key'], channel['name'], success))
         if success:
-            info_logger.info(f"{channel['name']}新闻推送成功")
+            info_logger.debug(f"{channel['name']}新闻推送成功")
         else:
             info_logger.error(f"{channel['name']}新闻推送失败")
 

@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts } from '../../services/apiService'
 import { generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -76,11 +76,15 @@ export default {
       anomalyWatchInterval: null,
       lastAnomalyTimestamp: '',
       hasUnreadAnomaly: false,
-      // 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）
+      // 异动速览弹窗（首页一键瞄一眼：资金+个股两层面，深入看跳 /flow-alert）
       showFlowAlertModal: false,
+      quickTab: 'fund',
       flowAlertLoading: false,
       flowAlertList: [],
       flowAlertSummary: { total: 0, sectors: 0, latest: '--' },
+      pulseQuickLoading: false,
+      pulseQuickList: [],
+      pulseQuickSummary: null,
       showStockModal: false,
       selectedSector: null,
       sectorStocks: [],
@@ -1856,7 +1860,7 @@ export default {
       }
     },
 
-    // ===== 资金异动速览弹窗（首页一键瞄一眼，深入看跳 /flow-alert）=====
+    // ===== 异动速览弹窗（首页一键瞄一眼：资金+个股两层面，深入看跳 /flow-alert）=====
     openFlowAlertModal() {
       if (this.requireAuthOrPrompt()) return
       this.hasUnreadAnomaly = false   // 打开速览即视为已读
@@ -1867,6 +1871,9 @@ export default {
       this.showFlowAlertModal = false
     },
     async refreshFlowAlertModal() {
+      await Promise.all([this.loadFundQuick(), this.loadPulseQuick()])
+    },
+    async loadFundQuick() {
       this.flowAlertLoading = true
       try {
         // 只看今日已推送的异动（与桌面通知同源），最新 10 条 + 简要统计
@@ -1883,12 +1890,58 @@ export default {
           latest: latest ? `${latest.date} ${latest.time}` : '--'
         }
       } catch (e) {
-        console.log('异动速览加载失败:', e)
+        console.log('资金异动速览加载失败:', e)
         this.flowAlertList = []
         this.flowAlertSummary = { total: 0, sectors: 0, latest: '--' }
       } finally {
         this.flowAlertLoading = false
       }
+    },
+    async loadPulseQuick() {
+      this.pulseQuickLoading = true
+      try {
+        // 个股异动：市场温度（最新采样）+ 今日已推送轮次（记录日期为 YYYYMMDD）
+        const d = new Date()
+        const todayStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+        const [sumRes, alRes] = await Promise.all([getStockPulseSummary(), getStockPulseAlerts(todayStr)])
+        this.pulseQuickSummary = (sumRes && sumRes.success && sumRes.data) ? sumRes.data : null
+        const records = (alRes && alRes.success && Array.isArray(alRes.data)) ? alRes.data : []
+        this.pulseQuickList = records.slice(0, 10)
+      } catch (e) {
+        console.log('个股异动速览加载失败:', e)
+        this.pulseQuickSummary = null
+        this.pulseQuickList = []
+      } finally {
+        this.pulseQuickLoading = false
+      }
+    },
+    pulseQuickLines(a) {
+      // 把一轮 pulse_round 记录拆成可读行：板块聚集 → 个股异动（无内容时退回市场温度）
+      const lines = []
+      for (const f of (a.sectors || [])) {
+        for (const h of (f.hits || [])) {
+          const red = h.type === 'cluster_surge' || h.type === 'cluster_turn_red'
+          lines.push({
+            cls: red ? 'pos' : 'neg',
+            text: `${red ? '🔴' : '🟢'} ${f.sector}：${h.count}/${f.total} 只${h.label}（中位 ${f.median_pct >= 0 ? '+' : ''}${f.median_pct}%）`
+          })
+        }
+      }
+      const groups = {}
+      for (const s of (a.stocks || [])) (groups[s.type] = groups[s.type] || []).push(s)
+      for (const [typ, label, cls, icon] of (
+        [['limit_up', '涨停', 'pos', '🔴'], ['limit_down', '跌停', 'neg', '🟢']])) {
+        const items = groups[typ]
+        if (!items || !items.length) continue
+        const names = items.slice(0, 3).map(s => `${s.name} ${s.pct >= 0 ? '+' : ''}${s.pct}%`).join('、')
+        const more = items.length > 3 ? ` 等${items.length}只` : ''
+        lines.push({ cls, text: `${icon} ${label}：${names}${more}` })
+      }
+      const sm = a.summary
+      if (!lines.length && sm) {
+        lines.push({ cls: '', text: `上涨 ${sm.advance} / 下跌 ${sm.decline} ｜ 涨停 ${sm.limit_up} / 跌停 ${sm.limit_down}` })
+      }
+      return lines
     },
     gotoFlowAlertPage() {
       this.closeFlowAlertModal()

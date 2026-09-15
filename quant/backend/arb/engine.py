@@ -33,6 +33,7 @@ runtime: dict = {
     "last_error": None,
     "monitor_enabled": None,
     "trading_day": None,
+    "date": None,    # 当前处理日(跨日清空 pairs 快照用)
     "phase": "off",  # off|disabled|not_trading_day|preopen|session|idle
     "kospi_pct": None,
     "pairs": {},     # pair_id -> live snapshot
@@ -163,6 +164,47 @@ def _stock_quotes_batch(codes: list) -> dict:
     return valid
 
 
+# 昨日收盘涨跌幅缓存: code -> (计算日, 昨日全天涨跌幅%)
+_prev_daily_pct_cache: dict[str, tuple[str, Optional[float]]] = {}
+
+
+def _yesterday_close_pct(code: str, today: str) -> Optional[float]:
+    """昨日全天涨跌幅%(昨日收盘 / 前日收盘),用于识别盘前拿到的"昨日收盘快照"。
+
+    集合竞价期部分 pytdx 服务器的报价不是 price=0,而是上一交易日的收盘快照
+    (price=昨收、change_pct=昨日全天涨跌幅),直接当今日竞价价会把昨天当成
+    今天——面板显示错,个股"平开"判断失真还可能触发假盘前提示。昨日全天
+    涨跌幅当天不变,按 (code, 日期) 缓存,每对每天至多多一次日线请求。
+    """
+    key = str(code or "").strip().zfill(6)
+    if not key:
+        return None
+    cached = _prev_daily_pct_cache.get(key)
+    if cached and cached[0] == today:
+        return cached[1]
+    pct: Optional[float] = None
+    try:
+        df = pytdx_data.get_kline(key, "daily", 3)
+        by_date: dict[str, float] = {}
+        if df is not None and not df.empty and "datetime" in df.columns:
+            for _, row in df.iterrows():
+                day = str(row.get("datetime", ""))[:10]
+                try:
+                    close = float(row.get("close") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if len(day) == 10 and day < today and close > 0:
+                    by_date[day] = close
+        days = sorted(by_date)
+        if len(days) >= 2 and by_date[days[-2]] > 0:
+            pct = round((by_date[days[-1]] / by_date[days[-2]] - 1) * 100, 2)
+    except Exception as exc:
+        logger.debug("昨日收盘涨跌幅获取失败 %s: %s", key, exc)
+        return None  # 失败不缓存,下轮重试
+    _prev_daily_pct_cache[key] = (today, pct)
+    return pct
+
+
 def _cooldown_ok(pair_id: int, direction: str, now: datetime) -> bool:
     last = _cooldown.get((pair_id, direction))
     if last is not None and (now - last).total_seconds() < config.ARB_ALERT_COOLDOWN_MINUTES * 60:
@@ -203,6 +245,9 @@ def _tick_preopen(pair: dict, snap: dict, now: datetime, hhmm: str, trade_date: 
     """盘前 KOSPI 提示: KOSPI 累计涨跌超阈值 + 个股竞价平开 → 提示。signal_time 固定 09:15,每日至多一条。"""
     kospi_pct = runtime.get("kospi_pct")
     snap["kospi_pct"] = kospi_pct
+    # 卡片"基准"格渲染的是 bench_pct:盘前基准就是 KOSPI,先填上,
+    # 竞价报价不可用时面板也不至于把基准显示成 --
+    snap["bench_pct"] = kospi_pct
     if kospi_pct is None:
         snap["status"] = "warmup"
         snap["reason"] = "KOSPI 早盘数据尚未累积"
@@ -217,11 +262,30 @@ def _tick_preopen(pair: dict, snap: dict, now: datetime, hhmm: str, trade_date: 
     try:
         stock_pct = float(stock_pct)
     except (TypeError, ValueError):
-        stock_pct = None
+        snap["status"] = "warmup"
+        snap["reason"] = "个股竞价报价异常"
+        return None
+
+    # 集合竞价期 pytdx 可能回的是"昨日收盘快照"(price>0、change_pct=昨日全天涨跌幅),
+    # 不是今日竞价价。涨跌幅与昨日全天涨跌幅一致(且价格确实≠昨收,排除真平开竞价)
+    # 时视为旧快照:宁可显示"尚未就绪",也不能把昨天的数字当今天的竞价展示/判定。
+    yesterday_pct = _yesterday_close_pct(pair.get("stock_code"), trade_date)
+    if yesterday_pct is not None and abs(stock_pct - yesterday_pct) <= 0.05:
+        same_price = False
+        try:
+            same_price = (
+                quote.get("pre_close") is not None
+                and abs(float(quote.get("price")) - float(quote.get("pre_close"))) < 1e-6
+            )
+        except (TypeError, ValueError):
+            same_price = False
+        if not same_price:
+            snap["stock_pct"] = None
+            snap["status"] = "warmup"
+            snap["reason"] = "个股竞价报价尚未就绪(数据源仍是昨日收盘快照)"
+            return None
 
     snap["stock_pct"] = stock_pct
-    # 卡片"基准"格渲染的是 bench_pct:盘前基准就是 KOSPI,同步填上,否则面板显示 --
-    snap["bench_pct"] = kospi_pct
     snap["status"] = "preopen"
     snap["reason"] = f"盘前观察:KOSPI {kospi_pct:+.2f}%,个股竞价 {stock_pct:+.2f}%"
 
@@ -251,11 +315,14 @@ def _tick_preopen(pair: dict, snap: dict, now: datetime, hhmm: str, trade_date: 
     return None
 
 
-def _pair_aligned_series(pair: dict, snap: dict, quote_map: dict) -> Optional[list[tuple]]:
+def _pair_aligned_series(pair: dict, snap: dict, quote_map: dict, *,
+                         require_today: bool = False, today: str = "") -> Optional[list[tuple]]:
     """公共取数段:基准分时 + 个股分钟 + 昨收归一 → 对齐序列。
 
     失败时把 error/reason 写进 snap 并返回 None;成功返回 aligned。
-    盘中判定与盘外展示快照共用。
+    盘中判定(require_today=True,必须双边都是今日数据,防止 09:30 刚开盘时
+    拿"昨日整日曲线"判定背离)与盘外展示快照(require_today=False,刻意展示
+    最后交易时段)共用。
     """
     bench = None
     try:
@@ -271,6 +338,10 @@ def _pair_aligned_series(pair: dict, snap: dict, quote_map: dict) -> Optional[li
         return None
     snap["bench_source"] = bench.get("source")
     snap["bench_stale"] = bool(bench.get("stale"))
+    if require_today and str(bench.get("trade_date") or "") != today:
+        snap["status"] = "warmup"
+        snap["reason"] = f"基准分时仍是 {bench.get('trade_date') or '上一交易日'} 的数据,今日行情尚未开始"
+        return None
 
     code = str(pair.get("stock_code") or "").strip().zfill(6)
     try:
@@ -284,6 +355,13 @@ def _pair_aligned_series(pair: dict, snap: dict, quote_map: dict) -> Optional[li
         snap["status"] = "warmup"
         snap["reason"] = "个股当日分钟线尚无数据"
         return None
+    if require_today and "datetime" in df.columns:
+        # get_latest_session_minutes 会顺延回上一个有数据的交易日,盘中判定必须拦住
+        latest_day = str(df["datetime"].max())[:10]
+        if latest_day != today:
+            snap["status"] = "warmup"
+            snap["reason"] = "个股当日分钟线尚未就绪"
+            return None
 
     # 昨收: 实时报价优先,缺失时用当日首根开盘价近似
     quote = quote_map.get(code)
@@ -318,13 +396,17 @@ def _pair_aligned_series(pair: dict, snap: dict, quote_map: dict) -> Optional[li
     return divergence.align_series(stock_points, bench.get("points") or [])
 
 
-def _tick_display(pair: dict, snap: dict) -> None:
+def _tick_display(pair: dict, snap: dict, preopen: bool = False) -> None:
     """非交易时段(收盘后/午休/非交易日)的展示快照:重建最后交易时段的曲线+涨跌幅,不判定。
 
     仅在 runtime 里没有可保留的旧快照时调用(如进程在盘外重启)。
+    preopen=True 时是盘前窗口里未开启盘前提示的对,文案相应区分。
     """
     snap["status"] = "off"
-    snap["reason"] = "非交易时段,显示最后交易时段状态"
+    snap["reason"] = (
+        "盘前窗口:该对未开启盘前提示,显示最后交易时段状态"
+        if preopen else "非交易时段,显示最后交易时段状态"
+    )
     try:
         aligned = _pair_aligned_series(pair, snap, {})
     except Exception as exc:
@@ -339,7 +421,7 @@ def _tick_display(pair: dict, snap: dict) -> None:
 
 def _tick_intraday(pair: dict, snap: dict, now: datetime, hhmm: str, trade_date: str, quote_map: dict) -> Optional[dict]:
     """盘中背离判定。"""
-    aligned = _pair_aligned_series(pair, snap, quote_map)
+    aligned = _pair_aligned_series(pair, snap, quote_map, require_today=True, today=trade_date)
     if aligned is None:
         return None
     snap["curve"] = _compact_curve(aligned)
@@ -393,6 +475,15 @@ def _run_tick_locked() -> list[dict]:
     in_window = _in_window(hhmm, config.ARB_MONITOR_WINDOW)
     today = now.strftime("%Y-%m-%d")
 
+    # 跨日清理:上一交易日的运行态快照一律不继承。否则昨天盘前的"盘前观察"
+    # 文案、昨天收盘后的"基准已收盘"状态会原样带到今天(面板看起来像今天的
+    # 实时数据,实际全是昨天的数字)。
+    if runtime.get("date") != today:
+        runtime["date"] = today
+        runtime["pairs"] = {}
+        runtime["kospi_pct"] = None
+        _display_retry_at.clear()
+
     trading: Optional[bool] = None
     if in_window:
         try:
@@ -442,13 +533,16 @@ def _run_tick_locked() -> list[dict]:
             # (曲线/涨跌幅/判定状态);旧快照缺失或为错误态(如数据源瞬断时冻结的
             # "不可用"文案)时节流重建,自愈成"最后交易时段"的展示快照。
             if prev is not None and prev.get("status") != "error":
+                if preopen_phase and prev.get("status") == "off":
+                    # 盘前窗口里沿用的昨收展示快照,文案要说明是盘前等待,避免误读成实时
+                    prev["reason"] = "盘前窗口:该对未开启盘前提示,显示最后交易时段状态"
                 snapshots[pair_id] = prev
                 continue
             now_s = time.monotonic()
             if now_s - _display_retry_at.get(pair_id, 0.0) >= _DISPLAY_RETRY_SECONDS:
                 _display_retry_at[pair_id] = now_s
                 snap = _pair_snapshot(pair)
-                _tick_display(pair, snap)
+                _tick_display(pair, snap, preopen=preopen_phase)
             else:
                 snap = prev if prev is not None else _pair_snapshot(pair)
             snapshots[pair_id] = snap
@@ -468,9 +562,12 @@ def _run_tick_locked() -> list[dict]:
             snap["reason"] = f"监控异常: {exc}"
             logger.warning("套利监控单对异常 pair=%s: %s", pair.get("id"), exc)
         # 竞价无有效报价/当日分钟线尚未就绪 → 不拿空白或 0 价脏数据覆盖,
-        # 继续展示旧快照(通常是昨收曲线/涨跌幅),有真实数据后再开始覆盖。
+        # 继续展示上一份"今天真实判定过"的快照(ok/flat/decoupled,曲线是今天的);
+        # 昨收展示快照(off)和盘前快照(preopen)一律不回填——盘前拿不到竞价就
+        # 坦诚显示"尚未就绪",绝不能把昨天的曲线/涨跌幅当成今天的盘前观察。
         prefer_prev = bool(
             prev and prev.get("curve") and not snap.get("curve")
+            and prev.get("status") in ("ok", "flat", "decoupled")
             and (snap.get("status") == "warmup" or (preopen_phase and snap.get("status") == "error"))
         )
         if prefer_prev:
