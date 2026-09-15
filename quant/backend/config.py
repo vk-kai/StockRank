@@ -203,9 +203,6 @@ ARB_PREOPEN_STOCK_FLAT_PCT = _env_float("ARB_PREOPEN_STOCK_FLAT_PCT", 0.3)  # �
 ARB_GLOBAL_BENCH_CLOSE = _env_text("ARB_GLOBAL_BENCH_CLOSE", "14:30")       # 全球基准收盘时刻(北京时间;KOSPI 15:30 KST=14:30),收盘后该类基准的配对不再判定
 ARB_TRENDS_CACHE_TTL = _env_int("ARB_TRENDS_CACHE_TTL", 12)               # 基准分时缓存秒
 ARB_TRENDS_STALE_MAX_SECONDS = _env_int("ARB_TRENDS_STALE_MAX_SECONDS", 300)  # 陈旧基准最大可服务年龄
-# ── 重大事件日历(加息决议/CPI/非农等宏观数据发布;主源百度股市通,备源ForexFactory) ──
-EVENT_CALENDAR_TTL_SECONDS = _env_int("EVENT_CALENDAR_TTL_SECONDS", 1800)  # 日历缓存秒(30分钟)
-EVENT_CALENDAR_DAYS = _env_int("EVENT_CALENDAR_DAYS", 7)                   # 默认取未来几天的事件
 ARB_MAX_PAIRS = _env_int("ARB_MAX_PAIRS", 20)                             # 每用户最多监控对数
 
 LIVE_SCAN_STRATEGY_OPTIONS = [

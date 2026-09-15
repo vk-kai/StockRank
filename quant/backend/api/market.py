@@ -1082,23 +1082,3 @@ def start_history_download_api(
     _kline_response_cache.clear()
     result = start_history_download(selected_periods, force_refresh=force_refresh, codes=selected_codes, time_span=time_span)
     return result
-
-
-@router.get("/events/calendar")
-def get_events_calendar(
-    days: int = Query(7, ge=1, le=30, description="取未来几天的事件"),
-    min_importance: int = Query(1, ge=1, le=3, description="重要性下限(3=最重要)"),
-):
-    """重大事件日历: 央行利率决议/CPI/非农/PMI 等宏观数据发布(北京时间升序)。
-
-    服务端 TTL 缓存 30 分钟,首次调用会串行拉 7 天数据(~5s),之后走缓存。
-    """
-    from backend.market import event_calendar
-
-    try:
-        items = event_calendar.get_event_calendar(days=days)
-    except Exception as exc:
-        logger.exception("事件日历获取失败: %s", exc)
-        return {"success": False, "message": f"事件日历获取失败: {exc}"}
-    data = [it for it in items if int(it.get("importance") or 1) >= min_importance]
-    return {"success": True, "count": len(data), "data": data}

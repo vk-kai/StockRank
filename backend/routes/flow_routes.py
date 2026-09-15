@@ -5,8 +5,6 @@ import threading
 import json
 import os
 import re
-import time
-import requests
 from core.config import DAILY_DIR, REALTIME_DIR, AI_DAILY_RESULT_FILE, AI_DAILY_STATUS_FILE
 from data.data_processor import (
     load_recent_daily_data, load_recent_realtime_data,
@@ -78,52 +76,27 @@ def ai_chain():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ── 重大事件日历(加息决议/CPI/非农/PMI 等)：数据逻辑在 quant 后端，这里只转发 ──
-# 生产: Flask 容器经 stock-network 直连 quant 容器(与 quant_signal_bridge 同一口径);
-# 本地开发可设 QUANT_BASE_URL=http://127.0.0.1:8000
-QUANT_BASE_URL = os.environ.get('QUANT_BASE_URL', 'http://a-stock-quant:8000')
-_event_cal_cache = {}  # (days, min_imp) -> (monotonic_ts, items)
-_EVENT_CAL_TTL_SECONDS = 300  # quant 侧已有 30 分钟缓存，这里只挡跨容器转发风暴
+# ── 重大事件日历(加息决议/CPI/非农/PMI 等)：数据抓取在本模块 data/event_calendar.py ──
+from data.event_calendar import get_event_calendar as _fetch_event_calendar
 
 
 @flow_bp.route('/events/calendar', methods=['GET'])
 def events_calendar():
-    """重大事件日历：转发 quant 后端 /api/market/events/calendar（北京时间升序）。
+    """重大事件日历：央行利率决议/CPI/非农/PMI 等宏观发布（北京时间升序）。
 
-    quant 侧首次冷启动串行拉 7 天数据约 5~8s，之后 30 分钟缓存；转发失败时若有
-    旧缓存先用旧数据顶着，保证首页胶囊不至于空白。
+    模块内 TTL 缓存 30 分钟 + app.py 后台预热线程，请求永远打到热缓存；
+    双源(百度股市通/ForexFactory)全挂时返回 short-cached 空列表由前端提示。
     """
     days = max(1, min(request.args.get('days', 7, type=int) or 7, 30))
     min_imp = max(1, min(request.args.get('min_importance', 1, type=int) or 1, 3))
-    key = (days, min_imp)
-    now_s = time.monotonic()
-
-    cached = _event_cal_cache.get(key)
-    if cached and now_s - cached[0] < _EVENT_CAL_TTL_SECONDS:
-        return jsonify({'success': True, 'count': len(cached[1]), 'data': cached[1]})
-
     try:
-        resp = requests.get(
-            f'{QUANT_BASE_URL}/api/market/events/calendar',
-            params={'days': days, 'min_importance': min_imp},
-            timeout=30,
-        )
-        payload = resp.json()
+        items = _fetch_event_calendar(days)
     except Exception as e:
-        system_logger.error(f"API错误 [/api/flow/events-calendar] 转发失败: {e}")
-        if cached:
-            return jsonify({'success': True, 'count': len(cached[1]), 'data': cached[1], 'stale': True})
+        error_logger.error(f"事件日历接口错误: {e}")
+        system_logger.error(f"API错误 [/api/flow/events-calendar]: {e}")
         return jsonify({'success': False, 'error': f'事件日历获取失败: {e}'}), 502
-
-    if not payload.get('success'):
-        return jsonify({'success': False, 'error': payload.get('message') or '事件日历获取失败'}), 502
-
-    items = payload.get('data') or []
-    _event_cal_cache[key] = (now_s, items)
-    # 顺手清掉过期的陈旧键
-    for k in [k for k, v in _event_cal_cache.items() if now_s - v[0] > 86400]:
-        _event_cal_cache.pop(k, None)
-    return jsonify({'success': True, 'count': len(items), 'data': items})
+    data = [it for it in items if int(it.get('importance') or 1) >= min_imp]
+    return jsonify({'success': True, 'count': len(data), 'data': data})
 
 
 @flow_bp.route('/market-map', methods=['GET'])

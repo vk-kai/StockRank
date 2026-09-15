@@ -341,6 +341,11 @@ if __name__ == '__main__':
         quant_signal_thread.start()
         system_logger.info("量化扫描信号桥线程已启动")
 
+        # 重大事件日历预热:启动即拉百度/ForexFactory,之后每30分钟刷新(宏观层面,归首页后端)
+        from data.event_calendar import event_calendar_loop
+        threading.Thread(target=event_calendar_loop, daemon=True).start()
+        system_logger.info("重大事件日历预热线程已启动")
+
         # 演示模式快照:每个交易日收盘后固化首页+云图数据,未登录访客只读这份快照
         from data.demo_snapshot import demo_snapshot_loop
         threading.Thread(target=demo_snapshot_loop, daemon=True).start()

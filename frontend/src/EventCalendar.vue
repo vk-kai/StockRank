@@ -104,7 +104,8 @@ export default {
         if (res.success) this.items = res.data || []
         else this.error = res.error || res.message || '获取事件日历失败'
       } catch (e) {
-        this.error = e?.message || '网络错误'
+        const body = e?.response?.data
+        this.error = body?.error || body?.message || e?.message || '网络错误'
       } finally {
         this.loading = false
       }

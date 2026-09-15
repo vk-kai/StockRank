@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """重大事件日历(加息决议/CPI/非农/PMI 等宏观数据发布)。
 
+归属: 首页 Flask 后端(宏观层面信息,与量化交易项目无关)。
+
 数据源(2026-09-15 调研结论,均实测可用):
 - 主源: 百度股市通经济日历(经 akshare.news_economic_baidu),国内直连稳定,
   中文事件名、重要性 1~3、预期/前值/公布齐全;缺点是单日接口、有 403 风控
@@ -10,11 +12,12 @@
   境外 CDN,可能慢或不稳,失败静默降级。
 
 对外只暴露 get_event_calendar(days) → 合并去重、按北京时间升序的事件列表,
-进程内 TTL 缓存(半小时),并发调用走锁防止同时打源。
+进程内 TTL 缓存(半小时);event_calendar_loop 供 app.py 起后台线程,
+容器启动即预热,之后每 30 分钟刷新,用户请求永远打到热缓存。
 """
 from __future__ import annotations
 
-import logging
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -23,11 +26,17 @@ from typing import Optional
 import pandas as pd
 import requests
 
-from backend import config
+from core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+system_logger = get_logger('system')
+error_logger = get_logger('error')
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
+
+# 日历缓存秒(30分钟)/默认取未来几天;可用环境变量覆盖
+EVENT_CALENDAR_TTL_SECONDS = int(os.environ.get('EVENT_CALENDAR_TTL_SECONDS', '1800'))
+EVENT_CALENDAR_DAYS = int(os.environ.get('EVENT_CALENDAR_DAYS', '7'))
+_PREWARM_INTERVAL_SECONDS = 1800
 
 _FF_IMPACT_MAP = {"high": 3, "medium": 2, "low": 1}
 _FF_REGION_MAP = {
@@ -41,7 +50,7 @@ _FF_URLS = (
 _FF_HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
 _cache_lock = threading.Lock()
-_cache: dict = {}  # key=(today_str, days) -> (monotonic_ts, items)
+_cache: dict = {}  # key=(today_str, days) -> (monotonic_ts, items, ttl_seconds)
 
 
 def _beijing_now() -> datetime:
@@ -98,9 +107,9 @@ def _fetch_forex_factory() -> list[dict]:
     items: list[dict] = []
     for url in _FF_URLS:
         try:
-            resp = requests.get(url, headers=_FF_HEADERS, timeout=10)
+            resp = requests.get(url, headers=_FF_HEADERS, timeout=6)
             if resp.status_code != 200:
-                logger.debug("forexfactory %s http %s", url.rsplit("/", 1)[-1], resp.status_code)
+                system_logger.debug("forexfactory %s http %s", url.rsplit("/", 1)[-1], resp.status_code)
                 continue
             for it in resp.json():
                 impact = str(it.get("impact") or "Low").lower()
@@ -120,7 +129,7 @@ def _fetch_forex_factory() -> list[dict]:
                     "source": "ff",
                 })
         except Exception as exc:
-            logger.debug("forexfactory 拉取失败: %s", exc)
+            system_logger.debug("forexfactory 拉取失败: %s", exc)
     return items
 
 
@@ -149,14 +158,14 @@ def _build_calendar(days: int) -> list[dict]:
             if day_items:
                 ok_days += 1
         except Exception as exc:
-            logger.debug("百度日历 %s 拉取失败: %s", ds, exc)
+            system_logger.debug("百度日历 %s 拉取失败: %s", ds, exc)
         time.sleep(0.4)  # 风控节流: 逐日请求间留间隔
 
     if ok_days == 0:
         # 主源全挂: 至少把备源顶上,保证面板不空
-        logger.info("百度经济日历全部日期失败,降级 ForexFactory")
+        system_logger.info("百度经济日历全部日期失败,降级 ForexFactory")
     else:
-        logger.info("事件日历: 百度源命中 %d/%d 天", ok_days, days)
+        system_logger.info("事件日历: 百度源命中 %d/%d 天", ok_days, days)
 
     merged.extend(_fetch_forex_factory())
     items = _dedup(merged)
@@ -168,19 +177,31 @@ def _build_calendar(days: int) -> list[dict]:
 
 
 def get_event_calendar(days: Optional[int] = None) -> list[dict]:
-    """未来 days 天的重大事件列表(TTL 缓存)。"""
-    days = max(1, min(int(days or config.EVENT_CALENDAR_DAYS), 30))
+    """未来 days 天的重大事件列表(TTL 缓存,北京时间升序)。"""
+    days = max(1, min(int(days or EVENT_CALENDAR_DAYS), 30))
     today_str = _beijing_now().strftime("%Y-%m-%d")
     key = (today_str, days)
     now_s = time.monotonic()
 
     with _cache_lock:
         hit = _cache.get(key)
-        if hit and now_s - hit[0] < config.EVENT_CALENDAR_TTL_SECONDS:
+        if hit and now_s - hit[0] < hit[2]:
             return hit[1]
         items = _build_calendar(days)
-        _cache[key] = (now_s, items)
+        # 正常结果 30 分钟;全空(双源都挂/风控)只短缓存 60s,尽快重试别空一整天
+        ttl = EVENT_CALENDAR_TTL_SECONDS if items else 60
+        _cache[key] = (now_s, items, ttl)
         # 顺手清掉跨日的陈旧缓存
         for k in [k for k in _cache if k[0] != today_str]:
             _cache.pop(k, None)
         return items
+
+
+def event_calendar_loop() -> None:
+    """后台预热循环: 启动即拉一次,之后每 30 分钟刷新(配合 app.py 守护线程)。"""
+    while True:
+        try:
+            get_event_calendar(EVENT_CALENDAR_DAYS)
+        except Exception as exc:
+            error_logger.error(f"事件日历预热失败: {exc}")
+        time.sleep(_PREWARM_INTERVAL_SECONDS)

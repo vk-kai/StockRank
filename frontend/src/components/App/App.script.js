@@ -494,6 +494,9 @@ export default {
     if (this.nextEventTimer) {
       clearInterval(this.nextEventTimer)
     }
+    if (this._nextEventRetry) {
+      clearTimeout(this._nextEventRetry)
+    }
     if (this.aiAnalysisPollTimer) {
       clearInterval(this.aiAnalysisPollTimer)
     }
@@ -809,6 +812,11 @@ export default {
         }
       } catch (err) {
         console.error('获取最近大事失败:', err)
+        // 首拉失败(如后端预热中)90秒后补一发，别让胶囊空等30分钟
+        if (!this.nextEvent) {
+          if (this._nextEventRetry) clearTimeout(this._nextEventRetry)
+          this._nextEventRetry = setTimeout(() => this.fetchNextEvent(), 90000)
+        }
       }
     },
 
