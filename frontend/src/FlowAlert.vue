@@ -2,9 +2,13 @@
   <div class="fa-page">
     <header class="fa-header">
       <button @click="goBack" class="fa-back-button">← 返回</button>
-      <h1>🚨 资金异动预警</h1>
+      <h1>🚨 异动预警</h1>
+      <div class="fa-main-tabs">
+        <button :class="['fa-main-tab', {active: mainTab==='fund'}]" @click="switchMainTab('fund')">💰 资金异动</button>
+        <button :class="['fa-main-tab', {active: mainTab==='pulse'}]" @click="switchMainTab('pulse')">📈 个股异动</button>
+      </div>
       <div class="fa-header-right">
-        <button @click="runDetect" class="fa-run-btn" :disabled="loading || needsAuth">
+        <button v-if="mainTab==='fund'" @click="runDetect" class="fa-run-btn" :disabled="loading || needsAuth">
           <IconRefresh v-if="!loading" />
           {{ loading ? '检测中...' : '刷新全天结果' }}
         </button>
@@ -12,12 +16,12 @@
       </div>
     </header>
 
-    <div class="fa-snapshot">
+    <div class="fa-snapshot" v-if="mainTab==='fund'">
       全天资金异动汇总：<strong>{{ snapshot.date || '--' }}</strong>
       <span>最新抓取 {{ snapshot.time || '--' }} · 覆盖当日全部 5 分钟时点（共 {{ findings.length }} 条），非单一时刻</span>
     </div>
 
-    <div class="fa-controls">
+    <div class="fa-controls" v-if="mainTab==='fund'">
       <div class="fa-ctrl-group" v-if="false">
         <label>日期</label>
         <select v-model="selectedDate" @change="onDateChange">
@@ -42,6 +46,116 @@
     </div>
 
     <template v-else>
+      <!-- ==================== 个股异动（Stock Pulse，盘中每5分钟采样） ==================== -->
+      <template v-if="mainTab==='pulse'">
+        <!-- 市场温度 -->
+        <div class="fa-pulse-summary" v-if="pulseSummary">
+          <div class="fa-stats">
+            <div class="fa-stat"><div class="fa-stat-num pulse-pos">{{ pulseSummary.advance }}</div><div class="fa-stat-lbl">上涨</div></div>
+            <div class="fa-stat"><div class="fa-stat-num pulse-neg">{{ pulseSummary.decline }}</div><div class="fa-stat-lbl">下跌</div></div>
+            <div class="fa-stat"><div class="fa-stat-num pulse-pos">{{ pulseSummary.limit_up }}</div><div class="fa-stat-lbl">涨停</div></div>
+            <div class="fa-stat"><div class="fa-stat-num pulse-neg">{{ pulseSummary.limit_down }}</div><div class="fa-stat-lbl">跌停</div></div>
+          </div>
+          <div class="fa-pulse-rank">
+            <div class="fa-rank-line" v-if="pulseSummary.sectors_top && pulseSummary.sectors_top.length">
+              <span class="fa-rank-tag rank-pos">领涨行业</span>
+              <span v-for="s in pulseSummary.sectors_top" :key="'t'+s.sector" class="fa-rank-item">
+                {{ s.sector }} <b :class="s.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ s.median_pct >= 0 ? '+' : '' }}{{ fmt(s.median_pct) }}%</b>（红盘 {{ s.up_ratio }}%）
+              </span>
+            </div>
+            <div class="fa-rank-line" v-if="pulseSummary.sectors_bottom && pulseSummary.sectors_bottom.length">
+              <span class="fa-rank-tag rank-neg">领跌行业</span>
+              <span v-for="s in pulseSummary.sectors_bottom" :key="'b'+s.sector" class="fa-rank-item">
+                {{ s.sector }} <b :class="s.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ fmt(s.median_pct) }}%</b>
+              </span>
+            </div>
+            <div class="fa-rank-time">市场温度采样：{{ pulseSummary.date }} {{ pulseSummary.time }}</div>
+          </div>
+        </div>
+        <div v-else-if="!pulseLoading" class="fa-empty"><p>当日暂无采样数据（交易时段每 5 分钟自动采样）</p></div>
+
+        <div class="fa-controls">
+          <div class="fa-ctrl-group">
+            <button @click="runPulseDetect" class="fa-run-btn" :disabled="pulseLoading || needsAuth">
+              {{ pulseLoading ? '检测中...' : '刷新全天结果' }}
+            </button>
+          </div>
+          <div class="fa-ctrl-group">
+            <label>类型</label>
+            <div class="fa-mode-toggle">
+              <button :class="{active: pulseFilter==='all'}" @click="pulseFilter='all'">全部</button>
+              <button :class="{active: pulseFilter==='sector'}" @click="pulseFilter='sector'">🧲 板块聚集</button>
+              <button :class="{active: pulseFilter==='limit'}" @click="pulseFilter='limit'">涨停/跌停</button>
+              <button :class="{active: pulseFilter==='move'}" @click="pulseFilter='move'">拉升/跳水</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="fa-loading" v-if="pulseLoading"><div class="spinner"></div><p>正在扫描全天个股异动...</p></div>
+        <div v-else-if="!shownPulseGroups.length" class="fa-empty">
+          <p>{{ pulseFindings.length ? '该筛选下无命中' : '当日无异动命中，市场相对平静' }}</p>
+        </div>
+        <div v-else class="fa-timeline stagger-in">
+          <template v-for="(g, gidx) in shownPulseGroups" :key="gidx">
+            <!-- 板块聚集卡片：来源 analysis/stock_pulse.py -->
+            <div v-if="g.type === 'pulse_sector'" class="fa-card fa-card-pulse" v-for="(f, idx) in g.items" :key="gidx+'-'+idx"
+                 :style="{ '--i': Math.min(gidx + idx, 15) }">
+              <div class="fa-card-head">
+                <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                <span class="fa-sector">{{ pulseSectorLabel(f) }}</span>
+                <span class="fa-pulse-tag">🧲 板块聚集</span>
+              </div>
+              <div class="fa-card-meta">
+                <span class="fa-chg" :class="f.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">中位涨幅 {{ f.median_pct >= 0 ? '+' : '' }}{{ fmt(f.median_pct) }}%</span>
+                <span class="fa-chg" :class="f.median_delta >= 0 ? 'pulse-pos' : 'pulse-neg'">较上轮 {{ f.median_delta >= 0 ? '+' : '' }}{{ fmt(f.median_delta) }}%</span>
+              </div>
+              <div class="fa-hits">
+                <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', h.type === 'cluster_dump' ? 'hit-pulse-neg' : 'hit-pulse-pos']">
+                  {{ pulseHitIcon(h.type) }} {{ h.label }} {{ h.count }}/{{ f.total }} 只
+                </span>
+              </div>
+              <div class="fa-pulse-leaders" v-if="f.leaders && f.leaders.length">
+                <span class="fa-leader-label">领涨</span>
+                <span v-for="ld in f.leaders" :key="ld.code" class="fa-leader-item">
+                  {{ ld.name }} <b :class="ld.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ ld.pct >= 0 ? '+' : '' }}{{ fmt(ld.pct) }}%</b>
+                </span>
+              </div>
+            </div>
+            <!-- 个股异动卡片（同股折叠） -->
+            <div v-else class="fa-card fa-card-stock" :style="{ '--i': Math.min(gidx, 15) }">
+              <div class="fa-card-head" @click="toggleStockGroup('pulse:'+g.key)" style="cursor:pointer">
+                <span class="fa-time">{{ g.latest.date }} {{ g.latest.time }}</span>
+                <span class="fa-sector">{{ g.latest.name }} {{ g.latest.code }}</span>
+                <span class="fa-stock-tag">📈 个股异动</span>
+                <span v-if="g.items.length > 1" class="fa-expand-hint">{{ expandedStocks['pulse:'+g.key] ? '收起' : `共${g.items.length}条 ▶` }}</span>
+              </div>
+              <div class="fa-card-meta">
+                <span class="fa-chg" :class="g.latest.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ g.latest.pct >= 0 ? '+' : '' }}{{ fmt(g.latest.pct) }}%</span>
+                <span class="fa-lead" v-if="g.latest.sector">{{ g.latest.sector }}</span>
+              </div>
+              <div class="fa-hits">
+                <span :class="['fa-hit', pulseStockHitClass(g.latest)]">
+                  {{ pulseHitIcon(g.latest.type) }} {{ g.latest.label }}<template v-if="g.latest.delta != null"> Δ{{ g.latest.delta >= 0 ? '+' : '' }}{{ fmt(g.latest.delta) }}%</template>
+                </span>
+              </div>
+              <div v-if="expandedStocks['pulse:'+g.key] && g.items.length > 1" class="fa-stock-history">
+                <div v-for="(f, idx) in g.items.slice(1)" :key="idx" class="fa-stock-hist-item">
+                  <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                  <span class="fa-chg" :class="f.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ f.pct >= 0 ? '+' : '' }}{{ fmt(f.pct) }}%</span>
+                  <span :class="['fa-hit', pulseStockHitClass(f)]">
+                    {{ pulseHitIcon(f.type) }} {{ f.label }}<template v-if="f.delta != null"> Δ{{ f.delta >= 0 ? '+' : '' }}{{ fmt(f.delta) }}%</template>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <div class="fa-more" v-if="filteredPulseFindings.length > pulseShowLimit">
+            <button @click="pulseShowLimit += 100">加载更多（剩余 {{ filteredPulseFindings.length - pulseShowLimit }}）</button>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
       <!-- 全天命中视图 -->
       <div v-if="view==='detect'">
         <div class="fa-stats" v-if="findings.length">
@@ -201,11 +315,15 @@
           </div>
         </div>
       </div>
+      </template>
     </template>
 
-    <div class="fa-footnote">
+    <div class="fa-footnote" v-if="mainTab==='fund'">
       异动判定：价量背离 / 巨量 z-score / 突变 / 连续同向 四维度。<br/>
       实时推送在交易时段每 5 分钟采集后自动触发（去重冷却 30 分钟）。可在「系统配置 → 异动检测」调整阈值。
+    </div>
+    <div class="fa-footnote" v-else>
+      个股异动判定：板块聚集（同行业多只同时拉升/翻红/跳水）/ 涨停跌停 / 单轮大幅拉升跳水。盘中每 5 分钟采样一次，有异动才推送（同板块同类型冷却 40 分钟）。
     </div>
 
     <SecurityAlert />
@@ -213,7 +331,8 @@
 </template>
 
 <script>
-import { runAnomalyDetection, getAnomalyAlerts } from './services/apiService'
+import { runAnomalyDetection, getAnomalyAlerts,
+         getStockPulseSummary, runStockPulseDetection } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 const DIM_META = {
@@ -223,6 +342,12 @@ const DIM_META = {
   streak:     { icon: '🔁', label: '连续' },
   price:      { icon: '📈', label: '价格异动' },
   arb:        { icon: '🎯', label: '套利背离' }
+}
+
+// 个股异动（Stock Pulse）触发类型图标：红涨绿跌
+const PULSE_ICONS = {
+  cluster_surge: '🔴', cluster_turn_red: '🔴', cluster_dump: '🟢',
+  limit_up: '🔴', limit_down: '🟢', surge: '🔴', plunge: '🟢'
 }
 
 export default {
@@ -239,7 +364,14 @@ export default {
       pushed: [],
       filter: 'all',
       showLimit: 100,
-      expandedStocks: {}
+      expandedStocks: {},
+      // 个股异动（Stock Pulse）
+      mainTab: 'fund',
+      pulseLoading: false,
+      pulseFindings: [],
+      pulseSummary: null,
+      pulseFilter: 'all',
+      pulseShowLimit: 100
     }
   },
   computed: {
@@ -291,16 +423,53 @@ export default {
         }
       }
       return groups
+    },
+    // 个股异动（Stock Pulse）：按类型过滤
+    filteredPulseFindings() {
+      const f = this.pulseFilter
+      let list = this.pulseFindings
+      if (f === 'sector') list = list.filter(x => x.kind === 'pulse_sector')
+      else if (f === 'limit') list = list.filter(x => x.kind === 'pulse_stock' && (x.type === 'limit_up' || x.type === 'limit_down'))
+      else if (f === 'move') list = list.filter(x => x.kind === 'pulse_stock' && (x.type === 'surge' || x.type === 'plunge'))
+      return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
+    },
+    // 个股异动分组：板块卡片独立、个股同代码折叠
+    shownPulseGroups() {
+      const shown = this.filteredPulseFindings.slice(0, this.pulseShowLimit)
+      const groups = []
+      const stockMap = new Map()
+      for (const f of shown) {
+        if (f.kind === 'pulse_stock') {
+          const key = f.code || f.name
+          if (stockMap.has(key)) {
+            groups[stockMap.get(key)].items.push(f)
+          } else {
+            stockMap.set(key, groups.length)
+            groups.push({ type: 'pulse_stock', key, items: [f], latest: f })
+          }
+        } else {
+          groups.push({ type: 'pulse_sector', key: `sec:${f.level}:${f.sector}:${f.time}`, items: [f] })
+        }
+      }
+      for (const g of groups) {
+        if (g.type === 'pulse_stock') {
+          g.items.sort((a, b) => (a.time < b.time ? 1 : -1))
+          g.latest = g.items[0]
+        }
+      }
+      return groups
     }
   },
   async mounted() {
     window.addEventListener('auth-required', this.onAuthRequired)
     window.addEventListener('auth-login-success', this.onAuthLogin)
+    window.addEventListener('ws-stock-pulse', this.onPulsePush)
     await this.runDetect()
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.onAuthRequired)
     window.removeEventListener('auth-login-success', this.onAuthLogin)
+    window.removeEventListener('ws-stock-pulse', this.onPulsePush)
   },
   methods: {
     goBack() { this.$router.push('/') },
@@ -369,6 +538,47 @@ export default {
     switchView(v) {
       this.view = v
       if (v === 'pushed' && !this.pushed.length) this.loadPushed()
+    },
+    // ==================== 个股异动（Stock Pulse） ====================
+    switchMainTab(t) {
+      this.mainTab = t
+      if (t === 'pulse') {
+        if (!this.pulseSummary) this.loadPulseSummary()
+        if (!this.pulseFindings.length) this.runPulseDetect()
+      }
+    },
+    async loadPulseSummary() {
+      try {
+        const res = await getStockPulseSummary()
+        if (res.success) this.pulseSummary = res.data
+      } catch (e) { /* 401 已处理 */ }
+    },
+    async runPulseDetect() {
+      this.pulseLoading = true
+      try {
+        const res = await runStockPulseDetection()
+        if (res.success) {
+          this.pulseFindings = res.data || []
+          if (res.summary) this.pulseSummary = res.summary
+          else this.loadPulseSummary()
+        }
+      } catch (e) { /* 401 已处理 */ }
+      finally { this.pulseLoading = false }
+    },
+    onPulsePush() {
+      // WebSocket 收到新一轮推送：静默刷新温度与命中列表
+      if (this.mainTab !== 'pulse') return
+      this.loadPulseSummary()
+      this.runPulseDetect()
+    },
+    pulseSectorLabel(f) {
+      if (f.level === 'l2' && f.l1 && f.l1 !== f.sector) return `${f.l1}·${f.sector}`
+      return f.sector
+    },
+    pulseHitIcon(type) { return PULSE_ICONS[type] || '•' },
+    pulseStockHitClass(s) {
+      return (s.type === 'limit_down' || s.type === 'plunge' || s.type === 'cluster_dump')
+        ? 'hit-pulse-neg' : 'hit-pulse-pos'
     },
     async onDateChange() {
       this.showLimit = 100
@@ -565,6 +775,28 @@ export default {
 .fa-more { text-align: center; margin-top: 10px; }
 .fa-more button { background: #1a2236; color: #8ba4c7; border: 1px solid rgba(148,163,184,.25); border-radius: 4px; padding: 8px 20px; cursor: pointer; font-size: 13px; }
 .fa-footnote { text-align: center; margin-top: 24px; font-size: 11px; color: #6a7a99; line-height: 1.8; }
+
+/* ===== 个股异动（Stock Pulse）===== */
+.fa-main-tabs { display: flex; gap: 4px; background: rgba(255,255,255,.06); border-radius: 6px; padding: 3px; }
+.fa-main-tab { background: transparent; border: none; color: #8ba4c7; padding: 7px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all .2s; }
+.fa-main-tab.active { background: linear-gradient(135deg, #3a4a6b, #2a3a5b); color: #fff; }
+.fa-card-pulse { border-left-color: #ff4d4f; }
+.fa-pulse-tag { font-size: 11px; color: #ff7875; border: 1px solid #ff7875; border-radius: 10px; padding: 1px 8px; }
+.hit-pulse-pos { background: rgba(255,77,79,.18); border-color: rgba(255,120,117,.5); }
+.hit-pulse-neg { background: rgba(19,209,124,.16); border-color: rgba(19,209,124,.5); }
+.pulse-pos { color: #ff4d4f; }
+.pulse-neg { color: #13d17c; }
+.fa-pulse-summary { margin-bottom: 14px; }
+.fa-pulse-rank { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+.fa-rank-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
+.fa-rank-tag { font-size: 12px; border-radius: 10px; padding: 1px 10px; }
+.rank-pos { color: #ff7875; border: 1px solid rgba(255,120,117,.5); background: rgba(255,77,79,.12); }
+.rank-neg { color: #13d17c; border: 1px solid rgba(19,209,124,.5); background: rgba(19,209,124,.1); }
+.fa-rank-item { opacity: .92; }
+.fa-rank-item b { font-weight: 600; }
+.fa-rank-time { font-size: 11px; color: #6a7a99; margin-top: 4px; }
+.fa-pulse-leaders { margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255,120,117,.25); display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #c0cce0; }
+.fa-leader-label { color: #8ba4c7; }
 
 /* ===== 移动端适配（原先完全没有 @media）===== */
 @media (max-width: 768px) {

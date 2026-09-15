@@ -1010,6 +1010,64 @@ export async function getStockPriceAlerts(date) {
   }
 }
 
+/** ==================== 个股异动监控（Stock Pulse） ==================== */
+
+/** 最新采样点的市场温度（涨跌家数、涨停数、行业排行） */
+export async function getStockPulseSummary() {
+  try {
+    const response = await apiClient.get('/flow/stock-pulse/summary')
+    return response.data
+  } catch (error) {
+    console.error('获取个股异动市场温度失败:', error)
+    throw error
+  }
+}
+
+/** 回放全天个股异动检测（不推送） */
+export async function runStockPulseDetection(date) {
+  try {
+    const params = {}
+    if (date) params.date = date
+    const response = await apiClient.get('/flow/stock-pulse/run', { params, timeout: 30000 })
+    return response.data
+  } catch (error) {
+    console.error('个股异动回放失败:', error)
+    throw error
+  }
+}
+
+/** 已推送的个股异动轮次记录 */
+export async function getStockPulseAlerts(date) {
+  try {
+    const response = await apiClient.get('/flow/stock-pulse/alerts', { params: { date } })
+    return response.data
+  } catch (error) {
+    console.error('获取个股异动记录失败:', error)
+    throw error
+  }
+}
+
+/** 个股异动阈值配置读取/保存 */
+export async function getStockPulseConfig() {
+  try {
+    const response = await apiClient.get('/flow/stock-pulse/config')
+    return response.data
+  } catch (error) {
+    console.error('获取个股异动配置失败:', error)
+    throw error
+  }
+}
+
+export async function saveStockPulseConfig(config) {
+  try {
+    const response = await apiClient.post('/flow/stock-pulse/config', config)
+    return response.data
+  } catch (error) {
+    console.error('保存个股异动配置失败:', error)
+    throw error
+  }
+}
+
 export async function getAnomalyConfig() {
   try {
     const response = await apiClient.get('/flow/anomaly/config')

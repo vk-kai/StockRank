@@ -44,7 +44,7 @@ def push_event(event_type, data):
         socketio.emit('push', {'type': event_type, 'data': data})
         if event_type in ('news', 'anomaly', 'price_alert'):
             if _log:
-                _log.info(f"SocketIO推送成功: type={event_type}, clients={clients}")
+                _log.debug(f"SocketIO推送成功: type={event_type}, clients={clients}")
     except Exception as e:
         if _log:
             _log.error(f"SocketIO推送失败: type={event_type}, error={e}")

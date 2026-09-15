@@ -624,7 +624,7 @@ def news_collection_thread():
                 recent_news_result = get_recent_news(1, 10000)
                 summary += f"，当前共 {recent_news_result['total']} 条"
                 
-                news_logger.info(summary)
+                news_logger.debug(summary)
             
             # 有新新闻时，触发后台AI分析（所有新增新闻，含重要新闻）
             if actual_new_count > 0 and all_new_items:

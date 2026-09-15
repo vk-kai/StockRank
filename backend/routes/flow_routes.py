@@ -1226,6 +1226,73 @@ def anomaly_baseline_rebuild():
 
 
 # ============================================================
+# 个股异动监控（Stock Pulse，analysis/stock_pulse.py）
+# ============================================================
+@flow_bp.route('/stock-pulse/summary', methods=['GET'])
+def stock_pulse_summary():
+    """最新一轮采样点的市场温度：涨跌家数、涨停/跌停数、行业涨幅排行。"""
+    try:
+        from analysis.stock_pulse import get_latest_summary
+        data = get_latest_summary()
+        if not data:
+            return jsonify({'success': True, 'data': None, 'message': '当日暂无采样数据'})
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-pulse/summary 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-pulse/run', methods=['GET'])
+def stock_pulse_run():
+    """回放全天个股异动检测（不推送）。date 缺省为今天。"""
+    try:
+        from analysis.stock_pulse import detect_full_day
+        date_str = request.args.get('date')
+        findings, latest_summary, rounds = detect_full_day(date_str=date_str, push=False)
+        return jsonify({'success': True, 'data': findings,
+                        'snapshot': {'date': date_str or '', 'time': (latest_summary or {}).get('time', ''),
+                                     'rounds': rounds},
+                        'summary': latest_summary, 'count': len(findings)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-pulse/run 异常: {e}")
+        return jsonify({'success': False, 'message': f'检测失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-pulse/alerts', methods=['GET'])
+def stock_pulse_alerts():
+    """已推送的个股异动轮次记录（可选按日期过滤）。"""
+    try:
+        from analysis.stock_pulse import list_alerts as list_pulse_alerts
+        date_str = request.args.get('date')
+        alerts = list_pulse_alerts(date_str=date_str)
+        return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-pulse/alerts 异常: {e}")
+        return jsonify({'success': False, 'message': f'查询失败: {str(e)[:100]}'}), 500
+
+
+@flow_bp.route('/stock-pulse/config', methods=['GET'])
+def stock_pulse_config_get():
+    """读取个股异动阈值配置。"""
+    from analysis.stock_pulse import load_config as load_pulse_config
+    return jsonify({'success': True, 'data': load_pulse_config()})
+
+
+@flow_bp.route('/stock-pulse/config', methods=['POST'])
+def stock_pulse_config_set():
+    """更新个股异动阈值配置。"""
+    try:
+        from analysis.stock_pulse import save_config as save_pulse_config
+        data = request.get_json() or {}
+        cfg = save_pulse_config(data)
+        system_logger.info("个股异动配置已更新")
+        return jsonify({'success': True, 'data': cfg})
+    except Exception as e:
+        error_logger.error(f"API /api/flow/stock-pulse/config POST 异常: {e}")
+        return jsonify({'success': False, 'message': f'保存失败: {str(e)[:100]}'}), 500
+
+
+# ============================================================
 # 行业见顶周期分析
 # ============================================================
 @flow_bp.route('/industry-cycle/start', methods=['POST'])

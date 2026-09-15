@@ -45,6 +45,7 @@ mm_snapshot_thread = threading.Thread(target=market_map_snapshot_thread, daemon=
 trendzen_arb_thread = None
 quant_signal_thread = None
 vpay_checker_thread = None
+stock_pulse_thread = None
 
 def create_app():
     app = Flask(__name__)
@@ -166,7 +167,7 @@ def create_app():
             return jsonify({'success': False, 'message': '缺少 thread 参数'}), 400
         
         global data_collection_thread, news_collection_thread, margin_collection_thread
-        global trendzen_arb_thread, quant_signal_thread, vpay_checker_thread
+        global trendzen_arb_thread, quant_signal_thread, vpay_checker_thread, stock_pulse_thread
         
         if thread_name == 'data_collector':
             if data_collection_thread.is_alive():
@@ -230,6 +231,17 @@ def create_app():
             vpay_checker_thread.start()
             system_logger.info(f"[重启] vpay_pending_checker 线程已重新启动")
             return jsonify({'success': True, 'message': 'vpay_pending_checker 线程已重启'})
+
+        elif thread_name == 'stock_pulse':
+            if stock_pulse_thread is not None and stock_pulse_thread.is_alive():
+                system_logger.info(f"[重启] stock_pulse 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from analysis.stock_pulse import stock_pulse_loop
+            stock_pulse_thread = threading.Thread(target=stock_pulse_loop, daemon=True)
+            stock_pulse_thread.start()
+            system_logger.info(f"[重启] stock_pulse 线程已重新启动")
+            return jsonify({'success': True, 'message': 'stock_pulse 线程已重启'})
 
         else:
             return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
@@ -310,6 +322,12 @@ if __name__ == '__main__':
         from monitors.stock_price_monitor import stock_price_loop
         threading.Thread(target=stock_price_loop, daemon=True).start()
         system_logger.info("价格异动监控线程已启动")
+
+        # 个股异动监控:盘中每5分钟采样全A涨跌幅,检测板块聚集/涨停/大幅拉升跳水(analysis/stock_pulse.py)
+        from analysis.stock_pulse import stock_pulse_loop
+        stock_pulse_thread = threading.Thread(target=stock_pulse_loop, daemon=True)
+        stock_pulse_thread.start()
+        system_logger.info("个股异动监控线程已启动")
 
         # TrendZen 套利背离告警接入:轮询 feed → 微信推送 → 入库 → ack 回执闭环
         from monitors.trendzen_arb_monitor import trendzen_arb_loop

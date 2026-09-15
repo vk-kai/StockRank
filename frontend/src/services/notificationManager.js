@@ -136,6 +136,36 @@ function sendArbAlertNotification(a) {
   } catch (e) { /* 忽略 */ }
 }
 
+// 个股异动（Stock Pulse）轮次记录：一条轮次弹一条通知，正文取最显著的板块聚集
+function sendPulseNotification(record) {
+  try {
+    if (!record) return
+    const closing = !!record.closing
+    const title = closing ? `📊 收盘总结 ${record.date || ''}` : `📈 个股异动 ${record.time || ''}`
+    const parts = []
+    const topSector = (record.sectors || [])[0]
+    if (topSector) {
+      const secLabel = topSector.level === 'l2' && topSector.l1 && topSector.l1 !== topSector.sector
+        ? `${topSector.l1}·${topSector.sector}` : topSector.sector
+      const h = topSector.hits && topSector.hits[0]
+      if (h) parts.push(`${secLabel} ${h.count}/${topSector.total} 只${h.label}`)
+    }
+    const stockCount = (record.stocks || []).length
+    if (stockCount) parts.push(`个股异动 ${stockCount} 起`)
+    const s = record.summary
+    if (s) parts.push(`涨${s.advance}/跌${s.decline} 涨停${s.limit_up}`)
+    const n = new Notification(title, {
+      body: parts.join('｜') || '本轮无异动',
+      icon: ICON,
+      tag: `pulse-${record.date}-${record.time}`,
+      requireInteraction: !closing
+    })
+    n.onclick = () => { window.focus(); n.close() }
+    const mode = getSoundMode()
+    if (mode === 'all' || mode === 'important') playSound('important')
+  } catch (e) { /* 忽略 */ }
+}
+
 function sendTestNotification(data) {
   // 手动「测试」按钮触发：走真实 WebSocket 通道到达，弹一条桌面通知用于人眼验证。
   try {
@@ -188,6 +218,13 @@ function handlePushEvent(msg) {
       break
     case 'arb_alert':
       if (msg.data) sendArbAlertNotification(msg.data)
+      break
+    case 'stock_pulse':
+      // 个股异动轮次：桌面通知 + 通知个股异动页面刷新
+      if (msg.data) {
+        sendPulseNotification(msg.data)
+        window.dispatchEvent(new CustomEvent('ws-stock-pulse', { detail: msg.data }))
+      }
       break
     case 'push_test':
       if (msg.data) sendTestNotification(msg.data)
