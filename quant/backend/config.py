@@ -191,6 +191,11 @@ ARB_BENCH_MOM_MIN_PCT = _env_float("ARB_BENCH_MOM_MIN_PCT", 0.25)  # 基准窗�
 # 统一口径下"基准15分钟≥0.25%"与"漂移进自身前5%"几乎不会同时发生,信号常年空转
 ARB_GLOBAL_MOM_MIN_PCT = _env_float("ARB_GLOBAL_MOM_MIN_PCT", 0.15)        # em_global: 基准窗口内最小真实涨跌幅 %
 ARB_GLOBAL_DRIFT_TAIL_Q = _env_float("ARB_GLOBAL_DRIFT_TAIL_Q", 0.90)      # em_global: 漂移"自身历史"分位阈值(0.90=前10%)
+# 信号地板(2026-09-15 14:00 假信号事故): 预热期 β/σ/ρ 全是垃圾统计,微小背离也能刷满
+# 相对口径门槛 → 样本不足不出信号;价差漂移另有绝对幅度地板
+ARB_SIGNAL_MIN_SAMPLES = _env_int("ARB_SIGNAL_MIN_SAMPLES", 15)             # 出信号所需最少对齐样本数(开盘/重启预热期只观察)
+ARB_SPREAD_ABS_PCT = _env_float("ARB_SPREAD_ABS_PCT", 0.30)                 # 价差漂移绝对地板 %(不足不提示,防微小背离刷信号)
+ARB_GLOBAL_SPREAD_ABS_PCT = _env_float("ARB_GLOBAL_SPREAD_ABS_PCT", 0.20)   # em_global: 漂移绝对地板 %(低β对的漂移天然小,地板相应放低)
 ARB_ALERT_COOLDOWN_MINUTES = _env_int("ARB_ALERT_COOLDOWN_MINUTES", 20)   # 同对同向冷却分钟
 ARB_MIN_OVERLAP_SAMPLES = _env_int("ARB_MIN_OVERLAP_SAMPLES", 6)          # 判背离所需最少对齐样本(开盘~6分钟即可判定;漂移/动量窗口不足时自动收缩)
 ARB_PREOPEN_KOSPI_PCT = _env_float("ARB_PREOPEN_KOSPI_PCT", 0.8)          # 盘前 KOSPI 累计涨跌阈值 %

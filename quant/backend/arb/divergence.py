@@ -234,6 +234,8 @@ def evaluate(
     min_samples: int = 25,
     drift_tail_q: float = 0.95,
     drift_tail_min_samples: int = 30,
+    signal_min_samples: int = 15,
+    spread_abs_pct: float = 0.30,
 ) -> dict:
     """对齐序列 → 快照 dict(status/corr/beta/.../signal/reason)。"""
     n = len(aligned)
@@ -444,6 +446,25 @@ def evaluate(
     stock_leg = f"个股{d_stock:+.2f}%" if d_stock is not None else "个股"
     mom_hit_up = z_b >= bench_mom_z and down_hit
     mom_hit_down = z_b <= -bench_mom_z and up_hit
+
+    # 信号地板(防"统计上罕见但绝对幅度微不足道"的假信号,2026-09-15 14:00 事故):
+    # 1) 样本地板: 开盘/容器重启预热期只有 5~10 个样本,Theil-Sen β 被估成 1.8~2.9
+    #    (真实 0.2~0.5)、MAD σ 只有健康值的 1/4、短窗 ρ 高达 0.9+,KOSPI 跌 0.19%
+    #    就能刷满全部门槛同时触发多对假信号 → 样本不足只观察不提示;
+    # 2) 绝对幅度地板: 相对口径(自身分位/σ 倍数)在 σ 被低估时会放行微小背离,
+    #    价差 5 分钟漂移连 spread_abs_pct 都不到,不配叫买点/卖点。
+    floor_note = ""
+    if n < signal_min_samples:
+        floor_note = f"样本还在积累({n}/{signal_min_samples}),先观察不提示"
+    elif drift is not None and abs(drift) < spread_abs_pct:
+        floor_note = (
+            f"价差{drift_window}分钟才偏离{abs(drift):.2f}%"
+            f"(不足{spread_abs_pct:.2f}%的地板),幅度太小,先观察不提示"
+        )
+    if floor_note:
+        base_txt = f"基准{mom_window}分钟{d_bench:+.2f}%,{stock_leg}" if d_bench is not None else "行情数据还在铺开"
+        snap["reason"] = f"{base_txt},{floor_note}"
+        return snap
 
     if mom_hit_up and d_bench >= bench_mom_min_pct:
         snap["signal"] = "buy"
