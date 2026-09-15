@@ -358,7 +358,7 @@ def _fetch_remote_kline_for_cache(
             pass
         return pd.DataFrame()
 
-    # 日/周/月:优先 akshare 后复权(hfq,可复现),pytdx(不复权)仅作 fallback
+    # 日/周/月:优先 akshare 前复权(qfq,最新价==真实价),pytdx(不复权)仅作 fallback
     if normalized_period in ("daily", "weekly", "monthly"):
         try:
             hist_fetcher = akshare_data.get_etf_hist_daily if security_kind == "etf" else akshare_data.get_stock_hist_daily
@@ -815,11 +815,10 @@ def _fetch_today_realtime_bar_df_uncached(code: str, security_kind: str, today_s
         return _synthesize_today_bar_from_minute_df(code_str, prev_close, today_str, security_kind)
 
     try:
-        # 本地日线/周月线基准是后复权(hfq)，而实时报价是不复权(raw)。用"昨收"对齐
-        # 两种口径得到 hfq 因子 = 本地hfq昨收 / 实时raw昨收，把当天实时 OHLC 换算到
-        # hfq。这样累计除权较大的个股(如茅台 hfq≈1.1万 vs raw≈1300)也能与历史衔接、
-        # 不再被下方合理性校验误杀；指数不复权，本地昨收==raw昨收，因子自然退化为1。
-        # 除权除息当日因子会有微小偏差(≈股息率)，次日历史同步后自愈。
+        # 本地日线/周月线基准是前复权(qfq),而实时报价是不复权(raw)。用"昨收"对齐
+        # 两种口径得到换算因子 = 本地qfq昨收 / 实时raw昨收,把当天实时 OHLC 换算到
+        # qfq 口径。qfq 最新价==真实价,因子日常≈1;除权除息当日会有微小偏差(≈股息率),
+        # 次日历史同步后自愈。指数不复权,本地昨收==raw昨收,因子自然退化为1。
         quote_prev_close = float(quote.get("pre_close") or quote.get("prev_close") or 0)
         hfq_factor = (prev_close / quote_prev_close) if (prev_close > 0 and quote_prev_close > 0) else 1.0
         if abs(hfq_factor - 1.0) > 1e-4:

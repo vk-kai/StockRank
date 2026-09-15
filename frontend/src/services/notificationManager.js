@@ -143,9 +143,15 @@ function sendPulseNotification(record) {
     if (!record) return
     const closing = !!record.closing
     const stocks = record.stocks || []
-    // ---- 正文：板块聚集明细 + 涨跌停名单（有名字才一目了然） ----
+    // ---- 正文：板块聚集明细 + 涨跌停聚集名单（有名字才一目了然） ----
     const lines = []
     for (const sec of (record.sectors || []).slice(0, 2)) {
+      // 涨跌停聚集：同二级行业≥2只，直接列名字
+      if (sec.kind === 'pulse_limit_cluster') {
+        const names = (sec.members || []).slice(0, 5).map(x => x.name).join('、')
+        lines.push(`${sec.sector} ${sec.count} 只${sec.label}：${names}`)
+        continue
+      }
       const h = (sec.hits || [])[0]
       if (!h) continue
       const secLabel = sec.level === 'l2' && sec.l1 && sec.l1 !== sec.sector
@@ -165,11 +171,15 @@ function sendPulseNotification(record) {
     if (!lines.length) return
     // ---- 标题：最显著信号在前、时间在后 ----
     const sec0 = (record.sectors || [])[0]
-    const h0 = sec0 && (sec0.hits || [])[0]
     const signals = []
-    if (h0) {
-      const secLabel = sec0.level === 'l2' && sec0.l1 && sec0.l1 !== sec0.sector ? `${sec0.l1}·${sec0.sector}` : sec0.sector
-      signals.push(`${secLabel}${h0.count}只${h0.label}`)
+    if (sec0 && sec0.kind === 'pulse_limit_cluster') {
+      signals.push(`${sec0.sector}${sec0.count}只${sec0.label}`)
+    } else {
+      const h0 = sec0 && (sec0.hits || [])[0]
+      if (h0) {
+        const secLabel = sec0.level === 'l2' && sec0.l1 && sec0.l1 !== sec0.sector ? `${sec0.l1}·${sec0.sector}` : sec0.sector
+        signals.push(`${secLabel}${h0.count}只${h0.label}`)
+      }
     }
     if (ups.length) signals.push(`涨停${ups.length}只`)
     if (downs.length) signals.push(`跌停${downs.length}只`)

@@ -340,13 +340,13 @@ def _build_detail_from_quote(code: str, quote: dict, cached_detail: Optional[dic
 
 
 def _calc_hfq_factor(code: str, raw_pre_close: float) -> float:
-    """把「不复权 raw 实时价」换算到「后复权 hfq」口径的缩放因子。
+    """把「不复权 raw 实时价」换算到「本地K线口径(前复权 qfq)」的缩放因子。
 
-    本地日线/周月线基准是后复权(hfq)，而 pytdx 实时报价是不复权(raw)。两者口径
-    不一致：累计分红送股越多的个股，hfq 价相对 raw 放大越多（如茅台 hfq≈1.1万 vs
-    raw≈1300）。这里复用 kline_service.py:730 的对齐方法：用本地 hfq 昨收 / 实时 raw
-    昨收 得到 hfq_factor，调用方把 raw 价 ×factor 即可换算到 hfq 口径。
-    取不到本地 hfq 价时返回 1.0（退化为直接比较，不强行修正）。
+    本地日线/周月线基准是前复权(qfq)，pytdx 实时报价是不复权(raw)。qfq 最新价
+    ==真实价，因子日常≈1；除权除息当日有微小偏差(≈股息率)，次日历史同步后自愈。
+    这里复用 kline_service.py 的对齐方法：用本地昨收 / 实时 raw 昨收得到因子，
+    调用方把 raw 价 ×factor 即可换算到本地口径。
+    取不到本地昨收时返回 1.0（退化为直接比较，不强行修正）。
     """
     if raw_pre_close <= 0:
         return 1.0

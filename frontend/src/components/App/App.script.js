@@ -1916,9 +1916,16 @@ export default {
       }
     },
     pulseQuickLines(a) {
-      // 把一轮 pulse_round 记录拆成可读行：板块聚集 → 个股异动（无内容时退回市场温度）
+      // 把一轮 pulse_round 记录拆成可读行：板块聚集 → 涨跌停聚集（无内容时退回市场温度）
       const lines = []
       for (const f of (a.sectors || [])) {
+        // 涨跌停聚集：同二级行业≥2只才播报（单只不报）
+        if (f.kind === 'pulse_limit_cluster') {
+          const red = f.type === 'limit_up_cluster'
+          const names = (f.members || []).slice(0, 3).map(m => m.name).join('、')
+          lines.push({ cls: red ? 'pos' : 'neg', text: `${red ? '🔴' : '🟢'} ${f.sector}：${f.count} 只${f.label}：${names}` })
+          continue
+        }
         for (const h of (f.hits || [])) {
           const red = h.type === 'cluster_surge' || h.type === 'cluster_turn_red'
           lines.push({
@@ -1944,8 +1951,10 @@ export default {
       return lines
     },
     gotoFlowAlertPage() {
+      // 跟随速览弹窗当前 tab：资金→资金异动页，个股→个股异动页签
+      const qs = this.quickTab === 'pulse' ? '?tab=pulse' : ''
       this.closeFlowAlertModal()
-      this.$router.push('/flow-alert')
+      this.$router.push('/flow-alert' + qs)
     },
     faNet(v) { return (v == null || isNaN(v)) ? '--' : Number(v).toFixed(2) },
     faPct(v) { return (v == null || isNaN(v)) ? '--' : (v >= 0 ? '+' : '') + Number(v).toFixed(2) },

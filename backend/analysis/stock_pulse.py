@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
     'cluster_min_hits': 3,            # 小板块最少命中家数（防 3 只小板块误报）
     # ---- 个股 ----
     'limit_tolerance': 0.998,         # pct >= limit*0.998 视为涨停（留浮点余量）
+    'limit_cluster_min': 2,           # 同二级行业 ≥N 只涨停/跌停才播报（单只不报）
     # ---- 汇总 ----
     'summary_interval_minutes': 30,   # 热点汇总间隔（整半点轮附带）
     'sector_top_n': 3,                # 领涨/领跌行业各取前 N
@@ -343,32 +344,50 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
 
 
 # --------------------------------------------------------------------------
-# 检测：个股
+# 检测：涨跌停板块聚集
 # --------------------------------------------------------------------------
 def _stock_findings(cur, prev, stocks, cfg, time_str):
-    """个股检测：仅涨停/跌停（仅状态翻转时触发，封板期间不重复报）。
-    单纯拉升/跳水不推送（用户只关心涨跌停），由板块聚集覆盖整体异动。"""
+    """涨跌停板块聚集：同一二级行业（无二级回退一级）内 ≥limit_cluster_min 只
+    涨停/跌停才播报（板块开始异动的信号）；单只涨跌停不报。
+    产出为板块级 finding（kind=pulse_limit_cluster），走既有板块冷却
+    （sector|limit_up_cluster）防止封板期间重复刷屏。"""
     cfg = {**DEFAULT_CONFIG, **(cfg or {})}
-    out = []
+    min_count = int(cfg.get('limit_cluster_min', 2))
     tol = float(cfg['limit_tolerance'])
+    up_b, down_b = {}, {}
     for code, pct in cur.items():
+        if pct is None:
+            continue
         info = stocks.get(code)
         if not info:
             continue
-        name = info.get('name', '')
-        prev_pct = prev.get(code)
-        if prev_pct is None:
-            continue  # 涨停/跌停需对比上一轮，首轮无对比不触发
-        limit = _limit_of(code, name)
-        hit = None
-        if pct >= limit * tol and prev_pct < limit * tol:
-            hit = {'type': 'limit_up', 'label': '涨停'}
-        elif pct <= -limit * tol and prev_pct > -limit * tol:
-            hit = {'type': 'limit_down', 'label': '跌停'}
-        if hit:
-            hit.update({'code': code, 'name': name, 'sector': info.get('l1', ''),
-                        'pct': pct, 'kind': 'pulse_stock', 'time': time_str, 'date': _today_str()})
-            out.append(hit)
+        limit = _limit_of(code, info.get('name', ''))
+        if limit is None:
+            continue
+        ind = info.get('l2') or info.get('l1')
+        if not ind:
+            continue
+        if pct >= limit * tol:
+            up_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
+        elif pct <= -limit * tol:
+            down_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
+    out = []
+    for buckets, ftype, label in ((up_b, 'limit_up_cluster', '涨停'),
+                                  (down_b, 'limit_down_cluster', '跌停')):
+        for ind, members in buckets.items():
+            if len(members) < min_count:
+                continue
+            members.sort(key=lambda x: -x[2] if ftype == 'limit_up_cluster' else x[2])
+            out.append({
+                'kind': 'pulse_limit_cluster', 'sector': ind, 'l1': ind, 'level': 'limit',
+                'type': ftype, 'label': label, 'count': len(members),
+                'members': [{'code': c, 'name': n, 'pct': round(p, 2)}
+                            for c, n, p in members[:8]],
+                'time': time_str, 'date': _today_str(),
+                # hits 保持板块 finding 形状，复用板块冷却与推送管线
+                'hits': [{'type': ftype, 'label': label, 'count': len(members)}],
+            })
+    out.sort(key=lambda f: -f['count'])
     return out
 
 
@@ -559,12 +578,6 @@ def _format_round_message(record):
     for f in sectors[:2]:
         h = max(f['hits'], key=lambda x: x['count'])
         title_bits.append(f"{f['sector']}{h['count']}只{h['label']}")
-    lu = sum(1 for s in stocks if s['type'] == 'limit_up')
-    ld = sum(1 for s in stocks if s['type'] == 'limit_down')
-    if lu:
-        title_bits.append(f"涨停{lu}只")
-    if ld:
-        title_bits.append(f"跌停{ld}只")
     if not title_bits:
         title_bits.append(f"上涨{summary['advance']} 涨停{summary['limit_up']}"
                           if summary else "市场温度")
@@ -588,6 +601,12 @@ def _format_round_message(record):
         lines.append("> **🧲 板块聚集**")
         for f in sectors:
             sec_label = f"{f['l1']}·{f['sector']}" if f.get('level') == 'l2' and f.get('l1') != f['sector'] else f['sector']
+            # 涨跌停聚集：无中位涨幅概念，直接列名字
+            if f.get('kind') == 'pulse_limit_cluster':
+                names = '、'.join(m['name'] for m in (f.get('members') or []))
+                icon = '🔴' if f.get('type') == 'limit_up_cluster' else '🟢'
+                lines.append(f"> {icon} **{sec_label}**：{f['count']} 只{f['label']}：{names}")
+                continue
             for h in f['hits']:
                 icon = '🔴' if h['type'] in ('cluster_surge', 'cluster_turn_red') else '🟢'
                 lead = ''
@@ -600,21 +619,6 @@ def _format_round_message(record):
                 lines.append(
                     f"> {icon} **{sec_label}**：{h['count']}/{f['total']} 只{h['label']}"
                     f"（中位 {f['median_pct']:+.2f}%）{lead}")
-
-    if stocks:
-        groups = {}
-        for s in stocks:
-            groups.setdefault(s['type'], []).append(s)
-        lines.append("> **🚨 个股涨跌停**")
-        top = int(cfg.get('stock_summary_top', 5))
-        for typ, label, icon in (('limit_up', '涨停', '🔴'), ('limit_down', '跌停', '🟢')):
-            items = groups.get(typ)
-            if not items:
-                continue
-            shown = items[:top]
-            names = '、'.join(s['name'] for s in shown)
-            more = " 等" if len(items) > len(shown) else ""
-            lines.append(f"> {icon} {label} {len(items)} 只：{names}{more}")
 
     if summary:
         lines.append("> **🌡 市场温度**")
@@ -709,7 +713,9 @@ def detect_round(date_str, time_str, cur, prev=None, prev_time=None, push=False,
         return [], [], None
 
     sector_fs = _sector_findings(cur, prev or {}, stocks, cfg, time_str) if prev else []
-    stock_fs = _stock_findings(cur, prev or {}, stocks, cfg, time_str)
+    # 涨跌停聚集：同二级行业≥2只才报，产出并入板块 finding（单只涨跌停不播报）
+    sector_fs = sector_fs + _stock_findings(cur, prev or {}, stocks, cfg, time_str)
+    stock_fs = []  # 个股级异动已下线，记录结构保留空列表兼容历史消费端
 
     # 汇总：整半点轮 / 收盘轮附带
     summary = None

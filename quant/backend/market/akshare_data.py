@@ -872,9 +872,9 @@ def _load_etf_hist_from_fallback_sources(
     symbol = str(code).zfill(6)
     symbol_with_market = f"{_get_market_prefix(code)}{symbol}"
     loaders = [
-        lambda: ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="hfq", timeout=timeout),
-        lambda: ak.stock_zh_a_hist_tx(symbol=symbol_with_market, start_date=start_date, end_date=end_date, adjust="hfq", timeout=timeout),
-        lambda: ak.stock_zh_a_daily(symbol=symbol_with_market, start_date=start_date, end_date=end_date, adjust="hfq"),
+        lambda: ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="qfq", timeout=timeout),
+        lambda: ak.stock_zh_a_hist_tx(symbol=symbol_with_market, start_date=start_date, end_date=end_date, adjust="qfq", timeout=timeout),
+        lambda: ak.stock_zh_a_daily(symbol=symbol_with_market, start_date=start_date, end_date=end_date, adjust="qfq"),
     ]
     for loader in loaders:
         try:
@@ -927,8 +927,8 @@ def _load_security_hist_from_fallback_sources(
 ) -> pd.DataFrame:
     symbol = f"{_get_market_prefix(code)}{str(code).zfill(6)}"
     loaders = [
-        lambda: ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date, adjust="hfq"),
-        lambda: ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start_date, end_date=end_date, adjust="hfq", timeout=timeout),
+        lambda: ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date, adjust="qfq"),
+        lambda: ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start_date, end_date=end_date, adjust="qfq", timeout=timeout),
     ]
     for loader in loaders:
         try:
@@ -1072,7 +1072,7 @@ def get_etf_hist_daily(code: str, start_date: str = None, end_date: str = None, 
             period=period,
             start_date=start_date,
             end_date=end_date,
-            adjust="hfq"
+            adjust="qfq"
         )
         df = _normalize_em_hist_df(future.result(timeout=timeout))
 
@@ -1111,21 +1111,21 @@ def get_stock_hist_daily(code: str, start_date: str = None, end_date: str = None
             period="daily",
             start_date=start_date,
             end_date=end_date,
-            adjust="hfq",
+            adjust="qfq",
             timeout=timeout,
         ),
         lambda: ak.stock_zh_a_hist_tx(
             symbol=symbol_with_market,
             start_date=start_date,
             end_date=end_date,
-            adjust="hfq",
+            adjust="qfq",
             timeout=timeout,
         ),
         lambda: ak.stock_zh_a_daily(
             symbol=symbol_with_market,
             start_date=start_date,
             end_date=end_date,
-            adjust="hfq",
+            adjust="qfq",
         ),
     ]
     for loader in loaders:

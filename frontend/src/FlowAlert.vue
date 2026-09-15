@@ -104,7 +104,7 @@
             <div class="fa-mode-toggle">
               <button :class="{active: pulseFilter==='all'}" @click="pulseFilter='all'">全部</button>
               <button :class="{active: pulseFilter==='sector'}" @click="pulseFilter='sector'">🧲 板块聚集</button>
-              <button :class="{active: pulseFilter==='limit'}" @click="pulseFilter='limit'">涨停/跌停</button>
+              <button :class="{active: pulseFilter==='limit'}" @click="pulseFilter='limit'">🚨 涨停聚集</button>
             </div>
           </div>
         </div>
@@ -116,55 +116,51 @@
         <div v-else class="fa-timeline stagger-in">
           <template v-for="(g, gidx) in shownPulseGroups" :key="gidx">
             <!-- 板块聚集卡片：来源 analysis/stock_pulse.py -->
-            <div v-if="g.type === 'pulse_sector'" class="fa-card fa-card-pulse" v-for="(f, idx) in g.items" :key="gidx+'-'+idx"
-                 :style="{ '--i': Math.min(gidx + idx, 15) }">
-              <div class="fa-card-head">
-                <span class="fa-time">{{ f.date }} {{ f.time }}</span>
-                <span class="fa-sector">{{ pulseSectorLabel(f) }}</span>
-                <span class="fa-pulse-tag">🧲 板块聚集</span>
-              </div>
-              <div class="fa-card-meta">
-                <span class="fa-chg" :class="f.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">中位涨幅 {{ f.median_pct >= 0 ? '+' : '' }}{{ fmt(f.median_pct) }}%</span>
-                <span class="fa-chg" :class="f.median_delta >= 0 ? 'pulse-pos' : 'pulse-neg'">较上轮 {{ f.median_delta >= 0 ? '+' : '' }}{{ fmt(f.median_delta) }}%</span>
-              </div>
-              <div class="fa-hits">
-                <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', h.type === 'cluster_dump' ? 'hit-pulse-neg' : 'hit-pulse-pos']">
-                  {{ pulseHitIcon(h.type) }} {{ h.label }} {{ h.count }}/{{ f.total }} 只
-                </span>
-              </div>
-              <div class="fa-pulse-leaders" v-if="f.leaders && f.leaders.length">
-                <span class="fa-leader-label">领涨</span>
-                <span v-for="ld in f.leaders" :key="ld.code" class="fa-leader-item">
-                  {{ ld.name }} <b :class="ld.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ ld.pct >= 0 ? '+' : '' }}{{ fmt(ld.pct) }}%</b>
-                </span>
-              </div>
-            </div>
-            <!-- 个股异动卡片（同股折叠） -->
-            <div v-else class="fa-card fa-card-stock" :style="{ '--i': Math.min(gidx, 15) }">
-              <div class="fa-card-head" @click="toggleStockGroup('pulse:'+g.key)" style="cursor:pointer">
-                <span class="fa-time">{{ g.latest.date }} {{ g.latest.time }}</span>
-                <span class="fa-sector">{{ g.latest.name }} {{ g.latest.code }}</span>
-                <span v-if="g.items.length > 1" class="fa-expand-hint">{{ expandedStocks['pulse:'+g.key] ? '收起' : `共${g.items.length}条 ▶` }}</span>
-              </div>
-              <div class="fa-card-meta">
-                <span class="fa-chg" :class="g.latest.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ g.latest.pct >= 0 ? '+' : '' }}{{ fmt(g.latest.pct) }}%</span>
-                <span class="fa-lead" v-if="g.latest.sector">{{ g.latest.sector }}</span>
-              </div>
-              <div class="fa-hits">
-                <span :class="['fa-hit', pulseStockHitClass(g.latest)]">
-                  {{ pulseHitIcon(g.latest.type) }} {{ g.latest.label }}<template v-if="g.latest.delta != null"> Δ{{ g.latest.delta >= 0 ? '+' : '' }}{{ fmt(g.latest.delta) }}%</template>
-                </span>
-              </div>
-              <div v-if="expandedStocks['pulse:'+g.key] && g.items.length > 1" class="fa-stock-history">
-                <div v-for="(f, idx) in g.items.slice(1)" :key="idx" class="fa-stock-hist-item">
+            <template v-for="(f, idx) in g.items" :key="gidx+'-'+idx">
+              <!-- 涨跌停聚集卡片：同二级行业≥2只涨跌停 -->
+              <div v-if="f.kind === 'pulse_limit_cluster'" class="fa-card fa-card-pulse"
+                   :style="{ '--i': Math.min(gidx + idx, 15) }">
+                <div class="fa-card-head">
                   <span class="fa-time">{{ f.date }} {{ f.time }}</span>
-                  <span class="fa-chg" :class="f.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ f.pct >= 0 ? '+' : '' }}{{ fmt(f.pct) }}%</span>
-                  <span :class="['fa-hit', pulseStockHitClass(f)]">
-                    {{ pulseHitIcon(f.type) }} {{ f.label }}<template v-if="f.delta != null"> Δ{{ f.delta >= 0 ? '+' : '' }}{{ fmt(f.delta) }}%</template>
+                  <span class="fa-sector">{{ f.sector }}</span>
+                  <span class="fa-pulse-tag">🚨 {{ f.label }}聚集</span>
+                </div>
+                <div class="fa-hits">
+                  <span :class="['fa-hit', f.type === 'limit_up_cluster' ? 'hit-pulse-pos' : 'hit-pulse-neg']">
+                    {{ pulseHitIcon(f.type) }} {{ f.label }} {{ f.count }} 只
+                  </span>
+                </div>
+                <div class="fa-pulse-leaders" v-if="f.members && f.members.length">
+                  <span v-for="m in f.members" :key="m.code" class="fa-leader-item">
+                    {{ m.name }} <b :class="m.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ m.pct >= 0 ? '+' : '' }}{{ fmt(m.pct) }}%</b>
                   </span>
                 </div>
               </div>
-            </div>
+              <!-- 板块聚集卡片（拉升/翻红/跳水） -->
+              <div v-else class="fa-card fa-card-pulse"
+                   :style="{ '--i': Math.min(gidx + idx, 15) }">
+                <div class="fa-card-head">
+                  <span class="fa-time">{{ f.date }} {{ f.time }}</span>
+                  <span class="fa-sector">{{ pulseSectorLabel(f) }}</span>
+                  <span class="fa-pulse-tag">🧲 板块聚集</span>
+                </div>
+                <div class="fa-card-meta">
+                  <span class="fa-chg" :class="f.median_pct >= 0 ? 'pulse-pos' : 'pulse-neg'">中位涨幅 {{ f.median_pct >= 0 ? '+' : '' }}{{ fmt(f.median_pct) }}%</span>
+                  <span class="fa-chg" :class="f.median_delta >= 0 ? 'pulse-pos' : 'pulse-neg'">较上轮 {{ f.median_delta >= 0 ? '+' : '' }}{{ fmt(f.median_delta) }}%</span>
+                </div>
+                <div class="fa-hits">
+                  <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', h.type === 'cluster_dump' ? 'hit-pulse-neg' : 'hit-pulse-pos']">
+                    {{ pulseHitIcon(h.type) }} {{ h.label }} {{ h.count }}/{{ f.total }} 只
+                  </span>
+                </div>
+                <div class="fa-pulse-leaders" v-if="f.leaders && f.leaders.length">
+                  <span class="fa-leader-label">领涨</span>
+                  <span v-for="ld in f.leaders" :key="ld.code" class="fa-leader-item">
+                    {{ ld.name }} <b :class="ld.pct >= 0 ? 'pulse-pos' : 'pulse-neg'">{{ ld.pct >= 0 ? '+' : '' }}{{ fmt(ld.pct) }}%</b>
+                  </span>
+                </div>
+              </div>
+            </template>
           </template>
           <div class="fa-more" v-if="filteredPulseFindings.length > pulseShowLimit">
             <button @click="pulseShowLimit += 100">加载更多（剩余 {{ filteredPulseFindings.length - pulseShowLimit }}）</button>
@@ -364,7 +360,8 @@ const DIM_META = {
 // 个股异动（Stock Pulse）触发类型图标：红涨绿跌
 const PULSE_ICONS = {
   cluster_surge: '🔴', cluster_turn_red: '🔴', cluster_dump: '🟢',
-  limit_up: '🔴', limit_down: '🟢'
+  limit_up: '🔴', limit_down: '🟢',
+  limit_up_cluster: '🔴', limit_down_cluster: '🟢'
 }
 
 export default {
@@ -446,34 +443,13 @@ export default {
       const f = this.pulseFilter
       let list = this.pulseFindings
       if (f === 'sector') list = list.filter(x => x.kind === 'pulse_sector')
-      else if (f === 'limit') list = list.filter(x => x.kind === 'pulse_stock' && (x.type === 'limit_up' || x.type === 'limit_down'))
+      else if (f === 'limit') list = list.filter(x => x.kind === 'pulse_limit_cluster')
       return [...list].sort((a, b) => (a.time < b.time ? 1 : -1))
     },
-    // 个股异动分组：板块卡片独立、个股同代码折叠
+    // 个股异动分组：每个 finding 一张卡（板块聚集 / 涨跌停聚集）
     shownPulseGroups() {
       const shown = this.filteredPulseFindings.slice(0, this.pulseShowLimit)
-      const groups = []
-      const stockMap = new Map()
-      for (const f of shown) {
-        if (f.kind === 'pulse_stock') {
-          const key = f.code || f.name
-          if (stockMap.has(key)) {
-            groups[stockMap.get(key)].items.push(f)
-          } else {
-            stockMap.set(key, groups.length)
-            groups.push({ type: 'pulse_stock', key, items: [f], latest: f })
-          }
-        } else {
-          groups.push({ type: 'pulse_sector', key: `sec:${f.level}:${f.sector}:${f.time}`, items: [f] })
-        }
-      }
-      for (const g of groups) {
-        if (g.type === 'pulse_stock') {
-          g.items.sort((a, b) => (a.time < b.time ? 1 : -1))
-          g.latest = g.items[0]
-        }
-      }
-      return groups
+      return shown.map(f => ({ type: f.kind, key: `${f.kind}:${f.level}:${f.sector}:${f.time}`, items: [f] }))
     }
   },
   async mounted() {
@@ -481,7 +457,9 @@ export default {
     window.addEventListener('auth-login-success', this.onAuthLogin)
     window.addEventListener('ws-stock-pulse', this.onPulsePush)
     this._autoTimer = setInterval(this.autoRefresh, 60000)  // 60s 自动刷新，免手动
-    await this.runDetect()
+    // 支持首页速览带 tab 参数直达：/flow-alert?tab=pulse → 个股异动
+    if (this.$route.query.tab === 'pulse') this.switchMainTab('pulse')
+    else await this.runDetect()
   },
   beforeUnmount() {
     window.removeEventListener('auth-required', this.onAuthRequired)
@@ -605,10 +583,6 @@ export default {
       return f.sector
     },
     pulseHitIcon(type) { return PULSE_ICONS[type] || '•' },
-    pulseStockHitClass(s) {
-      return (s.type === 'limit_down' || s.type === 'cluster_dump')
-        ? 'hit-pulse-neg' : 'hit-pulse-pos'
-    },
     async onDateChange() {
       this.showLimit = 100
       if (this.view === 'detect') this.runDetect()
