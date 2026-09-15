@@ -129,7 +129,6 @@
               <div class="fa-card-head" @click="toggleStockGroup('pulse:'+g.key)" style="cursor:pointer">
                 <span class="fa-time">{{ g.latest.date }} {{ g.latest.time }}</span>
                 <span class="fa-sector">{{ g.latest.name }} {{ g.latest.code }}</span>
-                <span class="fa-stock-tag">📈 个股异动</span>
                 <span v-if="g.items.length > 1" class="fa-expand-hint">{{ expandedStocks['pulse:'+g.key] ? '收起' : `共${g.items.length}条 ▶` }}</span>
               </div>
               <div class="fa-card-meta">

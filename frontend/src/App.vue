@@ -534,7 +534,7 @@
               <div class="fa-quick-card pulse" v-for="(a, idx) in pulseQuickList" :key="idx">
                 <div class="fa-quick-head">
                   <span class="fa-quick-time">{{ a.date }} {{ a.time }}</span>
-                  <span class="fa-quick-sector">{{ a.closing ? '📊 收盘总结' : '📈 个股异动' }}</span>
+                  <span class="fa-quick-sector" v-if="a.closing">📊 收盘总结</span>
                   <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '✓' : '✗' }}</span>
                 </div>
                 <div class="fa-quick-pulse-body">

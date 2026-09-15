@@ -513,7 +513,8 @@ def _format_round_message(record):
     if not title_bits:
         title_bits.append(f"上涨{summary['advance']} 涨停{summary['limit_up']}"
                           if summary else "市场温度")
-    title = f"{'📊 收盘' if closing else '📈'} {t}｜{' · '.join(title_bits[:3])}"
+    # 重点在前、时间在后：一眼先看到发生了什么
+    title = f"{'📊 收盘' if closing else '📈'} {' · '.join(title_bits[:3])}｜{t}"
 
     # ---- 正文 ----
     lines = []

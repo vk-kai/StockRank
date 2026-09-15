@@ -141,7 +141,6 @@ function sendPulseNotification(record) {
   try {
     if (!record) return
     const closing = !!record.closing
-    const title = closing ? `📊 收盘总结 ${record.date || ''}` : `📈 个股异动 ${record.time || ''}`
     const parts = []
     const topSector = (record.sectors || [])[0]
     if (topSector) {
@@ -151,9 +150,14 @@ function sendPulseNotification(record) {
       if (h) parts.push(`${secLabel} ${h.count}/${topSector.total} 只${h.label}`)
     }
     const stockCount = (record.stocks || []).length
-    if (stockCount) parts.push(`个股异动 ${stockCount} 起`)
+    if (stockCount) parts.push(`涨跌停 ${stockCount} 起`)
     const s = record.summary
     if (s) parts.push(`涨${s.advance}/跌${s.decline} 涨停${s.limit_up}`)
+    // 重点在前、时间在后：标题带最显著信号
+    const head = parts.shift()
+    const title = closing
+      ? `📊 收盘总结 ${record.date || ''}`
+      : (head ? `📈 ${head}｜${record.time || ''}` : `📈 ${record.time || ''}`)
     const n = new Notification(title, {
       body: parts.join('｜') || '本轮无异动',
       icon: ICON,
