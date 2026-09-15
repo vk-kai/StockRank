@@ -23,6 +23,7 @@ REMOVED_ETF_PATH = DATA_DIR / "removed_etfs.json"
 PYTDX_HOST_CACHE_PATH = DATA_DIR / "pytdx_hosts.json"
 A_SHARE_SPOT_CACHE_PATH = DATA_DIR / "a_share_spot.json"
 DOWNLOAD_UNIVERSE_CACHE_PATH = DATA_DIR / "download_universe.json"
+KOSPI_CURVE_CACHE_PATH = DATA_DIR / "kospi_curve.json"  # 套利监控 KOSPI 新浪层曲线的落盘恢复文件
 
 KLINE_PARQUET_DIR = DATA_DIR / "kline"
 

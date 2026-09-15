@@ -26,6 +26,8 @@ data/*
 # 但不忽略 .json 文件
 !data/*.json
 data/pytdx_hosts.json
+# KOSPI 曲线落盘恢复文件: 纯运行态,每天重建,不进版本库
+data/kospi_curve.json
 
 # Logs
 # 忽略 logs 目录下的所有文件，但保留策略更新日志

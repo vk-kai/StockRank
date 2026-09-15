@@ -25,9 +25,12 @@ em_global(KOSPI) 单独走"新浪实时优先"链(见 _fetch_kospi_trends): 新�
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -42,6 +45,7 @@ from backend.config import (
     ARB_TRENDS_STALE_MAX_SECONDS,
 )
 from backend.market import pytdx_data
+from backend.paths import KOSPI_CURVE_CACHE_PATH, ensure_data_dir
 from backend.time_utils import now_beijing, to_chart_seconds
 
 logger = logging.getLogger(__name__)
@@ -93,13 +97,19 @@ _tdx_board_lock = threading.Lock()
 # KOSPI 新浪快照 + 自累积曲线
 # ---------------------------------------------------------------------------
 class _KospiAccumulator:
-    """KOSPI 分时曲线的双层累积器: 新浪实时覆盖层 + 东财全量基线层。
+    """KOSPI 分时曲线的三层保障: 新浪实时覆盖层 + 落盘恢复层 + 东财全量基线层。
 
     新浪 b_KOSPI 快照实时但只有当前值 → 每次 upsert 当前分钟,构成实时尾巴;
+    新浪层逐分钟落盘到数据卷(kospi_curve.json),进程重启(夜间重建/autoheal/OOM)
+    后先恢复当天已累积的曲线再继续——东财基线在部分环境被连接层直接阻断
+    (TCP 通、请求即 reset),不能依赖它做重启恢复,只当可选的历史补缺加速器;
     东财 trends2 有全天分钟曲线但全球指数免费行情滞后 15~20 分钟 → 低频回填,
-    只负责补历史段。同一分钟两层都有值时以新浪为准;任一层日期不是今天则
-    整层丢弃(避免韩国休市日把昨日曲线混进今天,分钟对齐会串值)。
+    只负责补历史段。同一分钟新浪/落盘层优先于东财;任一层日期不是今天则整层丢弃
+    (避免韩国休市日把昨日曲线混进今天,分钟对齐会串值)。
     """
+
+    # 落盘节流: upsert 每 15s 一轮,30s 写一次足够(崩溃最多丢 30s 曲线,无关痛痒)
+    _PERSIST_INTERVAL_SECONDS = 30.0
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -111,6 +121,8 @@ class _KospiAccumulator:
         self._base_pre_close: Optional[float] = None
         self._base_at: Optional[datetime] = None        # 基线最近一次成功拉取时间
         self._base_next_try: Optional[datetime] = None  # 基线失败后的重试时间(防打爆)
+        self._persist_at: float = 0.0                   # 上次落盘的 monotonic 秒(节流)
+        self._load_persisted()
 
     @staticmethod
     def _today() -> str:
@@ -148,6 +160,61 @@ class _KospiAccumulator:
             self._points[hhmm] = {"price": price, "pct": pct}
             if pre_close:
                 self._pre_close = float(pre_close)
+            self._persist_locked()
+
+    def _load_persisted(self) -> None:
+        """进程启动时恢复今天的落盘曲线(仅 __init__ 调用,无锁竞争)。
+
+        日期不是今天的缓存直接丢弃——韩国休市日/周末残留没价值,首轮 upsert 会重建。
+        """
+        try:
+            if not KOSPI_CURVE_CACHE_PATH.exists():
+                return
+            payload = json.loads(KOSPI_CURVE_CACHE_PATH.read_text(encoding="utf-8"))
+            date = str(payload.get("date") or "")
+            if date != self._today():
+                return
+            raw_points = payload.get("points")
+            if not isinstance(raw_points, dict) or not raw_points:
+                return
+            clean: dict[str, dict] = {}
+            for hhmm, item in raw_points.items():
+                try:
+                    clean[str(hhmm)] = {"price": float(item["price"]), "pct": float(item["pct"])}
+                except (TypeError, ValueError, KeyError):
+                    continue
+            if not clean:
+                return
+            self._date = date
+            self._points = clean
+            try:
+                pre = payload.get("pre_close")
+                self._pre_close = float(pre) if pre else None
+            except (TypeError, ValueError):
+                self._pre_close = None
+            logger.info("KOSPI 曲线从落盘恢复 %s 共 %d 分钟", date, len(clean))
+        except Exception as exc:
+            logger.debug("KOSPI 曲线落盘恢复失败: %s", exc)
+
+    def _persist_locked(self) -> None:
+        """(须持锁)把新浪层当天曲线原子写盘;30s 节流,失败静默(下轮 upsert 重试)。"""
+        now_s = time.monotonic()
+        if now_s - self._persist_at < self._PERSIST_INTERVAL_SECONDS:
+            return
+        self._persist_at = now_s
+        try:
+            ensure_data_dir()
+            payload = {
+                "date": self._date,
+                "pre_close": self._pre_close,
+                "points": self._points,
+                "saved_at": now_beijing().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            tmp = KOSPI_CURVE_CACHE_PATH.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, KOSPI_CURVE_CACHE_PATH)
+        except Exception as exc:
+            logger.debug("KOSPI 曲线落盘失败: %s", exc)
 
     def _fresh_layers_locked(self) -> tuple[dict, dict, bool, bool]:
         """(须持锁)返回(基线层, 覆盖层, 基线是否今日, 覆盖是否今日),过期层为空 dict。"""
