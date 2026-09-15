@@ -537,7 +537,7 @@ def run_backtest(
             except Exception:
                 drawdown_detail = None
 
-        # 基准对比曲线(默认沪深300 ETF 510300 后复权,归一化到策略起点 start_value)
+        # 基准对比曲线(默认沪深300 ETF 510300 前复权,与个股K线同口径,归一化到策略起点 start_value)
         benchmark_curve = None
         if not lightweight and include_equity_curve and benchmark_code:
             try:

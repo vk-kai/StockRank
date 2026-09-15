@@ -347,6 +347,9 @@ def _calc_hfq_factor(code: str, raw_pre_close: float) -> float:
     这里复用 kline_service.py 的对齐方法：用本地昨收 / 实时 raw 昨收得到因子，
     调用方把 raw 价 ×factor 即可换算到本地口径。
     取不到本地昨收时返回 1.0（退化为直接比较，不强行修正）。
+    因子合理区间 [0.85,1.15]（qfq 基线下因子≈1）：源昨收异常（除权日未调整昨收/
+    错标的）会让因子飙到 3~5 或缩到 0.2~0.5，直接乘会算出离谱收益，此时返回 1.0
+    （raw≈qfq 直接比较，误差仅股息级）。
     """
     if raw_pre_close <= 0:
         return 1.0
@@ -363,10 +366,13 @@ def _calc_hfq_factor(code: str, raw_pre_close: float) -> float:
     closes = [c for c in closes if c > 0]
     if not closes:
         return 1.0
-    last_hfq_close = closes[-1]
-    factor = last_hfq_close / raw_pre_close
-    # 合理区间限制，避免脏数据导致极端因子
-    if not (0.05 < factor < 20.0):
+    last_local_close = closes[-1]
+    factor = last_local_close / raw_pre_close
+    if not (0.85 <= factor <= 1.15):
+        logger.error(
+            f"[口径因子] {code} 因子异常返回1.0: 本地昨收{last_local_close}/源昨收{raw_pre_close}"
+            f"=因子{factor:.3f}超[0.85,1.15](疑似除权日未调整昨收或错标的)"
+        )
         return 1.0
     return factor
 
@@ -400,12 +406,12 @@ def get_watchlist(request: Request):
                 base_price = base_signal["signal_price"]
                 current_price = q.get("price", 0)
                 if base_price > 0 and current_price > 0:
-                    # base_price 是后复权(hfq)口径，current_price 是不复权(raw)实时价，
-                    # 两者口径不一致会让累计分红的个股算出离谱的负收益（如茅台 -88%）。
-                    # 用 hfq 因子把实时价换算到 hfq 口径再比较（与 kline_service 对齐做法）。
+                    # base_price 是本地K线口径(前复权 qfq)，current_price 是不复权(raw)实时价，
+                    # 口径差异需对齐（与 kline_service 对齐做法一致）。qfq 基线下因子≈1，
+                    # 因子异常时 _calc_hfq_factor 内部已兜底返回 1.0（raw≈qfq 直接比）。
                     raw_pre_close = float(q.get("pre_close") or 0)
-                    hfq_factor = _calc_hfq_factor(item["code"], raw_pre_close)
-                    current_price_hfq = current_price * hfq_factor
+                    qfq_factor = _calc_hfq_factor(item["code"], raw_pre_close)
+                    current_price_hfq = current_price * qfq_factor
                     tracked_return_pct = round((current_price_hfq - base_price) / base_price * 100, 2)
             result.append({
                 "code": item["code"],
@@ -984,11 +990,11 @@ def untrack_scan_signal(
     if exit_price <= 0:
         return {"success": False, "message": "当前无法获取实时价格，暂时不能结算，请稍后重试"}
 
-    # signal_price 是后复权(hfq)口径，而实时 exit_price 是不复权(raw)，需统一口径：
-    # 把 raw exit_price 换算到 hfq，否则结算收益率会像自选列表那样算出离谱的负值。
+    # signal_price 是本地K线口径(前复权 qfq)，而实时 exit_price 是不复权(raw)，需统一口径：
+    # 把 raw exit_price 换算到 qfq（因子≈1，异常时 _calc_hfq_factor 内部兜底返回 1.0）。
     raw_pre_close = float((quote or {}).get("pre_close") or 0)
-    hfq_factor = _calc_hfq_factor(tracked["code"], raw_pre_close)
-    exit_price = round(exit_price * hfq_factor, 4)
+    qfq_factor = _calc_hfq_factor(tracked["code"], raw_pre_close)
+    exit_price = round(exit_price * qfq_factor, 4)
 
     removed_from_watchlist = False
     if remove_from_watchlist:

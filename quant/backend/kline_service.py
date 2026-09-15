@@ -712,14 +712,22 @@ def _synthesize_today_bar_from_minute_df(code: str, prev_close: float, today_str
     prev_bars = normalized[normalized["datetime"] < today_start]
     raw_prev_close = float(prev_bars.iloc[-1]["close"]) if not prev_bars.empty else 0.0
     hfq_factor = (prev_close / raw_prev_close) if (prev_close > 0 and raw_prev_close > 0) else 1.0
+    # 因子合理性校验(与报价合成同口径):qfq 基线下因子必须≈1,超界说明分钟源
+    # 昨收口径异常(除权日未调整/错标的),丢弃降级纯历史。
+    if prev_close > 0 and raw_prev_close > 0 and not (0.85 <= hfq_factor <= 1.15):
+        logger.info(
+            f"[盘中补充] {code} 分钟线兜底因子异常丢弃: 本地昨收{prev_close}/分钟昨收{raw_prev_close}"
+            f"=因子{hfq_factor:.3f}超[0.85,1.15]"
+        )
+        return pd.DataFrame()
 
     close = float(today_bars.iloc[-1]["close"]) * hfq_factor
     if close <= 0:
         return pd.DataFrame()
     if prev_close and prev_close > 0:
         ratio = close / prev_close
-        if ratio < 0.2 or ratio > 5.0:
-            logger.info(f"[盘中补充] {code} 分钟线兜底校验丢弃: 比值{ratio:.2f}超[0.2,5.0]")
+        if ratio < 0.6 or ratio > 1.6:
+            logger.info(f"[盘中补充] {code} 分钟线兜底校验丢弃: 比值{ratio:.2f}超[0.6,1.6]")
             return pd.DataFrame()
 
     amount = float(today_bars["amount"].sum()) if "amount" in today_bars.columns else 0.0
@@ -821,8 +829,17 @@ def _fetch_today_realtime_bar_df_uncached(code: str, security_kind: str, today_s
         # 次日历史同步后自愈。指数不复权,本地昨收==raw昨收,因子自然退化为1。
         quote_prev_close = float(quote.get("pre_close") or quote.get("prev_close") or 0)
         hfq_factor = (prev_close / quote_prev_close) if (prev_close > 0 and quote_prev_close > 0) else 1.0
+        # 因子合理性校验:qfq 基线下因子必须≈1(除权日偏差仅股息级,±15%容错)。
+        # 部分源在除权日返回"未除权调整的原始昨收"(如10转3.7除权日昨收差3.7倍),
+        # 因子会飙到 3~5,直接乘会把当天bar放大数倍(实测长电科技 66→251),必须丢弃。
+        if prev_close > 0 and quote_prev_close > 0 and not (0.85 <= hfq_factor <= 1.15):
+            logger.info(
+                f"[盘中补充] {code} 因子异常丢弃: 本地昨收{prev_close}/实时昨收{quote_prev_close}"
+                f"=因子{hfq_factor:.3f}超[0.85,1.15](疑似除权日未调整昨收或错标的),降级纯历史"
+            )
+            return pd.DataFrame()
         if abs(hfq_factor - 1.0) > 1e-4:
-            logger.info(f"[盘中补充] {code} hfq换算因子={hfq_factor:.5f} (本地昨收{prev_close}/实时昨收{quote_prev_close})")
+            logger.info(f"[盘中补充] {code} raw→qfq换算因子={hfq_factor:.5f} (本地昨收{prev_close}/实时昨收{quote_prev_close})")
         bar = {
             "date": pd.Timestamp(today_str, tz="UTC"),
             "open": float(quote.get("open") or 0) * hfq_factor,
@@ -841,15 +858,13 @@ def _fetch_today_realtime_bar_df_uncached(code: str, security_kind: str, today_s
         logger.info(f"[盘中补充] {code} close={bar['close']}<=0(未开盘/停牌)，不追加")
         return pd.DataFrame()
 
-    # 合理性校验：防止数据源返回错误标的（如 000001 在本项目被 _SH_INDEX_CODES
-    # 定义为上证指数，实时报价会返回指数点位，与个股历史价位严重不符）。
-    # A股单日涨跌停 ±10%~±20%，除权除极端外不超 ±50%，[0.2, 5.0] 已足够宽松；
-    # 超出则判定为可疑数据，丢弃当天补充、降级为纯历史，避免污染K线。
+    # 合理性校验(第二道防线):qfq 基线下当天bar与昨收的比值应在 [0.6,1.6]
+    # (A股涨跌停±10/20/30%全覆盖);因子校验漏网的可疑数据在此兜底丢弃。
     if prev_close and prev_close > 0:
         ratio = bar["close"] / prev_close
-        if ratio < 0.2 or ratio > 5.0:
+        if ratio < 0.6 or ratio > 1.6:
             logger.info(
-                f"[盘中补充] {code} 校验丢弃: 实时{bar['close']}/昨收{prev_close}=比值{ratio:.2f}超[0.2,5.0]"
+                f"[盘中补充] {code} 校验丢弃: 实时{bar['close']}/昨收{prev_close}=比值{ratio:.2f}超[0.6,1.6]"
             )
             return pd.DataFrame()
 

@@ -39,15 +39,17 @@ def merge_scan_realtime_tail(local_df: pd.DataFrame, code: str, scan_period: str
         if col in work_df.columns:
             work_df[col] = pd.to_numeric(work_df[col], errors="coerce")
 
-    # 比例对齐:local(后复权 hfq)与 pytdx 实时尾巴(不复权)在除权日会有跳价,
-    # 用 local 末根 close / 尾巴首根 close 把尾巴价格缩放到 hfq 水平(仅当比例显著偏离 1)
+    # 比例对齐:local(前复权 qfq)与 pytdx 实时尾巴(不复权)在除权日有股息级微差,
+    # 用 local 末根 close / 尾巴首根 close 把尾巴价格缩放到 local 口径。
+    # qfq 基线下两者日常≈1,除权日偏差也仅股息级(±3%内),区间收紧到 [0.8,1.25]
+    # ——显著偏离 1 只可能是错标的或滞后数据,此时不缩放(宁可比对偏差也别放大错价)。
     if not local_df.empty and not work_df.empty:
         try:
             local_last_close = float(pd.to_numeric(local_df["close"], errors="coerce").iloc[-1])
             remote_first_close = float(pd.to_numeric(work_df["close"], errors="coerce").iloc[0])
             if local_last_close > 0 and remote_first_close > 0:
                 scale = local_last_close / remote_first_close
-                if 0.5 < scale < 2.0 and abs(scale - 1.0) > 0.05:
+                if 0.8 < scale < 1.25 and abs(scale - 1.0) > 0.03:
                     for col in ("open", "high", "low", "close"):
                         if col in work_df.columns:
                             work_df[col] = pd.to_numeric(work_df[col], errors="coerce") * scale

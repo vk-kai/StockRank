@@ -112,9 +112,11 @@ function getKlineTradingDate(bar: Pick<KlineData, "time" | "timestamp">) {
     return matched[1];
   }
   const date = new Date(bar.timestamp * 1000);
-  const yyyy = String(date.getFullYear());
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
+  // chart 秒按"北京墙钟当 epoch"约定(见后端 time_utils),必须用 UTC 系方法取值,
+  // 浏览器非北京时区时 getFullYear() 等本地方法会漂移一天
+  const yyyy = String(date.getUTCFullYear());
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -130,11 +132,11 @@ function formatDiagnosisBarTime(bar: Pick<KlineData, "time" | "timestamp">) {
   if (Number.isNaN(date.getTime())) {
     return "--";
   }
-  const yyyy = String(date.getFullYear());
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
+  const yyyy = String(date.getUTCFullYear());
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const mi = String(date.getUTCMinutes()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 

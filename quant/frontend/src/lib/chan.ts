@@ -137,9 +137,10 @@ function getBarTradingDate(bar: Pick<KlineData, "time" | "timestamp">) {
     return matched[1];
   }
   const date = new Date(bar.timestamp * 1000);
-  const yyyy = String(date.getFullYear());
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
+  // chart 秒按"北京墙钟当 epoch"约定,用 UTC 系方法取值避免非北京时区浏览器漂移
+  const yyyy = String(date.getUTCFullYear());
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
