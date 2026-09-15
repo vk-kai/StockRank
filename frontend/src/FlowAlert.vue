@@ -58,6 +58,21 @@
             <span class="act-pos">拉升板块 {{ pulseSummary.rising_count || 0 }}</span>
             <span class="act-neg">跳水板块 {{ pulseSummary.falling_count || 0 }}</span>
           </div>
+          <!-- 全天累计：反复走强/反复走弱的板块（按触发轮数排序） -->
+          <template v-if="(pulseSummary.day_strong || []).length || (pulseSummary.day_weak || []).length">
+            <div class="fa-rank-line" v-if="pulseSummary.day_strong && pulseSummary.day_strong.length">
+              <span class="fa-rank-tag rank-pos">全天领涨</span>
+              <span v-for="s in pulseSummary.day_strong.slice(0, 4)" :key="'ds'+s.level+s.sector" class="fa-rank-item">
+                {{ pulseSectorLabel(s) }}<em>拉升 {{ s.rounds }} 轮 · 峰值 {{ s.max_count }} 只 · 均值 {{ s.avg_median >= 0 ? '+' : '' }}{{ fmt(s.avg_median) }}%</em>
+              </span>
+            </div>
+            <div class="fa-rank-line" v-if="pulseSummary.day_weak && pulseSummary.day_weak.length">
+              <span class="fa-rank-tag rank-neg">全天领跌</span>
+              <span v-for="s in pulseSummary.day_weak.slice(0, 4)" :key="'dw'+s.level+s.sector" class="fa-rank-item">
+                {{ pulseSectorLabel(s) }}<em>跳水 {{ s.rounds }} 轮 · 峰值 {{ s.max_count }} 只 · 均值 {{ fmt(s.avg_median) }}%</em>
+              </span>
+            </div>
+          </template>
           <div class="fa-rank-line" v-if="pulseSummary.sectors_rising && pulseSummary.sectors_rising.length">
             <span class="fa-rank-tag rank-pos">拉升</span>
             <span v-for="s in pulseSummary.sectors_rising" :key="'r'+s.level+s.sector" class="fa-rank-item">

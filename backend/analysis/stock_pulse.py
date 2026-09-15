@@ -449,7 +449,62 @@ def get_latest_summary():
     summary['falling_count'] = len(falling)
     summary['sectors_rising'] = rising[:8]
     summary['sectors_falling'] = falling[:8]
+    # 全天累计视角：反复走强/走弱的板块（当日主角与最弱者）
+    try:
+        strong, weak = day_sector_aggregate(date_str)
+        summary['day_strong'] = strong
+        summary['day_weak'] = weak
+    except Exception as e:
+        logger.warning(f"[个股异动] 全天板块聚合失败: {e}")
     return summary
+
+
+def day_sector_aggregate(date_str=None):
+    """全天板块强度聚合：重放当日全部相邻轮次，统计每个板块触发集体拉升/翻红
+    与集体跳水的轮数。反复上榜者即当日主角/最弱者（极端视角）。"""
+    date_str = date_str or _today_str()
+    doc = load_snap_doc(date_str)
+    rounds = [r for r in doc.get('rounds', []) if r.get('pct')]
+    if len(rounds) < 2:
+        return [], []
+    stocks = _stocks_map()
+    cfg = load_config()
+    stats = {}
+    for i in range(1, len(rounds)):
+        cur_t = rounds[i].get('time', '')
+        cur = rounds[i]['pct']
+        prev = rounds[i - 1]['pct']
+        for f in _sector_findings(cur, prev, stocks, cfg, cur_t):
+            types = {h['type'] for h in f['hits']}
+            up = bool(types & {'cluster_surge', 'cluster_turn_red'})
+            down = 'cluster_dump' in types
+            if not (up or down):
+                continue
+            k = (f['level'], f['sector'])
+            st = stats.setdefault(k, {
+                'sector': f['sector'], 'l1': f['l1'], 'level': f['level'], 'total': f['total'],
+                'up_rounds': 0, 'down_rounds': 0, 'max_count': 0, 'mids': [], 'last_time': ''})
+            for h in f['hits']:
+                st['max_count'] = max(st['max_count'], h['count'])
+            st['mids'].append(f['median_pct'])
+            st['last_time'] = cur_t
+            if up:
+                st['up_rounds'] += 1
+            if down:
+                st['down_rounds'] += 1
+
+    def _pack(st, rounds_key):
+        mids = st['mids']
+        return {'sector': st['sector'], 'l1': st['l1'], 'level': st['level'], 'total': st['total'],
+                'rounds': st[rounds_key], 'max_count': st['max_count'],
+                'avg_median': round(sum(mids) / len(mids), 2) if mids else 0,
+                'last_time': st['last_time']}
+
+    strong = [_pack(st, 'up_rounds') for st in stats.values() if st['up_rounds'] > 0]
+    weak = [_pack(st, 'down_rounds') for st in stats.values() if st['down_rounds'] > 0]
+    strong.sort(key=lambda x: (-x['rounds'], -x['max_count']))
+    weak.sort(key=lambda x: (-x['rounds'], -x['max_count']))
+    return strong[:6], weak[:6]
 
 
 # --------------------------------------------------------------------------
