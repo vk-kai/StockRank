@@ -349,38 +349,54 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
 def _stock_findings(cur, prev, stocks, cfg, time_str):
     """涨跌停板块聚集：同一二级行业（无二级回退一级）内 ≥limit_cluster_min 只
     涨停/跌停才播报（板块开始异动的信号）；单只涨跌停不报。
+    仅当聚集成员数较上一轮增加时才产出（首封达标或新成员封板），
+    封板状态不变不重复报，避免盘中每 40 分钟重推同样的旧状态。
     产出为板块级 finding（kind=pulse_limit_cluster），走既有板块冷却
-    （sector|limit_up_cluster）防止封板期间重复刷屏。"""
+    （sector|limit_up_cluster）兜底。"""
     cfg = {**DEFAULT_CONFIG, **(cfg or {})}
     min_count = int(cfg.get('limit_cluster_min', 2))
     tol = float(cfg['limit_tolerance'])
-    up_b, down_b = {}, {}
-    for code, pct in cur.items():
-        if pct is None:
-            continue
-        info = stocks.get(code)
-        if not info:
-            continue
-        limit = _limit_of(code, info.get('name', ''))
-        if limit is None:
-            continue
-        ind = info.get('l2') or info.get('l1')
-        if not ind:
-            continue
-        if pct >= limit * tol:
-            up_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
-        elif pct <= -limit * tol:
-            down_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
+
+    def _buckets(pct_map):
+        up_b, down_b = {}, {}
+        for code, pct in (pct_map or {}).items():
+            if pct is None:
+                continue
+            info = stocks.get(code)
+            if not info:
+                continue
+            limit = _limit_of(code, info.get('name', ''))
+            if limit is None:
+                continue
+            ind = info.get('l2') or info.get('l1')
+            if not ind:
+                continue
+            if pct >= limit * tol:
+                up_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
+            elif pct <= -limit * tol:
+                down_b.setdefault(ind, []).append((code, info.get('name', ''), pct))
+        return up_b, down_b
+
+    up_b, down_b = _buckets(cur)
+    prev_up, prev_down = _buckets(prev)
+
     out = []
-    for buckets, ftype, label in ((up_b, 'limit_up_cluster', '涨停'),
-                                  (down_b, 'limit_down_cluster', '跌停')):
+    for buckets, prev_b, ftype, label in ((up_b, prev_up, 'limit_up_cluster', '涨停'),
+                                          (down_b, prev_down, 'limit_down_cluster', '跌停')):
         for ind, members in buckets.items():
             if len(members) < min_count:
                 continue
+            prev_cnt = len(prev_b.get(ind, []))
+            if len(members) <= prev_cnt:
+                continue  # 成员未增加（封板不变/减少），不重复报
             members.sort(key=lambda x: -x[2] if ftype == 'limit_up_cluster' else x[2])
+            pcts = sorted(p for _, _, p in members)
+            median_pct = pcts[len(pcts) // 2]
             out.append({
                 'kind': 'pulse_limit_cluster', 'sector': ind, 'l1': ind, 'level': 'limit',
                 'type': ftype, 'label': label, 'count': len(members),
+                # total/median_pct 为兼容旧消费端：聚集无板块总数概念，中位=成员涨幅中位
+                'total': len(members), 'median_pct': round(median_pct, 2),
                 'members': [{'code': c, 'name': n, 'pct': round(p, 2)}
                             for c, n, p in members[:8]],
                 'time': time_str, 'date': _today_str(),
@@ -819,10 +835,15 @@ def stock_pulse_loop():
                 _run_round('15:00', cfg, closing=True)
                 _last_round_key = _today_str(now) + '15:00'
             elif now.minute % 5 == 0:
-                key = _today_str(now) + now.strftime('%H:%M')
-                if key != _last_round_key:
-                    _last_round_key = key
-                    _run_round(now.strftime('%H:%M'), cfg, closing=(now.hour == 15))
+                # 交易时段闸门：仅 09:30~11:30 / 13:00~15:00 采样，
+                # 午休与盘前盘后不采样（午休价格静止，重推只会是旧状态）
+                hhmm = now.strftime('%H:%M')
+                in_session = ('09:30' <= hhmm <= '11:30') or ('13:00' <= hhmm <= '15:00')
+                if in_session:
+                    key = _today_str(now) + hhmm
+                    if key != _last_round_key:
+                        _last_round_key = key
+                        _run_round(hhmm, cfg, closing=(hhmm == '15:00'))
         except Exception as e:
             logger.error(f"[个股异动] 线程循环异常: {e}")
         time.sleep(20)
