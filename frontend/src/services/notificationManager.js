@@ -79,9 +79,10 @@ function sendAnomalyNotification(a) {
     const chg = a.change_pct != null ? ` ${a.change_pct >= 0 ? '+' : ''}${Number(a.change_pct).toFixed(2)}%` : ''
     const lead = a.lead_stock ? ` 龙头${a.lead_stock}` : ''
     // 有反转明细时优先展示"之前→现在/减缓%"，更直观
+    const labels = (a.labels || []).filter(Boolean)
     const body = a.reversal_detail
       ? `${a.reversal_detail}｜${chg}${lead}`
-      : `${(a.labels || []).join('、')}｜${chg}${lead}`
+      : `${labels.length ? labels.join('、') : '资金异动'}｜${chg}${lead}`
     const n = new Notification(`${arrow} ${a.sector}${topLabel} ${nfStr}`, {
       body,
       icon: ICON,
@@ -141,25 +142,41 @@ function sendPulseNotification(record) {
   try {
     if (!record) return
     const closing = !!record.closing
-    const parts = []
-    const topSector = (record.sectors || [])[0]
-    if (topSector) {
-      const secLabel = topSector.level === 'l2' && topSector.l1 && topSector.l1 !== topSector.sector
-        ? `${topSector.l1}·${topSector.sector}` : topSector.sector
-      const h = topSector.hits && topSector.hits[0]
-      if (h) parts.push(`${secLabel} ${h.count}/${topSector.total} 只${h.label}`)
+    const stocks = record.stocks || []
+    // ---- 正文：板块聚集明细 + 涨跌停名单（有名字才一目了然） ----
+    const lines = []
+    for (const sec of (record.sectors || []).slice(0, 2)) {
+      const h = (sec.hits || [])[0]
+      if (!h) continue
+      const secLabel = sec.level === 'l2' && sec.l1 && sec.l1 !== sec.sector
+        ? `${sec.l1}·${sec.sector}` : sec.sector
+      const mid = sec.median_pct != null ? `${sec.median_pct >= 0 ? '+' : ''}${sec.median_pct}%` : ''
+      lines.push(`${secLabel} ${h.count}/${sec.total} 只${h.label}（中位 ${mid}）`)
     }
-    const stockCount = (record.stocks || []).length
-    if (stockCount) parts.push(`涨跌停 ${stockCount} 起`)
-    const s = record.summary
-    if (s) parts.push(`涨${s.advance}/跌${s.decline} 涨停${s.limit_up}`)
-    // 重点在前、时间在后：标题带最显著信号
-    const head = parts.shift()
-    const title = closing
-      ? `📊 收盘总结 ${record.date || ''}`
-      : (head ? `📈 ${head}｜${record.time || ''}` : `📈 ${record.time || ''}`)
+    const ups = stocks.filter(s => (s.pct || 0) > 0)
+    const downs = stocks.filter(s => (s.pct || 0) <= 0)
+    if (ups.length) lines.push(`涨停：${ups.slice(0, 5).map(x => x.name).join('、')}${ups.length > 5 ? ` 等${ups.length}只` : ''}`)
+    if (downs.length) lines.push(`跌停：${downs.slice(0, 5).map(x => x.name).join('、')}${downs.length > 5 ? ` 等${downs.length}只` : ''}`)
+    if (closing && record.summary) {
+      const s = record.summary
+      lines.push(`全天：涨${s.advance} 跌${s.decline}，涨停${s.limit_up} 跌停${s.limit_down}`)
+    }
+    // ---- 无实质内容不推送（纯温度轮/空记录） ----
+    if (!lines.length) return
+    // ---- 标题：最显著信号在前、时间在后 ----
+    const sec0 = (record.sectors || [])[0]
+    const h0 = sec0 && (sec0.hits || [])[0]
+    const signals = []
+    if (h0) {
+      const secLabel = sec0.level === 'l2' && sec0.l1 && sec0.l1 !== sec0.sector ? `${sec0.l1}·${sec0.sector}` : sec0.sector
+      signals.push(`${secLabel}${h0.count}只${h0.label}`)
+    }
+    if (ups.length) signals.push(`涨停${ups.length}只`)
+    if (downs.length) signals.push(`跌停${downs.length}只`)
+    const head = signals.slice(0, 2).join('·') || (closing ? '全天复盘' : '异动')
+    const title = closing ? `📊 ${head}｜收盘` : `📈 ${head}｜${record.time || ''}`
     const n = new Notification(title, {
-      body: parts.join('｜') || '本轮无异动',
+      body: lines.join('\n'),
       icon: ICON,
       tag: `pulse-${record.date}-${record.time}`,
       requireInteraction: !closing

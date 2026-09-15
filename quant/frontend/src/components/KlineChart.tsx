@@ -357,6 +357,8 @@ export default function KlineChart({
     close: number;
     change: number;
     changePct: number;
+    /** 距今涨跌幅：该根K线收盘价相对最新一根K线收盘价的累计涨跌幅；悬停最新一根时为 null */
+    sincePct: number | null;
     amplitudePct: number;
     volume: number;
     amount: number;
@@ -833,6 +835,12 @@ export default function KlineChart({
         const change = latestData[idx].close - prevClose;
         const changePct = prevClose ? (change / prevClose) * 100 : 0;
         const amplitudePct = prevClose ? ((latestData[idx].high - latestData[idx].low) / prevClose) * 100 : 0;
+        // 距今涨跌幅：悬停K线收盘 → 最新K线收盘 的累计变化
+        const lastBar = latestData[latestData.length - 1];
+        const sincePct =
+          lastBar && lastBar.close > 0 && idx < latestData.length - 1
+            ? ((lastBar.close - latestData[idx].close) / latestData[idx].close) * 100
+            : null;
         setHoverCandleDetails({
           dateLabel: formatHoverDateLabel(latestData[idx].timestamp, period),
           prevClose,
@@ -842,6 +850,7 @@ export default function KlineChart({
           close: latestData[idx].close,
           change,
           changePct,
+          sincePct,
           amplitudePct,
           volume: latestData[idx].volume,
           amount: latestData[idx].amount ?? 0,
@@ -1484,6 +1493,12 @@ export default function KlineChart({
     const change = data[idx].close - prevClose;
     const changePct = prevClose ? (change / prevClose) * 100 : 0;
     const amplitudePct = prevClose ? ((data[idx].high - data[idx].low) / prevClose) * 100 : 0;
+    // 距今涨跌幅：悬停K线收盘 → 最新K线收盘 的累计变化
+    const lastBar = data[data.length - 1];
+    const sincePct =
+      lastBar && lastBar.close > 0 && idx < data.length - 1
+        ? ((lastBar.close - data[idx].close) / data[idx].close) * 100
+        : null;
     setHoverCandleDetails({
       dateLabel: formatHoverDateLabel(data[idx].timestamp, period),
       prevClose,
@@ -1493,6 +1508,7 @@ export default function KlineChart({
       close: data[idx].close,
       change,
       changePct,
+      sincePct,
       amplitudePct,
       volume: data[idx].volume,
       amount: data[idx].amount ?? 0,
@@ -1742,6 +1758,11 @@ export default function KlineChart({
           <span style={{ color: hoverCandleDetails.change >= 0 ? "#f23645" : "#089981" }}>
             涨幅: {formatSignedPercent(hoverCandleDetails.changePct)}
           </span>
+          {hoverCandleDetails.sincePct != null && (
+            <span style={{ color: hoverCandleDetails.sincePct >= 0 ? "#f23645" : "#089981", fontWeight: 600 }}>
+              距今: {formatSignedPercent(hoverCandleDetails.sincePct)}
+            </span>
+          )}
           <span>振幅: {hoverCandleDetails.amplitudePct.toFixed(2)}%</span>
           <span>成交量: {formatVolume(hoverCandleDetails.volume)}</span>
           <span>成交额: {formatAmount(hoverCandleDetails.amount)}</span>
