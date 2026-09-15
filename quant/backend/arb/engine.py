@@ -53,8 +53,8 @@ def _in_sessions(hhmm: str, sessions) -> bool:
     return any(_in_window(hhmm, session) for session in sessions)
 
 
-def _evaluate_kwargs() -> dict:
-    return {
+def _evaluate_kwargs(bench_kind: str = "") -> dict:
+    kwargs = {
         "corr_window": config.ARB_CORR_WINDOW,
         "corr_min": config.ARB_CORR_MIN,
         "corr_smooth_window": config.ARB_CORR_SMOOTH_WINDOW,
@@ -72,6 +72,12 @@ def _evaluate_kwargs() -> dict:
         "bench_mom_min_pct": config.ARB_BENCH_MOM_MIN_PCT,
         "min_samples": config.ARB_MIN_OVERLAP_SAMPLES,
     }
+    # 全球基准(KOSPI 等)专用放宽:大指数波动远小于A股题材板块,统一口径下
+    # "基准15分钟真实涨跌≥0.25%"和"漂移进自身前5%"几乎不会同时发生 → 信号常年空转
+    if str(bench_kind or "") == "em_global":
+        kwargs["bench_mom_min_pct"] = config.ARB_GLOBAL_MOM_MIN_PCT
+        kwargs["drift_tail_q"] = config.ARB_GLOBAL_DRIFT_TAIL_Q
+    return kwargs
 
 
 def _pair_snapshot(pair: dict) -> dict:
@@ -425,7 +431,7 @@ def _tick_intraday(pair: dict, snap: dict, now: datetime, hhmm: str, trade_date:
     if aligned is None:
         return None
     snap["curve"] = _compact_curve(aligned)
-    result = divergence.evaluate(aligned, **_evaluate_kwargs())
+    result = divergence.evaluate(aligned, **_evaluate_kwargs(pair.get("bench_kind")))
 
     keep = ("status", "samples", "corr", "beta", "spread", "spread_sigma", "drift_z",
             "bench_mom_z", "stock_pct", "bench_pct", "signal", "reason")
