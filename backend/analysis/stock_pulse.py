@@ -59,6 +59,14 @@ DEFAULT_CONFIG = {
     'cluster_dump_abs': 8,
     'cluster_dump_ratio': 0.08,
     'cluster_min_hits': 3,            # 小板块最少命中家数（防 3 只小板块误报）
+    # ---- 日内累计聚集（阴跌/阴涨专用：单轮速度检测抓不到"慢慢走"的板块级行情，
+    #      如工程机械多只权重全天 -5%~-8% 但每轮只跌零点几个点）----
+    'cluster_weak_pct': 3.0,          # 集体走弱：个股日内累计跌幅门槛
+    'cluster_weak_abs': 6,            #   命中家数绝对门槛
+    'cluster_weak_ratio': 0.08,       #   命中家数占板块比例门槛
+    'cluster_strong_pct': 3.0,        # 集体走强：个股日内累计涨幅门槛
+    'cluster_strong_abs': 6,          #   命中家数绝对门槛
+    'cluster_strong_ratio': 0.08,     #   命中家数占板块比例门槛
     # ---- 个股 ----
     'limit_tolerance': 0.998,         # pct >= limit*0.998 视为涨停（留浮点余量）
     'limit_cluster_min': 2,           # 同二级行业 ≥N 只涨停/跌停才播报（单只不报）
@@ -281,7 +289,15 @@ def _cluster_threshold(total, abs_key, ratio_key, cfg):
 
 
 def _sector_findings(cur, prev, stocks, cfg, time_str):
-    """板块聚集检测。cur/prev: {code: pct}。返回板块异动列表（一级+二级各算）。"""
+    """板块聚集检测。cur/prev: {code: pct}（当日累计涨跌幅）。返回板块异动列表（一级+二级各算）。
+
+    两类信号互补：
+    - 速度型（集体拉升/翻红/跳水）：Δpct 为相对上一轮的变化，抓急涨急跌；
+      首轮无上一轮可比，速度型不出。
+    - 累计型（集体走弱/走强）：当日累计涨跌幅达标的家数，抓阴跌/阴涨
+      （每轮只动零点几个点、全天累计 -5%~-8% 的板块级行情）；
+      家数较上一轮增加才产出，防全天同一状态反复刷。
+    """
     cfg = {**DEFAULT_CONFIG, **(cfg or {})}
     findings = []
     for level_key, level_label in (('l1', '一级'), ('l2', '二级')):
@@ -290,37 +306,50 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
             info = stocks.get(code)
             if not info:
                 continue
-            prev_pct = prev.get(code)
-            if prev_pct is None:
-                continue
             sec = info.get(level_key)
             if not sec:
                 continue
-            l1 = info.get('l1', '')
+            prev_pct = prev.get(code)
             buckets.setdefault(sec, []).append(
-                (code, info.get('name', ''), l1, pct, prev_pct, pct - prev_pct))
+                (code, info.get('name', ''), info.get('l1', ''), pct,
+                 prev_pct, pct - prev_pct if prev_pct is not None else None))
 
         for sec, items in buckets.items():
             total = len(items)
             if total < 5:  # 板块太小无统计意义
                 continue
             hits = []
-            surge = [it for it in items if it[5] >= float(cfg['cluster_surge_delta'])]
+            # ---- 速度型（需要上一轮，首轮自然为空）----
+            surge = [it for it in items if it[5] is not None and it[5] >= float(cfg['cluster_surge_delta'])]
             if len(surge) >= _cluster_threshold(total, 'cluster_surge_abs', 'cluster_surge_ratio', cfg):
                 hits.append({'type': 'cluster_surge', 'label': '集体拉升', 'count': len(surge)})
             turn_red = [it for it in items
-                        if it[4] <= 0 and it[3] > 0 and it[5] >= float(cfg['cluster_turn_red_delta'])]
+                        if it[4] is not None and it[4] <= 0 and it[3] > 0 and it[5] >= float(cfg['cluster_turn_red_delta'])]
             if len(turn_red) >= _cluster_threshold(total, 'cluster_turn_red_abs',
                                                    'cluster_turn_red_ratio', cfg):
                 hits.append({'type': 'cluster_turn_red', 'label': '集体翻红', 'count': len(turn_red)})
-            dump = [it for it in items if it[5] <= -float(cfg['cluster_dump_delta'])]
+            dump = [it for it in items if it[5] is not None and it[5] <= -float(cfg['cluster_dump_delta'])]
             if len(dump) >= _cluster_threshold(total, 'cluster_dump_abs', 'cluster_dump_ratio', cfg):
                 hits.append({'type': 'cluster_dump', 'label': '集体跳水', 'count': len(dump)})
+            # ---- 累计型（首轮 prev 为空也可报，抓低开/阴跌；新增成员才报）----
+            weak_pct = float(cfg['cluster_weak_pct'])
+            weak = [it for it in items if it[3] <= -weak_pct]
+            if len(weak) >= _cluster_threshold(total, 'cluster_weak_abs', 'cluster_weak_ratio', cfg):
+                prev_weak = sum(1 for it in items if it[4] is not None and it[4] <= -weak_pct)
+                if len(weak) > prev_weak:
+                    hits.append({'type': 'cluster_weak', 'label': '集体走弱', 'count': len(weak)})
+            strong_pct = float(cfg['cluster_strong_pct'])
+            strong = [it for it in items if it[3] >= strong_pct]
+            if len(strong) >= _cluster_threshold(total, 'cluster_strong_abs', 'cluster_strong_ratio', cfg):
+                prev_strong = sum(1 for it in items if it[4] is not None and it[4] >= strong_pct)
+                if len(strong) > prev_strong:
+                    hits.append({'type': 'cluster_strong', 'label': '集体走强', 'count': len(strong)})
             if not hits:
                 continue
 
             leaders = sorted(items, key=lambda x: -x[3])[:3]
             losers = sorted(items, key=lambda x: x[3])[:3]
+            deltas = [it[5] for it in items if it[5] is not None]
             findings.append({
                 'kind': 'pulse_sector',
                 'level': level_key,
@@ -329,11 +358,11 @@ def _sector_findings(cur, prev, stocks, cfg, time_str):
                 'sector': sec,
                 'total': total,
                 'median_pct': round(median([it[3] for it in items]), 2),
-                'median_delta': round(median([it[5] for it in items]), 2),
+                'median_delta': round(median(deltas), 2) if deltas else 0,
                 'leaders': [{'name': n, 'code': c, 'pct': round(p, 2), 'delta': round(d, 2)}
-                            for c, n, _l1, p, _pp, d in leaders],
+                            for c, n, _l1, p, _pp, d in leaders if d is not None],
                 'losers': [{'name': n, 'code': c, 'pct': round(p, 2), 'delta': round(d, 2)}
-                           for c, n, _l1, p, _pp, d in losers],
+                           for c, n, _l1, p, _pp, d in losers if d is not None],
                 'hits': hits,
                 'time': time_str,
                 'date': _today_str(),
@@ -466,18 +495,18 @@ def get_latest_summary():
     rising, falling = [], []
     try:
         prev_time, prev = load_prev_round(date_str, time_str)
-        if prev:
-            cfg = load_config()
-            for f in _sector_findings(pct_map, prev, stocks, cfg, time_str):
-                types = {h['type'] for h in f['hits']}
-                item = {'sector': f['sector'], 'l1': f['l1'], 'level': f['level'],
-                        'median_pct': f['median_pct'], 'total': f['total'],
-                        'hits': [{'type': h['type'], 'label': h['label'], 'count': h['count']}
-                                 for h in f['hits']]}
-                if 'cluster_dump' in types:
-                    falling.append(item)
-                elif types & {'cluster_surge', 'cluster_turn_red'}:
-                    rising.append(item)
+        # 累计型检测（走弱/走强）不依赖上一轮，首轮也参与概览
+        cfg = load_config()
+        for f in _sector_findings(pct_map, prev or {}, stocks, cfg, time_str):
+            types = {h['type'] for h in f['hits']}
+            item = {'sector': f['sector'], 'l1': f['l1'], 'level': f['level'],
+                    'median_pct': f['median_pct'], 'total': f['total'],
+                    'hits': [{'type': h['type'], 'label': h['label'], 'count': h['count']}
+                             for h in f['hits']]}
+            if types & {'cluster_dump', 'cluster_weak'}:
+                falling.append(item)
+            elif types & {'cluster_surge', 'cluster_turn_red', 'cluster_strong'}:
+                rising.append(item)
     except Exception as e:
         logger.warning(f"[个股异动] 板块活动概览计算失败: {e}")
     summary['rising_count'] = len(rising)
@@ -511,8 +540,8 @@ def day_sector_aggregate(date_str=None):
         prev = rounds[i - 1]['pct']
         for f in _sector_findings(cur, prev, stocks, cfg, cur_t):
             types = {h['type'] for h in f['hits']}
-            up = bool(types & {'cluster_surge', 'cluster_turn_red'})
-            down = 'cluster_dump' in types
+            up = bool(types & {'cluster_surge', 'cluster_turn_red', 'cluster_strong'})
+            down = bool(types & {'cluster_dump', 'cluster_weak'})
             if not (up or down):
                 continue
             k = (f['level'], f['sector'])
@@ -624,9 +653,9 @@ def _format_round_message(record):
                 lines.append(f"> {icon} **{sec_label}**：{f['count']} 只{f['label']}：{names}")
                 continue
             for h in f['hits']:
-                icon = '🔴' if h['type'] in ('cluster_surge', 'cluster_turn_red') else '🟢'
+                icon = '🔴' if h['type'] in ('cluster_surge', 'cluster_turn_red', 'cluster_strong') else '🟢'
                 lead = ''
-                if h['type'] == 'cluster_dump' and f.get('losers'):
+                if h['type'] in ('cluster_dump', 'cluster_weak') and f.get('losers'):
                     worst = f['losers'][0]
                     lead = f"，领跌 {worst['name']} {worst['pct']:+.2f}%"
                 elif f.get('leaders'):
@@ -728,7 +757,7 @@ def detect_round(date_str, time_str, cur, prev=None, prev_time=None, push=False,
     if not cur or not stocks:
         return [], [], None
 
-    sector_fs = _sector_findings(cur, prev or {}, stocks, cfg, time_str) if prev else []
+    sector_fs = _sector_findings(cur, prev or {}, stocks, cfg, time_str)
     # 涨跌停聚集：同二级行业≥2只才报，产出并入板块 finding（单只涨跌停不播报）
     sector_fs = sector_fs + _stock_findings(cur, prev or {}, stocks, cfg, time_str)
     stock_fs = []  # 个股级异动已下线，记录结构保留空列表兼容历史消费端

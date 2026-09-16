@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 
 from .base import BacktestSignal, BaseBacktestStrategy
+from backend import config as backend_config
+from backend.strategy_core.trend_quality import compute_pullback_quality
 from backend.time_utils import format_beijing_time
 
 
@@ -473,16 +475,20 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
                             and dea_vals[peak_idx_in_seg] > 0
                         )
                         if lines_above_zero_at_peak:
-                            # 找到非背驰模式，记录第二片红柱期间的最高价
+                            # 找到非背驰模式，记录第二片红柱期间的最高价及其索引
+                            # (peak_idx 供趋势质量评分定位主升段峰顶)
                             peak_price = -np.inf
+                            peak_idx_in_seg3 = -1
                             for idx in range(seg_3.start, seg_3.end + 1):
                                 if not np.isnan(high_vals[idx]) and high_vals[idx] > peak_price:
                                     peak_price = high_vals[idx]
+                                    peak_idx_in_seg3 = idx
 
                             non_div_state = {
                                 "first_red": seg_1,
                                 "second_red": seg_3,
                                 "peak_price": peak_price,
+                                "peak_idx": peak_idx_in_seg3,
                                 "green_pullback_area": 0.0,
                                 "green_pullback_start": -1,
                                 "buy_triggered": False,
@@ -495,6 +501,7 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
                     if current.start == last_red.start:
                         if not np.isnan(high_vals[i]) and high_vals[i] > non_div_state["peak_price"]:
                             non_div_state["peak_price"] = high_vals[i]
+                            non_div_state["peak_idx"] = i
                         # 更新 second_red 引用，使其包含最新K线
                         non_div_state["second_red"] = current
 
@@ -535,6 +542,28 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
                 if self._segment_hist_turning_down(hist_vals, current.start, i):
                     # 检查布林通道收口
                     if self._boll_contraction(boll_upper_vals, boll_lower_vals, i):
+                        # 趋势质量评分: 区分"强趋势首次回调"与"下跌中继"
+                        # (评分失败/数据不足返回 None,不影响买点本身)
+                        quality = compute_pullback_quality(
+                            work_df,
+                            impulse_start=non_div_state["first_red"].start,
+                            peak_idx=int(non_div_state.get("peak_idx") or -1),
+                            signal_idx=i,
+                        )
+                        non_div_state["buy_triggered"] = True
+
+                        # 可选质量过滤: MACD_PULLBACK_MIN_QUALITY_SCORE > 0 时,
+                        # 低于阈值的买点直接丢弃(形态已消费,避免后续K线重复触发)
+                        min_quality_score = int(
+                            getattr(backend_config, "MACD_PULLBACK_MIN_QUALITY_SCORE", 0) or 0
+                        )
+                        if (
+                            quality is not None
+                            and min_quality_score > 0
+                            and int(quality.get("score") or 0) < min_quality_score
+                        ):
+                            continue
+
                         in_position = True
                         stop_reference = {
                             "entry_price": float(price),
@@ -543,21 +572,24 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
                             "first_red_start": non_div_state["first_red"].start,
                             "second_red_start": second_red.start,
                         }
-                        non_div_state["buy_triggered"] = True
                         sell_segment_start = None
+                        reason = (
+                            f"非背驰回抽0轴买点: 红柱非背驰向上(第二片红柱面积={second_red.area:.5f} "
+                            f"> 第一片红柱面积={non_div_state['first_red'].area:.5f}，"
+                            f"股价突破{non_div_state['first_red'].high_max:.5f})，"
+                            f"绿柱回调面积={current.area:.5f} < 红柱面积={second_red.area:.5f}，"
+                            f"股价回调形成下上下结构(第一低点={first_low_price:.5f})，"
+                            f"黄白线在0轴上方(DIF={dif_vals[i]:.5f}, DEA={dea_vals[i]:.5f})，"
+                            "绿柱开始缩短，布林通道收口"
+                        )
+                        if quality:
+                            reason += f"｜{quality['summary']}"
                         signals.append(BacktestSignal(
                             direction="buy",
                             price=price,
                             time=self._format_time(times[i]),
-                            reason=(
-                                f"非背驰回抽0轴买点: 红柱非背驰向上(第二片红柱面积={second_red.area:.5f} "
-                                f"> 第一片红柱面积={non_div_state['first_red'].area:.5f}，"
-                                f"股价突破{non_div_state['first_red'].high_max:.5f})，"
-                                f"绿柱回调面积={current.area:.5f} < 红柱面积={second_red.area:.5f}，"
-                                f"股价回调形成下上下结构(第一低点={first_low_price:.5f})，"
-                                f"黄白线在0轴上方(DIF={dif_vals[i]:.5f}, DEA={dea_vals[i]:.5f})，"
-                                "绿柱开始缩短，布林通道收口"
-                            ),
+                            reason=reason,
+                            extra={"quality": quality} if quality else None,
                         ))
                         continue
 

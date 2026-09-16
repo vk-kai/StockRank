@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -13,6 +13,8 @@ class BacktestSignal:
     price: float
     time: str
     reason: str
+    # 结构化附加信息(如 MACD 买点的趋势质量报告),回测引擎会透传进 trade_records
+    extra: Optional[dict] = None
 
 
 class BaseBacktestStrategy(ABC):

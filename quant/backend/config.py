@@ -113,6 +113,11 @@ PYTDX_SERVER_DISCOVERY_CACHE_TTL = 15 * 60
 PYTDX_SERVER_PROBE_COUNT = 12
 PYTDX_SERVER_POOL_LIMIT = 24
 
+# MACD非背驰回抽0轴买点的"趋势质量"最低分(0-100)。
+# 0 = 不过滤,只在信号 reason 里标注质量摘要;>0 时低于该分数的买点直接丢弃。
+# 区分目标: 强趋势首次回调(A/B) vs 上涨衰竭后的下跌中继(C,一票否决见 trend_quality.py)。
+MACD_PULLBACK_MIN_QUALITY_SCORE = _env_int("MACD_PULLBACK_MIN_QUALITY_SCORE", 0)
+
 PYTDX_CATEGORY = {
     "1min": 8,
     "5min": 0,

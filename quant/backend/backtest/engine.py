@@ -184,9 +184,10 @@ class BacktraderStrategyAdapter(bt.Strategy):
         self.pending_signal_price = None
         self.pending_signal_timestamp = None
         self.pending_signal_time = None
+        self.pending_signal_quality = None
         self.last_buy_date = None
 
-    def _build_trade_record(self, order, direction: str, reason: Optional[str] = None):
+    def _build_trade_record(self, order, direction: str, reason: Optional[str] = None, quality: Optional[dict] = None):
         executed_at = bt.num2date(order.executed.dt)
         size = abs(int(order.executed.size))
         # price = 实际成交价(订单撮合价,即下一根开盘);signal_price = 信号触发价(当根收盘,诊断展示用)
@@ -212,6 +213,7 @@ class BacktraderStrategyAdapter(bt.Strategy):
             "pnl": None,
             "pnl_pct": None,
             "reason": reason or "",
+            "quality": quality,
         }
 
         if size <= 0:
@@ -292,6 +294,7 @@ class BacktraderStrategyAdapter(bt.Strategy):
             size = int(cash / (price * 1.02 * (1 + commission)) / 100) * 100
             if size > 0:
                 self.pending_order_reason = reason
+                self.pending_signal_quality = signal_info.get("quality")
                 self.pending_signal_price = price
                 self.pending_signal_timestamp = current_ts
                 self.pending_signal_time = current_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -302,6 +305,7 @@ class BacktraderStrategyAdapter(bt.Strategy):
             if self._is_untradable_bar("sell"):
                 return  # 跌停/一字板封板,卖不出,放弃该信号(继续套牢,模拟真实情况)
             self.pending_order_reason = reason
+            self.pending_signal_quality = None
             self.pending_signal_price = (
                 float(signal_price) if signal_price is not None else float(self.data.close[0])
             )
@@ -312,7 +316,9 @@ class BacktraderStrategyAdapter(bt.Strategy):
     def notify_order(self, order):
         if order.status in [order.Completed]:
             if order.isbuy():
-                trade_record = self._build_trade_record(order, "buy", self.pending_order_reason)
+                trade_record = self._build_trade_record(
+                    order, "buy", self.pending_order_reason, quality=self.pending_signal_quality
+                )
                 if self.p.record_trade_records:
                     self.trade_records.append(trade_record)
                 self.last_buy_date = bt.num2date(order.executed.dt).date()
@@ -327,6 +333,7 @@ class BacktraderStrategyAdapter(bt.Strategy):
             self.pending_signal_price = None
             self.pending_signal_timestamp = None
             self.pending_signal_time = None
+            self.pending_signal_quality = None
         if order == self.order:
             self.order = None
 
@@ -437,6 +444,9 @@ def run_backtest(
                     "direction": signal.direction,
                     "price": signal.price,
                     "reason": signal.reason,
+                    "quality": (signal.extra or {}).get("quality")
+                    if isinstance(signal.extra, dict)
+                    else None,
                 }
             except Exception:
                 continue

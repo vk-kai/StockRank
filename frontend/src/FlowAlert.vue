@@ -96,7 +96,7 @@
         <div class="fa-controls">
           <div class="fa-ctrl-group">
             <button @click="runPulseDetect" class="fa-run-btn" :disabled="pulseLoading || needsAuth">
-              {{ pulseLoading ? '检测中...' : '刷新全天结果' }}
+              {{ pulseLoading ? '检测中...' : '刷新最新一轮' }}
             </button>
           </div>
           <div class="fa-ctrl-group">
@@ -109,7 +109,7 @@
           </div>
         </div>
 
-        <div class="fa-loading" v-if="pulseLoading"><div class="spinner"></div><p>正在扫描全天个股异动...</p></div>
+        <div class="fa-loading" v-if="pulseLoading"><div class="spinner"></div><p>正在扫描最新一轮个股异动...</p></div>
         <div v-else-if="!shownPulseGroups.length" class="fa-empty">
           <p>{{ pulseFindings.length ? '该筛选下无命中' : '当日无异动命中，市场相对平静' }}</p>
         </div>
@@ -149,7 +149,7 @@
                   <span class="fa-chg" :class="f.median_delta >= 0 ? 'pulse-pos' : 'pulse-neg'">较上轮 {{ f.median_delta >= 0 ? '+' : '' }}{{ fmt(f.median_delta) }}%</span>
                 </div>
                 <div class="fa-hits">
-                  <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', h.type === 'cluster_dump' ? 'hit-pulse-neg' : 'hit-pulse-pos']">
+                  <span v-for="(h, i) in f.hits" :key="i" :class="['fa-hit', ['cluster_dump', 'cluster_weak'].includes(h.type) ? 'hit-pulse-neg' : 'hit-pulse-pos']">
                     {{ pulseHitIcon(h.type) }} {{ h.label }} {{ h.count }}/{{ f.total }} 只
                   </span>
                 </div>
@@ -360,6 +360,7 @@ const DIM_META = {
 // 个股异动（Stock Pulse）触发类型图标：红涨绿跌
 const PULSE_ICONS = {
   cluster_surge: '🔴', cluster_turn_red: '🔴', cluster_dump: '🟢',
+  cluster_strong: '🔴', cluster_weak: '🟢',
   limit_up: '🔴', limit_down: '🟢',
   limit_up_cluster: '🔴', limit_down_cluster: '🟢'
 }
@@ -565,7 +566,10 @@ export default {
       try {
         const res = await runStockPulseDetection()
         if (res.success) {
-          this.pulseFindings = res.data || []
+          const all = res.data || []
+          // 列表只展示最新一轮扫出的异动;后端仍回放全天逐轮检测(累计型/速度型的Δ都要逐轮算)
+          const latestTime = all.reduce((mx, f) => (f.time && f.time > mx ? f.time : mx), '')
+          this.pulseFindings = latestTime ? all.filter((f) => f.time === latestTime) : all
           if (res.summary) this.pulseSummary = res.summary
           else this.loadPulseSummary()
         }

@@ -184,6 +184,78 @@ def _slice_df_before(df: pd.DataFrame, period: str, before_ts: Optional[str | in
     return df[df[time_col] < before_dt].reset_index(drop=True)
 
 
+def _heal_index_daily_bars(df: pd.DataFrame, code: str) -> pd.DataFrame:
+    """指数日线防污染自愈。
+
+    背景(2026-09-16 上证指数 000001 事故): 深市 000001(平安银行,股价约10元)的
+    日线 bar 曾被误写进上证指数的 parquet 缓存;upsert 按"日期覆盖、keep=last"语义,
+    refresh_fetch_bars 只刷最近一段,窗口外的脏 bar 永不自愈,导致 7/22 一类历史日期
+    偶现"10块钱"的 K 线。
+
+    原理: 指数无除权、单日波幅极小,相邻交易日 close 比值必然落在 [0.85, 1.15]。
+    从最新向旧走链,以最近一个"保留"的 bar 为锚,比值越界的 bar 判为脏数据剔除,
+    可同时清理孤立脏点与整段错标的窗口。个股存在除权跳空,不可套用。
+
+    仅在 security_kind == "index" 且日线框架上调用。
+    """
+    if df is None or df.empty or len(df) < 3:
+        return df if df is not None else pd.DataFrame()
+    time_col = "date" if "date" in df.columns else "datetime" if "datetime" in df.columns else None
+    if time_col is None or "close" not in df.columns:
+        return df
+    work = df.copy()
+    work[time_col] = pd.to_datetime(work[time_col], errors="coerce")
+    work["close"] = pd.to_numeric(work["close"], errors="coerce")
+    work = work.dropna(subset=[time_col, "close"]).sort_values(time_col).reset_index(drop=True)
+    if len(work) < 3:
+        return work
+
+    # 预检最新一根: 若它与前两根都不连续,多半是"脏尾根"(如把平安银行 bar 追加到尾部),
+    # 先剔除,否则它成为锚后会把整段正常历史全部误杀
+    closes = work["close"].tolist()
+    last = closes[-1]
+    if last > 0 and closes[-2] > 0 and closes[-3] > 0:
+        r1, r2 = last / closes[-2], last / closes[-3]
+        if not (0.85 <= r1 <= 1.15) and not (0.85 <= r2 <= 1.15):
+            work = work.iloc[:-1].reset_index(drop=True)
+            if len(work) < 3:
+                return work
+            closes = work["close"].tolist()
+
+    keep_mask: list[bool] = []
+    anchor: Optional[float] = None
+    for idx in range(len(work) - 1, -1, -1):
+        cur = closes[idx]
+        if cur is None or cur <= 0:
+            # 价格无效直接视为脏数据
+            keep_mask.append(False)
+            continue
+        if anchor is None:
+            # 最靠右的有效 bar 作为初始锚(预检已保证它大概率正常)
+            keep_mask.append(True)
+            anchor = cur
+            continue
+        ratio = cur / anchor
+        if 0.85 <= ratio <= 1.15:
+            keep_mask.append(True)
+            anchor = cur
+        else:
+            keep_mask.append(False)
+    keep_mask.reverse()
+
+    if all(keep_mask):
+        return work
+    healed = work[pd.Series(keep_mask, index=work.index)].reset_index(drop=True)
+    dropped = len(work) - len(healed)
+    if dropped > 0:
+        logger.warning(
+            "指数日线自愈 %s: 剔除 %d 根异常 bar (相邻close比值越界 [0.85,1.15])",
+            code,
+            dropped,
+        )
+    return healed
+
+
 def _read_local_kline_slice(code: str, period: str, count: int, before_ts: Optional[str | int | float] = None) -> pd.DataFrame:
     normalized_period = normalize_period(period)
     return get_kline_parquet(code, normalized_period, limit=count, before_ts=before_ts)
@@ -353,6 +425,9 @@ def _fetch_remote_kline_for_cache(
                 normalized_period,
             )
             if not pytdx_df.empty:
+                if normalized_period == "daily":
+                    # 写入拦截: 防止错标的 bar(如深市000001平安银行)经 upsert 污染缓存
+                    pytdx_df = _heal_index_daily_bars(pytdx_df, code)
                 return pytdx_df.tail(fetch_count).reset_index(drop=True)
         except Exception:
             pass
@@ -433,6 +508,8 @@ def _fetch_kline_df_from_sources(
                     else pytdx_data.get_kline(code, normalized_period, fetch_count, before_ts=before_ts)
                 )
                 df = _normalize_remote_kline_df(df, normalized_period)
+                if security_kind == "index" and normalized_period == "daily":
+                    df = _heal_index_daily_bars(df, code)
             elif source == "akshare" and security_kind != "index":
                 if normalized_period not in ("daily", "weekly", "monthly"):
                     continue
@@ -906,6 +983,13 @@ def get_security_kline(
                 code, "daily", requested_count, security_kind, before_ts=None
             )
 
+        # 读取自愈: 本地缓存窗口外的脏 bar(如深市000001平安银行 bar 混入上证指数)
+        # 永远等不到刷新自愈,必须在展示前剔除,否则盘中偶现"10块钱"K线
+        if security_kind == "index" and history_df is not None and not history_df.empty:
+            healed = _heal_index_daily_bars(history_df, code)
+            if not healed.empty:
+                history_df = healed
+
         if history_df is not None and not history_df.empty:
             today = now_beijing().strftime("%Y-%m-%d")
             time_col = "date" if "date" in history_df.columns else "datetime"
@@ -973,6 +1057,11 @@ def get_security_kline(
             if base_df is None or base_df.empty:
                 base_df, source = _fetch_kline_df_from_sources(code, base_period, base_count, security_kind)
 
+            if security_kind == "index" and base_df is not None and not base_df.empty:
+                healed = _heal_index_daily_bars(base_df, code)
+                if not healed.empty:
+                    base_df = healed
+
             if base_df is not None and not base_df.empty:
                 # 盘中始终用远程实时覆盖当天（本地有今天的脏数据也不用）
                 today = now_beijing().strftime("%Y-%m-%d")
@@ -999,6 +1088,10 @@ def get_security_kline(
             source = "local"
             if base_df is None or base_df.empty:
                 base_df, source = _fetch_kline_df_from_sources(code, base_period, base_count, security_kind)
+            if security_kind == "index" and base_df is not None and not base_df.empty:
+                healed = _heal_index_daily_bars(base_df, code)
+                if not healed.empty:
+                    base_df = healed
 
         aggregated_df = _aggregate_daily_to_period(base_df, normalized_period)
         aggregated_df = _slice_df_before(aggregated_df, normalized_period, before_ts)
