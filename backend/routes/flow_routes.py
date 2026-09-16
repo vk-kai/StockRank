@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
 import threading
 import json
@@ -145,15 +145,27 @@ def market_map_refresh():
 
 @flow_bp.route('/market-map-push', methods=['GET'])
 def market_map_push_get():
+    """云图读取量化扫描推送。
+
+    与扫描页"只看当天"同口径:updated_at 是推送时 run 的完成时间(北京墙钟),
+    非今天的推送视为过期,stocks 返回空 → 云图上昨天的推送不再显示,直到今天有新推送。
+    """
     doc = load_market_map_push()
+    stocks = doc.get('stocks') or []
+    updated_at = str(doc.get('updated_at') or '')
+    now_bj = datetime.now(timezone(timedelta(hours=8)))
+    is_stale = bool(updated_at) and updated_at[:10] != now_bj.strftime('%Y-%m-%d')
+    if is_stale:
+        stocks = []
     return jsonify({
         'success': True,
         'data': {
             'source': doc.get('source') or '',
             'run_id': int(doc.get('run_id') or 0),
             'updated_at': doc.get('updated_at'),
-            'count': len(doc.get('stocks') or []),
-            'stocks': doc.get('stocks') or [],
+            'stale': is_stale,
+            'count': len(stocks),
+            'stocks': stocks,
         }
     })
 

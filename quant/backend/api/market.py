@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from backend import auth_service
 from backend.config import ALL_PERIODS, MINUTE_PERIODS, MARKET_MAP_PUSH_URL, MARKET_MAP_PAGE_URL
+from backend.time_utils import format_beijing_date, now_beijing
 from backend.auto_scan import (
     get_scan_scope_candidates,
     get_scan_status,
@@ -904,10 +905,23 @@ def push_scan_run_to_market_map(request: Request, run_id: int):
         raise HTTPException(status_code=int(access["status_code"]), detail=str(access["message"]))
 
     owner_username = auth_service.get_visible_owner_username(user)
+    # 只推送当天扫描出的信号(与扫描页"只看当天"同一口径):
+    # ① 旧 run 直接拒绝;② 跨天运行的 run 里 detected_at 非今天的信号过滤掉
+    today = format_beijing_date(now_beijing())
+    run_date = format_beijing_date(run.get("finished_at") or run.get("started_at"))
+    if run_date != today:
+        return {
+            "success": False,
+            "message": f"仅可推送当天({today})的扫描结果,该轮扫描是 {run_date or '未知日期'} 的",
+        }
+
     signals = db.list_scan_signals_by_run(run_id, owner_username)
-    payload = _build_market_map_push_payload(run, signals)
+    total_count = len(signals)
+    today_signals = [s for s in signals if str(s.get("detected_at") or "")[:10] == today]
+    skipped_not_today = total_count - len(today_signals)
+    payload = _build_market_map_push_payload(run, today_signals)
     if not payload["stocks"]:
-        return {"success": False, "message": "本轮扫描暂无可推送的股票"}
+        return {"success": False, "message": "今天暂无扫描出的信号可推送"}
 
     try:
         push_result = _push_scan_run_to_market_map(payload)
@@ -920,10 +934,12 @@ def push_scan_run_to_market_map(request: Request, run_id: int):
 
     return {
         "success": True,
-        "message": "已推送到大盘云图",
+        "message": "已推送到大盘云图(仅当天信号)"
+        + (f"，已跳过非当天信号 {skipped_not_today} 条" if skipped_not_today else ""),
         "data": {
             "run_id": int(run_id),
             "pushed_count": len(payload["stocks"]),
+            "skipped_not_today": skipped_not_today,
             "market_map_url": MARKET_MAP_PAGE_URL,
             "remote": push_result.get("data") if isinstance(push_result, dict) else None,
         },
