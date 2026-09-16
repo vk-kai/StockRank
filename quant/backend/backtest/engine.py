@@ -397,6 +397,7 @@ def run_backtest(
     include_equity_curve: bool = False,
     period: str = "daily",
     benchmark_code: Optional[str] = "510300",
+    min_quality_score: int = 0,
 ) -> Dict:
     if df is None or df.empty:
         return {"success": False, "message": "无数据"}
@@ -433,6 +434,10 @@ def run_backtest(
 
         raw_df = df.copy()
         strategy = get_backtest_strategy(strategy_name)
+        # 趋势质量过滤阈值(MACD非背驰策略用): >0 时低于该分数的买点在信号阶段即被丢弃,
+        # 支持同策略"筛选/不筛选"两次回测对比胜率。非质量类策略设置该值无副作用。
+        if min_quality_score and int(min_quality_score) > 0:
+            strategy.min_quality_score = int(min_quality_score)
         if progress_callback:
             progress_callback(72, "正在生成策略买卖信号...", "策略信号")
         signal_list = strategy.generate_signals(raw_df)

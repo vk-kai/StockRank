@@ -1,3 +1,9 @@
+export interface SignalQuality {
+  score: number;
+  grade?: string;
+  summary?: string;
+}
+
 export interface TradeRecordItem {
   direction: string;
   price: number;
@@ -12,6 +18,7 @@ export interface TradeRecordItem {
   pnl?: number | null;
   pnl_pct?: number | null;
   reason?: string;
+  quality?: SignalQuality | null;
 }
 
 export interface BacktestTradeExtreme {
@@ -133,6 +140,7 @@ export interface FullBacktestHistoryItem {
   created_at: string;
   payload?: {
     summary?: FullBacktestSummary;
+    min_quality_score?: number;
     top_successes?: Array<{
       code: string;
       name: string;

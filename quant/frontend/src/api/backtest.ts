@@ -10,6 +10,7 @@ export async function startBacktest(params: {
   cash: number;
   period: string;
   mode?: "single" | "full";
+  min_quality_score?: number;
 }): Promise<{ success: boolean; message?: string; data?: BacktestRuntimeStatus }> {
   const qs = new URLSearchParams({
     code: params.code,
@@ -21,6 +22,7 @@ export async function startBacktest(params: {
     mode: params.mode || "single",
   });
   if (params.name) qs.set("name", params.name);
+  if (params.min_quality_score) qs.set("min_quality_score", String(params.min_quality_score));
   return requestJson(`/api/backtest/start?${qs.toString()}`, { method: "POST" });
 }
 
@@ -69,6 +71,7 @@ export interface BacktestSettings {
   cash: number;
   period: string;
   mode: string;
+  min_quality_score: number;
 }
 
 export async function fetchBacktestSettings(): Promise<{ success: boolean; data?: BacktestSettings; message?: string }> {

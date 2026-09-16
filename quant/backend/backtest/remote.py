@@ -88,6 +88,7 @@ def run_single_on_node(
     lightweight: bool = False,
     include_equity_curve: bool = False,
     period: str = "daily",
+    min_quality_score: int = 0,
 ) -> Optional[dict]:
     """单股回测卸载。返回 None 表示应回落本机；返回 dict 表示节点已执行。"""
     if not offload_enabled_for("single"):
@@ -105,6 +106,7 @@ def run_single_on_node(
         "lightweight": lightweight,
         "include_equity_curve": include_equity_curve,
         "period": period,
+        "min_quality_score": int(min_quality_score or 0),
         "df_b64": df_b64,
     }
     try:
@@ -136,6 +138,7 @@ def run_batch_on_node(
     lightweight: bool = True,
     include_equity_curve: bool = False,
     period: str = "daily",
+    min_quality_score: int = 0,
 ) -> Optional[list[dict]]:
     """全量分块批量卸载。
 
@@ -172,6 +175,7 @@ def run_batch_on_node(
         "lightweight": lightweight,
         "include_equity_curve": include_equity_curve,
         "period": period,
+        "min_quality_score": int(min_quality_score or 0),
         "tasks": serialized,
     }
     try:

@@ -23,6 +23,7 @@ async def start_backtest_api(
     cash: float = Query(100000.0, description="初始资金"),
     period: str = Query("daily", description="K线周期"),
     mode: str = Query("single", description="回测模式 single/full"),
+    min_quality_score: int = Query(0, ge=0, le=100, description="MACD买点趋势质量最低分, 0=不过滤"),
 ):
     try:
         user = auth_service.get_current_user_from_request(request)
@@ -42,6 +43,7 @@ async def start_backtest_api(
             cash=cash,
             period=period,
             mode=mode,
+            min_quality_score=min_quality_score,
         )
         return start_backtest_job(
             code=code,
@@ -53,6 +55,7 @@ async def start_backtest_api(
             period=period,
             mode=mode,
             owner_username=owner_username,
+            min_quality_score=min_quality_score,
         )
     except HTTPException:
         raise

@@ -48,6 +48,9 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
         self.boll_period = 20            # 布林通道周期
         self.boll_nbdev = 2              # 布林通道标准差倍数
         self.boll_contraction_lookback = 3  # 布林收口检查的K线数量
+        # 趋势质量最低分(0-100)。None=跟随全局配置 MACD_PULLBACK_MIN_QUALITY_SCORE;
+        # 回测引擎可按次覆盖(run_backtest 的 min_quality_score 参数),便于对比筛选前后胜率
+        self.min_quality_score: Optional[int] = None
 
     def _sign(self, value: float, fallback: int = 0) -> int:
         if np.isnan(value):
@@ -552,15 +555,17 @@ class MACDNonDivergencePullbackBacktestStrategy(BaseBacktestStrategy):
                         )
                         non_div_state["buy_triggered"] = True
 
-                        # 可选质量过滤: MACD_PULLBACK_MIN_QUALITY_SCORE > 0 时,
-                        # 低于阈值的买点直接丢弃(形态已消费,避免后续K线重复触发)
-                        min_quality_score = int(
-                            getattr(backend_config, "MACD_PULLBACK_MIN_QUALITY_SCORE", 0) or 0
-                        )
+                        # 可选质量过滤: 低于阈值的买点直接丢弃(形态已消费,避免后续K线重复触发)。
+                        # 阈值来源: 实例级 min_quality_score(回测面板按次设置) > 全局配置
+                        min_quality_score = self.min_quality_score
+                        if min_quality_score is None:
+                            min_quality_score = int(
+                                getattr(backend_config, "MACD_PULLBACK_MIN_QUALITY_SCORE", 0) or 0
+                            )
                         if (
                             quality is not None
-                            and min_quality_score > 0
-                            and int(quality.get("score") or 0) < min_quality_score
+                            and int(min_quality_score or 0) > 0
+                            and int(quality.get("score") or 0) < int(min_quality_score)
                         ):
                             continue
 

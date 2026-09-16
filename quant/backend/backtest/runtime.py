@@ -426,6 +426,7 @@ def _run_full_backtest_worker(task: dict) -> dict:
     end_date = str(task.get("end_date", "") or "")
     strategy = str(task["strategy"])
     cash = float(task["cash"])
+    min_quality_score = int(task.get("min_quality_score") or 0)
     index = int(task["index"])
 
     try:
@@ -447,6 +448,7 @@ def _run_full_backtest_worker(task: dict) -> dict:
             lightweight=True,
             include_equity_curve=False,
             period=period,
+            min_quality_score=min_quality_score,
         )
         if not result.get("success"):
             return {
@@ -494,6 +496,7 @@ def _run_full_backtest_worker_with_df(task: dict) -> dict:
     period = str(task.get("period", ""))
     strategy = str(task["strategy"])
     cash = float(task["cash"])
+    min_quality_score = int(task.get("min_quality_score") or 0)
     index = int(task["index"])
     df = task.get("df")
 
@@ -515,6 +518,7 @@ def _run_full_backtest_worker_with_df(task: dict) -> dict:
             lightweight=True,
             include_equity_curve=False,
             period=period,
+            min_quality_score=min_quality_score,
         )
         if not result.get("success"):
             return {
@@ -559,6 +563,7 @@ def _build_batch_extreme_detail(
     start_date: str,
     end_date: str,
     cash: float,
+    min_quality_score: int = 0,
 ) -> Optional[dict]:
     if not item:
         return None
@@ -577,6 +582,7 @@ def _build_batch_extreme_detail(
         lightweight=False,
         include_equity_curve=True,
         period=period,
+        min_quality_score=min_quality_score,
     )
     if not result.get("success"):
         return None
@@ -634,6 +640,7 @@ def build_full_backtest_stock_detail(run_id: int, code: str) -> Optional[dict]:
         start_date=start_date,
         end_date=end_date,
         cash=cash,
+        min_quality_score=int(payload.get("min_quality_score") or 0),
     )
 
 
@@ -643,6 +650,7 @@ def _run_full_backtest_job(params: dict):
     end_date = params["end_date"]
     cash = params["cash"]
     period = params["period"]
+    min_quality_score = int(params.get("min_quality_score") or 0)
     owner_username = params.get("owner_username")
 
     readiness = get_scan_readiness()
@@ -738,6 +746,7 @@ def _run_full_backtest_job(params: dict):
                         "end_date": end_date,
                         "strategy": strategy,
                         "cash": cash,
+                        "min_quality_score": min_quality_score,
                     },
                 ): (index, item)
                 for index, item in enumerate(candidates, start=1)
@@ -779,6 +788,7 @@ def _run_full_backtest_job(params: dict):
                     lightweight=True,
                     include_equity_curve=False,
                     period=period,
+                    min_quality_score=min_quality_score,
                 )
                 if runnable
                 else None
@@ -798,6 +808,7 @@ def _run_full_backtest_job(params: dict):
                                 "period": t["period"],
                                 "strategy": strategy,
                                 "cash": cash,
+                                "min_quality_score": min_quality_score,
                                 "df": t["df"],
                             },
                         ): t["index"]
@@ -890,6 +901,7 @@ def _run_full_backtest_job(params: dict):
         start_date=start_date,
         end_date=end_date,
         cash=cash,
+        min_quality_score=min_quality_score,
     )
     max_gain_detail = _build_batch_extreme_detail(
         summary.get("max_gain_item"),
@@ -898,6 +910,7 @@ def _run_full_backtest_job(params: dict):
         start_date=start_date,
         end_date=end_date,
         cash=cash,
+        min_quality_score=min_quality_score,
     )
     run_id = db.save_full_backtest_run(
         strategy_name=strategy,
@@ -916,6 +929,7 @@ def _run_full_backtest_job(params: dict):
         max_gain=summary["max_gain"],
         payload={
             "cash": cash,
+            "min_quality_score": min_quality_score,
             "summary": summary,
             "profitable_items": summary.get("profitable_items", []),
             "loss_items": summary.get("loss_items", []),
@@ -990,6 +1004,7 @@ def _run_backtest_job(params: dict):
     cash = params["cash"]
     period = params["period"]
     mode = str(params.get("mode", "single") or "single").lower()
+    min_quality_score = int(params.get("min_quality_score") or 0)
     owner_username = params.get("owner_username")
 
     node_used = ""
@@ -1078,13 +1093,21 @@ def _run_backtest_job(params: dict):
                 lightweight=False,
                 include_equity_curve=False,
                 period=period,
+                min_quality_score=min_quality_score,
             )
             if remote_result is not None:
                 node_used = "pi"
 
         if remote_result is None:
             # 本地执行，保留细粒度进度回调
-            result = run_backtest(df, strategy_name=strategy, cash=cash, progress_callback=progress_callback, period=period)
+            result = run_backtest(
+                df,
+                strategy_name=strategy,
+                cash=cash,
+                progress_callback=progress_callback,
+                period=period,
+                min_quality_score=min_quality_score,
+            )
         else:
             # 节点已执行（成功或业务失败都采用）；细粒度进度跨网不可用，跳到 90
             result = remote_result
@@ -1146,6 +1169,7 @@ def start_backtest_job(
     period: str,
     mode: str = "single",
     owner_username: Optional[str] = None,
+    min_quality_score: int = 0,
 ) -> dict:
     current = get_backtest_status()
     if current["running"]:
@@ -1186,6 +1210,7 @@ def start_backtest_job(
             "period": period,
             "mode": mode,
             "owner_username": owner_username,
+            "min_quality_score": int(min_quality_score or 0),
         },
     )
     return {

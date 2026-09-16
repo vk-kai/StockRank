@@ -229,6 +229,7 @@ def _init_db_impl(
             )
             """
         )
+        _ensure_column(conn, "backtest_settings", "min_quality_score", "INTEGER NOT NULL DEFAULT 0")
         conn.execute(
             """
             INSERT OR IGNORE INTO backtest_settings (id, strategy, start_date, end_date, cash, period, mode, updated_at)
@@ -1616,7 +1617,7 @@ def get_backtest_settings() -> dict:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT strategy, start_date, end_date, cash, period, mode, updated_at
+            SELECT strategy, start_date, end_date, cash, period, mode, min_quality_score, updated_at
             FROM backtest_settings
             WHERE id = 1
             """
@@ -1629,6 +1630,7 @@ def get_backtest_settings() -> dict:
             "cash": 100000.0,
             "period": "daily",
             "mode": "single",
+            "min_quality_score": 0,
         }
     return {
         "strategy": row["strategy"],
@@ -1637,6 +1639,7 @@ def get_backtest_settings() -> dict:
         "cash": row["cash"],
         "period": row["period"],
         "mode": row["mode"],
+        "min_quality_score": int(row["min_quality_score"] or 0),
         "updated_at": row["updated_at"],
     }
 
@@ -1648,6 +1651,7 @@ def update_backtest_settings(
     cash: Optional[float] = None,
     period: Optional[str] = None,
     mode: Optional[str] = None,
+    min_quality_score: Optional[int] = None,
 ) -> dict:
     current = get_backtest_settings()
     next_strategy = current["strategy"] if strategy is None else str(strategy)
@@ -1656,15 +1660,16 @@ def update_backtest_settings(
     next_cash = current["cash"] if cash is None else float(cash)
     next_period = current["period"] if period is None else str(period)
     next_mode = current["mode"] if mode is None else str(mode)
+    next_min_quality = current["min_quality_score"] if min_quality_score is None else max(0, int(min_quality_score))
 
     with get_connection() as conn:
         conn.execute(
             """
             UPDATE backtest_settings
-            SET strategy = ?, start_date = ?, end_date = ?, cash = ?, period = ?, mode = ?, updated_at = ?
+            SET strategy = ?, start_date = ?, end_date = ?, cash = ?, period = ?, mode = ?, min_quality_score = ?, updated_at = ?
             WHERE id = 1
             """,
-            (next_strategy, next_start, next_end, next_cash, next_period, next_mode, _now_text()),
+            (next_strategy, next_start, next_end, next_cash, next_period, next_mode, next_min_quality, _now_text()),
         )
     return get_backtest_settings()
 

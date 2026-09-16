@@ -200,6 +200,14 @@ function getReturnColor(value?: number | null) {
   return value > 0 ? "var(--accent-red)" : "var(--accent-green)";
 }
 
+// 趋势质量评级配色：A=强主升(红/好) B=一般(琥珀) C=下跌中继风险(绿/差)
+function qualityBadgeColor(score?: number | null) {
+  if (score == null) return "var(--text-muted)";
+  if (score >= 75) return "var(--accent-red)";
+  if (score >= 55) return "#d8a017";
+  return "var(--accent-green)";
+}
+
 function getPeriodLabel(period: string) {
   if (period === "daily") return "日线";
   if (period === "weekly") return "周线";
@@ -628,6 +636,7 @@ function MetricDetailModal({
                 <tr>
                   <th>日期</th>
                   <th>方向</th>
+                  <th>质量</th>
                   <th>价格</th>
                   <th>数量</th>
                   <th>收益率</th>
@@ -641,6 +650,15 @@ function MetricDetailModal({
                     <td>{formatTradeDate(trade.date)}</td>
                     <td style={{ color: trade.direction === "buy" ? "var(--accent-red)" : "var(--accent-green)", fontWeight: 700 }}>
                       {trade.direction === "buy" ? "买" : "卖"}
+                    </td>
+                    <td title={trade.quality?.summary || undefined}>
+                      {trade.direction === "buy" && trade.quality?.score != null ? (
+                        <span style={{ fontWeight: 700, color: qualityBadgeColor(trade.quality.score) }}>
+                          {trade.quality.score}·{trade.quality.grade || "?"}
+                        </span>
+                      ) : (
+                        "--"
+                      )}
                     </td>
                     <td>{trade.price.toFixed(getTradePriceDigits(detail.period))}</td>
                     <td>{trade.size}</td>
@@ -1026,6 +1044,7 @@ export default function BacktestPanel({
   const [endDate, setEndDate] = useState(() => getSuggestedRange(initialPeriod).endDate);
   const [cash, setCash] = useState("100000");
   const [period, setPeriod] = useState(initialPeriod);
+  const [minQualityScore, setMinQualityScore] = useState("0");
   const [quickRangePreset, setQuickRangePreset] = useState<QuickRangePreset>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -1211,6 +1230,7 @@ export default function BacktestPanel({
         if (s.cash) setCash(String(s.cash));
         if (s.period) setPeriod(normalizeBacktestPeriod(s.period));
         if (s.mode === "single" || s.mode === "full") setRunMode(s.mode);
+        if (typeof s.min_quality_score === "number") setMinQualityScore(String(s.min_quality_score));
       }
     });
 
@@ -1409,6 +1429,7 @@ export default function BacktestPanel({
         cash: parseFloat(cash),
         period,
         mode: runMode === "full" ? "full" : "single",
+        min_quality_score: Number(minQualityScore) || 0,
       });
       if (!res.success) {
         const message = (res as any).message || res.message || "回测请求失败";
@@ -1631,6 +1652,14 @@ export default function BacktestPanel({
                         }}
                       >
                         {shortStrategyLabelResolver(summary.strategy_name)}
+                        {(item.payload?.min_quality_score ?? 0) > 0 && (
+                          <span
+                            style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: qualityBadgeColor(item.payload!.min_quality_score) }}
+                            title={`本次全量回测启用了买点质量过滤（≥${item.payload!.min_quality_score}分）`}
+                          >
+                            ≥{item.payload!.min_quality_score}分
+                          </span>
+                        )}
                       </span>
                       {longPressHistoryId === item.id && (
                         <button
@@ -1796,6 +1825,21 @@ export default function BacktestPanel({
                 setQuickRangePreset(null);
               }} />
             </div>
+            {strategy === "MACD_NON_DIVERGENCE_PULLBACK" && (
+              <div className="backtest-field">
+                <label>质量过滤</label>
+                <select
+                  value={minQualityScore}
+                  onChange={(e) => setMinQualityScore(e.target.value)}
+                  title="按买点趋势质量评分过滤：同一策略跑两次（不筛 vs 筛）即可对比胜率差异"
+                >
+                  <option value="0">不过滤（对照）</option>
+                  <option value="55">≥55分（滤掉C级）</option>
+                  <option value="75">≥75分（仅A级）</option>
+                  <option value="85">≥85分（强A）</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="backtest-row">
             <div className="backtest-field backtest-quick-field">
@@ -2364,6 +2408,7 @@ export default function BacktestPanel({
                           <tr>
                             <th>日期</th>
                             <th>方向</th>
+                            <th>质量</th>
                             <th>收益率</th>
                             <th>金额</th>
                             <th>手续费</th>
@@ -2393,11 +2438,20 @@ export default function BacktestPanel({
                                   {formatTradeDate(t.date)}
                                 </button>
                               </td>
-                              <td style={{ 
+                              <td style={{
                                 color: t.direction === "buy" ? "var(--accent-red)" : "var(--accent-green)",
                                 fontWeight: "bold"
                               }}>
                                 {t.direction === "buy" ? "买" : "卖"}
+                              </td>
+                              <td title={t.quality?.summary || undefined}>
+                                {t.direction === "buy" && t.quality?.score != null ? (
+                                  <span style={{ fontWeight: 700, color: qualityBadgeColor(t.quality.score) }}>
+                                    {t.quality.score}·{t.quality.grade || "?"}
+                                  </span>
+                                ) : (
+                                  "--"
+                                )}
                               </td>
                               <td style={{
                                 color: (t.pnl_pct ?? 0) > 0 ? "var(--accent-red)" : (t.pnl_pct ?? 0) < 0 ? "var(--accent-green)" : "var(--text-muted)",

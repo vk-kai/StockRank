@@ -72,6 +72,7 @@ def run_on_df_b64(
     lightweight: bool = False,
     include_equity_curve: bool = False,
     period: str = "daily",
+    min_quality_score: int = 0,
 ) -> dict:
     """返回 run_backtest 的结果 dict（success 或 业务失败都算）。"""
     try:
@@ -89,6 +90,7 @@ def run_on_df_b64(
         lightweight=bool(lightweight),
         include_equity_curve=bool(include_equity_curve),
         period=str(period or "daily"),
+        min_quality_score=int(min_quality_score or 0),
     )
 
 
@@ -104,6 +106,7 @@ def _single_task(payload: dict) -> dict:
         lightweight=payload.get("lightweight", False),
         include_equity_curve=payload.get("include_equity_curve", False),
         period=payload.get("period", "daily"),
+        min_quality_score=payload.get("min_quality_score", 0),
     )
 
 
@@ -120,6 +123,7 @@ def _batch_task(task: dict, common: dict) -> dict:
         lightweight=common.get("lightweight", True),
         include_equity_curve=common.get("include_equity_curve", False),
         period=common.get("period", "daily"),
+        min_quality_score=common.get("min_quality_score", 0),
     )
     if not result.get("success"):
         return {
@@ -162,6 +166,8 @@ class SingleReq(BaseModel):
     lightweight: bool = False
     include_equity_curve: bool = False
     period: str = "daily"
+    # MACD非背驰策略的趋势质量过滤阈值(0=不过滤)。旧版服务器不带该字段 → 默认0,行为不变
+    min_quality_score: int = 0
     df_b64: str
 
 
@@ -179,6 +185,7 @@ class BatchReq(BaseModel):
     lightweight: bool = True
     include_equity_curve: bool = False
     period: str = "daily"
+    min_quality_score: int = 0
     tasks: list[BatchTask]
 
 
@@ -251,6 +258,7 @@ async def run_batch(req: BatchReq, x_node_token: Optional[str] = Header(None)):
         "lightweight": req.lightweight,
         "include_equity_curve": req.include_equity_curve,
         "period": req.period,
+        "min_quality_score": req.min_quality_score,
     }
     tasks = [t.model_dump() for t in req.tasks]
     async with _active_tasks_lock:
