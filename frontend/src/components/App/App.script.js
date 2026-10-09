@@ -1786,7 +1786,8 @@ export default {
     guardedGotoGlobalMarket() { if (this.requireAuthOrPrompt()) return; this.goToGlobalMarket() },
     guardedGotoAiChain() { if (this.requireAuthOrPrompt()) return; this.$router.push('/ai-chain') },
     guardedGotoIntradayTimeline() { if (this.requireAuthOrPrompt()) return; this.goToIntradayTimeline() },
-    guardedOpenQuantSystem() { if (this.requireAuthOrPrompt()) return; this.openQuantSystem() },
+    // 量化系统:未登录也可进入(游客只读,写操作会引导去 StockRank 登录),故不再拦登录框
+    guardedOpenQuantSystem() { this.openQuantSystem() },
     async guardedAnalyzeDailyFlow() { if (this.requireAuthOrPrompt()) return; this.analyzeDailyFlow() },
 
     async openStockModal(sector) {

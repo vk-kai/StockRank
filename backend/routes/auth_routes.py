@@ -1,22 +1,38 @@
+import hashlib
+import hmac
 import time
 
 from flask import Blueprint, jsonify, request, session
 
 from core.daily_password import verify_password as _verify_daily_password
 from core.otp_service import is_otp_enabled, load_otp_config, verify_code
-from core.config import load_jarvis_token, TZ_GATE_COOKIE, TZ_GATE_SECRET
+from core.config import load_jarvis_token, TZ_GATE_COOKIE, TZ_USER_COOKIE, TZ_GATE_SECRET
 from core import redemption_code
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
 USERNAME = 'vk'
 
+_COOKIE_MAX_AGE = 30 * 24 * 3600
+
+
+def _tz_user_token():
+    """量化区"已登录凭证":HMAC(共享密钥, 用户名)。
+    量化后端验证该签名以区分 管理员(可操作) / 游客(只读)。"""
+    return hmac.new(TZ_GATE_SECRET.encode('utf-8'), USERNAME.encode('utf-8'), hashlib.sha256).hexdigest()
+
 
 def _grant_tz_gate(response):
-    """登录/兑换成功后下发量化区门禁 cookie(nginx 据此放行量化路由)。"""
+    """登录/兑换成功后下发量化区门禁 cookie(nginx 据此放行量化路由)。
+    tz_user 同时下发:量化后端凭它识别"已登录可操作",未带则视为游客只读。"""
     response.set_cookie(
         TZ_GATE_COOKIE, TZ_GATE_SECRET,
-        max_age=30 * 24 * 3600, path='/',
+        max_age=_COOKIE_MAX_AGE, path='/',
+        secure=True, httponly=True, samesite='Lax',
+    )
+    response.set_cookie(
+        TZ_USER_COOKIE, _tz_user_token(),
+        max_age=_COOKIE_MAX_AGE, path='/',
         secure=True, httponly=True, samesite='Lax',
     )
     return response
@@ -186,6 +202,7 @@ def logout():
     resp = jsonify({'success': True, 'authenticated': False})
     # 同步撤销量化区门禁 cookie
     resp.delete_cookie(TZ_GATE_COOKIE, path='/')
+    resp.delete_cookie(TZ_USER_COOKIE, path='/')
     return resp
 
 
@@ -200,7 +217,7 @@ def auth_session():
         rec = redemption_code.find_in_used((session.get('redeem_code') or '').upper())
         if rec:
             redeem_label = rec.get('label')
-    return jsonify({
+    resp = jsonify({
         'success': True,
         'authenticated': authed or redeem_active,
         'username': USERNAME if authed else ('体验码' if redeem_active else ''),
@@ -208,6 +225,11 @@ def auth_session():
         'redeem_label': redeem_label,
         'redeem_expire': session.get('redeem_expire') if redeem_active else None,
     })
+    # 会话查询随响应续发量化区门禁 cookie:主站每次加载都会调本接口,
+    # 借此让"部署前登录的老会话"无需重新登录即可拿到 tz_user(量化可操作)。
+    if authed or redeem_active:
+        _grant_tz_gate(resp)
+    return resp
 
 
 @auth_bp.route('/auth/otp-required', methods=['GET'])

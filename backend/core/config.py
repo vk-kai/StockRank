@@ -25,7 +25,9 @@ UNIFIED_DB_FILE = os.path.join(DATA_DIR, 'stockrank.db')
 
 # 量化区统一门禁:登录/兑换成功后下发的 tz_gate cookie,值须与 docker/nginx.conf
 # 的 tz_gate SECRET 一致(nginx 据此放行 /TrendZen/ 与未来的 /quant/ 路由)。
+# tz_user 为"已登录凭证"(HMAC 签名):量化后端凭它区分 管理员/游客(游客只读)。
 TZ_GATE_COOKIE = 'tz_gate'
+TZ_USER_COOKIE = 'tz_user'
 TZ_GATE_SECRET = 'vK-TzGate-9f2c7a1e'
 
 MAX_DAYS = 30

@@ -233,8 +233,9 @@ def can_access_owner(owner_username: Optional[str], user: Optional[dict]) -> boo
 
 
 def get_current_user_from_request(request) -> Optional[dict]:
-    # gateway 模式:鉴权由 StockRank 统一门禁承担,应用内返回合成管理员
-    gateway_user = gateway.gateway_user_if_enabled()
+    # gateway 模式:鉴权由 StockRank 统一门禁承担,应用内返回合成用户
+    # (已登录→管理员 vk;仅过门禁未登录→游客 guest,只读)
+    gateway_user = gateway.gateway_user_if_enabled(request)
     if gateway_user is not None:
         return gateway_user
     db.delete_expired_auth_records()
