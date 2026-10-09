@@ -88,13 +88,15 @@ const PERIOD_LABELS = {
   '30min': '30分K',
   daily: '日K线',
   monthly: '月K线',
-  quarterly: '季K线'
+  quarterly: '季K线',
+  yearly: '年K线'
 }
 // 基础周期 → 该数据集可展示的全部周期（基础 + 自动聚合的更高周期）
 const PERIODS_BY_BASE = {
   '30min': ['30min', 'daily', 'monthly', 'quarterly'],
   daily: ['daily', 'monthly', 'quarterly'],
-  monthly: ['monthly', 'quarterly']
+  monthly: ['monthly', 'quarterly'],
+  yearly: ['yearly']
 }
 // 30 分钟交易时段
 const HALF_HOUR_TIMES = ['09:30', '10:00', '10:30', '11:00', '13:00', '13:30', '14:00', '14:30']

@@ -57,6 +57,40 @@ BUILTIN_HOUSE_DATASETS = [
     {'id': 'house_new', 'title': '🏗️ 西安一手房价格', 'unit': '万', 'huanbi': XIANY_XINFANG_HUANBI},
 ]
 
+# ---------------- 国考人数数据(2009-2026, 单位:万人) ----------------
+# 字段: (年份, 招录人数, 审核通过人数, 参考人数); 招考职位为岗位数、最终比例为比值, 均不取用
+# 数据修正说明:
+#   2013 参考人数原表缺失 → 取公开报道值 111.7万
+#   2021 审核通过原表 358879 明显有误(当年参考人数已有101.7万) → 取公开报道值 157.6万
+#   2016 原表审核通过(128万)/参考人数(139.5万)两列互换 → 按逻辑(审核通过>=参考人数)修正为 139.5/128
+GUOKAO_YEARLY = [
+    (2009, 1.3566, 105.2, 77.5),
+    (2010, 1.5526, 144.3, 92.7),
+    (2011, 1.5290, 141.5, 90.2),
+    (2012, 1.7941, 130.0, 96.0),
+    (2013, 2.0879, 138.3, 111.7),
+    (2014, 1.9538, 140.4, 111.95),
+    (2015, 2.2000, 141.0, 105.0),
+    (2016, 2.7016, 139.5, 128.0),
+    (2017, 2.7061, 133.8, 98.4),
+    (2018, 2.8533, 165.97, 113.4),
+    (2019, 1.4537, 127.19, 92.0),
+    (2020, 2.4128, 110.95, 96.5),
+    (2021, 2.5726, 157.6, 101.7),
+    (2022, 3.1242, 212.3, 142.2),
+    (2023, 3.7100, 194.8, 152.5),
+    (2024, 3.9561, 261.3, 225.2),
+    (2025, 3.9721, 280.19, 258.0),
+    (2026, 3.8119, 302.0, 283.0),
+]
+
+# 内置国考人数数据集(col 为 GUOKAO_YEARLY 元组中人数字段的下标)
+BUILTIN_EXAM_DATASETS = [
+    {'id': 'guokao_takers', 'title': '📝 国考参考人数(年K)', 'unit': '万人', 'col': 3},
+    {'id': 'guokao_passed', 'title': '📋 国考审核通过人数(年K)', 'unit': '万人', 'col': 2},
+    {'id': 'guokao_recruit', 'title': '🎯 国考招录人数(年K)', 'unit': '万人', 'col': 1},
+]
+
 # 基础周期 → 可聚合出的更高周期
 HIGHER_PERIODS = {
     '30min': ['daily', 'monthly', 'quarterly'],
@@ -149,6 +183,32 @@ def calculate_macd(data):
 
     return df
 
+def generate_guokao_kline(col):
+    """国考人数年K: 每年一根K线, open=上一年值, close=本年值, high/low=两者极值, 再算MACD"""
+    dates = pd.to_datetime([f"{row[0]}-12-31" for row in GUOKAO_YEARLY])
+    df = pd.DataFrame({'close': [row[col] for row in GUOKAO_YEARLY]}, index=dates)
+    df['open'] = df['close'].shift(1)
+    df.loc[df.index[0], 'open'] = df['close'].iloc[0]
+    df['high'] = df[['open', 'close']].max(axis=1)
+    df['low'] = df[['open', 'close']].min(axis=1)
+    macd_df = calculate_macd(df.copy())
+    points = []
+    for idx in df.index:
+        row = df.loc[idx]
+        m = macd_df.loc[idx]
+        points.append({
+            'date': idx.strftime('%Y-%m-%d'),
+            'label': str(idx.year),
+            'open': round(float(row['open']), 4),
+            'close': round(float(row['close']), 4),
+            'high': round(float(row['high']), 4),
+            'low': round(float(row['low']), 4),
+            'macd': round(float(m['macd']), 4),
+            'signal': round(float(m['signal']), 4),
+            'histogram': round(float(m['histogram']), 4),
+        })
+    return points
+
 # ---------------- 自定义K线：存储 ----------------
 def _load_custom():
     try:
@@ -227,6 +287,14 @@ def _aggregate_custom(ds, period):
 @house_bp.route('/datasets', methods=['GET'])
 def list_datasets():
     datasets = [{
+        'id': e['id'],
+        'title': e['title'],
+        'unit': e['unit'],
+        'basePeriod': 'yearly',
+        'builtin': True,
+        'count': len(GUOKAO_YEARLY)
+    } for e in BUILTIN_EXAM_DATASETS]
+    datasets += [{
         'id': b['id'],
         'title': b['title'],
         'unit': b['unit'],
@@ -307,6 +375,20 @@ def get_kline_data():
     dataset_id = (request.args.get('id') or 'house').strip()
     period = (request.args.get('period') or 'monthly').strip()
     try:
+        exam = next((e for e in BUILTIN_EXAM_DATASETS if e['id'] == dataset_id), None)
+        if exam:
+            points = generate_guokao_kline(exam['col'])
+            return jsonify({
+                'success': True,
+                'data': {
+                    'title': exam['title'],
+                    'unit': exam['unit'],
+                    'source': '国家公务员局历年公开数据(2009-2026)',
+                    'period': 'yearly',
+                    'points': points
+                }
+            })
+
         builtin = next((b for b in BUILTIN_HOUSE_DATASETS if b['id'] == dataset_id), None)
         if builtin:
             data = generate_xian_price_data(builtin['huanbi'])
