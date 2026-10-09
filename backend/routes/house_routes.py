@@ -84,11 +84,42 @@ GUOKAO_YEARLY = [
     (2026, 3.8119, 302.0, 283.0),
 ]
 
-# 内置国考人数数据集(col 为 GUOKAO_YEARLY 元组中人数字段的下标)
+# ---------------- 陕西省考数据(2020-2026) ----------------
+# 报名人数 = 报名截止时点全省提交报名申请人数(中公历年汇总口径), 单位万人
+# 注: 2024年为截至报名截止当日11时数据; 2026招录计划数未查到公开汇总, 故招录序列止于2025
+SN_GWY_APPLY = [
+    (2020, 19.5629),
+    (2021, 21.3445),
+    (2022, 23.1972),
+    (2023, 23.5219),
+    (2024, 31.9212),
+    (2025, 28.7951),
+    (2026, 28.6464),
+]
+SN_GWY_RECRUIT = [
+    (2020, 5765),
+    (2021, 6000),
+    (2022, 6449),
+    (2023, 6360),
+    (2024, 6772),
+    (2025, 6823),
+]
+
+# 内置考公人数数据集(series 为 (年份, 数值) 列表, 每年一根K线)
+# 仅取'人数'维度(参考/报名/招录); 招考职位为岗位数、比例类为比值, 均不取用
 BUILTIN_EXAM_DATASETS = [
-    {'id': 'guokao_takers', 'title': '📝 国考参考人数(年K)', 'unit': '万人', 'col': 3},
-    {'id': 'guokao_passed', 'title': '📋 国考审核通过人数(年K)', 'unit': '万人', 'col': 2},
-    {'id': 'guokao_recruit', 'title': '🎯 国考招录人数(年K)', 'unit': '万人', 'col': 1},
+    {'id': 'sn_gwy_apply', 'title': '🏛️ 陕西省考报名人数(年K)', 'unit': '万人',
+     'series': SN_GWY_APPLY,
+     'source': '陕西省考公告/中公华图历年公开统计(2020-2026)'},
+    {'id': 'sn_gwy_recruit', 'title': '🏛️ 陕西省考招录人数(年K)', 'unit': '人',
+     'series': SN_GWY_RECRUIT,
+     'source': '陕西省考公告/华图历年职位表汇总(2020-2025)'},
+    {'id': 'guokao_takers', 'title': '📝 国考参考人数(年K)', 'unit': '万人',
+     'series': [(row[0], row[3]) for row in GUOKAO_YEARLY],
+     'source': '国家公务员局历年公开数据(2009-2026)'},
+    {'id': 'guokao_recruit', 'title': '🎯 国考招录人数(年K)', 'unit': '万人',
+     'series': [(row[0], row[1]) for row in GUOKAO_YEARLY],
+     'source': '国家公务员局历年公开数据(2009-2026)'},
 ]
 
 # 基础周期 → 可聚合出的更高周期
@@ -183,10 +214,11 @@ def calculate_macd(data):
 
     return df
 
-def generate_guokao_kline(col):
-    """国考人数年K: 每年一根K线, open=上一年值, close=本年值, high/low=两者极值, 再算MACD"""
-    dates = pd.to_datetime([f"{row[0]}-12-31" for row in GUOKAO_YEARLY])
-    df = pd.DataFrame({'close': [row[col] for row in GUOKAO_YEARLY]}, index=dates)
+def _yearly_kline_points(series):
+    """年K: 每年一根K线, open=上一年值, close=本年值, high/low=两者极值, 再算MACD
+    series 为 (年份, 数值) 列表"""
+    dates = pd.to_datetime([f"{y}-12-31" for y, _ in series])
+    df = pd.DataFrame({'close': [v for _, v in series]}, index=dates)
     df['open'] = df['close'].shift(1)
     df.loc[df.index[0], 'open'] = df['close'].iloc[0]
     df['high'] = df[['open', 'close']].max(axis=1)
@@ -292,7 +324,7 @@ def list_datasets():
         'unit': e['unit'],
         'basePeriod': 'yearly',
         'builtin': True,
-        'count': len(GUOKAO_YEARLY)
+        'count': len(e['series'])
     } for e in BUILTIN_EXAM_DATASETS]
     datasets += [{
         'id': b['id'],
@@ -377,13 +409,13 @@ def get_kline_data():
     try:
         exam = next((e for e in BUILTIN_EXAM_DATASETS if e['id'] == dataset_id), None)
         if exam:
-            points = generate_guokao_kline(exam['col'])
+            points = _yearly_kline_points(exam['series'])
             return jsonify({
                 'success': True,
                 'data': {
                     'title': exam['title'],
                     'unit': exam['unit'],
-                    'source': '国家公务员局历年公开数据(2009-2026)',
+                    'source': exam['source'],
                     'period': 'yearly',
                     'points': points
                 }
