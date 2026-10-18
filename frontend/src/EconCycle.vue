@@ -18,7 +18,10 @@
             <button :class="['ecy-tab', { active: chartScope === 'national' }]" @click="chartScope = 'national'">🇨🇳 全国</button>
             <button :class="['ecy-tab', { active: chartScope === 'xian' }]" @click="chartScope = 'xian'">🏛 西安</button>
           </div>
-          <span class="ecy-hero-month" v-if="heroItem">数据期间 {{ heroItem.month }}</span>
+          <div class="ecy-hero-right">
+            <span class="ecy-hero-month" v-if="heroItem">数据期间 {{ heroItem.month }}</span>
+            <button class="ecy-ai-btn" @click="showAiModal = true">📋 复制给AI分析</button>
+          </div>
         </div>
         <template v-if="heroConclusion">
           <div class="ecy-hero-main">
@@ -214,6 +217,21 @@
         结论基于公开官方数据与显式规则回放生成，非事后人工标注；分数与阶段阈值为 V1 版本，
         将随历史数据积累持续校准。不构成投资建议。
       </section>
+
+      <!-- ===== AI分析弹窗 ===== -->
+      <div class="ecy-modal-overlay" v-if="showAiModal" @click.self="showAiModal = false">
+        <div class="ecy-modal">
+          <div class="ecy-modal-head">
+            <b>📋 复制给AI分析（含提示词+全部关键数据）</b>
+            <button class="ecy-modal-close" @click="showAiModal = false">✕</button>
+          </div>
+          <div class="ecy-modal-tip">下面的内容已经打包好"你是谁、想要什么、全部数据、数据口径说明"。整体复制发给任意 AI（豆包/DeepSeek/ChatGPT）即可，它会按你要的方式分析。</div>
+          <pre class="ecy-modal-pre">{{ aiReport }}</pre>
+          <div class="ecy-modal-foot">
+            <button class="ecy-copy-btn" @click="copyAiReport">{{ copied ? '✓ 已复制' : '一键复制全文' }}</button>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -246,7 +264,9 @@ export default {
       expandedCode: '',
       showDetail: false,
       openPhase: '',
-      openChain: ''
+      openChain: '',
+      showAiModal: false,
+      copied: false
     }
   },
   computed: {
@@ -291,6 +311,73 @@ export default {
     },
     improvingList() { return this.currentIndicators.filter(i => i.state === 'rising') },
     worseningList() { return this.currentIndicators.filter(i => i.state === 'falling') },
+    aiReport() {
+      if (!this.overview) return ''
+      const o = this.overview
+      const L = []
+      const fmt = it => it ? (it.value !== undefined && it.value !== null ? it.value : '—') : '—'
+      L.push('请扮演一位既懂宏观经济又接地气的职业顾问。我在西安工作，正在纠结两个决定：')
+      L.push('1) 现在换工作时机好不好（担心岗位越来越少）；2) 有没有适合轻量创业的窗口。')
+      L.push('我不懂经济指标，请全程用大白话，少用术语，直接给结论和理由。')
+      L.push('')
+      L.push('请按以下顺序回答：')
+      L.push('一、用3句话概括当前经济到底怎么样（发生了什么、在变好还是变坏、我最该关心什么）')
+      L.push('二、逐条评估"换工作"和"创业"现在该不该动，明确说"能动/再等等/别动"，并给出你认为的关键理由')
+      L.push('三、检查下面这套系统的判定有没有问题（数据口径、规则缺陷、可能的误判），你觉得哪里不可信就直说')
+      L.push('四、给我未来6个月的行动清单：盯哪些数据、出现什么数值就该做什么动作')
+      L.push('')
+      L.push('===== 系统判定（供你核对，不要盲从） =====')
+      for (const [key, label] of [['national', '全国'], ['xian', '西安']]) {
+        const it = o[key]
+        if (!it) continue
+        const c = it.conclusion
+        L.push('【' + label + '】' + it.phase_cn + ' ' + it.score + '/100（' + (c && c.month ? c.month : it.month) + '）')
+        if (c) {
+          L.push('  一句话：' + c.headline)
+          L.push('  趋势：' + c.trend.text + ' | 最大压力：' + c.pressure.text + '（' + c.pressure.name + '=' + fmt(c.pressure) + '）| 复苏信号：' + c.signal.text)
+        }
+      }
+      const jb = o.job_switch, st = o.startup
+      if (jb) L.push('【换工作灯】' + jb.light + ' ' + jb.score + '分 | 依据：' + (jb.reasons || []).join('；'))
+      if (st) L.push('【创业灯】' + st.light + ' ' + st.score + '分 | 依据：' + (st.reasons || []).join('；'))
+      const fc = this.forecast
+      if (fc) {
+        L.push('【岗位回暖窗口预判】' + (fc.text || (fc.window_start + '~' + fc.window_end)))
+        if (fc.basis) L.push('  依据：' + fc.basis)
+        if (fc.confirm) L.push('  确认条件：' + fc.confirm)
+        if (fc.invalidate) L.push('  失效条件：' + fc.invalidate)
+      }
+      L.push('')
+      L.push('===== 指标明细（全国） =====')
+      const nat = o.national
+      if (nat && nat.indicators) {
+        nat.indicators.forEach(i => {
+          L.push('- ' + i.name + '：' + fmt(i) + '（' + (i.period || '') + '）趋势' + (i.state === 'rising' ? '↑好转' : i.state === 'falling' ? '↓恶化' : '→走平') + '，贡献分' + i.score + '/100，属' + (i.layer === 'leading' ? '先行指标(预告变化)' : i.layer === 'coincident' ? '同步指标(反映现在)' : '滞后指标(确认结果)'))
+        })
+      }
+      const xa = o.xian
+      if (xa && xa.indicators && xa.indicators.length) {
+        L.push('')
+        L.push('===== 西安指标（累计同比口径） =====')
+        xa.indicators.forEach(i => {
+          L.push('- ' + i.name + '：' + fmt(i) + '（' + (i.period || '') + '）趋势' + (i.state === 'rising' ? '↑' : i.state === 'falling' ? '↓' : '→') + '，贡献分' + i.score)
+        })
+      }
+      const bands = (this.bands.national || []).slice(-24)
+      if (bands.length) {
+        L.push('')
+        L.push('===== 全国近' + bands.length + '个月分数与阶段 =====')
+        L.push(bands.map(b => b.month.slice(2) + ':' + b.score + '(' + (this.phaseLabels[b.phase] || {}).cn + ')').join(' '))
+      }
+      L.push('')
+      L.push('===== 数据口径说明（分析前必读） =====')
+      L.push('1. 分数0-100是"近60期历史分位"，不是PMI的50荣枯线；50中线=中位水平')
+      L.push('2. 西安单月值由"1-N月累计同比"差分还原，只看方向别抠绝对值；西安数据2022年起')
+      L.push('3. 阶段判定是显式规则（阈值+动量），V1版回测命中率：信号后3月分数上行占比约40%，6月约45%——所以它只是概率参考')
+      L.push('4. 全部数据来自国家统计局/央行/交通部/西安统计局官网及权威接口，均带发布日期，无AI生成数据')
+      L.push('5. PMI从业人员指数<50代表被调查企业中减员多于增员——这是岗位供给的直接读数')
+      return L.join('\n')
+    },
     currentIndicators() {
       const item = this.heroItem
       return (item && item.indicators) || []
@@ -350,6 +437,24 @@ export default {
     },
     toggleGuide(code) {
       this.expandedCode = this.expandedCode === code ? '' : code
+    },
+    async copyAiReport() {
+      const text = this.aiReport
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch (e) {
+        // 兼容非安全上下文/旧内核:降级 execCommand
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      this.copied = true
+      setTimeout(() => { this.copied = false }, 2000)
     },
     renderTrend() {
       const dom = this.$refs.trendChart
@@ -463,6 +568,22 @@ export default {
 .ecy-ind-meta { font-size: 11px; color: #67788f; margin-top: 6px; }
 
 .ecy-note { font-size: 12px; color: #67788f; line-height: 1.7; }
+
+/* ===== AI分析弹窗 ===== */
+.ecy-hero-right { display: flex; align-items: center; gap: 10px; }
+.ecy-ai-btn { background: linear-gradient(135deg, #2b5fad, #3d8f5f); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; transition: filter .15s; }
+.ecy-ai-btn:hover { filter: brightness(1.15); }
+.ecy-modal-overlay { position: fixed; inset: 0; background: rgba(6, 10, 18, .78); backdrop-filter: blur(3px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.ecy-modal { background: #1a2130; border: 1px solid #2f3a52; border-radius: 14px; width: min(860px, 100%); max-height: 88vh; display: flex; flex-direction: column; padding: 18px 20px; }
+.ecy-modal-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: #e8eefb; }
+.ecy-modal-close { background: none; border: none; color: #8896ad; font-size: 18px; cursor: pointer; padding: 4px 8px; }
+.ecy-modal-close:hover { color: #fff; }
+.ecy-modal-tip { font-size: 12px; color: #8394ad; line-height: 1.6; margin: 8px 0 10px; background: #161d2b; border: 1px dashed #2a3244; border-radius: 8px; padding: 8px 12px; }
+.ecy-modal-pre { flex: 1; overflow: auto; background: #121826; border: 1px solid #252e42; border-radius: 10px; padding: 14px 16px; font-size: 12.5px; line-height: 1.75; color: #c3cde0; white-space: pre-wrap; word-break: break-word; margin: 0 0 12px; font-family: Consolas, 'Microsoft YaHei', monospace; }
+.ecy-modal-foot { display: flex; justify-content: flex-end; }
+.ecy-copy-btn { background: linear-gradient(135deg, #3d8f5f, #4da3ff); color: #fff; border: none; border-radius: 8px; padding: 10px 26px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.ecy-copy-btn:hover { filter: brightness(1.12); }
+@media (max-width: 640px) { .ecy-modal { padding: 14px; max-height: 92vh; } .ecy-hero-right { flex-direction: column; align-items: flex-end; gap: 6px; } }
 
 /* ===== 第一屏总览卡 ===== */
 .ecy-hero { background: linear-gradient(135deg, #1b2436, #18202f); border: 1px solid #2a3244; border-left: 4px solid var(--pc); border-radius: 14px; padding: 18px 22px; margin-bottom: 14px; }
