@@ -136,9 +136,14 @@ def startup_light(as_of=None):
 
 
 def overview(as_of=None):
-    """页面仪表盘聚合:阶段(全国/西安) + 两盏灯。"""
+    """页面仪表盘聚合:阶段(全国/西安) + 两盏灯 + 一句话结论。"""
     national = engine.judge('national', as_of=as_of, persist=as_of is None)
     xian = engine.judge('xian', as_of=as_of, persist=as_of is None)
+    from .playbook import build_conclusion
+    if national:
+        national['conclusion'] = build_conclusion(national)
+    if xian:
+        xian['conclusion'] = build_conclusion(xian)
     return dict(
         month=(national or {}).get('month'),
         national=national,

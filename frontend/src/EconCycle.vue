@@ -11,20 +11,51 @@
     <section class="ecy-error" v-if="error">{{ error }}</section>
 
     <template v-if="overview">
-      <!-- ===== 指示灯区 ===== -->
-      <section class="ecy-lights">
-        <div class="ecy-scope-card" v-for="sc in scopeCards" :key="sc.key"
-             :style="{ borderColor: sc.color }">
-          <div class="ecy-scope-name">{{ sc.title }}</div>
-          <div class="ecy-scope-phase" :style="{ color: sc.color }">{{ sc.phaseCn }}</div>
-          <div class="ecy-gauge">
-            <div class="ecy-gauge-bar">
-              <div class="ecy-gauge-fill" :style="{ width: sc.score + '%', background: sc.color }"></div>
-            </div>
-            <span class="ecy-gauge-num">{{ sc.score }}</span>
+      <!-- ===== 第一屏:一句话结论总览 ===== -->
+      <section class="ecy-hero" :style="{ '--pc': heroColor }">
+        <div class="ecy-hero-top">
+          <div class="ecy-hero-tabs">
+            <button :class="['ecy-tab', { active: chartScope === 'national' }]" @click="chartScope = 'national'">🇨🇳 全国</button>
+            <button :class="['ecy-tab', { active: chartScope === 'xian' }]" @click="chartScope = 'xian'">🏛 西安</button>
           </div>
-          <div class="ecy-scope-month" v-if="sc.month">数据期间：{{ sc.month }}</div>
+          <span class="ecy-hero-month" v-if="heroItem">数据期间 {{ heroItem.month }}</span>
         </div>
+        <template v-if="heroConclusion">
+          <div class="ecy-hero-main">
+            <div class="ecy-hero-score">
+              <span class="ecy-hero-num">{{ heroConclusion.score }}</span>
+              <span class="ecy-hero-denom">/100</span>
+            </div>
+            <div class="ecy-hero-text">
+              <div class="ecy-hero-headline">{{ heroConclusion.headline }}</div>
+              <div class="ecy-hero-sub">
+                <span class="ecy-hero-phase" :style="{ color: heroColor }">{{ heroConclusion.phase_cn }}</span>
+                · 景气水平{{ heroConclusion.level_text }}（分数=近期历史分位，非PMI荣枯线）
+              </div>
+            </div>
+          </div>
+          <div class="ecy-hero-grid">
+            <div class="ecy-hero-cell">
+              <b>变化趋势</b>
+              <span :class="'tr-' + heroConclusion.trend.cls">{{ heroConclusion.trend.text }}</span>
+            </div>
+            <div class="ecy-hero-cell">
+              <b>最大压力</b>
+              <span class="tr-down">{{ heroConclusion.pressure.text }}</span>
+              <i>{{ heroConclusion.pressure.name }} {{ heroConclusion.pressure.value }}</i>
+            </div>
+            <div class="ecy-hero-cell">
+              <b>复苏信号</b>
+              <span :class="'sg-' + heroConclusion.signal.cls">{{ heroConclusion.signal.text }}</span>
+            </div>
+            <div class="ecy-hero-cell lights">
+              <b>决策灯</b>
+              <span>{{ lightIcon(overview.job_switch.light) }}换工作·{{ lightText(overview.job_switch.light) }}</span>
+              <span>{{ lightIcon(overview.startup.light) }}创业·{{ lightText(overview.startup.light) }}</span>
+            </div>
+          </div>
+        </template>
+        <div v-else class="ecy-hero-empty">暂无数据：请在服务器上执行一次数据采集（管理员登录后 POST /api/econ/collect）</div>
       </section>
 
       <section class="ecy-decision">
@@ -32,7 +63,7 @@
           <div class="ecy-decision-head">
             <span class="ecy-decision-icon">{{ lightIcon(overview.job_switch.light) }}</span>
             <span class="ecy-decision-title">换工作窗口</span>
-            <span class="ecy-decision-state">{{ lightText(overview.job_switch.light) }}</span>
+            <span class="ecy-decision-state">{{ lightText(overview.job_switch.light) }} · {{ overview.job_switch.score }}分</span>
           </div>
           <ul class="ecy-decision-reasons">
             <li v-for="(r, i) in overview.job_switch.reasons" :key="i">{{ r }}</li>
@@ -42,7 +73,7 @@
           <div class="ecy-decision-head">
             <span class="ecy-decision-icon">{{ lightIcon(overview.startup.light) }}</span>
             <span class="ecy-decision-title">创业窗口</span>
-            <span class="ecy-decision-state">{{ lightText(overview.startup.light) }}</span>
+            <span class="ecy-decision-state">{{ lightText(overview.startup.light) }} · {{ overview.startup.score }}分</span>
           </div>
           <ul class="ecy-decision-reasons">
             <li v-for="(r, i) in overview.startup.reasons" :key="i">{{ r }}</li>
@@ -50,47 +81,37 @@
         </div>
       </section>
 
-      <!-- ===== 周期路径：走到哪了 + 各阶段对策 ===== -->
-      <section class="ecy-path-section">
+      <!-- ===== 复苏进度条:五阶段窄带 + 六环传导 ===== -->
+      <section class="ecy-prog-section">
         <div class="ecy-section-head">
-          <h2>完整周期路径 · 我们走到哪了</h2>
+          <h2>经济复苏进度 · 走到哪了</h2>
         </div>
-        <div class="ecy-path-tip">经济像四季轮回，一个完整周期按下面顺序走。判断"走到哪"靠数据，不是靠感觉。</div>
-        <div class="ecy-path-track">
-          <div class="ecy-path-node" v-for="(p, idx) in phasePath" :key="p.phase"
+        <div class="ecy-prog-band">
+          <div class="ecy-prog-seg" v-for="(p, idx) in phasePath" :key="p.phase"
                :class="{ current: currentPhase === p.phase, past: phasePast(p.phase) }"
-               :style="{ '--pc': p.color }">
-            <div class="ecy-path-idx">{{ idx + 1 }}</div>
-            <div class="ecy-path-name">{{ p.name }}</div>
-            <div class="ecy-path-current" v-if="currentPhase === p.phase">◀ 当前</div>
-            <div class="ecy-path-block"><b>数据表现</b>{{ p.sign }}</div>
-            <div class="ecy-path-block act"><b>该做什么</b>{{ p.action }}</div>
+               :style="{ '--pc': p.color }" @click="openPhase = openPhase === p.phase ? '' : p.phase">
+            <span class="ecy-prog-step">{{ idx + 1 }}·{{ p.name }}</span>
+            <span class="ecy-prog-cur" v-if="currentPhase === p.phase">◀ 当前</span>
           </div>
         </div>
-      </section>
-
-      <!-- ===== 复苏传导链 ===== -->
-      <section class="ecy-chain-section">
-        <div class="ecy-section-head">
-          <h2>复苏传导链 · 谁先好谁后好</h2>
+        <div class="ecy-prog-detail" v-if="openPhase">
+          <b :style="{ color: openPhaseMeta.color }">{{ openPhaseMeta.name }}</b>
+          <p><b>数据表现</b>{{ openPhaseMeta.sign }}</p>
+          <p class="act"><b>该做什么</b>{{ openPhaseMeta.action }}</p>
         </div>
-        <div class="ecy-chain-tip">复苏有固定顺序：订单 → 生产 → 价格 → 活钱 → 就业 → 消费。
-          每一环比上一环晚 1~2 个季度，因为企业决策成本从低到高——接单最便宜，扩编招人最贵最不可逆。
-          你觉得"工作难找"但新闻说经济回暖，就是因为走到中间环节了。</div>
-        <div class="ecy-chain-track">
+        <div class="ecy-prog-chain">
           <template v-for="(c, i) in chain" :key="c.key">
-            <div class="ecy-chain-node" :class="'st-' + chainState(c.key).cls">
+            <div class="ecy-chain-node" :class="['st-' + chainState(c.key).cls, { dim: !chainState(c.key).lit }]" @click="openChain = openChain === c.key ? '' : c.key">
               <div class="ecy-chain-rank">{{ i + 1 }}</div>
               <div class="ecy-chain-name">{{ c.name }}</div>
               <div class="ecy-chain-status">{{ chainState(c.key).label }}</div>
-              <div class="ecy-chain-val" v-if="chainState(c.key).value !== undefined">
-                {{ chainState(c.key).value }}
-              </div>
-              <div class="ecy-chain-why">{{ c.why }}</div>
+              <div class="ecy-chain-val" v-if="chainState(c.key).value !== undefined">{{ chainState(c.key).value }}</div>
+              <div class="ecy-chain-why" v-if="openChain === c.key">{{ c.why }}</div>
             </div>
             <div class="ecy-chain-arrow" v-if="i < chain.length - 1">→</div>
           </template>
         </div>
+        <div class="ecy-chain-tip">企业决策成本从低到高：接单最便宜、扩编最贵，所以复苏总是"订单先来、岗位最后到"——你觉得工作难找但新闻说回暖，就是卡在中间环节。</div>
       </section>
 
       <!-- ===== 预判窗口 ===== -->
@@ -117,8 +138,10 @@
       <!-- ===== 周期规律图 ===== -->
       <section class="ecy-chart-section">
         <div class="ecy-section-head">
-          <h2>周期规律（近 8 年 · 规则回放）</h2>
-          <div class="ecy-scope-tabs">
+          <h2>历史趋势（规则回放）<span class="ecy-chart-note">色带=当时所处阶段 · 虚线=50分位中线(非PMI荣枯线)</span></h2>
+          <div>
+            <button v-for="y in [3, 5, 8]" :key="y" :class="['ecy-tab', { active: chartYears === y }]"
+                    @click="chartYears = y; renderTrend()">{{ y }}年</button>
             <button v-for="t in ['national', 'xian']" :key="t"
                     :class="['ecy-tab', { active: chartScope === t }]"
                     @click="chartScope = t; renderTrend()">{{ t === 'national' ? '全国' : '西安' }}</button>
@@ -132,10 +155,42 @@
         </div>
       </section>
 
-      <!-- ===== 指标构成（带解读） ===== -->
+      <!-- ===== 改善/恶化榜 ===== -->
+      <section class="ecy-move-section" v-if="currentIndicators.length">
+        <div class="ecy-section-head"><h2>正在改善 vs 仍在恶化（{{ chartScope === 'national' ? '全国' : '西安' }}）</h2></div>
+        <div class="ecy-move-grid">
+          <div class="ecy-move-col good">
+            <b>↑ 正在改善 ({{ improvingList.length }})</b>
+            <div class="ecy-move-item" v-for="ind in improvingList" :key="ind.code" @click="toggleGuide(ind.code)">
+              <span class="mi-name">{{ ind.name }}</span>
+              <span class="mi-val">{{ ind.value }} <i :class="'st-' + ind.state">{{ stateText(ind.state) }}</i></span>
+            </div>
+            <div class="ecy-move-empty" v-if="!improvingList.length">暂无明显改善项</div>
+          </div>
+          <div class="ecy-move-col bad">
+            <b>↓ 仍在恶化 ({{ worseningList.length }})</b>
+            <div class="ecy-move-item" v-for="ind in worseningList" :key="ind.code" @click="toggleGuide(ind.code)">
+              <span class="mi-name">{{ ind.name }}</span>
+              <span class="mi-val">{{ ind.value }} <i :class="'st-' + ind.state">{{ stateText(ind.state) }}</i></span>
+            </div>
+            <div class="ecy-move-empty" v-if="!worseningList.length">没有恶化项</div>
+          </div>
+        </div>
+        <div class="ecy-move-guide" v-if="expandedCode && guideOf(expandedCode)">
+          <b>{{ guideOf(expandedCode).name }}</b>
+          <div class="ecy-gd-row"><b>怎么读</b>{{ guideOf(expandedCode).how }}</div>
+          <div class="ecy-gd-row good"><b>好的标准</b>{{ guideOf(expandedCode).good }}</div>
+          <div class="ecy-gd-row bad"><b>差的信号</b>{{ guideOf(expandedCode).bad }}</div>
+          <div class="ecy-gd-row"><b>为什么重要</b>{{ guideOf(expandedCode).why }}</div>
+        </div>
+      </section>
+
+      <!-- ===== 全部指标明细(默认折叠) ===== -->
       <section class="ecy-indicators" v-if="currentIndicators.length">
-        <h2>关键指标构成（{{ chartScope === 'national' ? '全国' : '西安' }}）<span class="ecy-ind-hint">点击卡片看"怎么读 / 多少算好 / 为什么"</span></h2>
-        <div class="ecy-ind-grid">
+        <h2 class="ecy-fold" @click="showDetail = !showDetail">
+          {{ showDetail ? '▾' : '▸' }} 全部指标明细（{{ currentIndicators.length }}项 · 贡献分与解读）
+        </h2>
+        <div class="ecy-ind-grid" v-if="showDetail">
           <div class="ecy-ind-card" v-for="ind in currentIndicators" :key="ind.code"
                :class="{ open: expandedCode === ind.code }" @click="toggleGuide(ind.code)">
             <div class="ecy-ind-name">{{ ind.name }}<span class="ecy-ind-q">?</span></div>
@@ -184,42 +239,60 @@ export default {
       overview: null,
       bands: { national: [], xian: [] },
       chartScope: 'national',
+      chartYears: 5,
       trendChart: null,
       phaseLabels: PHASE_LABELS,
       playbook: null,
-      expandedCode: ''
+      expandedCode: '',
+      showDetail: false,
+      openPhase: '',
+      openChain: ''
     }
   },
   computed: {
     phasePath() { return (this.playbook && this.playbook.phase_path) || [] },
     chain() { return (this.playbook && this.playbook.chain) || [] },
     forecast() { return this.playbook && this.playbook.forecast },
-    currentPhase() {
+    heroItem() {
       const o = this.overview || {}
-      const item = this.chartScope === 'xian' ? o.xian : o.national
-      return item && item.phase
+      return this.chartScope === 'xian' ? o.xian : o.national
     },
-    scopeCards() {
-      const o = this.overview || {}
-      const mk = (key, title, item) => {
-        const phase = item ? item.phase : 'bottoming'
-        const meta = PHASE_LABELS[phase] || PHASE_LABELS.bottoming
+    currentPhase() { return this.heroItem && this.heroItem.phase },
+    heroColor() { return (PHASE_LABELS[this.currentPhase] || PHASE_LABELS.bottoming).color },
+    heroConclusion() {
+      // 优先用后端 conclusion;西安没有 conclusion 字段时前端按 national 结构降级取 indicators 生成不了则 null
+      const item = this.heroItem
+      if (!item) return null
+      if (item.conclusion) return item.conclusion
+      if (item.indicators && item.indicators.length) {
+        // 降级:本地粗略生成(headline 按 phase,压力取最低分)
+        const heads = {
+          downturn: '经济仍在下行通道,先保住现金流',
+          bottoming: '经济仍处低位,复苏尚未确认',
+          early_recovery: '订单已回暖,岗位还没跟上——卡在复苏初期',
+          expansion: '经济确认上行,就业正在改善',
+          overheating: '经济偏热,扩张的同时注意风险'
+        }
+        const worst = item.indicators.reduce((a, b) => (a.score <= b.score ? a : b))
         return {
-          key, title,
-          phaseCn: item ? item.phase_cn : '数据不足',
-          score: item ? item.score : 0,
-          month: item ? item.month : '',
-          color: meta.color
+          headline: heads[item.phase] || '数据不足',
+          phase_cn: item.phase_cn, score: item.score,
+          level_text: item.score >= 65 ? '高位' : (item.score >= 50 ? '中位偏上' : (item.score >= 40 ? '中位偏下' : '低位')),
+          month: item.month,
+          trend: { text: '详见改善/恶化榜', cls: 'flat' },
+          pressure: { name: worst.name, value: worst.value, text: worst.name + '仍偏弱' },
+          signal: { cls: 'off', text: '详见复苏进度条' }
         }
       }
-      return [
-        mk('national', '🇨🇳 全国景气', o.national),
-        mk('xian', '🏛 西安景气', o.xian)
-      ]
+      return null
     },
+    openPhaseMeta() {
+      return this.phasePath.find(p => p.phase === this.openPhase) || {}
+    },
+    improvingList() { return this.currentIndicators.filter(i => i.state === 'rising') },
+    worseningList() { return this.currentIndicators.filter(i => i.state === 'falling') },
     currentIndicators() {
-      const o = this.overview || {}
-      const item = this.chartScope === 'xian' ? o.xian : o.national
+      const item = this.heroItem
       return (item && item.indicators) || []
     }
   },
@@ -261,16 +334,16 @@ export default {
       const me = order.indexOf(phase)
       return cur >= 0 && me >= 0 && me < cur
     },
-    // 传导链每环状态:从全国 indicators 取趋势态
+    // 传导链每环状态:从全国 indicators 取趋势态;lit=该环已确认好转
     chainState(code) {
       const o = this.overview || {}
       const nat = o.national
       const ind = nat && (nat.indicators || []).find(i => i.code === code)
-      if (!ind) return { cls: 'nodata', label: '暂无数据' }
+      if (!ind) return { cls: 'nodata', label: '暂无数据', lit: false }
       const v = ind.value !== undefined ? ind.value : ''
-      if (ind.state === 'rising') return { cls: 'up', label: '↑ 好转中', value: v }
-      if (ind.state === 'falling') return { cls: 'down', label: '↓ 还没好', value: v }
-      return { cls: 'flat', label: '→ 平稳待启动', value: v }
+      if (ind.state === 'rising') return { cls: 'up', label: '↑ 好转中', value: v, lit: true }
+      if (ind.state === 'falling') return { cls: 'down', label: '↓ 还没好', value: v, lit: false }
+      return { cls: 'flat', label: '→ 平稳待启动', value: v, lit: false }
     },
     guideOf(code) {
       return this.playbook && this.playbook.guide && this.playbook.guide[code]
@@ -282,7 +355,10 @@ export default {
       const dom = this.$refs.trendChart
       if (!dom) return
       if (!this.trendChart) this.trendChart = echarts.init(dom)
-      const bands = this.bands[this.chartScope] || []
+      // 默认只显示 chartYears 年,避免长历史稀释当前状态
+      const all = this.bands[this.chartScope] || []
+      const months = this.chartYears * 12
+      const bands = all.length > months ? all.slice(-months) : all
       if (!bands.length) {
         this.trendChart.clear()
         this.trendChart.setOption({ title: { text: '暂无回放数据', left: 'center', top: 'middle', textStyle: { color: '#889' } } })
@@ -300,6 +376,7 @@ export default {
       })
       if (prev) areas.push([{ xAxis: start }, { xAxis: bands[bands.length - 1].month, itemStyle: { color: (PHASE_LABELS[prev] || {}).color + '22' } }])
       const scoreData = bands.map(b => [b.month, b.score])
+      const last = bands[bands.length - 1]
       const chart = this.trendChart
       chart.clear()
       chart.setOption({
@@ -317,7 +394,12 @@ export default {
           lineStyle: { color: '#4da3ff', width: 2 },
           markArea: { silent: true, data: areas },
           markLine: { silent: true, symbol: 'none', lineStyle: { color: '#667', type: 'dashed' },
-            data: [{ yAxis: 50, label: { formatter: '50 中线', color: '#889' } }] }
+            data: [{ yAxis: 50, label: { formatter: '50 分位中线', color: '#889' } }] },
+          markPoint: {
+            symbol: 'circle', symbolSize: 9, itemStyle: { color: '#ffd98a', borderColor: '#fff', borderWidth: 1 },
+            label: { show: true, formatter: '当前 ' + last.score, color: '#ffd98a', position: 'top', fontSize: 11 },
+            data: [{ coord: [last.month, last.score] }]
+          }
         }]
       })
       setTimeout(() => chart.resize(), 50)
@@ -381,6 +463,70 @@ export default {
 .ecy-ind-meta { font-size: 11px; color: #67788f; margin-top: 6px; }
 
 .ecy-note { font-size: 12px; color: #67788f; line-height: 1.7; }
+
+/* ===== 第一屏总览卡 ===== */
+.ecy-hero { background: linear-gradient(135deg, #1b2436, #18202f); border: 1px solid #2a3244; border-left: 4px solid var(--pc); border-radius: 14px; padding: 18px 22px; margin-bottom: 14px; }
+.ecy-hero-top { display: flex; justify-content: space-between; align-items: center; }
+.ecy-hero-month { font-size: 12px; color: #67788f; }
+.ecy-hero-main { display: flex; align-items: center; gap: 22px; margin: 14px 0 16px; }
+.ecy-hero-num { font-size: 54px; font-weight: 800; color: var(--pc); line-height: 1; }
+.ecy-hero-denom { font-size: 15px; color: #67788f; }
+.ecy-hero-headline { font-size: 24px; font-weight: 700; line-height: 1.35; }
+.ecy-hero-sub { font-size: 13px; color: #8394ad; margin-top: 6px; }
+.ecy-hero-phase { font-weight: 700; }
+.ecy-hero-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.ecy-hero-cell { background: #161d2b; border: 1px solid #252e42; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.6; }
+.ecy-hero-cell b { display: block; font-size: 11px; color: #67788f; margin-bottom: 4px; }
+.ecy-hero-cell i { display: block; font-style: normal; font-size: 11px; color: #67788f; margin-top: 2px; }
+.ecy-hero-cell.lights span { display: block; }
+.tr-up { color: #7fb069; font-weight: 700; } .tr-down { color: #e05252; font-weight: 700; } .tr-flat { color: #d9a441; font-weight: 700; }
+.sg-on { color: #7fb069; font-weight: 700; } .sg-weak { color: #d9a441; font-weight: 700; } .sg-off { color: #8896ad; font-weight: 700; }
+.ecy-hero-empty { color: #8896ad; padding: 24px 0; text-align: center; }
+.ecy-chart-note { font-size: 11px; color: #67788f; font-weight: 400; margin-left: 10px; }
+
+/* ===== 复苏进度条 ===== */
+.ecy-prog-section { background: #1a2130; border: 1px solid #2a3244; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.ecy-prog-band { display: flex; gap: 4px; margin: 10px 0 8px; }
+.ecy-prog-seg { flex: 1; padding: 9px 12px; background: #161d2b; border: 1px solid #252e42; border-top: 3px solid var(--pc); border-radius: 8px; cursor: pointer; opacity: .6; }
+.ecy-prog-seg.past { opacity: .9; }
+.ecy-prog-seg.current { opacity: 1; border-color: var(--pc); box-shadow: 0 0 12px -4px var(--pc); background: #1b2436; }
+.ecy-prog-step { font-size: 13px; font-weight: 700; color: var(--pc); }
+.ecy-prog-cur { font-size: 11px; color: #ffd98a; margin-left: 8px; font-weight: 700; }
+.ecy-prog-detail { background: #161d2b; border: 1px dashed #2a3244; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; font-size: 13px; color: #b9c4d8; line-height: 1.7; }
+.ecy-prog-detail p { margin: 4px 0; }
+.ecy-prog-detail p b, .ecy-prog-detail b { font-size: 12px; color: #67788f; margin-right: 8px; }
+.ecy-prog-detail p.act { color: #d9c9a8; }
+.ecy-prog-chain { display: flex; align-items: stretch; gap: 4px; }
+.ecy-prog-chain .ecy-chain-node { cursor: pointer; }
+.ecy-prog-chain .ecy-chain-node.dim { opacity: .55; }
+
+/* ===== 改善/恶化榜 ===== */
+.ecy-move-section { background: #1a2130; border: 1px solid #2a3244; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.ecy-move-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.ecy-move-col { background: #161d2b; border: 1px solid #252e42; border-radius: 10px; padding: 12px 14px; }
+.ecy-move-col > b { font-size: 13px; display: block; margin-bottom: 8px; }
+.ecy-move-col.good > b { color: #7fb069; } .ecy-move-col.bad > b { color: #e05252; }
+.ecy-move-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px dashed #202939; cursor: pointer; font-size: 13px; }
+.ecy-move-item:last-of-type { border-bottom: none; }
+.ecy-move-item:hover .mi-name { color: #4da3ff; }
+.mi-name { color: #c3cde0; }
+.mi-val { color: #e8eefb; font-weight: 700; }
+.mi-val i { font-style: normal; font-size: 11px; margin-left: 4px; font-weight: 400; }
+.ecy-move-empty { font-size: 12px; color: #67788f; padding: 8px 0; }
+.ecy-move-guide { background: #1b2436; border: 1px dashed #2b5fad; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 12px; }
+.ecy-move-guide > b { color: #cdd7ea; font-size: 13px; display: block; margin-bottom: 4px; }
+.ecy-fold { cursor: pointer; user-select: none; }
+.ecy-fold:hover { color: #4da3ff; }
+.ecy-ind-hint { display: none; }
+
+@media (max-width: 900px) {
+  .ecy-hero-grid { grid-template-columns: 1fr 1fr; }
+  .ecy-hero-main { flex-direction: column; gap: 8px; }
+  .ecy-move-grid { grid-template-columns: 1fr; }
+  .ecy-prog-band { flex-direction: column; }
+  .ecy-prog-chain { flex-direction: column; }
+  .ecy-chain-arrow { transform: rotate(90deg); align-self: flex-start; padding-left: 12px; }
+}
 
 /* ===== 周期路径 ===== */
 .ecy-path-section { background: #1a2130; border: 1px solid #2a3244; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }

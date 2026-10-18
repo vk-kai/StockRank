@@ -186,6 +186,80 @@ def build_forecast(as_of=None):
     return out
 
 
+def build_conclusion(item):
+    """首页一句话结论:headline(判断) + 水平/趋势/最大压力/复苏信号 四格。
+
+    只用真实指标推导,不编数据:
+    - headline 按五态给固定白话
+    - trend 由同步指标多数趋势态决定
+    - pressure = 贡献分最低的指标(白话模板)
+    - signal = 领先指标中"好转中"的占比
+    """
+    if not item or not item.get('indicators'):
+        return None
+    inds = item['indicators']
+    phase = item.get('phase')
+    score = item.get('score')
+    headlines = {
+        'downturn': '经济仍在下行通道,先保住现金流',
+        'bottoming': '经济仍处低位,复苏尚未确认',
+        'early_recovery': '订单已回暖,岗位还没跟上——卡在复苏初期',
+        'expansion': '经济确认上行,就业正在改善',
+        'overheating': '经济偏热,扩张的同时注意风险',
+    }
+    # 趋势:同步指标多数态(已剔除 ref 存档层)
+    sync = [i for i in inds if i.get('layer') in ('coincident', 'leading')]
+    rising = sum(1 for i in sync if i.get('state') == 'rising')
+    falling = sum(1 for i in sync if i.get('state') == 'falling')
+    if rising >= falling and rising > 0:
+        trend_text, trend_cls = '多数指标好转中', 'up'
+    elif falling > rising:
+        trend_text, trend_cls = '多数指标仍在走弱', 'down'
+    else:
+        trend_text, trend_cls = '整体走平,待方向确认', 'flat'
+    # 最大压力:贡献分最低的指标
+    worst = min(inds, key=lambda i: i.get('score', 50))
+    pressure_map = {
+        'XA_FDI_YOY': '房地产投资深跌,拖累本地就业',
+        'XA_FAI_YOY': '固定资产投资大幅收缩',
+        'XA_RETAIL_YOY': '本地消费疲弱',
+        'RETAIL_YOY': '全国消费几乎零增长',
+        'PMI_EMP': '企业仍在净减员,岗位难找',
+        'UNEMPLOY': '失业率仍在高位',
+        'M1_YOY': '企业活钱不足,扩张意愿弱',
+        'CPI_YOY': '内需物价偏弱,通缩压力',
+        'CONF_INDEX': '消费者信心低迷',
+        'SHRZ': '社会融资偏弱,扩张资金少',
+        'PPI_YOY': '工业品价格异常',
+        'IND_YOY': '工业生产偏弱',
+        'METRO_CN': '出行人流未恢复',
+    }
+    pressure = dict(
+        name=worst.get('name'), value=worst.get('value'),
+        text=pressure_map.get(worst.get('code'), worst.get('name') + '偏弱'))
+    # 复苏信号:领先指标好转占比(订单+社融+信心+固投)
+    lead = [i for i in inds if i.get('layer') == 'leading']
+    if lead:
+        up = sum(1 for i in lead if i.get('state') == 'rising')
+        ratio = up / len(lead)
+        if ratio >= 0.5:
+            signal = dict(cls='on', text='已出现(%d/%d项领先指标好转)' % (up, len(lead)))
+        elif up > 0:
+            signal = dict(cls='weak', text='初步苗头(%d/%d项好转,未过半)' % (up, len(lead)))
+        else:
+            signal = dict(cls='off', text='尚不充分,等待订单/融资回暖')
+    else:
+        signal = dict(cls='off', text='暂无领先指标数据')
+    level_text = '高位' if score >= 65 else ('中位偏上' if score >= 50 else ('中位偏下' if score >= 40 else '低位'))
+    return dict(
+        headline=headlines.get(phase, '数据不足'),
+        phase_cn=item.get('phase_cn'), score=score,
+        level_text=level_text, month=item.get('month'),
+        trend=dict(text=trend_text, cls=trend_cls),
+        pressure=pressure, signal=signal,
+    )
+
+
 def playbook(as_of=None):
     """汇总:指标解读 + 周期路径 + 传导链 + 预判。"""
     return dict(
