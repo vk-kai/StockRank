@@ -21,8 +21,9 @@
           <button class="yuntu-button" @click="guardedGotoMarketMap"><IconTreemap />大盘云图</button>
           <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
           <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
-          <button class="flow-alert-button" :class="{ 'has-new': hasUnreadAnomaly }" @click="openFlowAlertModal">
+          <button class="flow-alert-button" :class="{ 'has-new': hasUnreadAnomaly, 'has-review': pendingReviewCount > 0 }" @click="openFlowAlertModal">
             🚨 异动预警
+            <span class="review-badge" v-if="pendingReviewCount > 0" title="有用户创作待审核，进入异动预警页处理">{{ pendingReviewCount }}</span>
             <span class="unread-dot" v-if="hasUnreadAnomaly" title="有新异动"></span>
           </button>
           <div class="more-menu-wrapper">

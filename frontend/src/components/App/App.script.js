@@ -1,7 +1,7 @@
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
-import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getEventCalendar, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts } from '../../services/apiService'
+import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getEventCalendar, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts, mpAdminFeedbackList, mpAdminDraftList } from '../../services/apiService'
 import { generateLiveReplayChartOption, buildReplaySectorOrder } from '../../services/chartService'
 import '../../styles/App.css'
 import SecurityAlert from '../SecurityAlert.vue'
@@ -132,7 +132,9 @@ export default {
       // 演示模式：未登录访客只看固定历史快照(折线图/top/新闻/摘要),不进任何实时链路
       demoMode: false,
       demoDate: '',
-      isAdmin: false
+      isAdmin: false,
+      // 待审核用户创作数(仅管理员;>0 时异动预警按钮显示角标)
+      pendingReviewCount: 0
     }
   },
   computed: {
@@ -437,6 +439,7 @@ export default {
     try {
       const session = await getAuthSession()
       this.isAdmin = !!(session && session.is_admin)
+      if (this.isAdmin) this.fetchPendingReviewCount()
       if (session && session.authenticated) {
         this.needsAuth = false
         this.bootstrapData()
@@ -550,13 +553,26 @@ export default {
       try {
         const session = await getAuthSession()
         this.isAdmin = !!(session && session.is_admin)
+        if (this.isAdmin) this.fetchPendingReviewCount()
       } catch (e) {
         this.isAdmin = false
       }
     },
+    async fetchPendingReviewCount() {
+      // 管理员首页提醒:静默拉许愿/投稿待审数,任一失败不影响另一个(角标兜底为已有值)
+      try {
+        const fb = await mpAdminFeedbackList({ status: 0, page: 1, pageSize: 1 })
+        if (fb && fb.success) this.pendingReviewCount = fb.data.total
+      } catch (e) { /* 静默 */ }
+      try {
+        const dr = await mpAdminDraftList({ status: 0, page: 1, pageSize: 1 })
+        if (dr && dr.success) this.pendingReviewCount += dr.data.total
+      } catch (e) { /* 静默 */ }
+    },
     onAuthLogout() {
       this.needsAuth = true
       this.isAdmin = false
+      this.pendingReviewCount = 0
       // 清空已有数据，回到登录提示态
       this.currentData = []
       this.accumulatedData = []

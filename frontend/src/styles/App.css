@@ -1681,6 +1681,32 @@ button:active:not(:disabled) {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.35); opacity: 0.75; }
 }
+/* 待审核角标：有用户创作待审时数字徽标(琥珀色,与异动红点区分) */
+.flow-alert-button.has-review {
+  color: #ffd591;
+  border-color: rgba(250, 173, 20, 0.6);
+  background: rgba(250, 173, 20, 0.1);
+}
+.flow-alert-button .review-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  margin-left: 5px;
+  padding: 0 4px;
+  background: #faad14;
+  color: #1a1206;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 9px;
+  line-height: 1;
+  animation: fa-review-glow 1.6s ease-in-out infinite;
+}
+@keyframes fa-review-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 173, 20, 0.45); }
+  50% { box-shadow: 0 0 0 4px rgba(250, 173, 20, 0); }
+}
 
 .yuntu-button {
   background: rgba(255, 255, 255, 0.05);
