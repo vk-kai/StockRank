@@ -1558,9 +1558,10 @@ export async function mpAdminFeedbackList({ status, page = 1, pageSize = 20 } = 
   }
 }
 
-/** 审核许愿:{id, status:1采纳|2拒绝} */
-export async function mpAdminFeedbackUpdate(id, status) {
-  const response = await apiClient.post('/mp-admin/feedback/update', { id, status })
+/** 审核许愿:{id, status:1采纳|2拒绝, rejectReason?拒绝原因(留空后端默认)} */
+export async function mpAdminFeedbackUpdate(id, status, rejectReason = '') {
+  const response = await apiClient.post('/mp-admin/feedback/update',
+    { id, status, reject_reason: rejectReason })
   return response.data
 }
 
@@ -1577,9 +1578,10 @@ export async function mpAdminDraftList({ status, page = 1, pageSize = 20 } = {})
   }
 }
 
-/** 审核投稿:{id, status:1采纳|2拒绝};采纳后奖励由 vpay 对账自动下发 */
-export async function mpAdminDraftUpdate(id, status) {
-  const response = await apiClient.post('/mp-admin/draft/update', { id, status })
+/** 审核投稿:{id, status:1采纳|2拒绝, rejectReason?拒绝原因};采纳后奖励由 vpay 对账自动下发 */
+export async function mpAdminDraftUpdate(id, status, rejectReason = '') {
+  const response = await apiClient.post('/mp-admin/draft/update',
+    { id, status, reject_reason: rejectReason })
   return response.data
 }
 

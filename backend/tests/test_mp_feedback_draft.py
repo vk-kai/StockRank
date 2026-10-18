@@ -26,6 +26,9 @@ class FeedbackDraftTestCase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.mkdtemp()
         self.db_file = os.path.join(tmp, 'game.db')
+        # 保存模块级原值,tearDown 恢复(避免污染同进程后续测试模块)
+        self._saved = (m.DB_FILE, v.VPAY_DB_FILE, sec.MP_SEC_CONFIG_FILE,
+                       v.load_vpay_config, v.get_vpay_env)
         m.DB_FILE = self.db_file
         v.VPAY_DB_FILE = self.db_file          # 与 game 同一库(线上同为 UNIFIED_DB_FILE)
         m._rl_store.clear()
@@ -40,6 +43,11 @@ class FeedbackDraftTestCase(unittest.TestCase):
         v.load_vpay_config = lambda: {'appid': 'wxT', 'product_id': 'p1',
                                       'product_name': '测试商品', 'goods_price': 1}
         v.get_vpay_env = lambda: 0
+
+    def tearDown(self):
+        (m.DB_FILE, v.VPAY_DB_FILE, sec.MP_SEC_CONFIG_FILE,
+         v.load_vpay_config, v.get_vpay_env) = self._saved
+        m._review_cols_ready = False
 
     def _set_auth_key(self, key):
         with open(sec.MP_SEC_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -279,6 +287,35 @@ class AdminReviewTestCase(FeedbackDraftTestCase):
         # 校验:openid 非法 / limit 越界钳制
         self.assertFalse(self.client.get('/api/mp/game/feedback/mine?openid=bad openid').get_json()['success'])
         self.assertTrue(self.client.get('/api/mp/game/draft/mine?openid=oB&limit=999').get_json()['success'])
+
+    def test_reject_reason_flow(self):
+        self._login()
+        fid = self._fb(openid='oC', title='想要星座配对测试').get_json()['id']
+        did = self._draft(openid='oC').get_json()['id']
+        # 拒绝留空 → 默认原因落库并下发
+        r = self.client.post('/api/mp-admin/feedback/update',
+                             json={'id': fid, 'status': 2}).get_json()
+        self.assertTrue(r['success'])
+        self.assertEqual(r['reject_reason'], '内容暂不符合上架要求')
+        mine = self.client.get('/api/mp/game/feedback/mine?openid=oC').get_json()
+        self.assertEqual(mine['items'][0]['status_name'], '未采纳')
+        self.assertEqual(mine['items'][0]['reject_reason'], '内容暂不符合上架要求')
+        # 自定义原因超 50 字 → 截断
+        r2 = self.client.post('/api/mp-admin/draft/update',
+                              json={'id': did, 'status': 2,
+                                    'reject_reason': '测' * 60}).get_json()
+        self.assertEqual(r2['reject_reason'], '测' * 50)
+        mine_d = self.client.get('/api/mp/game/draft/mine?openid=oC').get_json()
+        item = mine_d['items'][0]
+        self.assertEqual(item['reject_reason'], '测' * 50)
+        # draft/mine 回传题目/结果明细(数组)
+        self.assertEqual(len(item['questions']), 3)
+        self.assertEqual(item['questions'][0]['opts'], ['选项0', '选项1', '选项2'])
+        self.assertEqual(item['results'][0]['name'], '结果人格0')
+        # 采纳 → 清空原因,mine 不再带该字段
+        self.client.post('/api/mp-admin/draft/update', json={'id': did, 'status': 1}).get_json()
+        mine_d2 = self.client.get('/api/mp/game/draft/mine?openid=oC').get_json()
+        self.assertNotIn('reject_reason', mine_d2['items'][0])
 
 
 if __name__ == '__main__':

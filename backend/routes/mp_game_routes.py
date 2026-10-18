@@ -118,6 +118,10 @@ DRAFT_OPT_MAX = 20
 DRAFT_R_MIN, DRAFT_R_MAX = 3, 4
 DRAFT_NAME_MAX = 12
 DRAFT_DESC_MAX = 100
+REJECT_REASON_MAX = 50                                    # 拒绝原因上限(人工输入)
+REJECT_REASON_DEFAULT = '内容暂不符合上架要求'             # 审核员留空时的默认原因
+# 老库补列迁移只跑一次(进程级;新库建表已含 reject_reason)
+_review_cols_ready = False
 
 # 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
 # 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
@@ -289,6 +293,7 @@ def _db():
             category TEXT NOT NULL DEFAULT 'other',
             detail TEXT DEFAULT '',
             status INTEGER NOT NULL DEFAULT 0,  -- 0待处理 1已采纳 2已拒绝(人工改)
+            reject_reason TEXT,                 -- 拒绝原因(status=2 时下发,≤50字,人工输入)
             create_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_tf_openid ON test_feedback(openid)')
@@ -301,10 +306,19 @@ def _db():
             questions TEXT NOT NULL,   -- JSON: [{"q":"...","opts":["..."]}]
             results TEXT NOT NULL,     -- JSON: [{"name":"...","desc":"..."}]
             status INTEGER NOT NULL DEFAULT 0,  -- 0待审 1已采纳 2已拒绝(人工改)
+            reject_reason TEXT,                 -- 拒绝原因(status=2 时下发,≤50字,人工输入)
             reward_given INTEGER NOT NULL DEFAULT 0,
             create_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_td_openid ON test_draft(openid)')
+        # 拒绝原因列(2026-10 增补):老库 ALTER 补列,新库建表语句已含;进程内只跑一次
+        global _review_cols_ready
+        if not _review_cols_ready:
+            for _t in ('test_feedback', 'test_draft'):
+                _cols = {row[1] for row in conn.execute(f'PRAGMA table_info({_t})')}
+                if 'reject_reason' not in _cols:
+                    conn.execute(f'ALTER TABLE {_t} ADD COLUMN reject_reason TEXT')
+            _review_cols_ready = True
         # 旧数据自愈:category 功能上线前导入的种子留言分类为 NULL(导入是全局幂等的,
         # 重导被拒,老数据不会自己长出分类)——按昵称给 is_seed=1 且 category IS NULL
         # 的行回填 ECHO_SEEDS 内置分类。每进程只跑一次;提交成功才标记完成,
@@ -1439,6 +1453,15 @@ def draft_post():
         return jsonify({'success': False, 'error': f'服务异常: {e}'})
 
 
+def _draft_json_list(raw):
+    """draft 的 questions/results JSON → 数组;解析失败原样返回字符串(客户端兜底)。"""
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, list) else raw
+    except (TypeError, ValueError):
+        return raw
+
+
 @mp_game_bp.route('/feedback/mine', methods=['GET'])
 def feedback_mine():
     """我的许愿列表:GET ?openid=...&limit=20(≤50)。
@@ -1458,13 +1481,19 @@ def feedback_mine():
         except (TypeError, ValueError):
             limit = 20
         with _db() as conn:
-            rows = conn.execute('''SELECT id, title, category, status, create_time
+            rows = conn.execute('''SELECT id, title, category, status, reject_reason, create_time
                 FROM test_feedback WHERE openid = ?
                 ORDER BY id DESC LIMIT ?''', (openid, limit)).fetchall()
-        items = [{'id': r['id'], 'title': r['title'], 'category': r['category'],
+        items = []
+        for r in rows:
+            it = {'id': r['id'], 'title': r['title'], 'category': r['category'],
                   'status': r['status'],
                   'status_name': {0: '待处理', 1: '已采纳', 2: '未采纳'}.get(r['status'], '待处理'),
-                  'create_time': r['create_time']} for r in rows]
+                  'create_time': r['create_time']}
+            # 拒绝原因:仅 status=2 且有值时返回(与前端约定,缺失即不显示)
+            if r['status'] == 2 and r['reject_reason']:
+                it['reject_reason'] = r['reject_reason']
+            items.append(it)
         return jsonify({'success': True, 'items': items})
     except Exception as e:
         error_logger.error(f'feedback mine 查询异常: {e}')
@@ -1476,8 +1505,8 @@ def draft_mine():
     """我的投稿列表:GET ?openid=...&limit=20(≤50)。
 
     回 title/status/create_time + 奖励状态(reward_given=已下发免广告,
-    实际权益以 vpay/status 的 reward_until 为准);questions/results
-    原文不回(省流量,客户端展示不需要)。
+    实际权益以 vpay/status 的 reward_until 为准)+ questions/results
+    明细数组(客户端「我的记录」点开展示用);status=2 附 reject_reason。
     """
     denied = _check_auth_key()
     if denied:
@@ -1491,14 +1520,24 @@ def draft_mine():
         except (TypeError, ValueError):
             limit = 20
         with _db() as conn:
-            rows = conn.execute('''SELECT id, title, status, reward_given, create_time
+            rows = conn.execute('''SELECT id, title, status, reject_reason, reward_given,
+                                          questions, results, create_time
                 FROM test_draft WHERE openid = ?
                 ORDER BY id DESC LIMIT ?''', (openid, limit)).fetchall()
-        items = [{'id': r['id'], 'title': r['title'],
+        items = []
+        for r in rows:
+            it = {'id': r['id'], 'title': r['title'],
                   'status': r['status'],
                   'status_name': {0: '审核中', 1: '已采纳', 2: '未采纳'}.get(r['status'], '审核中'),
                   'reward_given': bool(r['reward_given']),
-                  'create_time': r['create_time']} for r in rows]
+                  # 题目/结果明细:解析成数组返回(客户端展开展示用);
+                  # 脏数据解析失败时原样返回字符串,客户端自行兜底
+                  'questions': _draft_json_list(r['questions']),
+                  'results': _draft_json_list(r['results']),
+                  'create_time': r['create_time']}
+            if r['status'] == 2 and r['reject_reason']:
+                it['reject_reason'] = r['reject_reason']
+            items.append(it)
         return jsonify({'success': True, 'items': items})
     except Exception as e:
         error_logger.error(f'draft mine 查询异常: {e}')

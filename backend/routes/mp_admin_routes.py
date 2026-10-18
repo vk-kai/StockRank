@@ -50,6 +50,7 @@ from routes.mp_game_routes import (
     STAT_KEY_RE, STAT_KEY_NAMES, DEFAULT_NICKNAME, WALL_ID_RE, ECHO_TEXT_MAX,
     ECHO_CATEGORIES, ECHO_CATEGORY_DEFAULT, OPENID_RE, _field_safe, _safe_nick,
     SUBS_KEY_PREFIX, ECHO_HUG_TEMPLATE_ID,
+    REJECT_REASON_MAX, REJECT_REASON_DEFAULT,
 )
 from routes.mp_sec_routes import local_text_blocked
 from routes.mp_vpay_routes import VPAY_DB_FILE, _db as _vpay_db, load_vpay_config
@@ -1021,6 +1022,14 @@ def _review_status(status):
     return status if status in (1, 2) else None
 
 
+def _review_reject_reason(data, status):
+    """拒绝时提取原因:≤50字,留空用默认文案;采纳时返回 None(同时清空旧原因)。"""
+    if status != 2:
+        return None
+    reason = str(data.get('reject_reason') or '').strip()
+    return (reason or REJECT_REASON_DEFAULT)[:REJECT_REASON_MAX]
+
+
 def _safe_draft_json(raw):
     """draft 的 questions/results JSON 解析;脏数据/解析失败返回 None(前端显示原文)。"""
     try:
@@ -1051,7 +1060,7 @@ def mp_admin_feedback():
             total = conn.execute(f'SELECT COUNT(*) AS c FROM test_feedback {cond}',
                                  params).fetchone()['c']
             rows = conn.execute(
-                f'''SELECT id, openid, title, category, detail, status, create_time
+                f'''SELECT id, openid, title, category, detail, status, reject_reason, create_time
                     FROM test_feedback {cond}
                     ORDER BY id DESC LIMIT ? OFFSET ?''',
                 params + [page_size, (page - 1) * page_size]).fetchall()
@@ -1059,6 +1068,7 @@ def mp_admin_feedback():
                   'title': r['title'], 'category': r['category'] or 'other',
                   'detail': r['detail'] or '',
                   'status': r['status'], 'status_name': _FB_DRAFT_STATUS_NAME.get(r['status'], '待处理'),
+                  'reject_reason': r['reject_reason'] or '',
                   'create_time': r['create_time']} for r in rows]
         return jsonify({'success': True, 'data': {
             'items': items, 'total': total, 'page': page, 'page_size': page_size,
@@ -1084,12 +1094,15 @@ def mp_admin_feedback_update():
         status = _review_status(data.get('status'))
         if status is None:
             return jsonify({'success': False, 'message': 'status 只能为 1(采纳) 或 2(拒绝)'}), 400
+        reason = _review_reject_reason(data, status)
         with _db() as conn:
-            cur = conn.execute('UPDATE test_feedback SET status = ? WHERE id = ?', (status, rid))
+            cur = conn.execute('UPDATE test_feedback SET status = ?, reject_reason = ? WHERE id = ?',
+                               (status, reason, rid))
             if cur.rowcount == 0:
                 return jsonify({'success': False, 'message': '许愿不存在'}), 404
-        logger.info(f'[mp-admin] 许愿审核: id={rid} status={status}')
-        return jsonify({'success': True, 'status': status})
+        logger.info(f'[mp-admin] 许愿审核: id={rid} status={status} reason={reason or "-"}')
+        return jsonify({'success': True, 'status': status,
+                        'reject_reason': reason or ''})
     except Exception as e:
         error_logger.error(f'mp-admin feedback update 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
@@ -1118,7 +1131,7 @@ def mp_admin_draft():
                                  params).fetchone()['c']
             rows = conn.execute(
                 f'''SELECT id, openid, title, questions, results, status,
-                           reward_given, create_time
+                           reject_reason, reward_given, create_time
                     FROM test_draft {cond}
                     ORDER BY id DESC LIMIT ? OFFSET ?''',
                 params + [page_size, (page - 1) * page_size]).fetchall()
@@ -1133,6 +1146,7 @@ def mp_admin_draft():
                           'status': r['status'],
                           'status_name': _FB_DRAFT_STATUS_NAME.get(r['status'], '待审'),
                           'reward_given': bool(r['reward_given']),
+                          'reject_reason': r['reject_reason'] or '',
                           'create_time': r['create_time']})
         return jsonify({'success': True, 'data': {
             'items': items, 'total': total, 'page': page, 'page_size': page_size,
@@ -1162,13 +1176,16 @@ def mp_admin_draft_update():
         status = _review_status(data.get('status'))
         if status is None:
             return jsonify({'success': False, 'message': 'status 只能为 1(采纳) 或 2(拒绝)'}), 400
+        reason = _review_reject_reason(data, status)
         with _db() as conn:
-            cur = conn.execute('UPDATE test_draft SET status = ? WHERE id = ?', (status, rid))
+            cur = conn.execute('UPDATE test_draft SET status = ?, reject_reason = ? WHERE id = ?',
+                               (status, reason, rid))
             if cur.rowcount == 0:
                 return jsonify({'success': False, 'message': '投稿不存在'}), 404
-        logger.info(f'[mp-admin] 投稿审核: id={rid} status={status}'
+        logger.info(f'[mp-admin] 投稿审核: id={rid} status={status} reason={reason or "-"}'
                     + ('(采纳:下次冷启动对账自动发免广告)' if status == 1 else ''))
-        return jsonify({'success': True, 'status': status})
+        return jsonify({'success': True, 'status': status,
+                        'reject_reason': reason or ''})
     except Exception as e:
         error_logger.error(f'mp-admin draft update 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500

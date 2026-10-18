@@ -37,6 +37,8 @@ export default {
       draftStatus: -1,
       reviewBusy: false,
       draftView: { row: null },
+      // 拒绝原因弹框(许愿/投稿共用;留空提交则后端写默认文案)
+      rejectBox: { show: false, busy: false, type: 'fb', id: 0, title: '', reason: '' },
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -63,7 +65,13 @@ export default {
       const session = await getAuthSession()
       this.isAdmin = !!(session && session.is_admin)
       if (this.isAdmin) {
-        await this.loadScores(1)
+        // 支持外部页签直达:/mp-admin/manage?tab=feedback|drafts(异动预警「去审核」入口)
+        const t = this.$route && this.$route.query.tab
+        if (t === 'feedback' || t === 'drafts') {
+          this.switchTab(t)
+        } else {
+          await this.loadScores(1)
+        }
       }
     } catch (e) {
       this.isAdmin = false
@@ -373,11 +381,15 @@ export default {
       }
     },
     async doFbReview(row, status) {
+      if (status === 2) {           // 拒绝:先填原因
+        this.rejectBox = { show: true, busy: false, type: 'fb', id: row.id, title: row.title, reason: '' }
+        return
+      }
       this.reviewBusy = true
       try {
         const res = await mpAdminFeedbackUpdate(row.id, status)
         if (res && res.success) {
-          this.showToast(status === 1 ? '已采纳该许愿' : '已拒绝', 'success')
+          this.showToast('已采纳该许愿', 'success')
           this.loadFeedback(this.fb.page)
         } else {
           this.showToast((res && res.message) || '操作失败', 'error')
@@ -406,14 +418,16 @@ export default {
       this.draftView.row = row
     },
     async doDraftReview(row, status) {
+      if (status === 2) {           // 拒绝:先填原因
+        this.rejectBox = { show: true, busy: false, type: 'draft', id: row.id, title: row.title, reason: '' }
+        return
+      }
       this.reviewBusy = true
       try {
         const res = await mpAdminDraftUpdate(row.id, status)
         if (res && res.success) {
           this.draftView.row = null
-          this.showToast(status === 1
-            ? '已采纳，该用户下次冷启动自动到账当月免广告'
-            : '已拒绝该投稿', 'success')
+          this.showToast('已采纳，该用户下次冷启动自动到账当月免广告', 'success')
           this.loadDrafts(this.drafts.page)
         } else {
           this.showToast((res && res.message) || '操作失败', 'error')
@@ -421,6 +435,28 @@ export default {
       } catch (e) {
         this.showReqError(e, '操作失败')
       } finally {
+        this.reviewBusy = false
+      }
+    },
+    async confirmReject() {
+      const box = this.rejectBox
+      this.reviewBusy = true
+      box.busy = true
+      try {
+        const fn = box.type === 'fb' ? mpAdminFeedbackUpdate : mpAdminDraftUpdate
+        const res = await fn(box.id, 2, box.reason.trim())
+        if (res && res.success) {
+          box.show = false
+          this.showToast(box.reason.trim() ? '已拒绝' : `已拒绝（默认原因：${res.reject_reason}）`, 'success')
+          if (box.type === 'fb') this.loadFeedback(this.fb.page)
+          else this.loadDrafts(this.drafts.page)
+        } else {
+          this.showToast((res && res.message) || '操作失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '操作失败')
+      } finally {
+        box.busy = false
         this.reviewBusy = false
       }
     },

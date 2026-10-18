@@ -271,7 +271,10 @@
               <td>{{ row.category }}</td>
               <td class="echo-text" :title="row.detail">{{ row.detail || '—' }}</td>
               <td class="code-text">{{ shortOpenid(row.openid) }}</td>
-              <td>{{ row.status_name }}</td>
+              <td>
+                {{ row.status_name }}
+                <div v-if="row.reject_reason" class="reject-reason" :title="row.reject_reason">📌 {{ row.reject_reason }}</div>
+              </td>
               <td>{{ row.create_time }}</td>
               <td>
                 <template v-if="row.status === 0">
@@ -316,7 +319,10 @@
                 </button>
               </td>
               <td class="code-text">{{ shortOpenid(row.openid) }}</td>
-              <td>{{ row.status_name }}</td>
+              <td>
+                {{ row.status_name }}
+                <div v-if="row.reject_reason" class="reject-reason" :title="row.reject_reason">📌 {{ row.reject_reason }}</div>
+              </td>
               <td>{{ row.reward_given ? '已下发' : '—' }}</td>
               <td>{{ row.create_time }}</td>
               <td>
@@ -363,6 +369,25 @@
         </div>
         <div class="pwd-actions">
           <button class="cancel-btn" @click="draftView.row = null">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 拒绝原因弹窗(许愿/投稿共用) -->
+    <div v-if="rejectBox.show" class="pwd-overlay" @click.self="rejectBox.show = false">
+      <div class="pwd-card">
+        <h3>填写拒绝原因</h3>
+        <p class="pwd-desc">{{ rejectBox.title }}</p>
+        <label class="edit-row">原因
+          <input v-model="rejectBox.reason" maxlength="50" class="reject-input"
+                 placeholder="如：题材和已有测试重复，建议换个角度" @keyup.enter="confirmReject" />
+        </label>
+        <p class="pwd-desc">留空将使用默认原因「内容暂不符合上架要求」，用户端会显示该原因</p>
+        <div class="pwd-actions">
+          <button class="cancel-btn" @click="rejectBox.show = false">取消</button>
+          <button class="ok-btn" :disabled="rejectBox.busy" @click="confirmReject">
+            {{ rejectBox.busy ? '处理中…' : '确认拒绝' }}
+          </button>
         </div>
       </div>
     </div>

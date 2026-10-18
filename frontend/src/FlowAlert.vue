@@ -6,6 +6,9 @@
       <div class="fa-main-tabs">
         <button :class="['fa-main-tab', {active: mainTab==='fund'}]" @click="switchMainTab('fund')">💰 资金异动</button>
         <button :class="['fa-main-tab', {active: mainTab==='pulse'}]" @click="switchMainTab('pulse')">📈 个股异动</button>
+        <button v-if="isAdmin" :class="['fa-main-tab', {active: mainTab==='review'}]" @click="switchMainTab('review')">
+          📋 待审核{{ pendingCount ? ` ${pendingCount}` : '' }}
+        </button>
       </div>
       <div class="fa-header-right">
         <button v-if="mainTab==='fund'" @click="runDetect" class="fa-run-btn" :disabled="loading || needsAuth">
@@ -46,6 +49,40 @@
     </div>
 
     <template v-else>
+      <!-- 待审核提醒条(区分于资金/个股异动:有用户创作待审时置顶提示) -->
+      <div v-if="isAdmin && pendingCount > 0 && mainTab !== 'review'"
+           class="fa-review-banner" @click="switchMainTab('review')">
+        📋 有 {{ pendingCount }} 条用户创作（许愿/投稿）待审核，点击处理
+      </div>
+
+      <!-- ==================== 待审核（用户创作人工评审） ==================== -->
+      <template v-if="mainTab==='review'">
+        <div class="fa-review-wrap">
+          <div class="fa-review-card">
+            <div class="fa-review-head">💡 许愿箱 · 待处理 {{ reviewFbTotal }} 条</div>
+            <ul class="fa-review-list">
+              <li v-for="it in review.fb" :key="'fb' + it.id">
+                <span class="fa-review-title">{{ it.title }}</span>
+                <span class="fa-review-time">{{ it.create_time }}</span>
+              </li>
+              <li v-if="!review.fb.length" class="fa-review-empty">暂无待处理许愿 🎉</li>
+            </ul>
+            <button class="fa-run-btn" @click="goManage('feedback')">去审核许愿 →</button>
+          </div>
+          <div class="fa-review-card">
+            <div class="fa-review-head">✍️ 出题投稿 · 待审 {{ reviewDraftTotal }} 条</div>
+            <ul class="fa-review-list">
+              <li v-for="it in review.draft" :key="'dr' + it.id">
+                <span class="fa-review-title">{{ it.title }}</span>
+                <span class="fa-review-time">{{ it.create_time }}</span>
+              </li>
+              <li v-if="!review.draft.length" class="fa-review-empty">暂无待审投稿 🎉</li>
+            </ul>
+            <button class="fa-run-btn" @click="goManage('drafts')">去审核投稿 →</button>
+          </div>
+        </div>
+      </template>
+
       <!-- ==================== 个股异动（Stock Pulse，盘中每5分钟采样） ==================== -->
       <template v-if="mainTab==='pulse'">
         <!-- 板块聚集活动：多少板块在集体拉升/跳水及各自中位涨幅（不重复首页的涨跌家数） -->
@@ -345,7 +382,8 @@
 
 <script>
 import { runAnomalyDetection, getAnomalyAlerts,
-         getStockPulseSummary, runStockPulseDetection } from './services/apiService'
+         getStockPulseSummary, runStockPulseDetection,
+         getAuthSession, mpAdminFeedbackList, mpAdminDraftList } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
 const DIM_META = {
@@ -386,7 +424,13 @@ export default {
       pulseFindings: [],
       pulseSummary: null,
       pulseFilter: 'all',
-      pulseShowLimit: 100
+      pulseShowLimit: 100,
+      // 待审核(用户创作人工评审;仅管理员可见页签)
+      isAdmin: false,
+      pendingCount: 0,
+      review: { fb: [], draft: [] },
+      reviewFbTotal: 0,
+      reviewDraftTotal: 0
     }
   },
   computed: {
@@ -458,6 +502,12 @@ export default {
     window.addEventListener('auth-login-success', this.onAuthLogin)
     window.addEventListener('ws-stock-pulse', this.onPulsePush)
     this._autoTimer = setInterval(this.autoRefresh, 60000)  // 60s 自动刷新，免手动
+    // 管理员身份 → 显示「待审核」页签并拉取待审数(静默,失败不影响主功能)
+    try {
+      const session = await getAuthSession()
+      this.isAdmin = !!(session && session.is_admin)
+      if (this.isAdmin) this.fetchPending()
+    } catch (e) { /* 未登录忽略 */ }
     // 支持首页速览带 tab 参数直达：/flow-alert?tab=pulse → 个股异动
     if (this.$route.query.tab === 'pulse') this.switchMainTab('pulse')
     else await this.runDetect()
@@ -540,6 +590,7 @@ export default {
     autoRefresh() {
       // 60s 静默自刷新（后端重放本地快照，开销小）；页面不可见/未登录时跳过
       if (this.needsAuth || document.hidden) return
+      if (this.mainTab === 'review') { this.fetchPending(); return }
       if (this.mainTab === 'fund') {
         if (this.loading) return
         if (this.view === 'pushed') { this.loadPushed(); return }
@@ -551,9 +602,33 @@ export default {
     },
     switchMainTab(t) {
       this.mainTab = t
+      if (t === 'review') { this.fetchPending(); return }
       if (t === 'pulse') {
         this.runPulseDetect()
       }
+    },
+    // ==================== 待审核（用户创作人工评审） ====================
+    async fetchPending() {
+      // 静默拉取待审数与列表(任一失败不影响另一个);供页签角标/提醒条/页签面板共用
+      try {
+        const fbRes = await mpAdminFeedbackList({ status: 0, page: 1, pageSize: 10 })
+        if (fbRes && fbRes.success) {
+          this.review.fb = fbRes.data.items
+          this.reviewFbTotal = fbRes.data.total
+        }
+      } catch (e) { /* 静默 */ }
+      try {
+        const drRes = await mpAdminDraftList({ status: 0, page: 1, pageSize: 10 })
+        if (drRes && drRes.success) {
+          this.review.draft = drRes.data.items
+          this.reviewDraftTotal = drRes.data.total
+        }
+      } catch (e) { /* 静默 */ }
+      this.pendingCount = this.reviewFbTotal + this.reviewDraftTotal
+    },
+    goManage(subTab) {
+      // 跳转数据管理页并落到对应子页签(query.tab 由 MpAdminManage.mounted 处理)
+      this.$router.push({ path: '/mp-admin/manage', query: { tab: subTab } })
     },
     async loadPulseSummary() {
       try {
@@ -788,6 +863,29 @@ export default {
 /* ===== 个股异动（Stock Pulse）===== */
 .fa-main-tabs { display: flex; gap: 4px; background: rgba(255,255,255,.06); border-radius: 6px; padding: 3px; }
 .fa-main-tab { background: transparent; border: none; color: #8ba4c7; padding: 7px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all .2s; }
+
+/* ==================== 待审核（用户创作人工评审） ==================== */
+.fa-review-banner {
+  margin-bottom: 14px; padding: 12px 16px; border-radius: 8px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(240, 184, 96, 0.16), rgba(240, 184, 96, 0.06));
+  border: 1px solid rgba(240, 184, 96, 0.45); color: #f0b860; font-size: 14px; font-weight: 600;
+  transition: all .2s;
+}
+.fa-review-banner:hover { background: rgba(240, 184, 96, 0.22); }
+.fa-review-wrap { display: flex; flex-direction: column; gap: 14px; }
+.fa-review-card {
+  background: #101a2c; border: 1px solid #1f3350; border-radius: 10px; padding: 14px 16px;
+}
+.fa-review-head { font-size: 14px; font-weight: 700; color: #dce7f5; margin-bottom: 10px; }
+.fa-review-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.fa-review-list li {
+  display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  padding: 7px 4px; border-bottom: 1px dashed rgba(64, 96, 143, 0.35); font-size: 13px;
+}
+.fa-review-list li:last-child { border-bottom: none; }
+.fa-review-title { color: #c9d6e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fa-review-time { color: #5f7ba1; font-size: 12px; flex-shrink: 0; }
+.fa-review-empty { color: #5f7ba1; justify-content: center; }
 .fa-main-tab.active { background: linear-gradient(135deg, #3a4a6b, #2a3a5b); color: #fff; }
 .fa-card-pulse { border-left-color: #ff4d4f; }
 .fa-pulse-tag { font-size: 11px; color: #ff7875; border: 1px solid #ff7875; border-radius: 10px; padding: 1px 8px; }
