@@ -12,7 +12,7 @@ from data.data_collector import data_collection_thread as data_collection_func
 from data.news_collector import news_collection_thread as news_collection_func, init_news_data
 from data.margin_collector import margin_collection_thread as margin_collection_func
 from monitors.health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
-from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp, demo_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp, econ_cycle_bp, demo_bp
 from routes.auth_routes import install_auth_guard
 from core.session_secret import load_session_secret
 from monitors.thread_monitor import get_all_status, register_thread
@@ -98,6 +98,7 @@ def create_app():
     app.register_blueprint(mp_game_bp)
     app.register_blueprint(mp_admin_bp)
     app.register_blueprint(mp_vpay_bp)
+    app.register_blueprint(econ_cycle_bp)
     app.register_blueprint(demo_bp)
     install_auth_guard(app)
     
@@ -356,6 +357,11 @@ if __name__ == '__main__':
         vpay_checker_thread = threading.Thread(target=vpay_check_loop, daemon=True)
         vpay_checker_thread.start()
         system_logger.info("虚拟支付兜底查单线程已启动")
+
+        # 经济周期检查线程:阶段切换飞书/企微推送+月度一页纸(月度数据,6小时一查)
+        from econ_cycle.notify import econ_cycle_loop
+        threading.Thread(target=econ_cycle_loop, daemon=True).start()
+        system_logger.info("经济周期检查线程已启动")
 
         system_logger.info("Flask-SocketIO服务器启动")
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)

@@ -1761,6 +1761,10 @@ export default {
       this.$router.push('/industry-cycle')
     },
 
+    goToEconCycle() {
+      this.$router.push('/econ-cycle')
+    },
+
     openQuantSystem() {
       const baseUrl = window.location.origin
       // 携带 tz_gate 特征：StockRank nginx 据此放行并下发 cookie，直接复制裸 URL 访问会被踢回首页

@@ -209,6 +209,24 @@ function sendTestNotification(data) {
   } catch (e) { /* 忽略 */ }
 }
 
+// 经济周期阶段切换：跨月阶段变化时弹通知，标题带区域与方向，正文带依据
+function sendEconPhaseNotification(record) {
+  try {
+    if (!record) return
+    const title = `🧭 ${record.region || ''}${record.direction || ''}：${record.from_phase_cn || ''}→${record.to_phase_cn || ''}（${record.score ?? '?'}分）`
+    const body = `数据期间 ${record.month || ''}\n${record.reason || ''}`
+    const n = new Notification(title, {
+      body,
+      icon: ICON,
+      tag: `econ-phase-${record.scope}-${record.month}`,
+      requireInteraction: false
+    })
+    n.onclick = () => { window.focus(); n.close() }
+    const mode = getSoundMode()
+    if (mode === 'all' || mode === 'important') playSound('important')
+  } catch (e) { /* 忽略 */ }
+}
+
 // ==================== WebSocket 推送处理 ====================
 
 function handlePushEvent(msg) {
@@ -256,6 +274,10 @@ function handlePushEvent(msg) {
         sendPulseNotification(msg.data)
         window.dispatchEvent(new CustomEvent('ws-stock-pulse', { detail: msg.data }))
       }
+      break
+    case 'econ_phase':
+      // 经济周期阶段切换：桌面通知（月度低频事件）
+      if (msg.data) sendEconPhaseNotification(msg.data)
       break
     case 'push_test':
       if (msg.data) sendTestNotification(msg.data)

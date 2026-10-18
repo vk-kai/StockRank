@@ -11,6 +11,7 @@ const MarketMap = () => import('./MarketMap.vue')
 const FlowAlert = () => import('./FlowAlert.vue')
 const AiChain = () => import('./AiChain.vue')
 const IndustryCycle = () => import('./IndustryCycle.vue')
+const EconCycle = () => import('./EconCycle.vue')
 const RedeemCode = () => import('./RedeemCode.vue')
 const MpAdmin = () => import('./MpAdmin.vue')
 const MpAdminManage = () => import('./MpAdminManage.vue')
@@ -70,6 +71,11 @@ const routes = [
     path: '/industry-cycle',
     name: 'IndustryCycle',
     component: IndustryCycle
+  },
+  {
+    path: '/econ-cycle',
+    name: 'EconCycle',
+    component: EconCycle
   },
   {
     path: '/redeem-code',

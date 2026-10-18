@@ -867,6 +867,89 @@ export async function getHouseDatasets() {
   }
 }
 
+// ==================== 经济周期（人生指示灯） ====================
+
+/**
+ * 经济周期总览：全国/西安阶段判定 + 换工作/创业信号灯
+ */
+export async function getEconOverview() {
+  try {
+    const response = await apiClient.get('/econ/overview')
+    return response.data
+  } catch (error) {
+    console.error('获取经济周期总览失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 经济周期知识库：指标解读 + 周期路径 + 复苏传导链 + 时间预判
+ */
+export async function getEconPlaybook() {
+  try {
+    const response = await apiClient.get('/econ/playbook')
+    return response.data
+  } catch (error) {
+    console.error('获取周期知识库失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 经济周期阶段回放色带（96 个月逐月回放）
+ * @param {string} scope 'national' | 'xian'
+ */
+export async function getEconPhases(scope) {
+  try {
+    const response = await apiClient.get(`/econ/phases/${scope}`)
+    return response.data
+  } catch (error) {
+    console.error('获取经济周期回放失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 单指标原始序列
+ * @param {string} code 指标代码，如 PMI / M1_YOY / XA_IND_YOY
+ * @param {string} type 'level' | 'yoy' | 'cum_yoy'
+ */
+export async function getEconSeries(code, type = 'level') {
+  try {
+    const response = await apiClient.get(`/econ/series/${code}`, { params: { type } })
+    return response.data
+  } catch (error) {
+    console.error('获取经济指标序列失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 历史回测报告（阶段带 + 信号命中率）
+ */
+export async function getEconBacktest(scope = 'national') {
+  try {
+    const response = await apiClient.get(`/econ/backtest/${scope}`)
+    return response.data
+  } catch (error) {
+    console.error('获取经济周期回测失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 手动触发一次数据采集（管理员）
+ */
+export async function runEconCollect() {
+  try {
+    const response = await apiClient.post('/econ/collect', {})
+    return response.data
+  } catch (error) {
+    console.error('触发经济数据采集失败:', error)
+    throw error
+  }
+}
+
 export async function saveHouseDataset(payload) {
   try {
     const response = await apiClient.post('/house/datasets', payload)

@@ -9,7 +9,8 @@ from .mp_sec_routes import mp_sec_bp
 from .mp_game_routes import mp_game_bp
 from .mp_admin_routes import mp_admin_bp
 from .mp_vpay_routes import mp_vpay_bp
+from .econ_cycle_routes import bp as econ_cycle_bp
 from .demo_routes import demo_bp
 
 __all__ = ['flow_bp', 'news_bp', 'config_bp', 'log_bp', 'house_bp', 'auth_bp', 'jarvis_app_bp',
-           'mp_sec_bp', 'mp_game_bp', 'mp_admin_bp', 'mp_vpay_bp', 'demo_bp']
+           'mp_sec_bp', 'mp_game_bp', 'mp_admin_bp', 'mp_vpay_bp', 'econ_cycle_bp', 'demo_bp']
