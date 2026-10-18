@@ -117,13 +117,38 @@ class EconCycleTestCase(unittest.TestCase):
         self.assertEqual(rows[-1]['month'], '2026-09')
 
     def test_judge_xian_derives_cum(self):
-        # 西安累计同比 2026-01..03 = 1,2,3 → 差分单月 1,3,5
-        # 差分公式 M(N)=N*C(N)-(N-1)*C(N-1): 2月=2*2-1*1=3, 3月=3*3-2*2=5
+        # 西安累计同比 2026-01..03 = 1,2,3 → 差分单月 1,3,5(内部趋势用)
+        # 展示口径修正后:value=官方累计同比原值(3月=3.0),差分值不对外展示
         _seed('XA_IND_YOY', [('2026-01', 1.0), ('2026-02', 2.0), ('2026-03', 3.0)], vt='cum_yoy')
         r = engine.judge('xian', month='2026-03', persist=False)
         self.assertIsNotNone(r)
         xa = [i for i in r['indicators'] if i['code'] == 'XA_IND_YOY'][0]
-        self.assertAlmostEqual(xa['value'], 5.0)
+        self.assertAlmostEqual(xa['value'], 3.0)  # 官方累计原值,可对统计局原文核对
+        self.assertEqual(xa['note'], '累计同比')
+
+    def test_phase_switch_requires_two_confirmations(self):
+        # 8月已确认 bottoming;9月 raw 单点触发 expansion(8月 raw 不是)
+        # → 9月沿用 bottoming;10月连续第2期触发 → 才正式切换 expansion
+        _seed('PMI', [('2026-08', 49.0), ('2026-09', 50.5), ('2026-10', 50.6)])
+        _seed('PMI_ORDER', [('2026-08', 47.0), ('2026-09', 52.0), ('2026-10', 52.2)])
+        _seed('M1_YOY', [('2026-08', -1.0), ('2026-09', 4.0), ('2026-10', 4.2)], vt='yoy')
+        _seed('IND_YOY', [('2026-08', 4.0), ('2026-09', 5.5), ('2026-10', 5.6)], vt='yoy')
+        db.save_phase('national', '2026-08', 'bottoming', 40.0, '{}')
+        r9 = engine.judge('national', month='2026-09', persist=False)
+        self.assertEqual(r9['phase'], 'bottoming',
+                         '单月触发未连续2期确认,应沿用已确认阶段')
+        r10 = engine.judge('national', month='2026-10', persist=False)
+        self.assertEqual(r10['phase'], 'expansion',
+                         '连续2期触发后应允许切换')
+
+    def test_backtest_hit_rate_has_baseline(self):
+        _seed('PMI', [('2026-%02d' % m, 50.0 + m % 3) for m in range(1, 10)])
+        _seed('PMI_ORDER', [('2026-%02d' % m, 50.0 + m % 4) for m in range(1, 10)])
+        _seed('M1_YOY', [('2026-%02d' % m, 1.0 + m) for m in range(1, 10)], vt='yoy')
+        _seed('IND_YOY', [('2026-%02d' % m, 3.0 + m / 10) for m in range(1, 10)], vt='yoy')
+        rep = backtest.full_report('national')
+        for h in (3, 6):
+            self.assertIn('baseline', rep['hit_rate'][h])
 
     def test_job_switch_light_green(self):
         # 新逻辑:岗位供给为王。PMI_EMP>=50(+40) + PMI_ORDER>=50(+20) + M1>0(+10) + IND>=6(+15) = 85

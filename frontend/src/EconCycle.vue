@@ -75,12 +75,13 @@
         <div class="ecy-decision-card" :class="'light-' + overview.startup.light">
           <div class="ecy-decision-head">
             <span class="ecy-decision-icon">{{ lightIcon(overview.startup.light) }}</span>
-            <span class="ecy-decision-title">创业窗口</span>
+            <span class="ecy-decision-title">创业环境灯</span>
             <span class="ecy-decision-state">{{ lightText(overview.startup.light) }} · {{ overview.startup.score }}分</span>
           </div>
           <ul class="ecy-decision-reasons">
             <li v-for="(r, i) in overview.startup.reasons" :key="i">{{ r }}</li>
           </ul>
+          <div class="ecy-decision-note">⚠ 这只评"宏观环境"合不合适。一个具体项目值不值得做，取决于客户痛点、付费验证和获客成本——宏观看天，验证看人。点右上「复制给AI分析」可带数据去讨论具体项目。</div>
         </div>
       </section>
 
@@ -342,10 +343,10 @@ export default {
       if (st) L.push('【创业灯】' + st.light + ' ' + st.score + '分 | 依据：' + (st.reasons || []).join('；'))
       const fc = this.forecast
       if (fc) {
-        L.push('【岗位回暖窗口预判】' + (fc.text || (fc.window_start + '~' + fc.window_end)))
-        if (fc.basis) L.push('  依据：' + fc.basis)
+        L.push('【岗位回暖窗口预判】' + (fc.ready ? fc.window_text : '尚未形成可靠信号——' + (fc.window_text || '新订单需连续2个月≥50才开始计时')))
+        L.push('  订单状态：' + (fc.order_latest_period || '') + ' 新订单=' + fc.order_latest + (fc.order_streak_start ? ('，自' + fc.order_streak_start + '起累计站稳' + fc.order_streak_months + '个月') : '，未形成连续站稳'))
         if (fc.confirm) L.push('  确认条件：' + fc.confirm)
-        if (fc.invalidate) L.push('  失效条件：' + fc.invalidate)
+        if (fc.disclaimer) L.push('  ' + fc.disclaimer)
       }
       L.push('')
       L.push('===== 指标明细（全国） =====')
@@ -584,6 +585,9 @@ export default {
 .ecy-copy-btn { background: linear-gradient(135deg, #3d8f5f, #4da3ff); color: #fff; border: none; border-radius: 8px; padding: 10px 26px; font-size: 14px; font-weight: 700; cursor: pointer; }
 .ecy-copy-btn:hover { filter: brightness(1.12); }
 @media (max-width: 640px) { .ecy-modal { padding: 14px; max-height: 92vh; } .ecy-hero-right { flex-direction: column; align-items: flex-end; gap: 6px; } }
+
+.ecy-decision-note { font-size: 11.5px; color: #8a7a4e; background: #1d1e28; border: 1px dashed #4a4636; border-radius: 8px; padding: 7px 10px; margin-top: 10px; line-height: 1.7; }
+.ecy-decision-card .ecy-decision-note { flex: 0 0 auto; }
 
 /* ===== 第一屏总览卡 ===== */
 .ecy-hero { background: linear-gradient(135deg, #1b2436, #18202f); border: 1px solid #2a3244; border-left: 4px solid var(--pc); border-radius: 14px; padding: 18px 22px; margin-bottom: 14px; }

@@ -135,7 +135,13 @@ def save_phase(scope, month, phase, score, reasons):
                       datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
 
-def get_phases(scope):
+def get_phases(scope, as_of=None):
+    """阶段序列(按月升序)。as_of 给定时截断到该月(点时回放防未来函数)。"""
+    if as_of:
+        with _db() as conn:
+            return [dict(r) for r in conn.execute(
+                'SELECT * FROM econ_phase WHERE scope=? AND month<=? ORDER BY month',
+                (scope, as_of))]
     with _db() as conn:
         return [dict(r) for r in conn.execute(
             'SELECT * FROM econ_phase WHERE scope=? ORDER BY month', (scope,))]

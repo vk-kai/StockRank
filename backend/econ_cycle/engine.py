@@ -126,24 +126,33 @@ def compute_score(region, as_of=None):
     total_w, acc = 0.0, 0.0
     parts = []
     for ind in inds:
-        if ind['region'] == 'xian':  # 西安为累计同比口径,先差分还原单月
+        note = ''
+        if ind['region'] == 'xian':
+            # 西安为累计同比口径:UI 展示官方累计原值(可与统计局原文核对),
+            # 差分还原的单月序列仅用于趋势判定(state/slope),不对外展示数值——
+            # 累计同比相减还原单月误差大,不能当单月同比读数
             cum = [(p, v) for p, v, _ in db.get_series(
                 ind['code'], value_type='cum_yoy', as_of=as_of)]
             pairs = derive_monthly_from_cum(cum)
+            latest_cum = cum[-1][1] if cum else None
+            note = '累计同比'
         else:  # 全国按指标目录登记的存储类型取数(level/yoy)
             pairs = [(p, v) for p, v, _ in
                      db.get_series(ind['code'],
                                    value_type=ind.get('value_type') or 'level',
                                    as_of=as_of)]
+            latest_cum = None
         got = score_indicator_by_code(ind['code'], pairs, ind['layer'],
                                       invert=bool(ind.get('invert')))
         if got:
             s, state, slope, latest = got
+            if latest_cum is not None:
+                latest = latest_cum  # 展示值=官方累计同比原文值
             acc += s * ind['weight']
             total_w += ind['weight']
             parts.append(dict(code=ind['code'], name=ind['name'], layer=ind['layer'],
                               value=latest, state=state, slope=round(slope, 2),
-                              score=s))
+                              score=s, note=note))
     if total_w == 0:
         return None
     return dict(score=round(acc / total_w, 1), indicators=parts)
@@ -196,13 +205,36 @@ def decide_phase(score, month, persist=True):
     return phase, s, reason
 
 
+def _confirmed_phase(scope, as_of=None):
+    """取某区域当前已确认的阶段(as_of 截断),无则 None。"""
+    rows = db.get_phases(scope, as_of=as_of)
+    return rows[-1] if rows else None
+
+
 def judge(scope, month=None, as_of=None, persist=True):
-    """对外主入口:scope=national/xian。as_of 给定时回放历史。"""
+    """对外主入口:scope=national/xian。as_of 给定时回放历史。
+
+    阶段切换带 2 期确认:本月 raw 阶段与上月 raw 阶段一致、且与当前已确认
+    阶段不同,才允许正式切换;否则沿用旧阶段,防止单月波动导致阶段频繁跳变。
+    """
     score = compute_score(scope, as_of=as_of)
     if not score:
         return None
     month = month or (db.get_series('PMI', as_of=as_of) or [('_',)])[-1][0]
     phase, s, reason = decide_phase(score, month, persist=False)
+
+    # --- 2期确认 ---
+    confirmed = _confirmed_phase(scope, as_of=as_of)
+    cur_phase = confirmed['phase'] if confirmed else None
+    if cur_phase and phase != cur_phase:
+        prev_score = compute_score(scope, as_of=_prev_month(month))
+        raw_prev = None
+        if prev_score:
+            raw_prev = decide_phase(prev_score, _prev_month(month),
+                                    persist=False)[0]
+        if raw_prev != phase:  # 上月不是该阶段 → 单月波动,不切换
+            phase = cur_phase
+            reason = (reason + '〔本月单点触发但未连续2期确认,沿用上阶段〕')
     if persist:
         db.save_phase(scope, month, phase, s,
                       json.dumps({'reason': reason,
@@ -211,6 +243,11 @@ def judge(scope, month=None, as_of=None, persist=True):
     return dict(scope=scope, month=month, phase=phase,
                 phase_cn=PHASE_NAMES[phase], score=s, reason=reason,
                 indicators=score['indicators'])
+
+
+def _prev_month(period):
+    y, m = int(period[:4]), int(period[5:7])
+    return '%s-%02d' % (y - 1, 12) if m == 1 else '%s-%02d' % (y, m - 1)
 
 
 def replay(scope, months=None):
