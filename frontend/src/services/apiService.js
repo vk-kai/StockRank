@@ -1545,6 +1545,44 @@ export async function getMpAdminEchoSubs() {
   }
 }
 
+/** 许愿箱列表:{status?, page?, pageSize?} → {items, total, page, total_pages} */
+export async function mpAdminFeedbackList({ status, page = 1, pageSize = 20 } = {}) {
+  try {
+    const params = { page, page_size: pageSize }
+    if (status !== undefined && status >= 0) params.status = status
+    const response = await apiClient.get('/mp-admin/feedback', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取许愿列表失败:', error)
+    throw error
+  }
+}
+
+/** 审核许愿:{id, status:1采纳|2拒绝} */
+export async function mpAdminFeedbackUpdate(id, status) {
+  const response = await apiClient.post('/mp-admin/feedback/update', { id, status })
+  return response.data
+}
+
+/** 投稿列表:{status?, page?, pageSize?};questions/results 已解析为结构 */
+export async function mpAdminDraftList({ status, page = 1, pageSize = 20 } = {}) {
+  try {
+    const params = { page, page_size: pageSize }
+    if (status !== undefined && status >= 0) params.status = status
+    const response = await apiClient.get('/mp-admin/draft', { params })
+    return response.data
+  } catch (error) {
+    console.error('获取投稿列表失败:', error)
+    throw error
+  }
+}
+
+/** 审核投稿:{id, status:1采纳|2拒绝};采纳后奖励由 vpay 对账自动下发 */
+export async function mpAdminDraftUpdate(id, status) {
+  const response = await apiClient.post('/mp-admin/draft/update', { id, status })
+  return response.data
+}
+
 /** 清理开发联调脏数据(遗留quiz/联调openid成绩房间/按流水回滚计数/探针清零) */
 export async function mpAdminCleanupDevData() {
   const response = await apiClient.post('/mp-admin/cleanup-dev-data')

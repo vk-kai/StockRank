@@ -514,9 +514,27 @@ def _product_view(cfg):
             'goods_price': int(cfg['goods_price']), 'env': get_vpay_env()}
 
 
+def _draft_reward_until_ms():
+    """投稿采纳奖励到期时间:当月最后一天 23:59:59(服务器本地时区)的毫秒时间戳。
+
+    下月1日零点减 1 秒实现,免 import calendar 且自动处理跨年。
+    """
+    now = datetime.now()
+    if now.month == 12:
+        end = datetime(now.year + 1, 1, 1) - timedelta(seconds=1)
+    else:
+        end = datetime(now.year, now.month + 1, 1) - timedelta(seconds=1)
+    return int(end.timestamp() * 1000)
+
+
 @mp_vpay_bp.route('/status', methods=['GET'])
 def vpay_status():
-    """查询去广告权益:GET ?openid=... → {ad_free, entitlement, last_order, product}。"""
+    """查询去广告权益:GET ?openid=... → {ad_free, entitlement, last_order, product}。
+
+    投稿采纳奖励:openid 存在 test_draft.status=1 且 reward_given=0 的记录时,
+    首次对账下发 reward_until(当月最后一天23:59:59)并置 reward_given=1
+    (防重复发放);之后不再返回该字段,客户端本地时间戳过期自然失效。
+    """
     denied = _check_auth_key()
     if denied:
         return denied
@@ -524,19 +542,35 @@ def vpay_status():
         openid = (request.args.get('openid') or '').strip()
         if not openid:
             return jsonify({'success': False, 'message': '缺少 openid 参数'}), 400
+        reward_until = None
         with _db() as conn:
             ent = conn.execute('SELECT * FROM vpay_entitlements WHERE openid = ?',
                                (openid,)).fetchone()
             last = conn.execute('''SELECT out_trade_no, status, goods_price, env, created_at
                                    FROM vpay_orders WHERE openid = ?
                                    ORDER BY id DESC LIMIT 1''', (openid,)).fetchone()
-        return jsonify({
+            # 投稿采纳奖励(test_draft 表由 mp_game_routes 首次连接时自建;
+            # 部署初期表未建时静默视为无奖励)
+            try:
+                adopted = conn.execute('''SELECT id FROM test_draft
+                    WHERE openid = ? AND status = 1 AND reward_given = 0
+                    ORDER BY id LIMIT 1''', (openid,)).fetchone()
+                if adopted:
+                    reward_until = _draft_reward_until_ms()
+                    conn.execute('''UPDATE test_draft SET reward_given = 1
+                        WHERE openid = ? AND status = 1 AND reward_given = 0''', (openid,))
+            except sqlite3.OperationalError:
+                pass
+        body = {
             'success': True,
             'ad_free': bool(ent and ent['status'] == 'active'),
             'entitlement': dict(ent) if ent else None,
             'last_order': dict(last) if last else None,
             'product': _product_view(load_vpay_config()),
-        })
+        }
+        if reward_until is not None:
+            body['reward_until'] = reward_until
+        return jsonify(body)
     except Exception as e:
         error_logger.error(f'vpay status 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500

@@ -24,6 +24,8 @@
         <span :class="['sub-tab', { active: tab === 'rooms' }]" @click="switchTab('rooms')">PK房间</span>
         <span :class="['sub-tab', { active: tab === 'echo' }]" @click="switchTab('echo')">弹幕墙</span>
         <span :class="['sub-tab', { active: tab === 'subs' }]" @click="switchTab('subs')">订阅额度</span>
+        <span :class="['sub-tab', { active: tab === 'feedback' }]" @click="switchTab('feedback')">许愿箱</span>
+        <span :class="['sub-tab', { active: tab === 'drafts' }]" @click="switchTab('drafts')">投稿审核</span>
       </nav>
 
       <!-- ===== 成绩记录 ===== -->
@@ -246,6 +248,123 @@
           </tbody>
         </table>
       </section>
+
+      <!-- ===== 许愿箱 ===== -->
+      <section v-if="tab === 'feedback'" class="card">
+        <div class="toolbar">
+          <select v-model.number="fbStatus" class="count-input" @change="loadFeedback(1)">
+            <option :value="-1">全部状态</option>
+            <option :value="0">待处理</option>
+            <option :value="1">已采纳</option>
+            <option :value="2">已拒绝</option>
+          </select>
+          <button class="gen-btn" @click="loadFeedback(fbPage)">刷新</button>
+        </div>
+        <div v-if="!fb.items.length" class="empty">暂无许愿</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>愿望标题</th><th>分类</th><th>详情</th><th>用户</th><th>状态</th><th>提交时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in fb.items" :key="row.id">
+              <td class="echo-text" :title="row.title">{{ row.title }}</td>
+              <td>{{ row.category }}</td>
+              <td class="echo-text" :title="row.detail">{{ row.detail || '—' }}</td>
+              <td class="code-text">{{ shortOpenid(row.openid) }}</td>
+              <td>{{ row.status_name }}</td>
+              <td>{{ row.create_time }}</td>
+              <td>
+                <template v-if="row.status === 0">
+                  <button class="copy-btn" :disabled="reviewBusy" @click="doFbReview(row, 1)">通过</button>
+                  <button class="del-btn" :disabled="reviewBusy" @click="doFbReview(row, 2)">拒绝</button>
+                </template>
+                <span v-else class="dim">已处理</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="fb.totalPages > 1" class="pager">
+          <button :disabled="fb.page <= 1" @click="loadFeedback(fb.page - 1)">上一页</button>
+          <span>{{ fb.page }} / {{ fb.totalPages }} 页 · 共 {{ fb.total }} 条</span>
+          <button :disabled="fb.page >= fb.totalPages" @click="loadFeedback(fb.page + 1)">下一页</button>
+        </div>
+      </section>
+
+      <!-- ===== 投稿审核 ===== -->
+      <section v-if="tab === 'drafts'" class="card">
+        <div class="toolbar">
+          <select v-model.number="draftStatus" class="count-input" @change="loadDrafts(1)">
+            <option :value="-1">全部状态</option>
+            <option :value="0">待审</option>
+            <option :value="1">已采纳</option>
+            <option :value="2">已拒绝</option>
+          </select>
+          <button class="gen-btn" @click="loadDrafts(draftPage)">刷新</button>
+          <span class="toolbar-hint">采纳后该用户下次冷启动对账自动下发当月免广告</span>
+        </div>
+        <div v-if="!drafts.items.length" class="empty">暂无投稿</div>
+        <table v-else class="data-table">
+          <thead>
+            <tr><th>标题</th><th>内容</th><th>用户</th><th>状态</th><th>奖励</th><th>提交时间</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in drafts.items" :key="row.id">
+              <td class="echo-text" :title="row.title">{{ row.title }}</td>
+              <td>
+                <button class="copy-btn" @click="openDraftView(row)">
+                  查看 {{ (row.questions || []).length }}题/{{ (row.results || []).length }}果
+                </button>
+              </td>
+              <td class="code-text">{{ shortOpenid(row.openid) }}</td>
+              <td>{{ row.status_name }}</td>
+              <td>{{ row.reward_given ? '已下发' : '—' }}</td>
+              <td>{{ row.create_time }}</td>
+              <td>
+                <template v-if="row.status === 0">
+                  <button class="copy-btn" :disabled="reviewBusy" @click="doDraftReview(row, 1)">采纳</button>
+                  <button class="del-btn" :disabled="reviewBusy" @click="doDraftReview(row, 2)">拒绝</button>
+                </template>
+                <span v-else class="dim">已处理</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="drafts.totalPages > 1" class="pager">
+          <button :disabled="drafts.page <= 1" @click="loadDrafts(drafts.page - 1)">上一页</button>
+          <span>{{ drafts.page }} / {{ drafts.totalPages }} 页 · 共 {{ drafts.total }} 条</span>
+          <button :disabled="drafts.page >= drafts.totalPages" @click="loadDrafts(drafts.page + 1)">下一页</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 投稿内容预览弹窗 -->
+    <div v-if="draftView.row" class="pwd-overlay" @click.self="draftView.row = null">
+      <div class="pwd-card draft-view">
+        <h3>{{ draftView.row.title }}</h3>
+        <p class="pwd-desc">
+          {{ (draftView.row.questions || []).length }} 道题 ·
+          {{ (draftView.row.results || []).length }} 个结果 ·
+          提交于 {{ draftView.row.create_time }}
+        </p>
+        <div class="draft-view-body">
+          <ol class="draft-qlist">
+            <li v-for="(q, i) in draftView.row.questions || []" :key="'q' + i">
+              {{ q.q }}
+              <ul>
+                <li v-for="(o, j) in q.opts || []" :key="'o' + j">{{ o }}</li>
+              </ul>
+            </li>
+          </ol>
+          <ul class="draft-rlist">
+            <li v-for="(r, i) in draftView.row.results || []" :key="'r' + i">
+              <b>{{ r.name }}</b>：{{ r.desc }}
+            </li>
+          </ul>
+        </div>
+        <div class="pwd-actions">
+          <button class="cancel-btn" @click="draftView.row = null">关闭</button>
+        </div>
+      </div>
     </div>
 
     <!-- 新增成绩弹窗 -->

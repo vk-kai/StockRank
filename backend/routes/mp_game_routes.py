@@ -15,6 +15,10 @@
   POST /api/mp/game/echo          弹幕墙发布留言(服务端强制再过一次msgSecCheck,不信客户端)
   GET  /api/mp/game/echo          弹幕墙留言列表(按wall_id,最近7天,ts倒序,默认50条)
   POST /api/mp/game/echo/sub      抱抱推送订阅额度记账(授权一次+1,同一对上限20)
+  POST /api/mp/game/feedback      许愿箱:提交「想要的新测试」(每日5条,同日同title幂等)
+  GET  /api/mp/game/feedback/mine 我的许愿列表(打开时查一次,含审核状态)
+  POST /api/mp/game/draft         出题投稿:用户自创完整测试(每日3篇,人工评审)
+  GET  /api/mp/game/draft/mine    我的投稿列表(打开时查一次,含审核/奖励状态)
 
 鉴权复用 mp_sec_routes 的 X-Auth-Key;业务失败统一 HTTP 200 + success:false + 中文 message。
 限频:score 6次/分、room创建 10次/时、echo留言 10次/分、其余 30次/分(按 openid)。
@@ -98,6 +102,22 @@ _MILE_UPSERT_SQL = ('''INSERT INTO stats(key, count) VALUES (?, ?)
 SUBS_KEY_PREFIX = 'subs_'                    # 订阅额度 KV key 前缀(stats 表)
 SUBS_QUOTA_MAX = 20                          # 单个 (openid, template_id) 额度上限
 TEMPLATE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+# 许愿箱/出题投稿:test_feedback 每人每日5条、test_draft 每人每日3篇
+# (自然日=服务器本地时区;同日同 title 幂等仅许愿);内容前端已过微信内容安全,
+# 服务端只存+人工评审,入库前做注入检测(_field_safe)纵深防御
+FEEDBACK_DAILY_LIMIT = 5
+DRAFT_DAILY_LIMIT = 3
+FEEDBACK_TITLE_MAX = 30
+FEEDBACK_DETAIL_MAX = 200
+FEEDBACK_CATEGORIES = ('love', 'career', 'personality', 'study', 'fun', 'other')
+DRAFT_TITLE_MIN, DRAFT_TITLE_MAX = 4, 20
+DRAFT_Q_MIN, DRAFT_Q_MAX = 3, 10
+DRAFT_Q_TEXT_MAX = 50
+DRAFT_OPTS_MIN, DRAFT_OPTS_MAX = 2, 4
+DRAFT_OPT_MAX = 20
+DRAFT_R_MIN, DRAFT_R_MAX = 3, 4
+DRAFT_NAME_MAX = 12
+DRAFT_DESC_MAX = 100
 
 # 注入防护:复用 Jarvis 攻击模式库(XSS/SQL注入等)对回显字段做入库前检测。
 # 全局中间件已在请求层拦截(命中即400+记IP),这里是第二道纵深防线——
@@ -260,6 +280,31 @@ def _db():
             expires_at INTEGER,
             created_at INTEGER NOT NULL
         )''')
+        # 许愿箱(「想要的新测试」一句话愿望):人工评审,改 status 标记采纳/拒绝。
+        # 前端已过微信内容安全,服务端只存(人工评审兜底),注入检测照做
+        conn.execute('''CREATE TABLE IF NOT EXISTS test_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            openid TEXT NOT NULL,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other',
+            detail TEXT DEFAULT '',
+            status INTEGER NOT NULL DEFAULT 0,  -- 0待处理 1已采纳 2已拒绝(人工改)
+            create_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_tf_openid ON test_feedback(openid)')
+        # 出题投稿(用户自创完整测试):questions/results 整包 JSON 存(评审时人工看);
+        # reward_given=免广告奖励已发放标记(vpay/status 首次对账时置1,防重复发放)
+        conn.execute('''CREATE TABLE IF NOT EXISTS test_draft (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            openid TEXT NOT NULL,
+            title TEXT NOT NULL,
+            questions TEXT NOT NULL,   -- JSON: [{"q":"...","opts":["..."]}]
+            results TEXT NOT NULL,     -- JSON: [{"name":"...","desc":"..."}]
+            status INTEGER NOT NULL DEFAULT 0,  -- 0待审 1已采纳 2已拒绝(人工改)
+            reward_given INTEGER NOT NULL DEFAULT 0,
+            create_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_td_openid ON test_draft(openid)')
         # 旧数据自愈:category 功能上线前导入的种子留言分类为 NULL(导入是全局幂等的,
         # 重导被拒,老数据不会自己长出分类)——按昵称给 is_seed=1 且 category IS NULL
         # 的行回填 ECHO_SEEDS 内置分类。每进程只跑一次;提交成功才标记完成,
@@ -1246,3 +1291,215 @@ def echo_sub():
     except Exception as e:
         error_logger.error(f'echo 订阅记账异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'})
+
+
+# --------------------------------------------------------------------------
+# 许愿箱 / 出题投稿(人工评审,无 AI;前端已过微信内容安全,服务端只存)
+# --------------------------------------------------------------------------
+@mp_game_bp.route('/feedback', methods=['POST'])
+def feedback_post():
+    """许愿箱:提交「想要的新测试」一句话愿望。body: {openid, title, category?, detail?}。
+
+    每人每自然日最多 FEEDBACK_DAILY_LIMIT 条;同 openid 同 title 当日去重
+    (重复提交幂等返回 success:true + 原 id,不重复入库)。
+    失败统一 HTTP 200 + success:false + error(前端只 toast 不重试)。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        title = str(data.get('title') or '').strip()
+        detail = str(data.get('detail') or '').strip()
+        category = str(data.get('category') or '').strip()
+        if not openid or not title:
+            return jsonify({'success': False, 'error': '参数不完整'})
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'error': 'openid 格式不合法'})
+        if len(title) > FEEDBACK_TITLE_MAX:
+            return jsonify({'success': False, 'error': f'标题最多{FEEDBACK_TITLE_MAX}字'})
+        if len(detail) > FEEDBACK_DETAIL_MAX:
+            return jsonify({'success': False, 'error': f'详情最多{FEEDBACK_DETAIL_MAX}字'})
+        if category not in FEEDBACK_CATEGORIES:
+            category = 'other'      # 白名单枚举,非法一律落「其他」(与弹幕墙分类同策略)
+        if _rate_limited('feedback', openid, 10, 60):
+            return jsonify({'success': False, 'error': '操作太频繁，请稍后再试'})
+        # 注入检测(字段仅后台人工回显,纵深防御;msgSecCheck 省给 C 端强需求)
+        if not _field_safe(title) or not _field_safe(detail):
+            return jsonify({'success': False, 'error': '内容含违规信息'})
+        with _db() as conn:
+            # 同日同 title 幂等:返回已有 id,不入库(前端对失败不重试,这里兜手滑)
+            dup = conn.execute('''SELECT id FROM test_feedback
+                WHERE openid = ? AND title = ?
+                  AND date(create_time) = date('now','localtime')
+                ORDER BY id LIMIT 1''', (openid, title)).fetchone()
+            if dup:
+                return jsonify({'success': True, 'id': dup['id']})
+            used = conn.execute('''SELECT COUNT(*) AS n FROM test_feedback
+                WHERE openid = ? AND date(create_time) = date('now','localtime')''',
+                (openid,)).fetchone()['n']
+            if used >= FEEDBACK_DAILY_LIMIT:
+                return jsonify({'success': False, 'error': '今天的许愿次数用完了，明天再来吧'})
+            cur = conn.execute('''INSERT INTO test_feedback(openid, title, category, detail)
+                VALUES (?, ?, ?, ?)''', (openid, title, category, detail))
+            new_id = cur.lastrowid
+        return jsonify({'success': True, 'id': new_id})
+    except Exception as e:
+        error_logger.error(f'feedback 提交异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+def _validate_draft_payload(data):
+    """出题投稿结构校验。返回 (错误信息或None, title, questions JSON, results JSON)。
+
+    title 4-20字;questions 3-10题(q 1-50字,opts 2-4个各1-20字);
+    results 3-4个(name 1-12字,desc ≤100字)。逐字段 strip 后复检。
+    """
+    title = str(data.get('title') or '').strip()
+    if not (DRAFT_TITLE_MIN <= len(title) <= DRAFT_TITLE_MAX):
+        return f'标题需{DRAFT_TITLE_MIN}-{DRAFT_TITLE_MAX}字', None, None, None
+    questions = data.get('questions')
+    if not isinstance(questions, list) or not (DRAFT_Q_MIN <= len(questions) <= DRAFT_Q_MAX):
+        return f'题目需{DRAFT_Q_MIN}-{DRAFT_Q_MAX}道', None, None, None
+    clean_q = []
+    for item in questions:
+        if not isinstance(item, dict):
+            return '题目格式不正确', None, None, None
+        q = str(item.get('q') or '').strip()
+        if not q or len(q) > DRAFT_Q_TEXT_MAX:
+            return f'题目内容需1-{DRAFT_Q_TEXT_MAX}字', None, None, None
+        opts = item.get('opts')
+        if not isinstance(opts, list) or not (DRAFT_OPTS_MIN <= len(opts) <= DRAFT_OPTS_MAX):
+            return f'每题选项需{DRAFT_OPTS_MIN}-{DRAFT_OPTS_MAX}个', None, None, None
+        clean_opts = []
+        for opt in opts:
+            opt = str(opt).strip()
+            if not opt or len(opt) > DRAFT_OPT_MAX:
+                return f'选项内容需1-{DRAFT_OPT_MAX}字', None, None, None
+            clean_opts.append(opt)
+        clean_q.append({'q': q, 'opts': clean_opts})
+    results = data.get('results')
+    if not isinstance(results, list) or not (DRAFT_R_MIN <= len(results) <= DRAFT_R_MAX):
+        return f'结果需{DRAFT_R_MIN}-{DRAFT_R_MAX}个', None, None, None
+    clean_r = []
+    for item in results:
+        if not isinstance(item, dict):
+            return '结果格式不正确', None, None, None
+        name = str(item.get('name') or '').strip()
+        desc = str(item.get('desc') or '').strip()
+        if not name or len(name) > DRAFT_NAME_MAX:
+            return f'结果名称需1-{DRAFT_NAME_MAX}字', None, None, None
+        if len(desc) > DRAFT_DESC_MAX:
+            return f'结果描述最多{DRAFT_DESC_MAX}字', None, None, None
+        clean_r.append({'name': name, 'desc': desc})
+    q_json = json.dumps(clean_q, ensure_ascii=False, separators=(',', ':'))
+    r_json = json.dumps(clean_r, ensure_ascii=False, separators=(',', ':'))
+    return None, title, q_json, r_json
+
+
+@mp_game_bp.route('/draft', methods=['POST'])
+def draft_post():
+    """出题投稿:用户自创一套完整测试。body: {openid, title, questions, results}。
+
+    每人每自然日最多 DRAFT_DAILY_LIMIT 篇;questions/results 校验通过后
+    整包 JSON 字符串入库(评审时人工看)。采纳发奖:后台把 status 改 1,
+    vpay/status 对账时首次下发免广告(至当月最后一天)并置 reward_given=1。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        data = request.get_json(silent=True) or {}
+        openid = str(data.get('openid') or '').strip()
+        if not openid:
+            return jsonify({'success': False, 'error': '参数不完整'})
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'error': 'openid 格式不合法'})
+        err, title, q_json, r_json = _validate_draft_payload(data)
+        if err:
+            return jsonify({'success': False, 'error': err})
+        if _rate_limited('draft', openid, 10, 60):
+            return jsonify({'success': False, 'error': '操作太频繁，请稍后再试'})
+        # 注入检测:投稿采纳后会展示给其他用户,入库前拦一道(XSS/SQL注入模式)
+        if not _field_safe(title + q_json + r_json):
+            return jsonify({'success': False, 'error': '内容含违规信息'})
+        with _db() as conn:
+            used = conn.execute('''SELECT COUNT(*) AS n FROM test_draft
+                WHERE openid = ? AND date(create_time) = date('now','localtime')''',
+                (openid,)).fetchone()['n']
+            if used >= DRAFT_DAILY_LIMIT:
+                return jsonify({'success': False, 'error': '今天的投稿次数用完了，明天再来吧'})
+            cur = conn.execute('''INSERT INTO test_draft(openid, title, questions, results)
+                VALUES (?, ?, ?, ?)''', (openid, title, q_json, r_json))
+            new_id = cur.lastrowid
+        return jsonify({'success': True, 'id': new_id})
+    except Exception as e:
+        error_logger.error(f'draft 提交异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/feedback/mine', methods=['GET'])
+def feedback_mine():
+    """我的许愿列表:GET ?openid=...&limit=20(≤50)。
+
+    用户在小程序「我的许愿」页打开时查一次(无需轮询/定时),
+    回显自己的提交与审核状态(待处理/已采纳/已拒绝)。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        openid = (request.args.get('openid') or '').strip()
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'error': 'openid 格式不合法'})
+        try:
+            limit = min(max(1, int(request.args.get('limit', 20))), 50)
+        except (TypeError, ValueError):
+            limit = 20
+        with _db() as conn:
+            rows = conn.execute('''SELECT id, title, category, status, create_time
+                FROM test_feedback WHERE openid = ?
+                ORDER BY id DESC LIMIT ?''', (openid, limit)).fetchall()
+        items = [{'id': r['id'], 'title': r['title'], 'category': r['category'],
+                  'status': r['status'],
+                  'status_name': {0: '待处理', 1: '已采纳', 2: '未采纳'}.get(r['status'], '待处理'),
+                  'create_time': r['create_time']} for r in rows]
+        return jsonify({'success': True, 'items': items})
+    except Exception as e:
+        error_logger.error(f'feedback mine 查询异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/draft/mine', methods=['GET'])
+def draft_mine():
+    """我的投稿列表:GET ?openid=...&limit=20(≤50)。
+
+    回 title/status/create_time + 奖励状态(reward_given=已下发免广告,
+    实际权益以 vpay/status 的 reward_until 为准);questions/results
+    原文不回(省流量,客户端展示不需要)。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        openid = (request.args.get('openid') or '').strip()
+        if not OPENID_RE.match(openid):
+            return jsonify({'success': False, 'error': 'openid 格式不合法'})
+        try:
+            limit = min(max(1, int(request.args.get('limit', 20))), 50)
+        except (TypeError, ValueError):
+            limit = 20
+        with _db() as conn:
+            rows = conn.execute('''SELECT id, title, status, reward_given, create_time
+                FROM test_draft WHERE openid = ?
+                ORDER BY id DESC LIMIT ?''', (openid, limit)).fetchall()
+        items = [{'id': r['id'], 'title': r['title'],
+                  'status': r['status'],
+                  'status_name': {0: '审核中', 1: '已采纳', 2: '未采纳'}.get(r['status'], '审核中'),
+                  'reward_given': bool(r['reward_given']),
+                  'create_time': r['create_time']} for r in rows]
+        return jsonify({'success': True, 'items': items})
+    except Exception as e:
+        error_logger.error(f'draft mine 查询异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})

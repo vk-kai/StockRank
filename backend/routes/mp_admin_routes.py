@@ -35,6 +35,7 @@
 WAL)与缓存,改完主动清缓存。
 """
 import os
+import json
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
@@ -1003,6 +1004,173 @@ def mp_admin_echo_subs():
         }})
     except Exception as e:
         error_logger.error(f'mp-admin echo subs 查询异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+# --------------------------------------------------------------------------
+# 八、许愿与出题投稿审核（test_feedback / test_draft）
+#     人工评审:列表查看 → 通过(status=1)/拒绝(status=2);投稿采纳后
+#     vpay/status 对账自动下发免广告奖励(reward_given 由 vpay 侧置1)。
+#     展示字段均经注入检测的存储侧兜底,这里再整体 _field_safe 复检一次。
+# --------------------------------------------------------------------------
+_FB_DRAFT_STATUS_NAME = {0: '待处理', 1: '已采纳', 2: '已拒绝'}
+
+
+def _review_status(status):
+    """status 白名单:1采纳 / 2拒绝,非法返回 None。"""
+    return status if status in (1, 2) else None
+
+
+def _safe_draft_json(raw):
+    """draft 的 questions/results JSON 解析;脏数据/解析失败返回 None(前端显示原文)。"""
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, list) else None
+    except (TypeError, ValueError):
+        return None
+
+
+@mp_admin_bp.route('/feedback', methods=['GET'])
+def mp_admin_feedback():
+    """许愿列表。?status=0/1/2 过滤(缺省全部),分页,create_time 倒序。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        page, page_size = _parse_page_args()
+        try:
+            status = int(request.args.get('status', -1))
+        except (TypeError, ValueError):
+            status = -1
+        where, params = [], []
+        if status in (0, 1, 2):
+            where.append('status = ?')
+            params.append(status)
+        cond = ('WHERE ' + ' AND '.join(where)) if where else ''
+        with _db() as conn:
+            total = conn.execute(f'SELECT COUNT(*) AS c FROM test_feedback {cond}',
+                                 params).fetchone()['c']
+            rows = conn.execute(
+                f'''SELECT id, openid, title, category, detail, status, create_time
+                    FROM test_feedback {cond}
+                    ORDER BY id DESC LIMIT ? OFFSET ?''',
+                params + [page_size, (page - 1) * page_size]).fetchall()
+        items = [{'id': r['id'], 'openid': r['openid'],
+                  'title': r['title'], 'category': r['category'] or 'other',
+                  'detail': r['detail'] or '',
+                  'status': r['status'], 'status_name': _FB_DRAFT_STATUS_NAME.get(r['status'], '待处理'),
+                  'create_time': r['create_time']} for r in rows]
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': total, 'page': page, 'page_size': page_size,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin feedback 列表异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/feedback/update', methods=['POST'])
+def mp_admin_feedback_update():
+    """审核许愿。body: {id, status}(1采纳/2拒绝)。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        try:
+            rid = int(data.get('id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'id 不合法'}), 400
+        status = _review_status(data.get('status'))
+        if status is None:
+            return jsonify({'success': False, 'message': 'status 只能为 1(采纳) 或 2(拒绝)'}), 400
+        with _db() as conn:
+            cur = conn.execute('UPDATE test_feedback SET status = ? WHERE id = ?', (status, rid))
+            if cur.rowcount == 0:
+                return jsonify({'success': False, 'message': '许愿不存在'}), 404
+        logger.info(f'[mp-admin] 许愿审核: id={rid} status={status}')
+        return jsonify({'success': True, 'status': status})
+    except Exception as e:
+        error_logger.error(f'mp-admin feedback update 异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/draft', methods=['GET'])
+def mp_admin_draft():
+    """投稿列表。?status=0/1/2 过滤(缺省全部),分页;
+    questions/results 解析成结构返回(解析失败原样字符串,前端兜底展示)。"""
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        page, page_size = _parse_page_args()
+        try:
+            status = int(request.args.get('status', -1))
+        except (TypeError, ValueError):
+            status = -1
+        where, params = [], []
+        if status in (0, 1, 2):
+            where.append('status = ?')
+            params.append(status)
+        cond = ('WHERE ' + ' AND '.join(where)) if where else ''
+        with _db() as conn:
+            total = conn.execute(f'SELECT COUNT(*) AS c FROM test_draft {cond}',
+                                 params).fetchone()['c']
+            rows = conn.execute(
+                f'''SELECT id, openid, title, questions, results, status,
+                           reward_given, create_time
+                    FROM test_draft {cond}
+                    ORDER BY id DESC LIMIT ? OFFSET ?''',
+                params + [page_size, (page - 1) * page_size]).fetchall()
+        items = []
+        for r in rows:
+            q = _safe_draft_json(r['questions'])
+            res = _safe_draft_json(r['results'])
+            items.append({'id': r['id'], 'openid': r['openid'], 'title': r['title'],
+                          'questions': q, 'results': res,
+                          'questions_raw': None if q else r['questions'],
+                          'results_raw': None if res else r['results'],
+                          'status': r['status'],
+                          'status_name': _FB_DRAFT_STATUS_NAME.get(r['status'], '待审'),
+                          'reward_given': bool(r['reward_given']),
+                          'create_time': r['create_time']})
+        return jsonify({'success': True, 'data': {
+            'items': items, 'total': total, 'page': page, 'page_size': page_size,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        }})
+    except Exception as e:
+        error_logger.error(f'mp-admin draft 列表异常: {e}')
+        return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
+
+
+@mp_admin_bp.route('/draft/update', methods=['POST'])
+def mp_admin_draft_update():
+    """审核投稿。body: {id, status}(1采纳/2拒绝)。
+
+    采纳后奖励走 vpay/status 对账自动下发(该用户下次冷启动生效),
+    这里不直接发奖,保持 reward_given 的记账职责在 vpay 侧。
+    """
+    resp = _require_admin()
+    if resp:
+        return resp
+    try:
+        data = request.get_json(silent=True) or {}
+        try:
+            rid = int(data.get('id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'id 不合法'}), 400
+        status = _review_status(data.get('status'))
+        if status is None:
+            return jsonify({'success': False, 'message': 'status 只能为 1(采纳) 或 2(拒绝)'}), 400
+        with _db() as conn:
+            cur = conn.execute('UPDATE test_draft SET status = ? WHERE id = ?', (status, rid))
+            if cur.rowcount == 0:
+                return jsonify({'success': False, 'message': '投稿不存在'}), 404
+        logger.info(f'[mp-admin] 投稿审核: id={rid} status={status}'
+                    + ('(采纳:下次冷启动对账自动发免广告)' if status == 1 else ''))
+        return jsonify({'success': True, 'status': status})
+    except Exception as e:
+        error_logger.error(f'mp-admin draft update 异常: {e}')
         return jsonify({'success': False, 'message': f'服务异常: {e}'}), 500
 
 

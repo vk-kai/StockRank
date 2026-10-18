@@ -4,7 +4,8 @@ import {
   getMpAdminStats, mpAdminStatSave, mpAdminStatDelete,
   getMpAdminRooms, mpAdminRoomDelete, mpAdminCleanupDevData,
   getMpAdminEcho, mpAdminEchoCreate, mpAdminEchoDelete, mpAdminEchoSeed,
-  getMpAdminEchoBans, mpAdminEchoBan, mpAdminEchoUnban, getMpAdminEchoSubs
+  getMpAdminEchoBans, mpAdminEchoBan, mpAdminEchoUnban, getMpAdminEchoSubs,
+  mpAdminFeedbackList, mpAdminFeedbackUpdate, mpAdminDraftList, mpAdminDraftUpdate
 } from '../../services/apiService'
 
 export default {
@@ -29,6 +30,13 @@ export default {
       banEdit: { show: false, busy: false, openid: '', days: 0, reason: '' },
       // 抱抱推送订阅额度(剩余额度>0的用户;loaded 防止重复拉取)
       subs: { items: [], total: 0, totalQuota: 0, loaded: false },
+      // 许愿箱/投稿审核(人工评审;status -1=全部)
+      fb: { items: [], page: 1, totalPages: 1, total: 0 },
+      fbStatus: -1,
+      drafts: { items: [], page: 1, totalPages: 1, total: 0 },
+      draftStatus: -1,
+      reviewBusy: false,
+      draftView: { row: null },
       newStat: { key: '', count: 0 },
       scoreEdit: {
         show: false, busy: false, quiz_id: '', openid: '',
@@ -86,6 +94,8 @@ export default {
         this.subs.loaded = true
         this.loadSubs()
       }
+      if (tab === 'feedback' && !this.fb.items.length) this.loadFeedback(1)
+      if (tab === 'drafts' && !this.drafts.items.length) this.loadDrafts(1)
     },
     switchStatsType(type) {
       if (this.statsType === type) return
@@ -344,6 +354,74 @@ export default {
         }
       } catch (e) {
         this.showReqError(e, '加载订阅额度失败')
+      }
+    },
+
+    // ---- 许愿箱/投稿审核 ----
+    async loadFeedback(page = 1) {
+      if (page < 1) return
+      try {
+        const res = await mpAdminFeedbackList({ status: this.fbStatus, page, pageSize: 20 })
+        if (res && res.success) {
+          const d = res.data
+          this.fb = { items: d.items, page: d.page, totalPages: d.total_pages, total: d.total }
+        } else {
+          this.showToast((res && res.message) || '加载许愿失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '加载许愿失败')
+      }
+    },
+    async doFbReview(row, status) {
+      this.reviewBusy = true
+      try {
+        const res = await mpAdminFeedbackUpdate(row.id, status)
+        if (res && res.success) {
+          this.showToast(status === 1 ? '已采纳该许愿' : '已拒绝', 'success')
+          this.loadFeedback(this.fb.page)
+        } else {
+          this.showToast((res && res.message) || '操作失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '操作失败')
+      } finally {
+        this.reviewBusy = false
+      }
+    },
+    async loadDrafts(page = 1) {
+      if (page < 1) return
+      try {
+        const res = await mpAdminDraftList({ status: this.draftStatus, page, pageSize: 20 })
+        if (res && res.success) {
+          const d = res.data
+          this.drafts = { items: d.items, page: d.page, totalPages: d.total_pages, total: d.total }
+        } else {
+          this.showToast((res && res.message) || '加载投稿失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '加载投稿失败')
+      }
+    },
+    openDraftView(row) {
+      this.draftView.row = row
+    },
+    async doDraftReview(row, status) {
+      this.reviewBusy = true
+      try {
+        const res = await mpAdminDraftUpdate(row.id, status)
+        if (res && res.success) {
+          this.draftView.row = null
+          this.showToast(status === 1
+            ? '已采纳，该用户下次冷启动自动到账当月免广告'
+            : '已拒绝该投稿', 'success')
+          this.loadDrafts(this.drafts.page)
+        } else {
+          this.showToast((res && res.message) || '操作失败', 'error')
+        }
+      } catch (e) {
+        this.showReqError(e, '操作失败')
+      } finally {
+        this.reviewBusy = false
       }
     },
 
