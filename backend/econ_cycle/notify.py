@@ -170,9 +170,18 @@ def _maybe_monthly_report():
 
 
 def econ_cycle_loop():
-    """后台守护线程:启动建基线 → 每 6 小时检查阶段切换 + 月报。"""
+    """后台守护线程:启动 60s 后自动采集+建基线 → 每 6 小时采集+检查阶段切换+月报。
+
+    采集全自动,用户无需手动触发;页面"立即采集"按钮仅作手动补跑(幂等)。
+    """
+    from .collectors import run_all
     logger.info('[econ] 经济周期检查线程启动')
-    # 启动时先静默跑一次,建立当月基线(不推送,避免重启误报)
+    time.sleep(60)  # 等应用完成初始化,避免抢启动资源
+    try:
+        r = run_all()
+        logger.info('[econ] 启动采集完成: %s', {k: (v.get('status', v) if isinstance(v, dict) else v) for k, v in r.items() if k != 'started_at'})
+    except Exception as e:
+        logger.error('[econ] 启动采集失败: %s', e)
     try:
         phase_switch_check(push=False)
     except Exception as e:
@@ -180,6 +189,7 @@ def econ_cycle_loop():
     while True:
         time.sleep(CHECK_INTERVAL_SECONDS)
         try:
+            run_all()  # 每 6 小时自动采集最新数据
             phase_switch_check(push=True)
             _maybe_monthly_report()
         except Exception as e:

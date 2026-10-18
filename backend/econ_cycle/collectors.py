@@ -320,6 +320,10 @@ def seed_indicators():
     rows.append(dict(code='METRO_CN', name='全国城市轨道客运量', layer='coincident',
                      region='national', unit='亿人次', source='mot.gov.cn',
                      freq='monthly', weight=0.8, value_type='level'))
+    # 上证指数月收盘:不参与温度计评分(layer=market),只用于"行情确认"复苏信号
+    rows.append(dict(code='SH_INDEX', name='上证指数(月收盘)', layer='market',
+                     region='national', unit='点', source='sina',
+                     freq='monthly', weight=0.0, value_type='close'))
     # 国家统计局稿件:就业类直接决定"换工作/创业"灯,PMI_EMP 加权;失业率为反向指标
     rows += [dict(code=p['code'], name=p['name'], layer=p['layer'],
                   region='national', unit=p['unit'], source='stats.gov.cn',
@@ -328,6 +332,23 @@ def seed_indicators():
              for p in STATS_GOV_PLAN]
     db.upsert_indicators(rows)
     return len(rows)
+
+
+def collect_sh_index():
+    """上证指数月收盘(新浪日线重采样)。用于复苏信号之"行情确认",不参与评分。"""
+    import akshare as ak
+    df = ak.stock_zh_index_daily(symbol='sh000001')
+    if df is None or df.empty:
+        return dict(status='FAIL', got=0, error='empty')
+    df['date'] = df['date'].astype(str)
+    monthly = {}
+    for d, c in zip(df['date'], df['close']):
+        monthly[d[:7]] = round(float(c), 2)  # 月内最后一天收盘
+    pts = sorted(monthly.items())
+    db.upsert_series('SH_INDEX', [(p, v, None) for p, v in pts],
+                     value_type='close', source='sina',
+                     source_url='https://finance.sina.com.cn/realstock/company/sh000001/nc.shtml')
+    return dict(status='OK', got=len(pts))
 
 
 def run_all():
@@ -340,6 +361,7 @@ def run_all():
         'stats_gov': collect_stats_gov(),
         'xa_stats': collect_xa_stats(),
         'mot': collect_mot(),
+        'sh_index': collect_sh_index(),
     }
     logger.info('[econ] 采集完成: %s', result)
     return result

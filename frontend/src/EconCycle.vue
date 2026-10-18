@@ -20,9 +20,12 @@
           </div>
           <div class="ecy-hero-right">
             <span class="ecy-hero-month" v-if="heroItem">数据期间 {{ heroItem.month }}</span>
-            <button class="ecy-ai-btn" @click="showAiModal = true">📋 复制给AI分析</button>
+            <button class="ecy-tool-btn" @click="refreshPage" :disabled="collecting">🔄 刷新</button>
+            <button class="ecy-ai-btn" @click="collectNow" :disabled="collecting">{{ collecting ? '⏳ 采集中…' : '⬇ 立即采集' }}</button>
+            <button class="ecy-ai-btn ecy-ai-secondary" @click="showAiModal = true">📋 给AI分析</button>
           </div>
         </div>
+        <div class="ecy-collect-msg" v-if="collectMsg">{{ collectMsg }}</div>
         <template v-if="heroConclusion">
           <div class="ecy-hero-main">
             <div class="ecy-hero-score">
@@ -116,6 +119,23 @@
           </template>
         </div>
         <div class="ecy-chain-tip">企业决策成本从低到高：接单最便宜、扩编最贵，所以复苏总是"订单先来、岗位最后到"——你觉得工作难找但新闻说回暖，就是卡在中间环节。</div>
+      </section>
+
+      <!-- ===== 复苏信号清单:五大信号自动判定 ===== -->
+      <section class="ecy-sig-section" v-if="recoverySignals.length">
+        <div class="ecy-section-head">
+          <h2>复苏信号清单 · 确认到哪一步了</h2>
+          <span class="ecy-sig-count">{{ sigConfirmed }}/{{ sigCountable }} 已确认</span>
+        </div>
+        <div class="ecy-sig-list">
+          <div class="ecy-sig-item" v-for="s in recoverySignals" :key="s.key" :class="'sig-' + s.status">
+            <div class="ecy-sig-name">{{ s.name }}</div>
+            <div class="ecy-sig-status">{{ sigLabel(s.status) }}</div>
+            <div class="ecy-sig-detail">{{ s.detail }}</div>
+            <div class="ecy-sig-evidence" v-if="s.evidence">依据：{{ s.evidence }}</div>
+          </div>
+        </div>
+        <div class="ecy-chain-tip">三层递进：生产先确认 → 需求/就业跟进 → 行情确认（股市可能先于经济反弹，也可能提前透支，所以单列不并入）。每月自动重判。</div>
       </section>
 
       <!-- ===== 预判窗口 ===== -->
@@ -239,7 +259,7 @@
 
 <script>
 import * as echarts from 'echarts'
-import { getEconOverview, getEconPhases, getEconPlaybook } from './services/apiService'
+import { getEconOverview, getEconPhases, getEconPlaybook, runEconCollect } from './services/apiService'
 
 const PHASE_LABELS = {
   downturn: { cn: '持续恶化', color: '#e05252' },
@@ -267,6 +287,8 @@ export default {
       openPhase: '',
       openChain: '',
       showAiModal: false,
+      collecting: false,
+      collectMsg: '',
       copied: false
     }
   },
@@ -349,6 +371,11 @@ export default {
         if (fc.disclaimer) L.push('  ' + fc.disclaimer)
       }
       L.push('')
+      L.push('===== 复苏信号清单(自动判定) =====')
+      this.recoverySignals.forEach(s => {
+        L.push('- ' + s.name + '：' + ({ confirmed: '已确认', emerging: '萌芽苗头', off: '未启动', nodata: '待接入' }[s.status]) + ' | ' + s.detail)
+      })
+      L.push('')
       L.push('===== 指标明细（全国） =====')
       const nat = o.national
       if (nat && nat.indicators) {
@@ -382,6 +409,15 @@ export default {
     currentIndicators() {
       const item = this.heroItem
       return (item && item.indicators) || []
+    },
+    recoverySignals() {
+      return (this.playbook && this.playbook.recovery_signals) || []
+    },
+    sigConfirmed() {
+      return this.recoverySignals.filter(s => s.status === 'confirmed').length
+    },
+    sigCountable() {
+      return this.recoverySignals.filter(s => s.status !== 'nodata').length
     }
   },
   async mounted() {
@@ -394,6 +430,29 @@ export default {
     }
   },
   methods: {
+    sigLabel(st) {
+      return { confirmed: '✔ 已确认', emerging: '◐ 萌芽苗头', off: '✖ 未启动', nodata: '— 待接入' }[st] || st
+    },
+    async refreshPage() {
+      await this.loadAll()
+    },
+    async collectNow() {
+      if (this.collecting) return
+      this.collecting = true
+      try {
+        await runEconCollect()
+        await this.loadAll()
+        this.collectMsg = ''
+      } catch (e) {
+        if (e.response && e.response.status === 401) {
+          this.collectMsg = '采集需要管理员登录（后台线程每6小时也会自动采集）'
+        } else {
+          this.collectMsg = '采集失败，稍后重试'
+        }
+      } finally {
+        this.collecting = false
+      }
+    },
     async loadAll() {
       this.loading = true
       this.error = ''
@@ -572,6 +631,27 @@ export default {
 
 /* ===== AI分析弹窗 ===== */
 .ecy-hero-right { display: flex; align-items: center; gap: 10px; }
+.ecy-collect-msg { font-size: 12px; color: #d9a441; margin-top: 8px; }
+.ecy-tool-btn { background: #1d2740; color: #a9b7d0; border: 1px solid #2f3a52; border-radius: 8px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+.ecy-tool-btn:hover { color: #fff; border-color: #4a5670; }
+.ecy-ai-secondary { background: #24324d; }
+
+/* ===== 复苏信号清单 ===== */
+.ecy-sig-section { background: #1a2130; border: 1px solid #2a3244; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.ecy-sig-count { font-size: 13px; font-weight: 700; color: #7fb069; }
+.ecy-sig-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; margin-top: 10px; }
+.ecy-sig-item { background: #161d2b; border: 1px solid #252e42; border-left: 3px solid #4a5670; border-radius: 8px; padding: 10px 12px; }
+.ecy-sig-item.sig-confirmed { border-left-color: #3d8f5f; }
+.ecy-sig-item.sig-emerging { border-left-color: #d9a441; }
+.ecy-sig-item.sig-off { border-left-color: #7a3b3b; }
+.ecy-sig-name { font-size: 13px; font-weight: 700; color: #e8eefb; }
+.ecy-sig-status { font-size: 12px; font-weight: 700; margin: 3px 0; }
+.sig-confirmed .ecy-sig-status { color: #7fb069; }
+.sig-emerging .ecy-sig-status { color: #d9a441; }
+.sig-off .ecy-sig-status { color: #c96a6a; }
+.sig-nodata .ecy-sig-status { color: #67788f; }
+.ecy-sig-detail { font-size: 12px; color: #9ab; line-height: 1.7; }
+.ecy-sig-evidence { font-size: 11px; color: #67788f; margin-top: 4px; }
 .ecy-ai-btn { background: linear-gradient(135deg, #2b5fad, #3d8f5f); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; transition: filter .15s; }
 .ecy-ai-btn:hover { filter: brightness(1.15); }
 .ecy-modal-overlay { position: fixed; inset: 0; background: rgba(6, 10, 18, .78); backdrop-filter: blur(3px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }

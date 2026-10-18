@@ -263,12 +263,108 @@ def build_conclusion(item):
     )
 
 
+def build_recovery_signals(as_of=None):
+    """五大复苏信号清单(外部AI框架落地,全部由真实数据自动判定)。
+
+    每项 status: confirmed=已确认 / emerging=萌芽苗头 / off=未启动 / nodata=待接入。
+    三层递进:生产确认 → 需求/就业确认 → 行情确认(股市可能先于经济反应,单列)。
+    """
+    from .engine import trend_state
+    sig = []
+
+    def streak_over(pairs, thr=50.0):
+        """从最新往回数连续 ≥thr 的月数。"""
+        n = 0
+        for _, v in reversed(pairs):
+            if v is not None and v >= thr:
+                n += 1
+            else:
+                break
+        return n
+
+    # 1. 生产确认:PMI 连续≥50 月数
+    pmi = [(p, v) for p, v, _ in db.get_series('PMI', as_of=as_of)]
+    if pmi:
+        n = streak_over(pmi)
+        last = pmi[-1]
+        if n >= 3:
+            status, detail = 'confirmed', 'PMI 已连续 %d 个月 ≥50(至 %s)' % (n, last[0])
+        elif n >= 1:
+            status, detail = 'emerging', 'PMI 站上 50 仅 %d 个月,需连续 3 个月才确认' % n
+        else:
+            status, detail = 'off', '最新 %s = %.1f,仍在荣枯线下' % (last[0], last[1])
+        sig.append(dict(key='production', name='① 生产确认', status=status,
+                        detail=detail, evidence='制造业PMI(统计局)'))
+    # 2. 需求确认:社零近3月趋势 + 最新>2%
+    retail = [(p, v) for p, v, _ in db.get_series('RETAIL_YOY', 'yoy', as_of=as_of)]
+    if retail:
+        st = trend_state(retail, lookback=3)
+        latest = retail[-1]
+        if st == 'rising' and latest[1] > 2:
+            status, detail = 'confirmed', '社零 %s = %.1f%% 且连续走高(真改善,量价齐动)' % (latest[0], latest[1])
+        elif st == 'rising' or latest[1] > 0:
+            status, detail = 'emerging', '社零 %s = %.1f%%,方向改善但力度不足(>2%%才算真改善)' % (latest[0], latest[1])
+        else:
+            status, detail = 'off', '社零 %s = %.1f%%,消费需求仍弱' % (latest[0], latest[1])
+        sig.append(dict(key='demand', name='② 需求确认', status=status,
+                        detail=detail, evidence='社会消费品零售总额同比(统计局)'))
+    # 3. 就业确认:PMI 从业人员 ≥50
+    emp = [(p, v) for p, v, _ in db.get_series('PMI_EMP', as_of=as_of)]
+    if emp:
+        last, n = emp[-1], streak_over(emp)
+        if n >= 1:
+            status, detail = 'confirmed', '从业人员指数 %s = %.1f,企业总体已转向净增员' % (last[0], last[1])
+        else:
+            st = trend_state(emp, lookback=3)
+            if st == 'rising':
+                status, detail = 'emerging', '从业人员指数 %s = %.1f,仍在 50 下但连续回升(净减员放缓)' % (last[0], last[1])
+            else:
+                status, detail = 'off', '从业人员指数 %s = %.1f,企业总体仍在净减员' % (last[0], last[1])
+        sig.append(dict(key='employment', name='③ 就业确认', status=status,
+                        detail=detail, evidence='PMI从业人员指数(统计局稿,扩散指数口径)'))
+    # 4. 地产/投资确认(西安样本):累计同比降幅收窄/转正
+    fdi = [(p, v) for p, v, _ in db.get_series('XA_FDI_YOY', 'cum_yoy', as_of=as_of)]
+    fai = [(p, v) for p, v, _ in db.get_series('XA_FAI_YOY', 'cum_yoy', as_of=as_of)]
+    if fdi and fai:
+        st_f, st_a = trend_state(fdi, lookback=3), trend_state(fai, lookback=3)
+        lf, la = fdi[-1], fai[-1]
+        if lf[1] > 0 or la[1] > 0:
+            status, detail = 'confirmed', '西安投资/地产累计同比转正(投资 %.1f%%、地产 %.1f%%)' % (la[1], lf[1])
+        elif st_f == 'rising' and st_a == 'rising':
+            status, detail = 'emerging', '西安投资 %.1f%%、地产 %.1f%%:降幅双双收窄(但仍深跌,未反转)' % (la[1], lf[1])
+        else:
+            status, detail = 'off', '西安投资 %.1f%%、地产 %.1f%%:降幅仍在扩大' % (la[1], lf[1])
+        sig.append(dict(key='property', name='④ 地产/投资确认', status=status,
+                        detail=detail, evidence='西安统计局累计同比(本地样本,全国地产暂无数据源)'))
+    # 5. 行情确认:上证月线连阳 + 回撤
+    idx = [(p, v) for p, v, _ in db.get_series('SH_INDEX', 'close', as_of=as_of)]
+    if len(idx) >= 12:
+        ups = sum(1 for i in range(len(idx) - 1, max(len(idx) - 4, 0), -1)
+                  if idx[i][1] > idx[i - 1][1])
+        win = idx[-12:]
+        dd = (idx[-1][1] / max(v for _, v in win) - 1) * 100
+        if ups >= 3 and dd > -10:
+            status, detail = 'confirmed', '上证月线 3 连阳,距 12 月高点仅 %.1f%%——量价环境健康' % dd
+        elif ups >= 2:
+            status, detail = 'emerging', '上证月线近 %d 阳线,距 12 月高点 %.1f%%(趋势初现,待确认)' % (ups, dd)
+        else:
+            status, detail = 'off', '上证距 12 月高点 %.1f%%,月线无连续阳线——行情偏弱/震荡' % dd
+        sig.append(dict(key='market', name='⑤ 行情确认', status=status,
+                        detail=detail, evidence='上证指数月收盘(新浪)'))
+    # 6. 利润扩散:诚实标注待接入
+    sig.append(dict(key='profit', name='⑥ 利润扩散(待接入)', status='nodata',
+                    detail='工业利润分行业数据源尚未接入——当前利润改善集中在少数高技术行业,扩散情况暂无法自动判定',
+                    evidence='待接入'))
+    return sig
+
+
 def playbook(as_of=None):
-    """汇总:指标解读 + 周期路径 + 传导链 + 预判。"""
+    """汇总:指标解读 + 周期路径 + 传导链 + 预判 + 复苏信号清单。"""
     return dict(
         guide=INDICATOR_GUIDE,
         phase_path=PHASE_PATH,
         chain=CHAIN,
         forecast=build_forecast(as_of),
+        recovery_signals=build_recovery_signals(as_of),
         generated=datetime.now().strftime('%Y-%m-%d'),
     )
