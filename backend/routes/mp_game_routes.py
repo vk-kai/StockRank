@@ -242,6 +242,16 @@ def _db():
             key  TEXT PRIMARY KEY,
             name TEXT NOT NULL
         )''')
+        # 小程序目录清单:客户端内容变更时自动上报(测试/工具全量 id+名称),
+        # 后台总览用它做「全量目录 × 真实计数」左连接——没用过的新内容计数为 0
+        # 也能看到,解决「小程序新增测试/工具,后台不知道、统计列表里没有」的同步问题
+        conn.execute('''CREATE TABLE IF NOT EXISTS mp_catalog (
+            kind       TEXT NOT NULL,          -- 'test' | 'tool'
+            item_id    TEXT NOT NULL,          -- 客户端原样 id(保留驼峰),如 angelDemon / fishCalendar
+            name       TEXT NOT NULL DEFAULT '',
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (kind, item_id)
+        )''')
         # 弹幕墙留言(「抱抱树洞」):每面墙按 wall_id(如日期 20260906)隔离,
         # 列表只回最近7天;openid 仅存档用于限频/清理,绝不随列表下发。
         # hugs 列=种子留言的预设抱抱数(真实用户留言恒0,真实抱抱走 echohug_ 计数);
@@ -1541,4 +1551,86 @@ def draft_mine():
         return jsonify({'success': True, 'items': items})
     except Exception as e:
         error_logger.error(f'draft mine 查询异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+# --------------------------------------------------------------------------
+# 小程序目录清单同步(catalog):测试/工具全量清单自动化
+# --------------------------------------------------------------------------
+# 背景:小程序端测试/工具清单频繁增删(分类配置在 CDN 热更),后台此前只能
+# 「用过才知道」——stats 表按上报自动建行,新内容 0 使用量时后台完全看不到。
+# 方案:客户端在内容清单变更时(内容指纹去重,平时零请求)POST 全量目录,
+# 服务端 upsert 进 mp_catalog;后台 /mp-admin/overview 把它与真实计数左连接,
+# 「小程序上架了什么、各有多少人用」一屏对齐,无需人工维护任何写死清单。
+@mp_game_bp.route('/catalog/sync', methods=['POST'])
+def catalog_sync():
+    """目录全量上报(幂等):items=[{kind:'test'|'tool', id, name}, ...]。
+
+    客户端指纹去重后只在清单变化时调用一次;name 缺省允许(测试名可后补,
+    优先来源仍是 /stat/inc 的 stat_names)。单次最多 300 条,超出整单拒绝。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    # 限频按来源 IP:正常客户端指纹不变就不上报,6次/分钟绰绰有余
+    if _rate_limited('catalog_sync', request.remote_addr or 'anon', 6, 60):
+        return jsonify({'success': False, 'error': '操作太频繁,请稍后再试'})
+    try:
+        data = request.get_json(silent=True) or {}
+        raw = data.get('items')
+        if not isinstance(raw, list) or not raw:
+            return jsonify({'success': False, 'error': '参数错误: items 必须为非空数组'})
+        if len(raw) > 300:
+            return jsonify({'success': False, 'error': '参数错误: 单次最多 300 条'})
+        now = int(time.time())
+        cleaned = []
+        seen = set()
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            kind = str(x.get('kind') or '').strip()
+            item_id = str(x.get('id') or '').strip()
+            name = str(x.get('name') or '').strip()[:64]
+            if kind not in ('test', 'tool'):
+                continue
+            if not TEMPLATE_ID_RE.match(item_id):     # 复用 id 规则:字母数字下划线连字符,≤64
+                continue
+            if (kind, item_id) in seen:
+                continue
+            if name and not _field_safe(name):        # 名称回显防注入:不安全就丢弃,保留 id
+                name = ''
+            seen.add((kind, item_id))
+            cleaned.append((kind, item_id, name, now))
+        if not cleaned:
+            return jsonify({'success': False, 'error': '参数错误: 无有效条目'})
+        with _db() as conn:
+            conn.executemany(
+                '''INSERT INTO mp_catalog(kind, item_id, name, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(kind, item_id) DO UPDATE SET
+                       name = CASE WHEN excluded.name != '' THEN excluded.name
+                                   ELSE mp_catalog.name END,
+                       updated_at = excluded.updated_at''', cleaned)
+        return jsonify({'success': True, 'count': len(cleaned)})
+    except Exception as e:
+        error_logger.error(f'catalog sync 异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
+@mp_game_bp.route('/catalog', methods=['GET'])
+def catalog_get():
+    """当前目录全量清单(调试/对账用):kind+id+名称+最后上报时间。"""
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        with _db() as conn:
+            rows = list(conn.execute(
+                'SELECT kind, item_id, name, updated_at FROM mp_catalog '
+                'ORDER BY kind, item_id'))
+        return jsonify({'success': True, 'items': [
+            {'kind': r['kind'], 'id': r['item_id'], 'name': r['name'],
+             'updated_at': r['updated_at']} for r in rows]})
+    except Exception as e:
+        error_logger.error(f'catalog 查询异常: {e}')
         return jsonify({'success': False, 'error': f'服务异常: {e}'})
