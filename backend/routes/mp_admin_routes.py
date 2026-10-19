@@ -261,32 +261,33 @@ def mp_admin_overview():
                                for k, dd in top_key_day_rows]
             daily_top_max = max((c for _, dd in top_key_day_rows for c in dd.values()), default=0)
 
+            # 小程序目录清单(mp_catalog,客户端内容变更时自动上报)× 真实计数 左连接:
+            # 展示「小程序当前上架的全量测试/工具」,没用过的新内容计数为 0 也可见——
+            # 解决小程序新增内容后后台不知道、统计列表里凭空消失/缺失的同步问题。
+            # 名称解析顺序:目录自带 name > stat_names 上报名 > 内置兜底 > 原样 id
+            # (必须在 with _db() 连接存活期内查询,出了 with 连接即关闭)
+            stat_count = {r['key']: r['count'] for r in stat_rows}
+            catalog = {'tests': [], 'tools': [], 'synced_at': 0}
+            try:
+                cat_rows = list(conn.execute(
+                    'SELECT kind, item_id, name, updated_at FROM mp_catalog '
+                    'ORDER BY kind, item_id'))
+            except sqlite3.OperationalError:
+                cat_rows = []          # 表尚未创建(客户端从未上报过)时静默为空
+            for r in cat_rows:
+                key = ('test_' if r['kind'] == 'test' else 'tool_') + r['item_id']
+                entry = {
+                    'id': r['item_id'],
+                    'name': r['name'] or names.get(key.lower()) or r['item_id'],
+                    'count': stat_count.get(key.lower(), 0),
+                    'updated_at': r['updated_at'],
+                }
+                catalog['tests' if r['kind'] == 'test' else 'tools'].append(entry)
+                catalog['synced_at'] = max(catalog['synced_at'], r['updated_at'])
+
         # 综合排名榜:与小程序 /rank/overall 同口径(60秒缓存,成绩写操作时失效)
         board = _overall_board_cached()
         overall = {'total': board['total'], 'top': board['top']}
-
-        # 小程序目录清单(mp_catalog,客户端内容变更时自动上报)× 真实计数 左连接:
-        # 展示「小程序当前上架的全量测试/工具」,没用过的新内容计数为 0 也可见——
-        # 解决小程序新增内容后后台不知道、统计列表里凭空消失/缺失的同步问题。
-        # 名称解析顺序:目录自带 name > stat_names 上报名 > 内置兜底 > 原样 id
-        stat_count = {r['key']: r['count'] for r in stat_rows}
-        catalog = {'tests': [], 'tools': [], 'synced_at': 0}
-        try:
-            cat_rows = list(conn.execute(
-                'SELECT kind, item_id, name, updated_at FROM mp_catalog '
-                'ORDER BY kind, item_id'))
-        except sqlite3.OperationalError:
-            cat_rows = []          # 表尚未创建(客户端从未上报过)时静默为空
-        for r in cat_rows:
-            key = ('test_' if r['kind'] == 'test' else 'tool_') + r['item_id']
-            entry = {
-                'id': r['item_id'],
-                'name': r['name'] or names.get(key.lower()) or r['item_id'],
-                'count': stat_count.get(key.lower(), 0),
-                'updated_at': r['updated_at'],
-            }
-            catalog['tests' if r['kind'] == 'test' else 'tools'].append(entry)
-            catalog['synced_at'] = max(catalog['synced_at'], r['updated_at'])
 
         return jsonify({'success': True, 'data': {
             'totals': totals,
