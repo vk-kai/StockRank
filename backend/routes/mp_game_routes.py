@@ -1068,6 +1068,37 @@ def stat_query():
         return jsonify({'success': False, 'error': f'服务异常: {e}'})
 
 
+@mp_game_bp.route('/stat/daily', methods=['GET'])
+def stat_daily():
+    """当日使用榜:聚合 stat_log 今日 0 点起的流水,返回 {key: 今日次数}。
+    小程序「今日热门」排序数据源(前端不再本地估算)。可选 day=YYYY-MM-DD 查指定日。
+    stat_log 有 ts 索引,单日聚合代价低;响应 key 为库内小写归一形态。
+    """
+    denied = _check_auth_key()
+    if denied:
+        return denied
+    try:
+        day = (request.args.get('day') or '').strip()
+        if day:
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', day):
+                return jsonify({'success': False, 'error': 'day 格式应为 YYYY-MM-DD'})
+            start = int(time.mktime(time.strptime(day, '%Y-%m-%d')))
+        else:
+            lt = time.localtime()
+            start = int(time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, 0)))
+        end = start + 86400
+        with _db() as conn:
+            rows = conn.execute(
+                'SELECT key, COUNT(*) AS c FROM stat_log WHERE ts >= ? AND ts < ? GROUP BY key',
+                (start, end)).fetchall()
+        items = {r['key']: r['c'] for r in rows if r['c'] > 0}
+        return jsonify({'success': True, 'day': time.strftime('%Y-%m-%d', time.localtime(start)),
+                        'items': items})
+    except Exception as e:
+        error_logger.error(f'stat/daily 查询异常: {e}')
+        return jsonify({'success': False, 'error': f'服务异常: {e}'})
+
+
 # --------------------------------------------------------------------------
 # 四、弹幕墙（「抱抱树洞」共鸣墙,原名「不止我一个」）
 #    发布留言服务端强制再过一次 msgSecCheck(不信任客户端「已检测」的说法,
