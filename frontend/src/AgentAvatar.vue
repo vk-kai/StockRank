@@ -905,7 +905,42 @@ function openOracle(q){
 }
 function closeOracle(){ORA.open=false;
   $('#oraDrawer').classList.remove('on');$('#oraMask').classList.remove('on')}
-$('#oraFab').onclick=()=>ORA.open?closeOracle():openOracle();
+/* 悬浮按钮可拖动: 拖动改位置(localStorage 记忆), 原地点击(<6px)才打开抽屉, 避免遮挡其他按钮 */
+  const fab=$('#oraFab'),FKEY='oraFab_pos';
+  try{const p=JSON.parse(localStorage.getItem(FKEY)||'null');
+    if(p&&p.x!=null){fab.style.left=p.x+'px';fab.style.top=p.y+'px';fab.style.right='auto';fab.style.bottom='auto'}}catch(e){}
+  let fdrag=false,fmoved=false,fsx=0,fsy=0,fox=0,foy=0;
+  fab.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    fdrag=true;fmoved=false;
+    const r=fab.getBoundingClientRect();   // 统一改为 left/top 定位
+    fab.style.left=r.left+'px';fab.style.top=r.top+'px';fab.style.right='auto';fab.style.bottom='auto';
+    fsx=e.clientX;fsy=e.clientY;fox=r.left;foy=r.top;
+    fab.style.cursor='grabbing';e.preventDefault();
+  });
+  // move/up 同时挂 window 与按钮: window 保证拖出按钮仍跟随, 按钮兜底不冒泡的合成事件
+  const _finite=e=>typeof e.clientX==='number'&&isFinite(e.clientX)&&typeof e.clientY==='number'&&isFinite(e.clientY);
+  const _move=e=>{
+    if(!fdrag||!_finite(e))return;
+    const dx=e.clientX-fsx,dy=e.clientY-fsy;
+    if(!fmoved&&Math.hypot(dx,dy)<6)return;
+    fmoved=true;
+    const r=fab.getBoundingClientRect();
+    const nx=Math.min(Math.max(0,fox+dx),innerWidth-r.width);
+    const ny=Math.min(Math.max(0,foy+dy),innerHeight-r.height);
+    fab.style.left=nx+'px';fab.style.top=ny+'px';
+  };
+  const _up=()=>{
+    if(!fdrag)return;fdrag=false;fab.style.cursor='grab';
+    if(fmoved){const r=fab.getBoundingClientRect();
+      try{localStorage.setItem(FKEY,JSON.stringify({x:r.left,y:r.top}))}catch(err){}}
+    else ORA.open?closeOracle():openOracle();
+  };
+  window.addEventListener('pointermove',_move);
+  window.addEventListener('pointerup',_up);
+  window.addEventListener('pointercancel',()=>{fdrag=false;fab.style.cursor='grab'});
+  fab.addEventListener('pointermove',_move);
+  fab.addEventListener('pointerup',_up);
 $('#oraClose').onclick=closeOracle;
 $('#oraMask').onclick=closeOracle;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ORA.open)closeOracle()});
@@ -1760,8 +1795,9 @@ background:linear-gradient(125deg,#0d4032 0%,#0e6b4c 58%,#119a68 100%)}
 .tlyear .tyy{font-size:16px;font-weight:700;color:var(--brand2)}
 .tlev{background:var(--cg);border-radius:8px;padding:6px 10px;margin-top:5px;font-size:12px;color:#2f5d4c;line-height:1.6}
 /* ───── 旁观者: 全局悬浮入口 + 抽屉 ───── */
-#oraFab{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
-font-size:22px;z-index:1500;box-shadow:0 6px 20px rgba(14,107,76,.42);background:linear-gradient(135deg,#0e9f6e,#0b7f58);transition:transform .15s}
+#oraFab{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border-radius:50%;border:none;cursor:grab;
+font-size:22px;z-index:1500;box-shadow:0 6px 20px rgba(14,107,76,.42);background:linear-gradient(135deg,#0e9f6e,#0b7f58);transition:transform .15s;
+user-select:none;-webkit-user-select:none;touch-action:none}
 #oraFab:hover{transform:translateY(-2px)}
 #oraMask{position:fixed;inset:0;background:rgba(15,23,32,.35);z-index:1590;opacity:0;pointer-events:none;transition:opacity .25s}
 #oraMask.on{opacity:1;pointer-events:auto}
