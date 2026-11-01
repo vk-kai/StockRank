@@ -960,12 +960,15 @@ async function gfPromoteTop(btn){
 let NETCHART=null; // ECharts 关系图实例
 window.addEventListener('resize',()=>{if(NETCHART)NETCHART.resize()});
 async function drawNet(){
+  // 先读工具栏状态再清空容器(innerHTML 会连带清掉复选框)
+  const strong0=$('#netStrong')?$('#netStrong').checked:true;
+  const radial0=$('#netRadial')?$('#netRadial').checked:false;
   $('#netbox').innerHTML='<div class="mut" style="padding:30px">计算关系图…</div>';
   try{
     const g=await api('/api/agent/network/graph'+(NETYEAR?`?year=${NETYEAR}`:''));
-    const strong0=$('#netStrong')?$('#netStrong').checked:true;
     $('#netbox').innerHTML=`<div class="nettools">
         <label style="cursor:pointer;display:flex;gap:5px;align-items:center"><input type="checkbox" id="netStrong" ${strong0?'checked':''}> 只看强关系</label>
+        <label style="cursor:pointer;display:flex;gap:5px;align-items:center" title="互动越多的人离你越近, 四个圈层各占一个方向; 取消勾选则回到自动力导向布局"><input type="checkbox" id="netRadial" ${radial0?'checked':''}> 按亲疏排列</label>
         <button class="btn gray sm" id="netReset" style="padding:4px 10px;font-size:12px">重置布局</button>
         <span class="mut">滚轮缩放 · 拖动平移 · 悬停高亮关系 · 点节点看详情</span></div>
       <div id="netchart" style="width:100%;height:640px"></div>`;
@@ -980,6 +983,23 @@ async function drawNet(){
     const links=wxLinks.concat(g.edges.filter(e=>names.has(e.a)&&names.has(e.b)&&(e.n>=3||!strong0))
       .map(e=>({source:e.a,target:e.b,n:e.n,
         lineStyle:{width:Math.min(4,.4+e.n/10),opacity:.2+Math.min(.55,e.n/25)}})));
+    // 按亲疏排列: 消息量越大半径越小(强=近); 四个圈层按人数比例各占一个扇区, 颜色成片少交叉
+    const pos={};
+    if(radial0){
+      const R0=95,R1=335;
+      let ang=Math.random()*Math.PI*2;
+      for(const cat of cats){
+        const arr=nodes.filter(n=>(cats.indexOf(n.circle)<0?'其他':n.circle)===cat).sort((a,b)=>b.value-a.value);
+        if(!arr.length)continue;
+        const span=Math.PI*2*arr.length/nodes.length;
+        arr.forEach((n,i)=>{
+          const a=ang+span*(i+.5)/arr.length+(Math.random()-.5)*.03;
+          const r=R0+(R1-R0)*(1-Math.sqrt(n.value/max));
+          pos[n.name]=[Math.cos(a)*r,Math.sin(a)*r];
+        });
+        ang+=span;
+      }
+    }
     if(NETCHART){NETCHART.dispose();NETCHART=null}
     NETCHART=echarts.init($('#netchart'));
     if(!nodes.length){$('#netchart').innerHTML='<div class="mut" style="padding:30px">该年份暂无数据</div>';return}
@@ -991,18 +1011,19 @@ async function drawNet(){
           :esc(p.data.source)+' ↔ '+esc(p.data.target)+'<br>共同群 '+p.data.n+' 个')
         :'<b>'+esc(p.name)+'</b><br>消息 '+p.value+' 条'},
       series:[{
-        type:'graph',layout:'force',roam:true,scaleLimit:{min:.5,max:4},
+        type:'graph',layout:radial0?'none':'force',roam:true,scaleLimit:{min:.5,max:4},
         categories:cats.map(c=>({name:c})),
         force:{repulsion:200,edgeLength:[35,95],gravity:.12},
         emphasis:{focus:'adjacency'},
         label:{show:true,fontSize:10.5,color:'#334155',formatter:p=>p.name.length>7?p.name.slice(0,7)+'…':p.name},
         labelLayout:{hideOverlap:true},
         lineStyle:{color:'#94a3b8',curveness:.15},
-        data:[{name:'万凯',value:nodes.reduce((a,b)=>a+b.value,0),symbolSize:46,category:0,
+        data:[{name:'万凯',value:nodes.reduce((a,b)=>a+b.value,0),symbolSize:46,category:0,x:0,y:0,
             itemStyle:{color:'#0e9f6e',borderColor:'#fff',borderWidth:2.5},
             label:{color:'#fff',fontWeight:700,fontSize:13}}]
           .concat(nodes.map(n=>({name:n.name,value:n.value,
             symbolSize:7+24*Math.sqrt(n.value/max),
+            x:pos[n.name]?pos[n.name][0]:undefined,y:pos[n.name]?pos[n.name][1]:undefined,
             itemStyle:{color:CMAP[n.circle]||'#e08a00',borderColor:'#fff',borderWidth:1.5},
             category:Math.max(0,cats.indexOf(n.circle))}))),
         links:links
@@ -1010,6 +1031,7 @@ async function drawNet(){
     });
     NETCHART.on('click',p=>{if(p.dataType==='node')showEgo(p.name)});
     $('#netStrong').onchange=drawNet;
+    $('#netRadial').onchange=drawNet;
     $('#netReset').onclick=drawNet;
   }catch(e){$('#netbox').innerHTML='<div class="err">'+e.message+'</div>'}
 }
