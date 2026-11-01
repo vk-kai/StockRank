@@ -958,6 +958,7 @@ async function gfPromoteTop(btn){
 }
 /* ── 关系图: ECharts 力导向布局(缩放/平移/悬停高亮/标签防重叠均为库内置, 不再自研渲染) ── */
 let NETCHART=null; // ECharts 关系图实例
+let NET_SEARCH='', NET_CONTACTS=null; // 搜索关键字 / 全量联系人缓存(搜不在图里的人时补节点)
 window.addEventListener('resize',()=>{if(NETCHART)NETCHART.resize()});
 async function drawNet(){
   // 先读工具栏状态再清空容器(innerHTML 会连带清掉复选框)
@@ -967,6 +968,8 @@ async function drawNet(){
   try{
     const g=await api('/api/agent/network/graph'+(NETYEAR?`?year=${NETYEAR}`:''));
     $('#netbox').innerHTML=`<div class="nettools">
+        <input id="netSearch" list="netContactList" value="${esc(NET_SEARCH)}" placeholder="搜人后回车, 找不到会自动加入图中" style="padding:4px 8px;border:1px solid var(--line,#d7dee8);border-radius:8px;font-size:12px;width:180px">
+        <datalist id="netContactList"></datalist>
         <label style="cursor:pointer;display:flex;gap:5px;align-items:center"><input type="checkbox" id="netStrong" ${strong0?'checked':''}> 只看强关系</label>
         <label style="cursor:pointer;display:flex;gap:5px;align-items:center" title="互动越多的人离你越近, 四个圈层各占一个方向; 取消勾选则回到自动力导向布局"><input type="checkbox" id="netRadial" ${radial0?'checked':''}> 按亲疏排列</label>
         <button class="btn gray sm" id="netReset" style="padding:4px 10px;font-size:12px">重置布局</button>
@@ -976,6 +979,19 @@ async function drawNet(){
     const cats=['家人','同事/工作','朋友/其他','其他'];
     const CMAP={'家人':'#22a06b','同事/工作':'#3b82f6','朋友/其他':'#8b5cf6','其他':'#e08a00'};
     const nodes=g.nodes.filter(n=>!strong0||n.value>=max*.02);
+    // 搜索: 图里没有的人(消息量少被过滤/没进 top140)从全量档案补成节点, 金框高亮
+    let searchHit=null;
+    if(NET_SEARCH){
+      searchHit=nodes.find(n=>n.name.includes(NET_SEARCH))||g.nodes.find(n=>n.name.includes(NET_SEARCH));
+      if(searchHit&&!nodes.includes(searchHit))nodes.push(searchHit);
+      if(!searchHit){
+        if(!NET_CONTACTS)NET_CONTACTS=await api('/api/agent/contacts');
+        const c=(NET_CONTACTS.contacts||[]).find(x=>(x['姓名']||'').includes(NET_SEARCH)&&x['类别']!=='群聊');
+        if(c){const b=c['圈层猜测']||'';searchHit={name:c['姓名'],value:c['总消息']||0,
+                circle:['家人','同事/工作','朋友/其他'].indexOf(b)>=0?b:'其他'};
+              g.nodes.push(searchHit);nodes.push(searchHit)}
+      }
+    }
     const names=new Set(nodes.map(n=>n.name));
     // 万凯与每个人的连线(绿色, 粗细=消息量) + 联系人之间的共同群边
     const wxLinks=nodes.map(n=>({source:'万凯',target:n.name,n:n.value,
@@ -1013,7 +1029,7 @@ async function drawNet(){
       series:[{
         type:'graph',layout:radial0?'none':'force',roam:true,scaleLimit:{min:.5,max:4},
         categories:cats.map(c=>({name:c})),
-        force:{repulsion:200,edgeLength:[35,95],gravity:.12},
+        force:{repulsion:220,edgeLength:[35,95],gravity:.14,layoutAnimation:false},
         emphasis:{focus:'adjacency'},
         label:{show:true,fontSize:10.5,color:'#334155',formatter:p=>p.name.length>7?p.name.slice(0,7)+'…':p.name},
         labelLayout:{hideOverlap:true},
@@ -1022,14 +1038,22 @@ async function drawNet(){
             itemStyle:{color:'#0e9f6e',borderColor:'#fff',borderWidth:2.5},
             label:{color:'#fff',fontWeight:700,fontSize:13}}]
           .concat(nodes.map(n=>({name:n.name,value:n.value,
-            symbolSize:7+24*Math.sqrt(n.value/max),
+            symbolSize:n===searchHit?Math.max(26,7+24*Math.sqrt(n.value/max)):7+24*Math.sqrt(n.value/max),
             x:pos[n.name]?pos[n.name][0]:undefined,y:pos[n.name]?pos[n.name][1]:undefined,
-            itemStyle:{color:CMAP[n.circle]||'#e08a00',borderColor:'#fff',borderWidth:1.5},
+            label:n===searchHit?{show:true,fontWeight:700,fontSize:12.5,color:'#b45309'}:undefined,
+            itemStyle:n===searchHit?{color:CMAP[n.circle]||'#e08a00',borderColor:'#f59e0b',borderWidth:3,shadowBlur:14,shadowColor:'#f59e0b'}:{color:CMAP[n.circle]||'#e08a00',borderColor:'#fff',borderWidth:1.5},
             category:Math.max(0,cats.indexOf(n.circle))}))),
         links:links
       }]
     });
     NETCHART.on('click',p=>{if(p.dataType==='node')showEgo(p.name)});
+    // 搜索命中: 高亮 + 让标签强制显示(绕过 hideOverlap); 后台拉全量联系人给 datalist 提示
+    if(searchHit)NETCHART.dispatchAction({type:'highlight',seriesIndex:0,name:searchHit.name});
+    if(!NET_CONTACTS)api('/api/agent/contacts').then(r=>{NET_CONTACTS=r;const dl=$('#netContactList');
+      if(dl)dl.innerHTML=r.contacts.filter(c=>c['类别']!=='群聊').map(c=>`<option value="${esc(c['姓名'])}">`).join('')}).catch(()=>{});
+    const _s=$('#netSearch');
+    _s.addEventListener('keydown',e=>{if(e.key==='Enter'){NET_SEARCH=_s.value.trim();drawNet()}});
+    _s.addEventListener('input',()=>{if(!_s.value.trim()&&NET_SEARCH){NET_SEARCH='';drawNet()}});
     $('#netStrong').onchange=drawNet;
     $('#netRadial').onchange=drawNet;
     $('#netReset').onclick=drawNet;
