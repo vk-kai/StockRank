@@ -112,7 +112,7 @@
     </div>
     <div class="netwrap">
       <div id="netbox" class="mut">加载关系图…</div>
-      <div id="egobox">点击左侧图中任意联系人，查看 ta 与你的关系详情。</div>
+      <div id="egobox" style="display:none">点击图中任意联系人，查看 ta 与你的关系详情。</div>
     </div>
   </div>
   <div id="tab-circ" style="display:none"></div>
@@ -1059,15 +1059,24 @@ async function drawNet(){
     $('#netReset').onclick=drawNet;
   }catch(e){$('#netbox').innerHTML='<div class="err">'+e.message+'</div>'}
 }
+// 关闭关系详情面板, 图表恢复占满整行
+window.closeEgo=()=>{const b=$('#egobox');if(b)b.style.display='none';
+  const w=document.querySelector('.netwrap');if(w)w.style.gridTemplateColumns='minmax(0,1fr)';
+  if(NETCHART)setTimeout(()=>NETCHART.resize(),60)};
 async function showEgo(name){
   const box=$('#egobox');box.innerHTML='<div class="mut">读取 '+esc(name)+' 的关系网…</div>';
+  // 点节点才弹出详情面板; 弹出时恢复两列布局
+  box.style.display='block';
+  box.closest('.netwrap').style.gridTemplateColumns='minmax(0,1.7fr) minmax(0,1fr)';
+  if(NETCHART)setTimeout(()=>NETCHART.resize(),60);
   try{
     const e=await api('/api/agent/network/ego?name='+encodeURIComponent(name));
     const info=e.info||{};const maxY=Math.max(...Object.values(e.per_year).map(v=>v.n),1);
     box.innerHTML=`
     <div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">${esc(name)}</b>
       <span class="tag ${CT[e.circle]||''}">${e.circle}</span>
-      <span title="复制名称" style="cursor:pointer;font-size:13px" onclick="copyName('${esc(name).replace(/'/g,"\\'")}')">📋</span></div>
+      <span title="复制名称" style="cursor:pointer;font-size:13px" onclick="copyName('${esc(name).replace(/'/g,"\\'")}')">📋</span>
+      <span title="关闭详情(图表放大)" style="cursor:pointer;margin-left:auto;font-size:15px;color:#64748b" onclick="closeEgo()">✕</span></div>
     <div class="stat3"><div class="st"><b>${info['总消息']}</b><span>总消息</span></div>
       <div class="st"><b>${info['我的占比%']}%</b><span>我占${info['我的发言']}/${info['对方发言']}</span></div>
       <div class="st"><b>${(info['首次']||'').slice(2,10)}</b><span>首次 → ${(info['末次']||'').slice(2,10)}</span></div></div>
@@ -1462,6 +1471,7 @@ loadHome().catch(e=>showErr('pg-home',e));
 
   // ---- 内联 onclick/ondblclick 属性走全局作用域: 把组件内函数挂到 window ----
   window.askInsight = askInsight;
+  window.closeEgo = closeEgo;
   window.copyName = copyName;
   window.end = end;
   window.endB = endB;
