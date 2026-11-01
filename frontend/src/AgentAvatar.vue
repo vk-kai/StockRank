@@ -275,8 +275,7 @@
 </main>
 </div>
 
-<!-- ═══════════ 旁观者: 全局悬浮入口 + 抽屉(所有页面可用, 与旁观者页共用会话) ═══════════ -->
-<button id="oraFab" title="旁观者 · 最懂你的朋友">🫧</button>
+<!-- ═══════════ 旁观者抽屉(由各页提问 chips / ego 按钮唤起; 平时从左侧菜单进旁观者页) ═══════════ -->
 <div id="oraMask"></div>
 <aside id="oraDrawer">
   <div class="oraHd">
@@ -546,9 +545,14 @@ $('#simMerge').onchange=e=>post('/api/agent/sim/config',{merge:e.target.checked}
 /* ───── 数字分身(聊天) ───── */
 let CONTACTS=[],STRANGERS=[],CUR='新朋友',MODE='dialog',SENDING=false;
 const dn=n=>String(n).replace(/^陌生·/,'');   // 陌生访客显示名
-let SESSIONS={};   // key=联系人|模式 → [{who,text,anl}] —— 模拟聊天与旁观者提问是两个完全独立的会话
+let SESSIONS={};   // key=联系人|模式 → [{who,text,anl}] —— localStorage 持久化, F5/重开浏览器不丢
 const skey=()=>CUR+'|'+MODE;
-const curSess=()=>SESSIONS[skey()]||(SESSIONS[skey()]=[]);
+const skeyLS=()=>'twin_'+skey();
+const curSess=()=>{if(!SESSIONS[skey()]){
+  try{SESSIONS[skey()]=JSON.parse(localStorage.getItem(skeyLS())||'[]')}
+  catch(e){SESSIONS[skey()]=[]}
+  }return SESSIONS[skey()]};
+const ssave=()=>{try{localStorage.setItem(skeyLS(),JSON.stringify(curSess().slice(-200)))}catch(e){}};  // 每会话最多留 200 条防膨胀
 const ISG=()=>{const c=CONTACTS.find(x=>x['姓名']===CUR);return !!(c&&c['类别']==='群聊')};
 async function loadTwin(){
   if(!CONTACTS.length){
@@ -613,7 +617,7 @@ $('#mbMembers').onclick=async()=>{
     toast('👥 「'+dn(CUR)+'」成员性格分析完成');
   }catch(e){sysTip('⚠ 成员分析失败: '+e.message)}
 };
-$('#clearChat').onclick=()=>{SESSIONS[skey()]=[];renderMsgs();
+$('#clearChat').onclick=()=>{SESSIONS[skey()]=[];ssave();renderMsgs();
   sysTip(`已清空当前对话记忆（${MODE==='dialog'?'模拟':'旁观者'} · ${CUR}）—— 后续不再携带之前的上下文，本地记录不受影响`)};
 function appendDom(m){
   const box=$('#msgs');
@@ -649,7 +653,7 @@ function appendDom(m){
 }
 function renderMsgs(){$('#msgs').innerHTML='';curSess().forEach(appendDom);
   const mb=$('#mbMembers');if(mb)mb.style.display=ISG()&&MODE==='dialog'?'':'none'}
-function pushMsg(who,text,anlHTML,extra){const m=Object.assign({who,text,anl:anlHTML||null},extra||{});curSess().push(m);appendDom(m)}
+function pushMsg(who,text,anlHTML,extra){const m=Object.assign({who,text,anl:anlHTML||null},extra||{});curSess().push(m);appendDom(m);ssave()}
 function sysTip(t){appendDom({who:'sys',text:t})}
 /* ───── 人工介入: 分身拿不准时弹窗请本人拿主意(直答/选候选/直接采用) ───── */
 function openIntervene(o){ // o={question,aiDraft,candidates,contact,mode,anlHTML} → Promise<最终回答|null>
@@ -905,42 +909,6 @@ function openOracle(q){
 }
 function closeOracle(){ORA.open=false;
   $('#oraDrawer').classList.remove('on');$('#oraMask').classList.remove('on')}
-/* 悬浮按钮可拖动: 拖动改位置(localStorage 记忆), 原地点击(<6px)才打开抽屉, 避免遮挡其他按钮 */
-  const fab=$('#oraFab'),FKEY='oraFab_pos';
-  try{const p=JSON.parse(localStorage.getItem(FKEY)||'null');
-    if(p&&p.x!=null){fab.style.left=p.x+'px';fab.style.top=p.y+'px';fab.style.right='auto';fab.style.bottom='auto'}}catch(e){}
-  let fdrag=false,fmoved=false,fsx=0,fsy=0,fox=0,foy=0;
-  fab.addEventListener('pointerdown',e=>{
-    if(e.pointerType==='mouse'&&e.button!==0)return;
-    fdrag=true;fmoved=false;
-    const r=fab.getBoundingClientRect();   // 统一改为 left/top 定位
-    fab.style.left=r.left+'px';fab.style.top=r.top+'px';fab.style.right='auto';fab.style.bottom='auto';
-    fsx=e.clientX;fsy=e.clientY;fox=r.left;foy=r.top;
-    fab.style.cursor='grabbing';e.preventDefault();
-  });
-  // move/up 同时挂 window 与按钮: window 保证拖出按钮仍跟随, 按钮兜底不冒泡的合成事件
-  const _finite=e=>typeof e.clientX==='number'&&isFinite(e.clientX)&&typeof e.clientY==='number'&&isFinite(e.clientY);
-  const _move=e=>{
-    if(!fdrag||!_finite(e))return;
-    const dx=e.clientX-fsx,dy=e.clientY-fsy;
-    if(!fmoved&&Math.hypot(dx,dy)<6)return;
-    fmoved=true;
-    const r=fab.getBoundingClientRect();
-    const nx=Math.min(Math.max(0,fox+dx),innerWidth-r.width);
-    const ny=Math.min(Math.max(0,foy+dy),innerHeight-r.height);
-    fab.style.left=nx+'px';fab.style.top=ny+'px';
-  };
-  const _up=()=>{
-    if(!fdrag)return;fdrag=false;fab.style.cursor='grab';
-    if(fmoved){const r=fab.getBoundingClientRect();
-      try{localStorage.setItem(FKEY,JSON.stringify({x:r.left,y:r.top}))}catch(err){}}
-    else ORA.open?closeOracle():openOracle();
-  };
-  window.addEventListener('pointermove',_move);
-  window.addEventListener('pointerup',_up);
-  window.addEventListener('pointercancel',()=>{fdrag=false;fab.style.cursor='grab'});
-  fab.addEventListener('pointermove',_move);
-  fab.addEventListener('pointerup',_up);
 $('#oraClose').onclick=closeOracle;
 $('#oraMask').onclick=closeOracle;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ORA.open)closeOracle()});
@@ -1794,11 +1762,7 @@ background:linear-gradient(125deg,#0d4032 0%,#0e6b4c 58%,#119a68 100%)}
 .tlyear{margin:8px 0 10px;display:flex;align-items:center;gap:8px}
 .tlyear .tyy{font-size:16px;font-weight:700;color:var(--brand2)}
 .tlev{background:var(--cg);border-radius:8px;padding:6px 10px;margin-top:5px;font-size:12px;color:#2f5d4c;line-height:1.6}
-/* ───── 旁观者: 全局悬浮入口 + 抽屉 ───── */
-#oraFab{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border-radius:50%;border:none;cursor:grab;
-font-size:22px;z-index:1500;box-shadow:0 6px 20px rgba(14,107,76,.42);background:linear-gradient(135deg,#0e9f6e,#0b7f58);transition:transform .15s;
-user-select:none;-webkit-user-select:none;touch-action:none}
-#oraFab:hover{transform:translateY(-2px)}
+/* ───── 旁观者: 抽屉(由提问 chips 唤起, 不设全局悬浮按钮) ───── */
 #oraMask{position:fixed;inset:0;background:rgba(15,23,32,.35);z-index:1590;opacity:0;pointer-events:none;transition:opacity .25s}
 #oraMask.on{opacity:1;pointer-events:auto}
 #oraDrawer{position:fixed;top:0;right:-440px;width:410px;max-width:94vw;height:100vh;background:#f7f9f8;z-index:1600;
