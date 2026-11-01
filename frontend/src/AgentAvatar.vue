@@ -999,17 +999,18 @@ async function drawNet(){
     const links=wxLinks.concat(g.edges.filter(e=>names.has(e.a)&&names.has(e.b)&&(e.n>=3||!strong0))
       .map(e=>({source:e.a,target:e.b,n:e.n,
         lineStyle:{width:Math.min(4,.4+e.n/10),opacity:.2+Math.min(.55,e.n/25)}})));
-    // 按亲疏排列: 消息量越大半径越小(强=近); 四个圈层按人数比例各占一个扇区, 颜色成片少交叉
+    // 确定性基准位: 消息量越大半径越小(强=近); 四个圈层按人数比例各占一个扇区。
+    // 无论力导向还是径向模式都把它当初始位置 —— 搜索/筛选切换后节点位置保持稳定(力导向只微调)
     const pos={};
-    if(radial0){
+    {
       const R0=95,R1=335;
-      let ang=Math.random()*Math.PI*2;
+      let ang=-Math.PI/2; // 固定起始角(顶部), 不用随机: 每次重绘朝向一致
       for(const cat of cats){
         const arr=nodes.filter(n=>(cats.indexOf(n.circle)<0?'其他':n.circle)===cat).sort((a,b)=>b.value-a.value);
         if(!arr.length)continue;
         const span=Math.PI*2*arr.length/nodes.length;
         arr.forEach((n,i)=>{
-          const a=ang+span*(i+.5)/arr.length+(Math.random()-.5)*.03;
+          const a=ang+span*(i+.5)/arr.length;
           const r=R0+(R1-R0)*(1-Math.sqrt(n.value/max));
           pos[n.name]=[Math.cos(a)*r,Math.sin(a)*r];
         });
