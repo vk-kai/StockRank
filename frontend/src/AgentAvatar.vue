@@ -38,13 +38,14 @@
 <!-- ═══════════ 数字分身(聊天) ═══════════ -->
 <section id="pg-twin" class="page chatpg">
   <div class="side">
-    <div class="hd">选择联系人（按消息量排序）<input id="ctq" placeholder="搜索…" style="width:100%;margin-top:8px"></div>
+    <div class="hd"><span id="sidehd">选择联系人（按消息量排序）</span><input id="ctq" placeholder="搜索…" style="width:100%;margin-top:8px"></div>
     <div class="list" id="ctlist"></div>
   </div>
   <div class="chatwrap">
     <div class="modebar">
       <button class="mb on" data-m="dialog">🎭 模拟聊天（你演 ta，分身演我）</button>
       <button class="mb" data-m="ask">🧭 旁观者提问（第三人称）</button>
+      <button class="mb" data-m="eq">💚 高情商练习</button>
       <span class="hint" id="modehint">模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）</span>
       <button class="btn gray sm" id="mbMembers" style="display:none">👥 成员性格</button>
       <button class="btn gray sm" id="mbRaw">💬 原始聊天</button>
@@ -54,6 +55,7 @@
     <div id="roleBanner"></div>
     <div id="msgs"></div>
     <div class="inrow">
+      <button class="chip" id="eqTurnBtn" style="display:none;flex-shrink:0;padding:6px 10px" title="切换这句话由谁说">🎤 她说</button>
       <textarea id="chat-in" placeholder="和你的数字分身聊聊…（Enter 发送，Shift+Enter 换行）"></textarea>
       <button class="btn" id="sendbtn">发送</button>
     </div>
@@ -546,6 +548,12 @@ $('#simMerge').onchange=e=>post('/api/agent/sim/config',{merge:e.target.checked}
 
 /* ───── 数字分身(聊天) ───── */
 let CONTACTS=[],STRANGERS=[],CUR='新朋友',MODE='dialog',SENDING=false;
+/* ───── 高情商练习模式: 发展对象列表/会话与主功能完全隔离 ───── */
+let EQCUR='',EQTURN='girl',EQSESS={};
+let EQCONTACTS=(()=>{try{return JSON.parse(localStorage.getItem('eqContacts')||'[]')}catch(e){return[]}})();
+const eqSaveCts=()=>{try{localStorage.setItem('eqContacts',JSON.stringify(EQCONTACTS))}catch(e){}};
+const eqSess=c=>{if(!EQSESS[c])EQSESS[c]=[];return EQSESS[c]};   // 由后端 cache/eq_chats 异步填充
+const eqSave=c=>{try{localStorage.setItem('eqSess_'+c,JSON.stringify(eqSess(c).slice(-200)))}catch(e){}};
 let DIR='A';   // 模拟模式方向: A=你演联系人/分身演万凯, B=身份互换(你演万凯本人/AI演联系人, 需先塑造画像)
 const dkey=()=>'twinDir_'+CUR;
 const dirLoad=()=>{try{return localStorage.getItem(dkey())==='B'?'B':'A'}catch(e){return 'A'}};
@@ -606,19 +614,126 @@ function renderCtList(q){
       :`已切换到「${dn(CUR)}」· 旁观者模式：以第三人称分析你和 ${dn(CUR)} 的关系`,'role')});
 }
 function setPlaceholder(){
+  if(MODE==='eq'){updateEqUI();return}
   $('#chat-in').placeholder=MODE==='dialog'
     ?(ISG()?'在群里发条消息，看谁冒泡…（Enter 发送）'
       :DIR==='B'?'以万凯本人的身份说句话…（Enter 发送）':`以「${dn(CUR)}」的身份给分身发条消息…（Enter 发送）`)
     :'以旁观者身份提问，例如：我和 ta 之间有什么梗或暗号？';
 }
+/* ───── 高情商练习: 三方对话(她→你的原话→高情商版) + 诊断 ───── */
+function pushEq(c,msg){eqSess(c).push(msg);eqSave(c);
+  if(MODE==='eq'&&EQCUR===c){appendDom(msg);$('#msgs').scrollTop=1e9}}
+function setEqTurn(t){EQTURN=t;updateEqUI()}
+function updateEqUI(){
+  const btn=$('#eqTurnBtn'),inp=$('#chat-in');
+  btn.style.display=MODE==='eq'?'':'none';
+  if(MODE!=='eq')return;
+  btn.textContent=EQTURN==='girl'?'🎤 她说':'💬 我来答';
+  btn.style.background=EQTURN==='girl'?'#efe7fb':'';
+  inp.placeholder=EQTURN==='girl'
+    ?`替「${EQCUR||'她'}」说一句话…（Enter 发送；点左侧按钮可切换说话人）`
+    :'你本来想回什么？发送后高情商版分身同时给出它的回复（Enter）';
+}
+function renderEqList(q,qadd){
+  const list=EQCONTACTS.filter(c=>!q||c.toLowerCase().includes(q.toLowerCase()));
+  $('#sidehd').textContent='发展对象（高情商练习）';
+  $('#ctlist').innerHTML=`<div class="it" id="eqAdd" style="color:#b07a10;font-weight:600">➕ 添加发展对象…</div>`
+    +(qadd?`<div style="padding:4px 6px"><input id="eqNew" placeholder="称呼/备注名, 回车确认" maxlength="20"
+      style="width:100%;font-size:12px;padding:6px 9px"></div>`:'')
+    +(list.map(c=>`<div class="it ${c===EQCUR?'on':''}" data-n="${esc(c)}">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">💚 ${esc(c)}</span>
+      <span class="n" data-del="${esc(c)}" title="删除该对象及练习记录" style="cursor:pointer;color:#d98a8a">×</span></div>`).join('')
+    ||(qadd?'':'<div class="mut" style="padding:10px">还没有发展对象<br>点击上方「➕ 添加」开始练习：<br>她说 → 你答 → 看高情商版怎么说</div>'));
+  $$('#ctlist .it').forEach(el=>el.onclick=async()=>{
+    if(el.id==='eqAdd'){renderEqList($('#ctq').value.trim(),true);$('#eqNew')&&$('#eqNew').focus();return}
+    if(el.dataset.del){ // 删除对象(×)
+      const n=el.dataset.del;
+      if(!confirm(`删除发展对象「${n}」？后端练习记忆会一并清空`))return;
+      EQCONTACTS=EQCONTACTS.filter(x=>x!==n);eqSaveCts();
+      try{await post('/api/agent/eq/clear',{contact:n})}catch(e){}
+      delete EQSESS[n];try{localStorage.removeItem('eqSess_'+n)}catch(e){}
+      if(EQCUR===n){EQCUR='';try{localStorage.setItem('eqCur','')}catch(e){}renderMsgs()}
+      renderEqList($('#ctq').value.trim());return;
+    }
+    EQCUR=el.dataset.n;try{localStorage.setItem('eqCur',EQCUR)}catch(e){}
+    renderEqList($('#ctq').value.trim());renderMsgs();
+    sysTip(`💚 已切换到「${EQCUR}」· 她说一句，你回一句，高情商版同步给出它的版本`,'role')});
+  const ni=$('#eqNew');
+  if(ni){
+    const commit=()=>{
+      const n=ni.value.trim();
+      if(!n){renderEqList($('#ctq').value.trim());return}
+      if(!EQCONTACTS.includes(n))EQCONTACTS.unshift(n.slice(0,20));
+      eqSaveCts();EQCUR=n.slice(0,20);try{localStorage.setItem('eqCur',EQCUR)}catch(e){}
+      renderEqList($('#ctq').value.trim());renderMsgs();
+      sysTip(`💚 高情商练习已就位 · 对象「${EQCUR}」\n流程: 她说一句 → 你回一句 → 高情商版分身同时给出它的回复；点它气泡下的「🔍 诊断这轮」看差异`);
+    };
+    ni.onkeydown=e=>{if(e.key==='Enter')commit();if(e.key==='Escape')renderEqList($('#ctq').value.trim())};
+    ni.onblur=()=>{setTimeout(()=>{if(document.getElementById('eqNew')&&$('#eqNew').value.trim()&&document.activeElement!==$('#eqNew'))commit()},150)};
+  }
+}
+async function renderEqDom(){
+  if(EQCUR&&!EQSESS[EQCUR]){
+    try{const d=await api('/api/agent/eq/chat?contact='+encodeURIComponent(EQCUR));
+      EQSESS[EQCUR]=(d.chat||[]).map(m=>({who:m.r==='eq'?'eqai':'eq'+m.r,text:m.c,strat:m.strat||''}));
+    }catch(e){EQSESS[EQCUR]=[]}
+  }
+  const box=$('#msgs');box.innerHTML='';
+  const s=eqSess(EQCUR);
+  // 自动推断轮次: 最后一条是"她说的" → 该你答; 否则该她说
+  EQTURN=s.length&&s[s.length-1].who==='eqgirl'?'mine':'girl';
+  s.forEach(appendDom);
+  updateEqUI();
+  box.scrollTop=1e9;
+}
+async function sendEq(text){
+  if(!EQCUR){toast('先在左侧「➕ 添加发展对象」');return}
+  const sC=EQCUR,s=eqSess(sC);
+  if(EQTURN==='girl'){pushEq(sC,{who:'eqgirl',text});setEqTurn('mine');return}
+  let girl='';for(let i=s.length-1;i>=0;i--){if(s[i].who==='eqgirl'){girl=s[i].text;break}}
+  if(!girl){setEqTurn('girl');updateEqUI();toast('她还没说话 —— 先点「🎤 她说」替她发一句');return}
+  pushEq(sC,{who:'eqme',text});
+  const tip=document.createElement('div');tip.className='typing';
+  tip.innerHTML='<span style="display:inline-block;animation:simpulse 1.2s infinite">⏳</span> 高情商分身思考中…';
+  $('#msgs').appendChild(tip);$('#msgs').scrollTop=1e9;
+  try{
+    const r=await post('/api/agent/eq/reply',{contact:sC,girl:girl,mine:text});
+    tip.remove();
+    pushEq(sC,{who:'eqai',text:r.reply||'(无回复)',strat:r.strategy||'',girl:girl,mine:text});
+    if(EQCUR!==sC)toast(`💚 「${sC}」的高情商回复已存入原会话`);
+    EQTURN='girl';updateEqUI();
+  }catch(e){tip.remove();throw e}
+}
+async function diagnoseEq(btn,m){
+  btn.disabled=true;btn.textContent='诊断中…';
+  try{
+    const r=await post('/api/agent/eq/diagnose',{contact:EQCUR,girl:m.girl||'',mine:m.mine||'',eq:m.text});
+    let h=`<div class="eqdiag"><b>🔍 诊断 · 你的原话</b><br>${esc(r.comment||'—')}`;
+    if((r.issues||[]).length)h+='<div style="margin-top:6px">'+r.issues.map(x=>`<div class="iss">✗ ${esc(x)}</div>`).join('')+'</div>';
+    h+=`<div style="margin-top:6px"><b>高情商版好在哪：</b>${esc(r.why_better||'—')}</div>
+        <div style="margin-top:6px"><b>💡 一句可迁移的原则：</b>${esc(r.principle||'—')}</div></div>`;
+    btn.closest('.row').insertAdjacentHTML('afterend',h);btn.remove();
+    $('#msgs').scrollTop=1e9;
+  }catch(e){btn.disabled=false;btn.textContent='🔍 诊断这轮';toast('⚠ '+e.message)}
+}
+$('#eqTurnBtn').onclick=()=>setEqTurn(EQTURN==='girl'?'mine':'girl');
 function setMode(m){
   const changed=MODE!==m;MODE=m;
   $$('.modebar .mb').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
   $('#modehint').textContent=m==='dialog'
     ?'模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）—— 各联系人的模拟对话独立保存'
+    :m==='eq'
+    ?'高情商练习：左侧选「发展对象」→ 她说一句 → 你回一句 → 高情商版分身同步给出它的版本，可点「🔍 诊断」看差异'
     :'旁观者模式：你以第三者身份提问，AI 分析你和 ta 的关系并引用原话证据 —— 与模拟对话互相独立';
-  setPlaceholder();
-  if(changed)renderMsgs();      // 切模式 = 切到另一个独立会话, 上下文绝不互带
+  if(m==='eq'){
+    try{EQCUR=localStorage.getItem('eqCur')||''}catch(e){}
+    renderEqList($('#ctq').value.trim());renderMsgs();
+  }else{
+    $('#sidehd').textContent='选择联系人（按消息量排序）';
+    renderCtList($('#ctq').value.trim());
+    if(changed)renderMsgs();      // 切模式 = 切到另一个独立会话, 上下文绝不互带
+  }
+  setPlaceholder();updateRoleBanner();
 }
 $$('.modebar .mb').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 $('#mbRaw').onclick=()=>{if(CUR)showRecent(dn(CUR));else sysTip('先在左侧选择一个联系人')};
@@ -632,7 +747,16 @@ $('#mbMembers').onclick=async()=>{
     toast('👥 「'+dn(CUR)+'」成员性格分析完成');
   }catch(e){sysTip('⚠ 成员分析失败: '+e.message)}
 };
-$('#clearChat').onclick=()=>{SESSIONS[skey()]=[];ssave();renderMsgs();
+$('#clearChat').onclick=async()=>{
+  if(MODE==='eq'){
+    if(!EQCUR){toast('先选择一位发展对象');return}
+    if(!confirm(`清空与「${EQCUR}」的高情商练习记忆？`))return;
+    try{await post('/api/agent/eq/clear',{contact:EQCUR})}catch(e){}
+    EQSESS[EQCUR]=[];eqSave(EQCUR);renderMsgs();
+    sysTip(`已清空「${EQCUR}」的高情商练习记忆 —— 重新开始`);
+    return;
+  }
+  SESSIONS[skey()]=[];ssave();renderMsgs();
   sysTip(`已清空当前对话记忆（${MODE==='dialog'?'模拟':'旁观者'} · ${CUR}）—— 后续不再携带之前的上下文，本地记录不受影响`)};
 function appendDom(m){
   const box=$('#msgs');
@@ -674,6 +798,33 @@ function appendDom(m){
     b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
   }
+  else if(m.who==='eqgirl'){ // 高情商: 你扮演的发展对象(左, 虚线泡)
+    av.textContent=(EQCUR||'她').slice(0,1);
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;max-width:560px';
+    wrap.innerHTML=`<div class="who">她 · ${esc(EQCUR||'发展对象')}（你扮演）</div>`;
+    b.innerHTML=wxface(esc(m.text));b.classList.add('eqgirl');wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
+  else if(m.who==='eqme'){ // 高情商: 你本来想回的原话(右绿)
+    row.className='row me';
+    av.textContent='我';
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
+    wrap.innerHTML=`<div class="who">你的原话（发送前）</div>`;
+    b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
+  else if(m.who==='eqai'){ // 高情商: AI 高情商版回复(右, 金泡+诊断按钮)
+    row.className='row me eqrow';
+    av.textContent='EQ';
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
+    wrap.innerHTML=`<div class="who">💚 高情商版 · AI${m.strat?` <span style="color:#b07a10">— ${esc(m.strat)}</span>`:''}</div>`;
+    b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));b.classList.add('eqgold');wrap.appendChild(b);
+    const tools=document.createElement('div');tools.style.cssText='margin-top:5px;text-align:right';
+    const dbtn=document.createElement('button');dbtn.className='chip';dbtn.textContent='🔍 诊断这轮';
+    dbtn.onclick=()=>diagnoseEq(dbtn,m);
+    tools.appendChild(dbtn);wrap.appendChild(tools);
+    row.appendChild(av);row.appendChild(wrap);
+  }
   else if(m.who==='me'){ // 本人输入(旁观者提问/群聊/身份互换) —— 右侧绿泡, 标注真人身份
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
     wrap.innerHTML=`<div class="who">万凯本人</div>`;
@@ -693,6 +844,11 @@ function updateRoleBanner(){
   if(PAGE()!=='twin'){el.style.display='none';return}
   el.style.display='';
   if(MODE==='ask'){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（提问中） · 对面：旁观者 AI（引用真实记忆回答）'}
+  else if(MODE==='eq'){
+    el.className='';
+    el.innerHTML=EQCUR
+      ?`💚 高情商练习 · 对象：<b>${esc(EQCUR)}</b> —— 她(左) → 你的原话(右绿) → 高情商版分身(右金) · 用「🎤 她说/我答」切换本轮谁开口`
+      :'💚 高情商练习 —— 先在左侧添加一位发展对象开始'}
   else if(ISG()){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（在群里发言） · 群成员由 AI 按真实性格扮演'}
   else if(DIR==='B'){el.className='rb-b';
     el.innerHTML=`🖥 屏幕前正在输入：<b>万凯本人</b> · 对面回复：AI 分身（扮演「${esc(dn(CUR))}」，每条带 AI 标识）`}
@@ -724,12 +880,19 @@ $('#mbSwap').onclick=async()=>{
   sysTip(`已切换到身份互换模式：屏幕前的你是万凯本人，对面由 AI 分身扮演「${dn(CUR)}」与他对话（每条回复带 AI 标识，截图一目了然；再点一次「🔄 身份互换」可换回）`,'role');
   updateRoleBanner();setPlaceholder();renderMsgs();
 };
-function renderMsgs(){$('#msgs').innerHTML='';curSess().forEach(appendDom);
+function renderMsgs(){
+  if(MODE==='eq'){renderEqDom();return}
+  $('#msgs').innerHTML='';curSess().forEach(appendDom);
   const mb=$('#mbMembers');if(mb)mb.style.display=ISG()&&MODE==='dialog'?'':'none';
   updateRoleBanner()}
 function pushMsg(who,text,anlHTML,extra){const m=Object.assign({who,text,anl:anlHTML||null},extra||{});curSess().push(m);appendDom(m);ssave()}
 const _ROLE_TIP=/^已切换到|^已切换回|^已换回|^正在为「/;   // 身份类提示: 会话内只保留最新一条
 function sysTip(t,tag){const m={who:'sys',text:t};
+  if(MODE==='eq'&&EQCUR){ // 高情商模式: 提示写入当前对象的高情商会话, 不碰主功能会话
+    const s=eqSess(EQCUR);if(tag){for(let i=s.length-1;i>=0;i--){if(s[i].who==='sys'&&s[i].tip===tag)s.splice(i,1)}}
+    s.push(m);eqSave(EQCUR);
+    if($('#msgs')){appendDom(m);$('#msgs').scrollTop=1e9}
+    return}
   if(tag){m.tip=tag;const s=curSess();
     for(let i=s.length-1;i>=0;i--){if(s[i].who==='sys'&&(s[i].tip===tag||(s[i].text&&_ROLE_TIP.test(s[i].text))))s.splice(i,1)}}
   curSess().push(m);appendDom(m);ssave()}
@@ -809,6 +972,8 @@ async function send(){
   if(!text||SENDING)return;
   if(typeof SWAPPING!=='undefined'&&SWAPPING){toast('⚠ 正在为对方塑造分身/切换身份，等几十秒后再发');return}
   SENDING=true;$('#sendbtn').disabled=true;inp.value='';
+  // 高情商练习模式走独立流程, 与主分身对话完全隔离
+  if(MODE==='eq'){try{await sendEq(text)}catch(e){toast('⚠ '+(e.message||e))}SENDING=false;$('#sendbtn').disabled=false;inp.focus();return}
   const isGroupDialog=ISG()&&MODE==='dialog';
   // 发送时快照: AI 回复可能耗时很久, 期间用户可能切换联系人/模式/方向 ——
   // 请求与落库全程以快照为准, 回复永远归位到发送时的会话, 不会串到后来切到的人身上
@@ -1821,6 +1986,13 @@ background:linear-gradient(120deg,#0d4032 0%,#0e6b4c 55%,#119a68 100%)}
 .row.me .av{background:var(--brand)}
 .bub{background:#fff;border-radius:4px 12px 12px 12px;padding:9px 13px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .row.me .bub{background:#95ec69;border-radius:12px 4px 12px 12px}
+/* 高情商模式: 三方气泡 */
+.row .bub.eqgold{background:linear-gradient(135deg,#fff7e6,#ffe9c2);border:1px solid #f5d9a8}
+.row .bub.eqgirl{background:#fff;border:1px dashed #c9ced8}
+.row.eqrow .av{background:linear-gradient(135deg,#f7b733,#e08a00)!important;font-size:12px}
+.eqdiag{background:#fdf8ef;border-left:3px solid #e0a53a;border-radius:8px;padding:10px 13px;font-size:12.5px;margin-top:8px;max-width:560px;line-height:1.7;color:#5a4a2f}
+.eqdiag b{color:#b07a10}
+.eqdiag .iss{background:#fff;border-radius:7px;padding:6px 10px;margin:5px 0}
 .anl{background:#f6fafd;border-left:3px solid #3b82f6;border-radius:8px;padding:10px 13px;font-size:12.5px;margin-top:8px;max-width:560px;line-height:1.7}
 .anl b{color:#2563eb}
 .anl .ev{background:#fff;border-radius:7px;padding:7px 10px;margin:6px 0;font-size:12px;color:#4a5568}

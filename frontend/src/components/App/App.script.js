@@ -881,6 +881,8 @@ export default {
           trigger: 'axis',
           axisPointer: { type: 'line' },
           appendTo: document.body,
+          // 弹窗遮罩 z-index=1000,tooltip 挂 body 必须显式抬高否则被遮住"悬停无反应"
+          zIndex: 100000,
           formatter: (params) => {
             const p = params && params[0]
             if (!p) return ''
