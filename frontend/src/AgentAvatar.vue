@@ -642,7 +642,7 @@ function appendDom(m){
     b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
   }else if(m.who==='aime'){ // 模拟模式: AI 数字分身扮演万凯
-    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:70%';
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
     wrap.innerHTML=`<div class="who">AI 数字分身 · 万凯${m.human?' <span class="tag g" style="font-size:10px">🔧 本人确认</span>':''}</div>`;
     b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
