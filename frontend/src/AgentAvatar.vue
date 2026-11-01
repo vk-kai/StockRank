@@ -971,6 +971,7 @@ async function drawNet(){
       <div id="netchart" style="width:100%;height:640px"></div>`;
     const max=Math.max(...g.nodes.map(n=>n.value),1);
     const cats=['家人','同事/工作','朋友/其他','其他'];
+    const CMAP={'家人':'#22a06b','同事/工作':'#3b82f6','朋友/其他':'#8b5cf6','其他':'#e08a00'};
     const nodes=g.nodes.filter(n=>!strong0||n.value>=max*.02);
     const names=new Set(nodes.map(n=>n.name));
     // 万凯与每个人的连线(绿色, 粗细=消息量) + 联系人之间的共同群边
@@ -991,6 +992,7 @@ async function drawNet(){
         :'<b>'+esc(p.name)+'</b><br>消息 '+p.value+' 条'},
       series:[{
         type:'graph',layout:'force',roam:true,scaleLimit:{min:.5,max:4},
+        categories:cats.map(c=>({name:c})),
         force:{repulsion:200,edgeLength:[35,95],gravity:.12},
         emphasis:{focus:'adjacency'},
         label:{show:true,fontSize:10.5,color:'#334155',formatter:p=>p.name.length>7?p.name.slice(0,7)+'…':p.name},
@@ -1001,6 +1003,7 @@ async function drawNet(){
             label:{color:'#fff',fontWeight:700,fontSize:13}}]
           .concat(nodes.map(n=>({name:n.name,value:n.value,
             symbolSize:7+24*Math.sqrt(n.value/max),
+            itemStyle:{color:CMAP[n.circle]||'#e08a00',borderColor:'#fff',borderWidth:1.5},
             category:Math.max(0,cats.indexOf(n.circle))}))),
         links:links
       }]

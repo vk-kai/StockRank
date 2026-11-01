@@ -39,6 +39,7 @@ GIT_PATHS = [
     'backend/scripts',
     'backend/app.py',
     'frontend/src/AgentAvatar.vue',
+    'frontend/dist',
     'frontend/src/router.js',
     'frontend/src/App.vue',
     'frontend/src/components/App/App.script.js',
@@ -119,6 +120,16 @@ def main():
     run([sys.executable, ADAPT])
     print('生成前端 AgentAvatar.vue…')
     run([sys.executable, BUILD_VUE, local])
+
+    # 云端跑的是 frontend/dist 构建产物(仓库跟踪 dist), 改了前端就必须重新构建
+    print('npm run build (frontend)…')
+    npm = shutil.which('npm') or shutil.which('npm.cmd')
+    if npm:
+        b = run([npm, 'run', 'build'], cwd=os.path.join(REPO, 'frontend'))
+        if b.returncode != 0:
+            print('⚠ 前端构建失败, 云端 dist 仍是旧版; 可手动在 frontend/ 下 npm run build')
+    else:
+        print('⚠ 未找到 npm, 跳过前端构建; 云端 dist 仍是旧版')
 
     if a.no_commit:
         print('no-commit: 到此为止, 未提交')
