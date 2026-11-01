@@ -123,11 +123,18 @@
           v-if="marginTotal && marginTotal.latest_total != null"
           class="market-margin-chip"
           @click="openMarginTotalModal"
-          title="点击查看全市场融资余额趋势(口径:融资余额合计)"
+          title="点击查看全市场融资余额与净买入趋势(口径:融资余额合计)"
         >
           融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
           <span :class="getValueTrendClass(marginTotal.change_pct)">
             {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
+          </span>
+          <span
+            v-if="marginTotal.latest_net_buy != null"
+            class="margin-net-buy-chip"
+            :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
+          >
+            净买{{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }}亿
           </span>
         </span>
       </div>
@@ -433,9 +440,17 @@
         <div class="modal-body">
           <div v-if="marginTotal && marginTotal.latest_date" class="margin-total-meta">
             <span>数据截止 {{ formatMarginDate(marginTotal.latest_date) }}</span>
+            <span
+              v-if="marginTotal.latest_net_buy != null"
+              class="margin-net-buy-chip"
+              :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
+            >
+              当日融资净买入 {{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }} 亿
+            </span>
             <span v-if="marginTotal.updated_at" class="margin-total-meta-sub">更新于 {{ marginTotal.updated_at }}</span>
           </div>
           <div ref="marginTotalChartEl" style="width:100%;height:360px;"></div>
+          <div class="margin-total-legend-hint">折线=融资余额(左轴) · 柱=当日融资净买入(右轴,红=净流入/绿=净流出)</div>
         </div>
       </div>
     </div>

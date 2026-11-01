@@ -29,6 +29,7 @@ error_logger = get_logger('error')
 
 STOCK_MARGIN_CACHE_FILE = os.path.join(REALTIME_DIR, 'stock_margin.json')
 MARKET_MARGIN_TOTAL_FILE = os.path.join(REALTIME_DIR, 'market_margin_total.json')  # 全市场融资余额合计(上交所官方,预计算缓存)
+MARKET_MARGIN_TOTAL_THS_FILE = os.path.join(REALTIME_DIR, 'market_margin_total_ths.json')  # 同花顺融资融券汇总(主源,含净买入)
 BACKFILL_CALENDAR_DAYS = 90      # 首次回填的自然日窗口（≈60 交易日，正好喂满"60日"选项）
 KEEP_TRADING_DAYS = 90           # 每只股票保留的最近交易日条数
 MARGIN_MIN_STOCKS = 4000         # 单日融资融券标的数下限(低于此值视为单市失败,需重采)
@@ -405,6 +406,30 @@ def get_all_latest_margin_net_inflow():
     return {'latest_date': latest_date, 'map': result}
 
 
+def get_all_latest_margin_balance():
+    """全市场每只融资融券标的的「最新一日融资余额」(大盘云图"按融资余额"布局用)。
+
+    只读现有 stock_margin.json 缓存,不发起任何抓取(缓存由每日 09:05 线程维护)。
+    返回 {'latest_date': 'YYYYMMDD', 'map': {裸6位code: 融资余额(元)}}。
+    至少 1 条记录即计入(无需 Δ,与净买入接口不同)。"""
+    data = _ensure_mem()
+    stocks = data.get('stocks', {})
+    latest_date = data.get('latest_date', '')
+    result = {}
+    for code, rec in stocks.items():
+        raw = rec.get('s') if isinstance(rec, dict) else None
+        if not raw:
+            continue
+        try:
+            cur_b = raw[-1][1]
+        except (IndexError, TypeError):
+            continue
+        if cur_b is None:
+            continue
+        result[code] = cur_b
+    return {'latest_date': latest_date, 'map': result}
+
+
 MAX_SMOOTH_FILL_STREAK = 3   # 连续平滑上限:超过后采信真实水平,避免把后续每天钉死在前值画成假横线
 
 
@@ -502,10 +527,93 @@ def refresh_market_margin_total():
         return False
 
 
+def _load_ths_total():
+    """读同花顺汇总缓存;不存在/落后超 4 自然日/字段缺失 → None(走回退)。"""
+    if not os.path.exists(MARKET_MARGIN_TOTAL_THS_FILE):
+        return None
+    try:
+        with open(MARKET_MARGIN_TOTAL_THS_FILE, 'r', encoding='utf-8') as f:
+            cached = json.load(f)
+    except Exception:
+        return None
+    if not cached or not cached.get('latest_date') or not cached.get('history'):
+        return None
+    try:
+        if (datetime.now() - datetime.strptime(cached['latest_date'], '%Y%m%d')) > timedelta(days=4):
+            return None
+    except ValueError:
+        return None
+    return cached
+
+
+def refresh_market_margin_total_ths():
+    """同花顺融资融券市场汇总(主源):融资余额合计+融资净买入+两融余额,4页≈40交易日。
+
+    净买入口径:Δ融资余额(当日合计−上一交易日合计),与逐股口径一致。
+    半截数据防抖:最新一日融资余额较前日跌幅>15%(交易所当日数据未出全的中间态,
+    如 2026-10-30 同花顺提前展示沪市半截 11989 亿 vs 前日 23567 亿)→丢弃最新日;
+    只防尾部,历史中间日不判(真实单日暴跌<15%极罕见,不误杀)。
+    """
+    try:
+        from data.data_processor.ths_margin import fetch_ths_margin_summary
+        rows = fetch_ths_margin_summary(pages=4)
+        if len(rows) < 3:
+            error_logger.error(f"同花顺融资汇总数据不足({len(rows)}条),保留旧缓存")
+            return False
+        while len(rows) >= 2 and rows[-1].get('rzye') and rows[-2].get('rzye') \
+                and rows[-1]['rzye'] < rows[-2]['rzye'] * 0.85:
+            dropped = rows.pop()
+            error_logger.warning(
+                f"丢弃疑似未出全的半截数据: {dropped['date']} 融资余额{dropped['rzye']}亿"
+                f"(前日{rows[-1]['rzye']}亿)")
+        history = []
+        prev = None
+        for r in rows:
+            rzye = r.get('rzye')
+            # 同花顺单位"亿元" → 统一转"元"(与旧接口契约一致:前端除以1e8展示亿)
+            total_yuan = round(rzye * 1e8, 0) if rzye is not None else None
+            net_buy = round((rzye - prev) * 1e8, 0) if (prev is not None and rzye is not None) else None
+            history.append({'date': r['date'],
+                            'total': total_yuan,
+                            'net_buy': net_buy,
+                            'buy': round(r['buy'] * 1e8, 0) if r.get('buy') is not None else None,
+                            'rzrq': round(r['rzrq'] * 1e8, 0) if r.get('rzrq') is not None else None})
+            prev = rzye
+        valid = [x for x in history if x['total']]
+        if not valid:
+            error_logger.error("同花顺融资汇总无有效数据,保留旧缓存")
+            return False
+        latest = valid[-1]
+        prev_item = valid[-2] if len(valid) >= 2 else None
+        change_pct = None
+        if prev_item and prev_item['total']:
+            change_pct = round((latest['total'] / prev_item['total'] - 1) * 100, 2)
+        payload = {'latest_date': latest['date'], 'latest_total': latest['total'],
+                   'prev_total': prev_item['total'] if prev_item else None,
+                   'change_pct': change_pct,
+                   'latest_net_buy': latest['net_buy'],
+                   'latest_buy': latest.get('buy'), 'latest_rzrq': latest.get('rzrq'),
+                   'history': history, 'source': 'ths_rzrq'}
+        tmp = MARKET_MARGIN_TOTAL_THS_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp, MARKET_MARGIN_TOTAL_THS_FILE)
+        system_logger.info(
+            f"同花顺融资汇总已缓存: {latest['date']} 融资余额{latest['total'] / 1e8:.1f}亿 "
+            f"净买入{(latest['net_buy'] or 0) / 1e8:+.1f}亿 两融{(latest.get('rzrq') or 0) / 1e8:.1f}亿")
+        return True
+    except Exception as e:
+        error_logger.error(f"刷新同花顺融资汇总失败: {e}")
+        return False
+
+
 def get_market_margin_total():
-    """读全市场融资余额合计缓存(预计算,快)。
-    缓存不存在或落后于个股缓存(stock_margin.json 已有更新的交易日)时重算,
-    避免采集线程异常后合计缓存永远停留旧值。"""
+    """读全市场融资余额合计。主源:同花顺市场汇总(官方口径,含净买入);
+    同花顺不可用时回退旧路径(聚合个股融资余额 b)。"""
+    ths = _load_ths_total()
+    if ths:
+        return ths
+    # 回退:旧自算路径(个股聚合)
     if os.path.exists(MARKET_MARGIN_TOTAL_FILE):
         try:
             with open(MARKET_MARGIN_TOTAL_FILE, 'r', encoding='utf-8') as f:
@@ -551,7 +659,8 @@ def _ondemand_update_worker():
         system_logger.info("融资融券：弹窗检测到无数据，触发按需更新…")
         update_margin_cache(heartbeat_name='margin_collector')
         try:
-            refresh_market_margin_total()
+            if not refresh_market_margin_total_ths():
+                refresh_market_margin_total()
         except Exception as e:
             error_logger.warning(f"按需刷新全市场融资余额合计失败: {e}")
     except Exception as e:
@@ -597,9 +706,10 @@ def margin_collection_thread():
                     update_margin_cache(heartbeat_name='margin_collector',
                                         repair_window_days=MARGIN_REPAIR_WINDOW_DAYS)
                     _last_margin_run_date = today
-                    # 同步刷新全市场融资余额合计缓存(上交所官方,序列平滑不跳变)
+                    # 同步刷新全市场融资余额合计缓存(主:同花顺汇总;备:个股聚合)
                     try:
-                        refresh_market_margin_total()
+                        if not refresh_market_margin_total_ths():
+                            refresh_market_margin_total()
                     except Exception as e:
                         error_logger.warning(f"全市场融资余额合计刷新失败: {e}")
                 except Exception as e:

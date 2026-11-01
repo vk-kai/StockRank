@@ -20,6 +20,14 @@
           :class="{ active: industryMode }"
           :title="industryMode ? '当前为行业云图（每个色块=一个二级行业），点击切回个股云图' : '切换为行业云图：每个色块=一个二级行业，按行业总市值定大小、涨跌幅上色'"
         >{{ industryMode ? '← 个股云图' : '🏢 行业云图' }}</button>
+        <button
+          v-if="!industryMode"
+          @click="toggleLayoutMode"
+          class="mm-industry-btn mm-layout-btn"
+          :class="{ active: layoutMode === 'margin' }"
+          :disabled="marginBalanceLoading"
+          :title="layoutMode === 'margin' ? '当前按融资余额定色块大小（杠杆资金分布），点击切回按市值' : '切换为按融资余额排列色块：面积=该股融资余额（杠杆资金分布），点击切回按市值'"
+        >{{ marginBalanceLoading ? '加载中…' : '💰 按融资余额' }}</button>
       </div>
       <div class="mm-header-right">
         <!-- 演示模式徽标：未登录访客只看固定历史快照，点击可登录看实时 -->
@@ -123,7 +131,7 @@
           <span class="mm-tooltip-val" :class="tooltip.cls">{{ tooltip.change }}</span>
         </div>
         <div class="mm-tooltip-row">
-          <span class="mm-tooltip-label">市值</span>
+          <span class="mm-tooltip-label">{{ layoutMode === 'margin' ? '融资余额' : '市值' }}</span>
           <span class="mm-tooltip-val">{{ tooltip.marketCap }}</span>
         </div>
         <div class="mm-tooltip-row">
@@ -182,7 +190,7 @@
     </div>
 
     <div class="mm-footer">
-      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积=总市值 · {{ footerColorDesc }}· 仅供投资参考</span>
+      <span class="mm-footer-text">行业分类：东方财富(缓存) · 实时涨跌：新浪财经 · 面积={{ (industryMode || layoutMode === 'cap') ? '总市值' : '融资余额' }}{{ (!industryMode && layoutMode === 'margin' && marginBalanceDate) ? ('(' + marginBalanceDate.slice(4,6) + '-' + marginBalanceDate.slice(6,8) + ')') : '' }} · {{ footerColorDesc }}· 仅供投资参考</span>
       <div class="mm-replay-bar" v-if="replayPoints.length">
         <button
           v-for="p in replayPoints"
@@ -466,7 +474,7 @@
 </template>
 
 <script>
-import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores, getAuthSession, getDemoMarketMap } from './services/apiService'
+import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getMarketMapMarginBalance, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores, getAuthSession, getDemoMarketMap } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
 
@@ -825,6 +833,10 @@ export default {
       cycleEstimate: { total: 0, eta: '20-60' },
       cycleDialog: { visible: false, view: 'confirm', busy: false },
       tooltip: { visible: false, name: '', code: '', change: '', cls: '', marketCap: '', pe: '', x: 0, y: 0, loading: false, summary: null, summaryKey: '', trend: null, trendLoading: false },
+      layoutMode: 'cap',            // 个股云图布局: 'cap'=按市值(默认) | 'margin'=按融资余额
+      marginBalanceMap: null,       // {裸6位code: 融资余额(元)} 懒加载
+      marginBalanceDate: '',
+      marginBalanceLoading: false,
       legendTooltip: { visible: false, text: '', x: 0, y: 0 },
       searchQuery: '',
       matchCount: 0,
@@ -1373,13 +1385,58 @@ export default {
         totalStocks: data.total_stocks || 0,
         cacheTime: data.cache_time || ''
       }
-      this.rebuildTreeFromSource()
+      // "按融资余额"布局生效时,数据刷新后重放该布局(新数据仍是市值 value)
+      if (!this.industryMode && this.layoutMode === 'margin' && this.marginBalanceMap) {
+        this.applyMarginLayout()
+      } else {
+        this.rebuildTreeFromSource()
+      }
     },
     rebuildTreeFromSource() {
       this.tree = Array.isArray(this.sourceTree) ? this.sourceTree : []
       this.totalSectors = this.sourceTotals.totalSectors || 0
       this.totalStocks = this.sourceTotals.totalStocks || 0
       this.cacheTime = this.sourceTotals.cacheTime || ''
+      this.$nextTick(() => { this.buildLayout(); this.render() })
+    },
+    // 个股云图布局切换: 按市值(默认) ↔ 按融资余额(杠杆资金分布)
+    async toggleLayoutMode() {
+      if (this.industryMode || this.marginBalanceLoading) return
+      if (this.layoutMode === 'margin') {
+        this.layoutMode = 'cap'
+        this.rebuildTreeFromSource()
+        return
+      }
+      this.marginBalanceLoading = true
+      try {
+        if (!this.marginBalanceMap) {
+          const res = await getMarketMapMarginBalance()
+          if (res && res.success && res.map) {
+            this.marginBalanceMap = res.map
+            this.marginBalanceDate = res.latest_date || ''
+          } else {
+            alert('融资余额数据暂不可用，请稍后再试')
+            return
+          }
+        }
+        this.layoutMode = 'margin'
+        this.applyMarginLayout()
+      } finally {
+        this.marginBalanceLoading = false
+      }
+    },
+    // 深拷贝 sourceTree,个股 value 换成融资余额(无数据=0 沉底),一/二级行业 value 重算=Σ子级
+    applyMarginLayout() {
+      const map = this.marginBalanceMap || {}
+      const cloneNodes = (nodes) => (nodes || []).map((n) => {
+        if (n.children && n.children.length) {
+          const kids = cloneNodes(n.children)
+          return { ...n, children: kids, value: kids.reduce((s, k) => s + (k.value || 0), 0) }
+        }
+        const code = extractDigits(n.code || '')
+        return { ...n, value: map[code] || 0 }
+      })
+      this.tree = cloneNodes(this.sourceTree)
       this.$nextTick(() => { this.buildLayout(); this.render() })
     },
     async loadPushedStateFromQuery() {
@@ -1584,6 +1641,7 @@ export default {
       this.legendSel = []
       this.legendApplied = []
       this.view = { k: 1, tx: 0, ty: 0 }
+      // 切回个股云图时尊重布局模式: tree 已是融资余额结构(applyMarginLayout 产物),直接重排
       this.buildLayout()
       // 按新布局重算搜索高亮/飞行（保留搜索词）；无搜索词则直接重绘
       if (this.searchQuery) this.onSearchInput()

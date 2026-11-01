@@ -20,7 +20,7 @@ from analysis.anomaly_detector import (
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
-from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow, get_market_margin_total
+from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow, get_all_latest_margin_balance, get_market_margin_total
 from analysis.ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from analysis.industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
 from analysis.intraday_timeline import get_stock_hover_summary
@@ -274,6 +274,18 @@ def market_map_margin():
         return jsonify({'success': True, 'latest_date': res['latest_date'], 'map': res['map']})
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-map-margin]: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@flow_bp.route('/market-map-margin-balance', methods=['GET'])
+def market_map_margin_balance():
+    """大盘云图"按融资余额"布局：全市场每只标的最新一日融资余额。
+    只读融资融券每日缓存，不触发抓取。返回 {success, latest_date, map:{裸6位code: 余额(元)}}。"""
+    try:
+        res = get_all_latest_margin_balance()
+        return jsonify({'success': True, 'latest_date': res['latest_date'], 'map': res['map']})
+    except Exception as e:
+        system_logger.error(f"API错误 [/api/flow/market-map-margin-balance]: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

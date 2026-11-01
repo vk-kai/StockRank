@@ -240,6 +240,20 @@ export async function getMarketMapMargin() {
 }
 
 /**
+ * 大盘云图"按融资余额"布局：全市场每只标的最新一日融资余额。
+ * 返回 { success, latest_date, map:{裸6位code: 余额(元)} }。失败返回 { success:false }。
+ */
+export async function getMarketMapMarginBalance() {
+  try {
+    const response = await apiClient.get('/flow/market-map-margin-balance')
+    return response.data
+  } catch (error) {
+    console.error('获取大盘云图融资余额失败:', error)
+    return { success: false }
+  }
+}
+
+/**
  * 全市场融资余额合计(首页小字 + 弹窗折线图)。
  * 返回 { success, data:{ latest_date, latest_total, prev_total, change_pct, history:[{date,total}] } }。
  */

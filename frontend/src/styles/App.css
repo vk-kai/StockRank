@@ -1277,6 +1277,29 @@ button:active:not(:disabled) {
   font-size: 11px;
 }
 
+/* 融资净买入徽标:红=净流入(加杠杆) 绿=净流出(去杠杆),首页小字与弹窗共用 */
+.margin-net-buy-chip {
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+.margin-net-buy-chip.net-in {
+  color: #ff8a80;
+  background: rgba(224, 82, 82, 0.15);
+}
+.margin-net-buy-chip.net-out {
+  color: #7fd8a0;
+  background: rgba(61, 143, 95, 0.15);
+}
+.margin-total-legend-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(139, 164, 199, 0.6);
+  text-align: center;
+}
+
 .stocks-table {
   overflow-x: auto;
 }

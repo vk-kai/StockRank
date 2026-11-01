@@ -853,6 +853,10 @@ export default {
         this.marginTotalChart = null
       }
     },
+    formatYi(v) {
+      if (v == null || isNaN(v)) return '--'
+      return (v / 1e8).toFixed(v >= 1e10 || v <= -1e10 ? 0 : 1)
+    },
     renderMarginTotalChart() {
       if (!this.$refs.marginTotalChartEl || !this.marginTotal || !this.marginTotal.history) return
       if (!this.marginTotalChart) {
@@ -866,7 +870,7 @@ export default {
       }
       this.marginTotalChart.setOption({
         backgroundColor: 'transparent',
-        grid: { left: 55, right: 20, top: 20, bottom: 30 },
+        grid: { left: 55, right: 55, top: 30, bottom: 30 },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'line' },
@@ -874,24 +878,53 @@ export default {
           formatter: (params) => {
             const p = params[0]
             if (!p) return ''
-            const orig = history[p.dataIndex] ? String(history[p.dataIndex].date) : ''
-            const full = orig.length === 8 ? orig.slice(0,4)+'-'+orig.slice(4,6)+'-'+orig.slice(6,8) : (p.axisValue || '')
-            const yi = p.value == null ? '--' : (p.value / 1e8).toFixed(2)
-            return `${full}<br/>融资余额: <b>${yi}</b> 亿`
+            const idx = p.dataIndex
+            const item = history[idx] || {}
+            const orig = String(item.date || '')
+            const full = orig.length === 8 ? orig.slice(0, 4) + '-' + orig.slice(4, 6) + '-' + orig.slice(6, 8) : (p.axisValue || '')
+            const totalYi = item.total == null ? '--' : (item.total / 1e8).toFixed(2)
+            const nb = item.net_buy
+            const nbYi = nb == null ? '--' : ((nb >= 0 ? '+' : '') + (nb / 1e8).toFixed(1))
+            const nbColor = nb == null ? '#ccc' : (nb >= 0 ? '#e05252' : '#3d8f5f')
+            return `${full}<br/>融资余额: <b>${totalYi}</b> 亿<br/>当日净买入: <b style="color:${nbColor}">${nbYi}</b> 亿`
           }
         },
-        xAxis: { type: 'category', data: history.map(h => fmtDate(h.date)), axisLabel: { color: '#9aa3b2' } },
-        yAxis: {
-          type: 'value', scale: true,
-          axisLabel: { color: '#9aa3b2', formatter: (v) => toYi(v).toFixed(0) + '亿' },
-          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        legend: {
+          data: ['融资余额', '当日净买入'],
+          textStyle: { color: '#9aa3b2', fontSize: 11 },
+          top: 0
         },
-        series: [{
-          type: 'line', smooth: true, symbol: 'none',
-          data: history.map(h => h.total),
-          lineStyle: { color: '#4f9dff', width: 2 },
-          areaStyle: { color: 'rgba(79,157,255,0.12)' }
-        }]
+        xAxis: { type: 'category', data: history.map(h => fmtDate(h.date)), axisLabel: { color: '#9aa3b2' } },
+        yAxis: [
+          {
+            type: 'value', scale: true, name: '余额',
+            axisLabel: { color: '#9aa3b2', formatter: (v) => toYi(v).toFixed(0) + '亿' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          {
+            type: 'value', scale: true, name: '净买入',
+            splitLine: { show: false },
+            axisLabel: { color: '#9aa3b2', formatter: (v) => toYi(v).toFixed(0) + '亿' }
+          }
+        ],
+        series: [
+          {
+            name: '融资余额',
+            type: 'line', smooth: true, symbol: 'none', yAxisIndex: 0, z: 2,
+            data: history.map(h => h.total),
+            lineStyle: { color: '#4f9dff', width: 2 },
+            areaStyle: { color: 'rgba(79,157,255,0.10)' }
+          },
+          {
+            name: '当日净买入',
+            type: 'bar', yAxisIndex: 1, z: 1, barMaxWidth: 8,
+            data: history.map(h => h.net_buy),
+            itemStyle: {
+              // 红柱=净流入(加杠杆),绿柱=净流出(去杠杆)
+              color: (p) => (p.value >= 0 ? 'rgba(224,82,82,0.55)' : 'rgba(61,143,95,0.55)')
+            }
+          }
+        ]
       })
     },
 
