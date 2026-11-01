@@ -309,6 +309,14 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
             parts.append(f"【近期公开信息(网络检索自 Bing, 截取摘要)】\n{web}")
         else:
             parts.append("【近期公开信息】(检索不可用, 请基于你的知识回答并在回答中注明无法获取实时信息)")
+        # 日程大事: 本人手动记录的每日事项, 是"他现在在干什么"最直接的依据
+        try:
+            from agent_core.analysis import daily_log as _dlog
+            dd = _dlog.digest()
+            if dd:
+                parts.append(f"【指尖时光日程记录(本人手动记录的每日大事, 按月聚合)】\n{dd}")
+        except Exception:
+            pass
     try:
         from agent_core.simulation.engine import sim_note_for
         sim = sim_note_for(contact_hint or '', limit=4)

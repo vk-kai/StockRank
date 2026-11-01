@@ -552,13 +552,19 @@ const dirLoad=()=>{try{return localStorage.getItem(dkey())==='B'?'B':'A'}catch(e
 const dirSave=()=>{try{localStorage.setItem(dkey(),DIR)}catch(e){}};
 const dn=n=>String(n).replace(/^陌生·/,'');   // 陌生访客显示名
 let SESSIONS={};   // key=联系人|模式 → [{who,text,anl}] —— localStorage 持久化, F5/重开浏览器不丢
-const skey=()=>CUR+'|'+MODE+((MODE==='dialog'&&DIR==='B')?'|B':'');
-const skeyLS=()=>'twin_'+skey();
-const curSess=()=>{if(!SESSIONS[skey()]){
-  try{SESSIONS[skey()]=JSON.parse(localStorage.getItem(skeyLS())||'[]')}
-  catch(e){SESSIONS[skey()]=[]}
-  }return SESSIONS[skey()]};
-const ssave=()=>{try{localStorage.setItem(skeyLS(),JSON.stringify(curSess().slice(-200)))}catch(e){}};  // 每会话最多留 200 条防膨胀
+const skeyOf=(c,m,d)=>c+'|'+m+((m==='dialog'&&d==='B')?'|B':'');
+const sessFor=(c,m,d)=>{const k=skeyOf(c,m,d);if(!SESSIONS[k]){
+  try{SESSIONS[k]=JSON.parse(localStorage.getItem('twin_'+k)||'[]')}
+  catch(e){SESSIONS[k]=[]}
+  }return SESSIONS[k]};
+const skey=()=>skeyOf(CUR,MODE,DIR);
+const curSess=()=>sessFor(CUR,MODE,DIR);
+const ssaveFor=(c,m,d)=>{try{localStorage.setItem('twin_'+skeyOf(c,m,d),JSON.stringify(sessFor(c,m,d).slice(-200)))}catch(e){}};  // 每会话最多留 200 条防膨胀
+const ssave=()=>ssaveFor(CUR,MODE,DIR);
+/* 向指定会话写入消息(不经 UI): AI 回复期间用户切走联系人时, 回复仍归位到原会话 */
+function pushTo(c,m,d,who,text,anlHTML,extra){
+  const msg=Object.assign({who,text,anl:anlHTML||null},extra||{});
+  sessFor(c,m,d).push(msg);ssaveFor(c,m,d);}
 const ISG=()=>{const c=CONTACTS.find(x=>x['姓名']===CUR);return !!(c&&c['类别']==='群聊')};
 async function loadTwin(){
   if(!CONTACTS.length){
@@ -597,7 +603,7 @@ function renderCtList(q){
         :DIR==='B'
         ?`已切换到「${dn(CUR)}」· 身份互换：你是万凯本人，对面是 ta 的 AI 分身`
         :`已切换到「${dn(CUR)}」· 模拟模式：你在输入框扮演 ${dn(CUR)}，分身用万凯的口吻回复`)
-      :`已切换到「${dn(CUR)}」· 旁观者模式：以第三人称分析你和 ${dn(CUR)} 的关系`)});
+      :`已切换到「${dn(CUR)}」· 旁观者模式：以第三人称分析你和 ${dn(CUR)} 的关系`,'role')});
 }
 function setPlaceholder(){
   $('#chat-in').placeholder=MODE==='dialog'
@@ -676,6 +682,7 @@ function appendDom(m){
   }
   else{b.innerHTML=wxface(esc(m.text));row.appendChild(av);row.appendChild(b)}
   box.appendChild(row);box.scrollTop=1e9;
+  if(PAGE()==='twin')updateRoleBanner();  // 任何消息落 DOM 后都同步一次身份横幅(防时序遗漏)
 }
 function updateRoleBanner(){
   const el=$('#roleBanner'),sw=$('#mbSwap');
@@ -693,29 +700,39 @@ function updateRoleBanner(){
     el.innerHTML=`🖥 屏幕前正在输入：<b>你（扮演「${esc(dn(CUR))}」）</b> · 对面回复：AI 数字分身（万凯）`}
 }
 /* 身份互换: A(你演联系人) ⇄ B(你演万凯本人, AI 演联系人 —— 需先塑造联系人分身画像) */
+let SWAPPING=false; // 身份互换进行中(塑造/切换), 防重复点击
 $('#mbSwap').onclick=async()=>{
   if(MODE!=='dialog'||ISG()||!CUR||CUR==='新朋友')return;
-  if(DIR==='B'){DIR='A';dirSave();sysTip(`已换回：你扮演「${dn(CUR)}」，AI 数字分身扮演万凯`);
+  if(SENDING){toast('⚠ AI 正在回复中（或确认弹窗未处理完），等这轮对话结束再切换身份');return}
+  if(SWAPPING){toast('正在切换身份，请稍候…');return}
+  if(DIR==='B'){DIR='A';dirSave();sysTip(`已切换回普通模式：你扮演「${dn(CUR)}」，AI 数字分身扮演万凯`,'role');
     updateRoleBanner();setPlaceholder();renderMsgs();return}
   let st;try{st=await api('/api/agent/twin/contact/status?contact='+encodeURIComponent(CUR))}
   catch(e){sysTip('⚠ '+e.message);return}
   if(st.is_group){sysTip('群聊暂不支持身份互换');return}
   if(!st.ready){toast(`「${dn(CUR)}」的历史发言仅 ${st.total} 条，未达塑造门槛（${st.min} 条）—— 聊得再多一点再来`);return}
   if(!st.has_profile){
-    sysTip(`正在为「${dn(CUR)}」塑造数字分身：通读 ta 的 ${st.total} 条真实发言，提炼说话风格/口头禅/话题…（首次约 30-90 秒）`);
-    try{await post('/api/agent/twin/contact/build',{contact:CUR})}
-    catch(e){sysTip('⚠ 塑造失败：'+e.message);return}
-    toast(`「${dn(CUR)}」的分身塑造完成`);
+    SWAPPING=true;
+    try{
+      sysTip(`正在为「${dn(CUR)}」塑造数字分身：通读 ta 的 ${st.total} 条真实发言，提炼说话风格/口头禅/话题…（首次约 30-90 秒，塑造期间请勿发消息）`);
+      await post('/api/agent/twin/contact/build',{contact:CUR});
+      toast(`「${dn(CUR)}」的分身塑造完成`);
+    }catch(e){sysTip('⚠ 塑造失败：'+e.message);return}
+    finally{SWAPPING=false}
   }
   DIR='B';dirSave();
-  sysTip(`身份已互换：屏幕前的你是万凯本人，对面由 AI 分身扮演「${dn(CUR)}」（每条回复带 AI 标识，截图一目了然；再点一次「🔄 身份互换」可换回）`);
+  sysTip(`已切换到身份互换模式：屏幕前的你是万凯本人，对面由 AI 分身扮演「${dn(CUR)}」与他对话（每条回复带 AI 标识，截图一目了然；再点一次「🔄 身份互换」可换回）`,'role');
   updateRoleBanner();setPlaceholder();renderMsgs();
 };
 function renderMsgs(){$('#msgs').innerHTML='';curSess().forEach(appendDom);
   const mb=$('#mbMembers');if(mb)mb.style.display=ISG()&&MODE==='dialog'?'':'none';
   updateRoleBanner()}
 function pushMsg(who,text,anlHTML,extra){const m=Object.assign({who,text,anl:anlHTML||null},extra||{});curSess().push(m);appendDom(m);ssave()}
-function sysTip(t){appendDom({who:'sys',text:t})}
+const _ROLE_TIP=/^已切换到|^已切换回|^已换回|^正在为「/;   // 身份类提示: 会话内只保留最新一条
+function sysTip(t,tag){const m={who:'sys',text:t};
+  if(tag){m.tip=tag;const s=curSess();
+    for(let i=s.length-1;i>=0;i--){if(s[i].who==='sys'&&(s[i].tip===tag||(s[i].text&&_ROLE_TIP.test(s[i].text))))s.splice(i,1)}}
+  curSess().push(m);appendDom(m);ssave()}
 /* ───── 人工介入: 分身拿不准时弹窗请本人拿主意(直答/选候选/直接采用) ───── */
 function openIntervene(o){ // o={question,aiDraft,candidates,contact,mode,anlHTML} → Promise<最终回答|null>
   return new Promise(resolve=>{
@@ -789,9 +806,14 @@ function histFor(n){
 }
 async function send(){
   const inp=$('#chat-in'),text=inp.value.trim();
-  if(!text||SENDING)return;SENDING=true;$('#sendbtn').disabled=true;inp.value='';
+  if(!text||SENDING)return;
+  if(typeof SWAPPING!=='undefined'&&SWAPPING){toast('⚠ 正在为对方塑造分身/切换身份，等几十秒后再发');return}
+  SENDING=true;$('#sendbtn').disabled=true;inp.value='';
   const isGroupDialog=ISG()&&MODE==='dialog';
-  const hist=isGroupDialog
+  // 发送时快照: AI 回复可能耗时很久, 期间用户可能切换联系人/模式/方向 ——
+  // 请求与落库全程以快照为准, 回复永远归位到发送时的会话, 不会串到后来切到的人身上
+  const sCur=CUR,sMode=MODE,sDir=DIR,sIsG=isGroupDialog;
+  const hist=sIsG
     ?curSess().filter(m=>m.who==='me'||m.who==='gmem').slice(-10).map(m=>({speaker:m.who==='me'?'我':m.speaker,text:m.text}))
     :histFor(MODE==='dialog'?8:30);      // push 前取, 防同句重复
   pushMsg(isGroupDialog?'me':(MODE==='dialog'?(DIR==='B'?'me':'contact'):'me'),text);
@@ -802,20 +824,26 @@ async function send(){
   draw(stepTxt);$('#msgs').scrollTop=1e9;
   const tick=setInterval(()=>{draw(stepTxt)},1000);
   try{
-    if(isGroupDialog){
+    if(sIsG){
       const resp=await fetch('/api/agent/group/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({group:CUR,message:text,hist})});
+        body:JSON.stringify({group:sCur,message:text,hist})});
       if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||('HTTP '+resp.status))}
       const r=await resp.json();
       clearInterval(tick);tip.remove();
       const rs=r.replies||[];
-      rs.forEach(x=>pushMsg('gmem',x.text,null,{speaker:x.speaker}));
-      if(!rs.length)pushMsg('sys','(群里暂时没人冒泡)');
+      if(CUR!==sCur||MODE!==sMode){ // 已切走: 静默写入原会话
+        rs.forEach(x=>pushTo(sCur,sMode,sDir,'gmem',x.text,null,{speaker:x.speaker}));
+        if(!rs.length)pushTo(sCur,sMode,sDir,'sys','(群里暂时没人冒泡)');
+        toast(`👥 「${dn(sCur)}」的群聊回复已送达原会话`);
+      }else{
+        rs.forEach(x=>pushMsg('gmem',x.text,null,{speaker:x.speaker}));
+        if(!rs.length)pushMsg('sys','(群里暂时没人冒泡)');
+      }
     }else{
     const resp=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contact:CUR,mode:MODE,message:text,history:hist,stream:true,
-        direction:(MODE==='dialog'&&DIR==='B')?'contact':'owner',
-        persona:MODE==='ask'?'oracle':undefined})});
+      body:JSON.stringify({contact:sCur,mode:sMode,message:text,history:hist,stream:true,
+        direction:(sMode==='dialog'&&sDir==='B')?'contact':'owner',
+        persona:sMode==='ask'?'oracle':undefined})});
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||('HTTP '+resp.status))}
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',reply='',anl=null,err=null,unsure=false,cands=[];
     while(true){
@@ -825,29 +853,43 @@ async function send(){
         const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
         if(!line)continue;
         let ev;try{ev=JSON.parse(line)}catch(e){continue}
-        if(ev.step){stepTxt=ev.step;draw(stepTxt);$('#msgs').scrollTop=1e9}
+        if(ev.step){stepTxt=ev.step;draw(stepTxt)}
         if(ev.done){if(ev.error)err=ev.error;else{reply=ev.reply||'';anl=ev.analysis||null;unsure=!!ev.unsure;cands=ev.candidates||[]}}
       }
     }
     clearInterval(tick);tip.remove();
     if(err)throw new Error(err);
-    if(MODE==='dialog'){
-      const rwho=DIR==='B'?'ctwin':'aime';   // B=AI 扮演联系人, A=AI 扮演万凯
-      if(unsure){ // 分身拿不准 → 弹窗请本人拿主意, 绝不强行回复
-        const fr=await openIntervene({question:text,aiDraft:reply,candidates:cands,contact:CUR,mode:'dialog'});
-        if(fr!=null)pushMsg(rwho,fr,null,{human:true});
-        else pushMsg('sys','(本次没有回复：分身拿不准，而你选择暂不介入)');
+    // 已切走判定: 当前联系人/模式/方向与发送时不一致 → 不动当前界面, 只写回原会话
+    const moved=(CUR!==sCur||MODE!==sMode||(MODE==='dialog'&&DIR!==sDir));
+    if(sMode==='dialog'){
+      const rwho=sDir==='B'?'ctwin':'aime';   // B=AI 扮演联系人, A=AI 扮演万凯
+      if(unsure){ // 分身拿不准 → 弹窗请本人拿主意, 绝不强行回复(回答永远归位到原会话)
+        const fr=await openIntervene({question:text,aiDraft:reply,candidates:cands,contact:sCur,mode:'dialog'});
+        if(moved){if(fr!=null)pushTo(sCur,sMode,sDir,rwho,fr,null,{human:true});
+          else pushTo(sCur,sMode,sDir,'sys','(本次没有回复：分身拿不准，而你选择暂不介入)');
+          toast(`💬 「${dn(sCur)}」的回复已存入原会话`);}
+        else{if(fr!=null)pushMsg(rwho,fr,null,{human:true});
+          else pushMsg('sys','(本次没有回复：分身拿不准，而你选择暂不介入)');}
       }
-      else if(reply)pushMsg(rwho,reply);            // AI 分身回复(明确标注 AI)
+      else if(reply){
+        if(moved){pushTo(sCur,sMode,sDir,rwho,reply);toast(`💬 「${dn(sCur)}」的回复已存入原会话`)}
+        else pushMsg(rwho,reply);            // AI 分身回复(明确标注 AI)
+      }
     }else{
       const a=anl||{};
       const ans=(a['回答']||reply||'').trim()||'(AI 未返回回答)';
+      const anlHtml=renderAnalysisHTML(a);
       if(unsure){ // 分析师没把握 → 人工介入
-        const anlHtml=renderAnalysisHTML(a);
-        const fr=await openIntervene({question:text,aiDraft:ans,candidates:cands,contact:CUR,mode:'ask',anlHTML:anlHtml});
-        if(fr!=null)pushMsg('ai',fr,anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>');
-        else pushMsg('sys','(已取消：分析师对这个问题没把握，等你亲自补充)');
-      }else pushMsg('ai',ans,renderAnalysisHTML(a));   // 旁观者: 分析师回答+依据卡
+        if(moved){const fr=await openIntervene({question:text,aiDraft:ans,candidates:cands,contact:sCur,mode:'ask',anlHTML:anlHtml});
+          if(fr!=null)pushTo(sCur,sMode,sDir,'ai',fr,anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>');
+          else pushTo(sCur,sMode,sDir,'sys','(已取消：分析师对这个问题没把握，等你亲自补充)');}
+        else{const fr=await openIntervene({question:text,aiDraft:ans,candidates:cands,contact:sCur,mode:'ask',anlHTML:anlHtml});
+          if(fr!=null)pushMsg('ai',fr,anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>');
+          else pushMsg('sys','(已取消：分析师对这个问题没把握，等你亲自补充)');}
+      }else{
+        if(moved){pushTo(sCur,sMode,sDir,'ai',ans,anlHtml);toast(`💬 「${dn(sCur)}」的旁观者回答已存入原会话`)}
+        else pushMsg('ai',ans,anlHtml);   // 旁观者: 分析师回答+依据卡
+      }
     }
     }
   }catch(e){clearInterval(tick);tip.innerHTML='⚠ '+esc(e.message);setTimeout(()=>tip.remove(),6000)}

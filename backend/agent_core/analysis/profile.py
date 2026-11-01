@@ -7,17 +7,23 @@ from agent_core import config
 from agent_core.llm_client import llm_chat, extract_json
 from agent_core.knowledge import style_profile, facts, diff_by_contact, contact_info, safe_fn
 from agent_core import cache_store
-PROMPT_VER = 'v2'
+PROMPT_VER = 'v3'   # v3: 融入指尖时光日程数据源
 
 
 def generate_me():
     s = style_profile()
     samples = [x for x in facts().get('代表性发言样本_50条', [])]
-    sys = """你是资深人物分析师。根据一个人微信聊天的量化风格数据和真实发言样本, 输出详细的个人画像。
+    try:
+        from agent_core.analysis import daily_log
+        daily = daily_log.digest()
+    except Exception:
+        daily = ''
+    sys = """你是资深人物分析师。根据一个人微信聊天的量化风格数据、真实发言样本和本人手动记录的日程大事, 输出详细的个人画像。
 只输出 JSON(不要 markdown 代码块):
 {"一句话总结":"", "性格特点":["3-6条,每条有依据"], "说话方式":{"整体风格":"", "句式特点":"", "口头禅":"", "标点与表情":""},
-"社交风格":"对不同人的态度差异", "兴趣与生活":["从话题推断"], "活跃规律":"", "优点":"", "注意点":"给本人的小建议"}
-全部用中文, 内容具体、有数据支撑, 不要空话。"""
+"社交风格":"对不同人的态度差异", "兴趣与生活":["从话题和日程推断, 可含学过的技能、坚持的事、生活规律"], "活跃规律":"", "优点":"", "注意点":"给本人的小建议"}
+全部用中文, 内容具体、有数据支撑, 不要空话。
+日程记录是本人每天手动记的真实事项(比聊天推断更可信): 学过什么(如缠论/经济学/安全开发)、坚持做什么(复盘/健身/写行业笔记)、生活节奏(作息/出行/家务)都以它为准, 融入「兴趣与生活」和「活跃规律」。"""
     user = f"""【风格统计】
 {json.dumps({k: v for k, v in s.items() if k != '分对象说话差异_top15'}, ensure_ascii=False)[:3500]}
 
@@ -26,13 +32,22 @@ def generate_me():
 
 【真实发言样本】
 {chr(10).join(samples[:50])}"""
+    if daily:
+        user += f"""
+
+【指尖时光日程记录(本人手动记录的每日大事, 按月聚合)】
+{daily}"""
     out = extract_json(llm_chat([{'role': 'system', 'content': sys},
                                  {'role': 'user', 'content': user}], temperature=0.4))
+    fps = [cache_store.file_fp(os.path.join(config.KB, '我的风格档案.json')),
+           cache_store.file_fp(os.path.join(config.KB, '我的事实记忆.json'))]
+    try:
+        fps.append(cache_store.file_fp(os.path.join(config.KB, '日常记录.json')))
+    except Exception:
+        pass
     cache_store.save(
         os.path.join(config.CACHE, 'profile_me.json'), out,
-        cache_store.fingerprint(PROMPT_VER,
-                                cache_store.file_fp(os.path.join(config.KB, '我的风格档案.json')),
-                                cache_store.file_fp(os.path.join(config.KB, '我的事实记忆.json'))))
+        cache_store.fingerprint(PROMPT_VER, *fps))
     return out
 
 

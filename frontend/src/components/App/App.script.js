@@ -863,6 +863,12 @@ export default {
         this.marginTotalChart = echarts.init(this.$refs.marginTotalChartEl, null, { renderer: 'canvas' })
       }
       const history = this.marginTotal.history
+      const sse = Array.isArray(this.marginTotal.sse) ? this.marginTotal.sse : []
+      // 上证指数按日期对齐到融资序列(8位YYYYMMDD),并预计算逐日涨跌%
+      const sseMap = {}
+      sse.forEach((s, i) => {
+        sseMap[s.date] = { close: s.close, prev: i > 0 ? sse[i - 1].close : null }
+      })
       const toYi = (v) => (v == null ? 0 : v / 1e8)
       const fmtDate = (d) => {
         const s = String(d || '')
@@ -876,21 +882,46 @@ export default {
           axisPointer: { type: 'line' },
           appendTo: document.body,
           formatter: (params) => {
-            const p = params[0]
+            const p = params && params[0]
             if (!p) return ''
             const idx = p.dataIndex
             const item = history[idx] || {}
             const orig = String(item.date || '')
             const full = orig.length === 8 ? orig.slice(0, 4) + '-' + orig.slice(4, 6) + '-' + orig.slice(6, 8) : (p.axisValue || '')
-            const totalYi = item.total == null ? '--' : (item.total / 1e8).toFixed(2)
+            // 融资余额 + 较前日变动
+            let line1 = `融资余额: --`
+            if (item.total != null) {
+              const totalYi = (item.total / 1e8).toFixed(2)
+              let deltaHtml = ''
+              const prevItem = idx > 0 ? history[idx - 1] : null
+              if (prevItem && prevItem.total != null) {
+                const d = (item.total - prevItem.total) / 1e8
+                const c = d >= 0 ? '#e05252' : '#3d8f5f'
+                deltaHtml = ` <span style="color:${c}">(${d >= 0 ? '+' : ''}${d.toFixed(1)}亿)</span>`
+              }
+              line1 = `融资余额: <b>${totalYi}</b> 亿${deltaHtml}`
+            }
+            // 净买入(红=加杠杆 绿=去杠杆)
             const nb = item.net_buy
             const nbYi = nb == null ? '--' : ((nb >= 0 ? '+' : '') + (nb / 1e8).toFixed(1))
             const nbColor = nb == null ? '#ccc' : (nb >= 0 ? '#e05252' : '#3d8f5f')
-            return `${full}<br/>融资余额: <b>${totalYi}</b> 亿<br/>当日净买入: <b style="color:${nbColor}">${nbYi}</b> 亿`
+            // 上证指数 + 当日涨跌%
+            let line3 = '上证指数: --'
+            const sv = sseMap[orig]
+            if (sv && sv.close != null) {
+              let pctHtml = ''
+              if (sv.prev) {
+                const pct = (sv.close / sv.prev - 1) * 100
+                const c = pct >= 0 ? '#e05252' : '#3d8f5f'
+                pctHtml = ` <span style="color:${c}">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`
+              }
+              line3 = `上证指数: <b>${sv.close.toFixed(2)}</b>${pctHtml}`
+            }
+            return `${full}<br/>${line1}<br/>当日净买入: <b style="color:${nbColor}">${nbYi}</b> 亿<br/>${line3}`
           }
         },
         legend: {
-          data: ['融资余额', '当日净买入'],
+          data: ['融资余额', '上证指数', '当日净买入'],
           textStyle: { color: '#9aa3b2', fontSize: 11 },
           top: 0
         },
@@ -902,9 +933,17 @@ export default {
             splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
           {
-            type: 'value', scale: true, name: '净买入',
+            // 上证指数(右轴可见,橙色刻度)
+            type: 'value', scale: true, name: '指数',
+            position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: '#9aa3b2', formatter: (v) => toYi(v).toFixed(0) + '亿' }
+            axisLabel: { color: '#d9a441', formatter: (v) => v.toFixed(0) }
+          },
+          {
+            // 净买入(独立隐藏轴,红绿柱方向已表达正负,数值在tooltip)
+            type: 'value', scale: true,
+            position: 'right', show: false,
+            splitLine: { show: false }
           }
         ],
         series: [
@@ -916,8 +955,16 @@ export default {
             areaStyle: { color: 'rgba(79,157,255,0.10)' }
           },
           {
+            // 上证指数(橙线,与融资余额同图看相关性:指数下行段常伴随净流出)
+            name: '上证指数',
+            type: 'line', smooth: true, symbol: 'none', yAxisIndex: 1, z: 3,
+            data: history.map(h => (sseMap[h.date] ? sseMap[h.date].close : null)),
+            lineStyle: { color: '#f5a623', width: 1.5, type: 'solid' },
+            connectNulls: true
+          },
+          {
             name: '当日净买入',
-            type: 'bar', yAxisIndex: 1, z: 1, barMaxWidth: 8,
+            type: 'bar', yAxisIndex: 2, z: 1, barMaxWidth: 8,
             data: history.map(h => h.net_buy),
             itemStyle: {
               // 红柱=净流入(加杠杆),绿柱=净流出(去杠杆)

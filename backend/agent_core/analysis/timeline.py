@@ -6,7 +6,7 @@ from agent_core import config
 from agent_core.llm_client import llm_chat, extract_json, LLMError
 from agent_core.memory import indexer
 from agent_core import cache_store
-PROMPT_VER = 'v2'
+PROMPT_VER = 'v3'   # v3: 融入指尖时光日程数据源
 _norm_re = re.compile(r'[\s，。！？,.!?~…、“”‘’"\'（）()【】\[\]]')
 
 
@@ -48,17 +48,39 @@ def generate_timeline():
     trend_text = '\n'.join(f"{y}: " + ', '.join(f"{m[5:]}月{n}" for m, n in sorted(d.items()))
                            for y, d in sorted(by_month.items()))
 
-    sys = """你是人物传记分析师。根据一个人历年微信发言样本和月度活跃数据, 梳理他的人生时间线。
+    # ── 第二数据源: 指尖时光日程(本人手动记录的每日大事, 每条都是真事) ──
+    try:
+        from agent_core.analysis import daily_log as _dl
+        drecs = _dl._load().get('记录') or []
+    except Exception:
+        drecs = []
+    dby, dlines = {}, []
+    for r in drecs:
+        dby.setdefault(r['日期'][:4], []).append(r)
+    for y, lst in sorted(dby.items()):
+        n = min(40, len(lst))
+        step = max(1, len(lst) // n)
+        picks = sorted(lst[::step][:n], key=lambda x: x['日期'])
+        for k, r in enumerate(picks):
+            eid = f'S_{y}_{k:02d}'
+            pool[eid] = {'c': r['标题'], 't': r['日期'], 'daily': True}
+            dlines.append(f'[{eid}|{r["日期"]}] {r["标题"]}' + (f' — {r["备注"]}' if r.get('备注') else ''))
+    daily_text = '\n'.join(dlines)
+
+    sys = """你是人物传记分析师。根据一个人历年微信发言样本、月度活跃数据和本人手动记录的日程大事, 梳理他的人生时间线。
 只输出 JSON(不要 markdown 代码块):
 {"总述":"100字内概括这几年的人生轨迹",
  "年份":[{"年":"2022","主题":"这年的关键词","事件":[{"月份":"03","标题":"8字内","描述":"30-60字, 具体不空话","依据ID":"样本里的消息ID","依据":"该ID对应原话的摘录(≤30字)","置信":"高或中"}]}]}
 硬性规则:
-1. 每个事件必须有「依据ID」(取自样本行首 [ID|时间] 里的 ID) 和「依据」(该条原话的摘录); 找不到依据的猜测事件不要写
-2. 覆盖尽量多年份(有样本的年份都要有), 每年 2-5 个事件
-3. 绝不编造样本之外的具体事实(人名/公司名/具体数字); 不确定的置信写"中"
-4. 事件类型: 工作/学习/生活/兴趣/情绪状态/关系变化, 多样一些
-5. 全部中文"""
+1. 每个事件必须有「依据ID」和「依据」(该ID对应原文的摘录); 找不到依据的猜测事件不要写
+2. 依据ID 两种: [ID|时间] 微信发言样本(S_开头的是日程记录); 日程记录是本人手动记的真实事项, 依据=标题摘录即可, 置信标"高"
+3. 覆盖尽量多年份(有样本的年份都要有), 每年 2-5 个事件; 日程记录和聊天样本结合着用——日程擅长"他做了什么"(学习/开发/投资/生活大事), 聊天擅长"他在想什么"
+4. 绝不编造样本之外的具体事实(人名/公司名/具体数字); 不确定的置信写"中"
+5. 事件类型: 工作/学习/生活/兴趣/情绪状态/关系变化, 多样一些
+6. 全部中文"""
     user = '\n\n'.join(parts) + f"\n\n【历年月度消息量(反映活跃度)】\n{trend_text}"
+    if daily_text:
+        user += f"\n\n【指尖时光日程记录(本人每天手动记录的真实大事, 每年均匀取样)】\n{daily_text}"
     out = extract_json(llm_chat([{'role': 'system', 'content': sys},
                                  {'role': 'user', 'content': user}], temperature=0.4, timeout=300))
 
@@ -93,9 +115,11 @@ def generate_timeline():
     events = []
     for yev in out.get('年份', []):
         for ev in yev['事件']:
+            src = pool.get(str(ev.get('依据ID', '')).strip()) or {}
             events.append({'年': yev.get('年', ''), '月': ev.get('月份', ''),
                            '标题': ev.get('标题', ''), '描述': ev.get('描述', ''),
-                           '依据': ev.get('依据', ''), '置信': ev.get('置信', '')})
+                           '依据': ev.get('依据', ''), '置信': ev.get('置信', ''),
+                           '来源': '日程记录' if src.get('daily') else '聊天记录'})
     config.atomic_write_json(os.path.join(config.CACHE, 'events.json'), events)
 
     cache_store.save(os.path.join(config.CACHE, 'timeline.json'), out,
