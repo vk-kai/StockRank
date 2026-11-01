@@ -55,9 +55,20 @@
     <div id="roleBanner"></div>
     <div id="msgs"></div>
     <div class="inrow">
+      <button class="chip" id="eqOpenBtn" style="display:none;flex-shrink:0;padding:6px 10px" title="对方还没说过话？填背景+开场草稿，生成高情商开场白">🚀 首次开场</button>
       <button class="chip" id="eqTurnBtn" style="display:none;flex-shrink:0;padding:6px 10px" title="切换这句话由谁说">🎤 她说</button>
       <textarea id="chat-in" placeholder="和你的数字分身聊聊…（Enter 发送，Shift+Enter 换行）"></textarea>
       <button class="btn" id="sendbtn">发送</button>
+    </div>
+    <div id="eqOpenPanel" style="display:none;padding:12px 18px;background:#fffbe9;border-top:1px solid #f0e0b8">
+      <div style="font-size:12.5px;font-weight:700;color:#8a5a00;margin-bottom:6px">🚀 首次开场 · 对方一句话都没说过</div>
+      <textarea id="eqOpenBg" style="width:100%;height:50px;font-size:12.5px" placeholder="她的基本背景：认识途径、职业/爱好、你对她哪点有好感…（一两句即可）"></textarea>
+      <textarea id="eqOpenMine" style="width:100%;height:50px;font-size:12.5px;margin-top:6px" placeholder="你本来想发的开场白（原话）——高情商版会保留你的真实意图，只升级表达"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button class="btn sm" id="eqOpenGo">✨ 生成高情商开场白</button>
+        <button class="btn gray sm" id="eqOpenCancel">取消</button>
+        <span class="mut">生成后同样可点「🔍 诊断」对比差异</span>
+      </div>
     </div>
   </div>
 </section>
@@ -625,8 +636,9 @@ function pushEq(c,msg){eqSess(c).push(msg);eqSave(c);
   if(MODE==='eq'&&EQCUR===c){appendDom(msg);$('#msgs').scrollTop=1e9}}
 function setEqTurn(t){EQTURN=t;updateEqUI()}
 function updateEqUI(){
-  const btn=$('#eqTurnBtn'),inp=$('#chat-in');
+  const btn=$('#eqTurnBtn'),inp=$('#chat-in'),ob=$('#eqOpenBtn');
   btn.style.display=MODE==='eq'?'':'none';
+  if(ob)ob.style.display=MODE==='eq'?'':'none';
   if(MODE!=='eq')return;
   btn.textContent=EQTURN==='girl'?'🎤 她说':'💬 我来答';
   btn.style.background=EQTURN==='girl'?'#efe7fb':'';
@@ -675,7 +687,7 @@ function renderEqList(q,qadd){
 async function renderEqDom(){
   if(EQCUR&&!EQSESS[EQCUR]){
     try{const d=await api('/api/agent/eq/chat?contact='+encodeURIComponent(EQCUR));
-      EQSESS[EQCUR]=(d.chat||[]).map(m=>({who:m.r==='eq'?'eqai':'eq'+m.r,text:m.c,strat:m.strat||''}));
+      EQSESS[EQCUR]=(d.chat||[]).map(m=>({who:m.r==='eq'?'eqai':(m.r==='bg'?'eqbg':'eq'+m.r),text:m.c,strat:m.strat||''}));
     }catch(e){EQSESS[EQCUR]=[]}
   }
   const box=$('#msgs');box.innerHTML='';
@@ -708,7 +720,7 @@ async function diagnoseEq(btn,m){
   btn.disabled=true;btn.textContent='诊断中…';
   try{
     const r=await post('/api/agent/eq/diagnose',{contact:EQCUR,girl:m.girl||'',mine:m.mine||'',eq:m.text});
-    let h=`<div class="eqdiag"><b>🔍 诊断 · 你的原话</b><br>${esc(r.comment||'—')}`;
+    let h=`<div class="eqdiag"><b>🔍 诊断 · 你的${m.girl?'原话':'开场白'}</b><br>${esc(r.comment||'—')}`;
     if((r.issues||[]).length)h+='<div style="margin-top:6px">'+r.issues.map(x=>`<div class="iss">✗ ${esc(x)}</div>`).join('')+'</div>';
     h+=`<div style="margin-top:6px"><b>高情商版好在哪：</b>${esc(r.why_better||'—')}</div>
         <div style="margin-top:6px"><b>💡 一句可迁移的原则：</b>${esc(r.principle||'—')}</div></div>`;
@@ -717,13 +729,41 @@ async function diagnoseEq(btn,m){
   }catch(e){btn.disabled=false;btn.textContent='🔍 诊断这轮';toast('⚠ '+e.message)}
 }
 $('#eqTurnBtn').onclick=()=>setEqTurn(EQTURN==='girl'?'mine':'girl');
+/* ───── 首次开场: 对方还没说话, 只有背景 → 高情商版开场白 ───── */
+$('#eqOpenBtn').onclick=()=>{
+  const p=$('#eqOpenPanel');
+  p.style.display=p.style.display==='none'?'':'none';
+  if(p.style.display!=='none')$('#eqOpenBg').focus();
+};
+$('#eqOpenCancel').onclick=()=>{$('#eqOpenPanel').style.display='none'};
+$('#eqOpenGo').onclick=async()=>{
+  if(!EQCUR){toast('先在左侧「➕ 添加发展对象」');return}
+  const bg=$('#eqOpenBg').value.trim(),mine=$('#eqOpenMine').value.trim();
+  if(!bg||!mine){toast('背景和你的开场白都要填');return}
+  const sC=EQCUR,btn=$('#eqOpenGo');
+  btn.disabled=true;btn.textContent='生成中…';
+  const tip=document.createElement('div');tip.className='typing';
+  tip.innerHTML='<span style="display:inline-block;animation:simpulse 1.2s infinite">⏳</span> 高情商分身正在构思开场白…';
+  $('#msgs').appendChild(tip);$('#msgs').scrollTop=1e9;
+  try{
+    const r=await post('/api/agent/eq/open',{contact:sC,bg:bg,mine:mine});
+    tip.remove();
+    pushEq(sC,{who:'eqbg',text:bg});
+    pushEq(sC,{who:'eqme',text:mine,girl:'',mine:mine});
+    pushEq(sC,{who:'eqai',text:r.reply||'(无回复)',strat:r.strategy||'',girl:'',mine:mine});
+    $('#eqOpenPanel').style.display='none';$('#eqOpenBg').value='';$('#eqOpenMine').value='';
+    EQTURN='girl';updateEqUI();
+    if(EQCUR!==sC)toast(`🚀 「${sC}」的开场白已存入原会话`);
+  }catch(e){tip.remove();toast('⚠ '+((e&&(e.message||e))||'生成失败'))}
+  btn.disabled=false;btn.textContent='✨ 生成高情商开场白';
+};
 function setMode(m){
   const changed=MODE!==m;MODE=m;
   $$('.modebar .mb').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
   $('#modehint').textContent=m==='dialog'
     ?'模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）—— 各联系人的模拟对话独立保存'
     :m==='eq'
-    ?'高情商练习：左侧选「发展对象」→ 她说一句 → 你回一句 → 高情商版分身同步给出它的版本，可点「🔍 诊断」看差异'
+    ?'高情商练习：左侧选「发展对象」→ 她说一句 → 你回一句 → 高情商版分身同步给出它的版本，可点「🔍 诊断」看差异；对方还没说过话时用「🚀 首次开场」填背景引话题'
     :'旁观者模式：你以第三者身份提问，AI 分析你和 ta 的关系并引用原话证据 —— 与模拟对话互相独立';
   if(m==='eq'){
     try{EQCUR=localStorage.getItem('eqCur')||''}catch(e){}
@@ -796,6 +836,13 @@ function appendDom(m){
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;max-width:560px';
     wrap.innerHTML=`<div class="who">AI 分身 · ${esc(dn(CUR))}${m.human?' <span class="tag g" style="font-size:10px">🔧 本人确认</span>':''}</div>`;
     b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
+  else if(m.who==='eqbg'){ // 首次开场: 对象背景资料(左, 灰泡)
+    av.textContent='📋';
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;max-width:560px';
+    wrap.innerHTML=`<div class="who">📋 对象背景（首次开场）</div>`;
+    b.style.background='#f4f6f8';b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
   }
   else if(m.who==='eqgirl'){ // 高情商: 你扮演的发展对象(左, 虚线泡)
