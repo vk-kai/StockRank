@@ -7,10 +7,9 @@
   <nav id="nav">
     <a data-p="home" class="on"><span class="ic">🏠</span><div>首页<small>数字人生观察室</small></div></a>
     <a data-p="twin"><span class="ic">💬</span><div>数字分身<small>和另一个「自己」聊天</small></div></a>
-    <a data-p="byst"><span class="ic">🧭</span><div>旁观者问答<small>以第三人称问 AI 分析师</small></div></a>
-    <a data-p="self"><span class="ic">🪞</span><div>认识自己<small>画像 · 时间线 · 变化</small></div></a>
+    <a data-p="byst"><span class="ic">🧭</span><div>旁观者<small>读过你全部记录的老朋友</small></div></a>
+    <a data-p="self"><span class="ic">🪞</span><div>认识自己<small>画像 · 时间线 · 记忆搜索</small></div></a>
     <a data-p="others"><span class="ic">👥</span><div>认识他人<small>联系人 · 关系 · 关系网络</small></div></a>
-    <a data-p="memory"><span class="ic">🗂️</span><div>个人记忆<small>搜索 · 事件 · 原话</small></div></a>
     <a data-p="sim"><span class="ic">🌌</span><div>数字人生<small>虚拟推演 · 永续计划</small></div></a>
     <a data-p="data"><span class="ic">📊</span><div>数据档案<small>原始统计 · 趋势分析</small></div></a>
     <a data-p="sys"><span class="ic">⚙️</span><div>系统设置<small>模型 · 知识库 · 配置</small></div></a>
@@ -59,37 +58,99 @@
   </div>
 </section>
 
-<!-- ═══════════ 旁观者问答(独立页, 可与数字分身同时进行) ═══════════ -->
+<!-- ═══════════ 旁观者问答(独立页, 与全局抽屉共用同一会话) ═══════════ -->
 <section id="pg-byst" class="page chatpg">
   <div class="chatwrap">
     <div class="modebar">
-      <span class="hint">直接提问即可 —— 提到谁，AI 会先和你确认，再检索真实聊天记录以旁观者身份回答</span>
+      <span class="hint">🫧 旁观者 —— 陪你四年、读过你全部聊天记录的老朋友。直接提问即可：提到谁会先和你确认，回答都带原话依据</span>
       <button class="btn gray sm" id="bClear" style="margin-left:auto">🗑 清空本会话</button>
     </div>
     <div id="bmsgs"></div>
     <div class="inrow">
-      <textarea id="bchat-in" placeholder="例如：我和刘炀和Mi谁关系更好？我和桃姐之间有什么梗？我最近和谁联系少了？（Enter 发送）"></textarea>
+      <textarea id="bchat-in" placeholder="例如：我和刘炀和Mi谁关系更好？我和桃姐之间有什么梗？我最近遇到一件事拿不定主意…（Enter 发送）"></textarea>
       <button class="btn" id="bsendbtn">发送</button>
     </div>
   </div>
 </section>
 
-<!-- ═══════════ 认识自己 ═══════════ -->
+<!-- ═══════════ 认识自己(重构: 首屏认知摘要 + 六大模块 + 记忆搜索) ═══════════ -->
 <section id="pg-self" class="page">
-  <h2 class="pt">认识自己</h2>
+  <div class="selfhero">
+    <div class="sheb">PERSONAL IDENTITY · 个人认知档案</div>
+    <h1>万凯，重新认识自己。</h1>
+    <p id="shSummary">从四年的真实交流中，理解自己的性格、行为、关系和人生变化。每个结论都能回到真实聊天记录中验证。</p>
+    <div id="shTags" style="margin-top:10px"></div>
+    <div class="shops">
+      <button class="btn sm" id="genMe">🔄 重新生成画像</button>
+      <button class="btn sm" id="genTl">🗓 重新生成时间线</button>
+      <span class="mut" id="shMeta" style="color:#bfe6d4"></span>
+    </div>
+  </div>
   <div id="selfErr"></div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
-    <div class="card" style="grid-column:1/-1">
-      <h3>🪞 AI 画像<button class="btn sm" id="genMe" style="margin-left:auto">重新生成</button></h3>
-      <div id="meBox" class="mut">尚未生成，点击「重新生成」调用 AI 生成（约 1-2 分钟）。</div>
+
+  <div class="selfmod"><div class="smhd">01 · 我是什么样的人<span>人格 · 思维 · 表达</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="card"><h3>🧠 性格特点</h3><div id="meTraits" class="mut">加载中…</div></div>
+      <div class="card"><h3>🗣 说话方式</h3><div id="meSpeak" class="mut">加载中…</div></div>
+      <div class="card"><h3>✨ 优点</h3><div id="mePros" class="mut">加载中…</div></div>
     </div>
-    <div class="card">
-      <h3>🗣 说话方式<span class="sub">来自 17 万条真实消息的统计</span></h3>
-      <div id="styleBox" class="mut">加载中…</div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">02 · 我的生活是什么样的<span>兴趣 · 习惯 · 作息</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="card"><h3>🎯 兴趣与生活</h3><div id="meLife" class="mut">加载中…</div></div>
+      <div class="card"><h3>🕐 活跃规律</h3><div id="meActive" class="mut">加载中…</div></div>
+      <div class="card"><h3>✍ 表达统计<span class="sub">程序统计，非 AI 想象</span></h3><div id="styleBox" class="mut">加载中…</div></div>
     </div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">03 · 我是怎样与人相处的<span>不同关系中的自己</span></div>
+    <div class="card"><h3>🤝 社交风格</h3><div id="meSocial" class="mut">加载中…</div>
+      <div id="styleDiff" style="margin-top:10px"></div>
+      <div style="margin-top:12px"><span class="chip" data-go="others">去「认识他人」看关系网络、圈层与每个人聊了什么 →</span></div>
+    </div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">04 · 这些年我发生了什么变化<span>纵向人生叙事 · 每个事件都有原话依据</span></div>
+    <div class="card"><div id="tlBox" class="mut">加载中…</div></div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">05 · 我可能没有意识到的自己<span>盲区 · 重复模式 · 值得思考的问题</span></div>
+    <div class="card"><div id="meBlind" class="mut">加载中…</div>
+      <div style="margin-top:12px" class="orachips">
+        <span class="chip" data-ora="我有哪些自己没意识到的行为模式或盲区？">我有哪些盲区？</span>
+        <span class="chip" data-ora="我经常说要做、但一直没做的事有哪些？">说过没做的事</span>
+        <span class="chip" data-ora="这几年我对哪些事情的看法发生了明显变化？">观点变化</span>
+      </div>
+      <div class="mut" style="margin-top:6px">这类问题交给旁观者回答 —— 他会引用你自己的原话。</div>
+    </div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">06 · 与另一个自己对话<span>旁观者 · 陪你四年、读过你全部记录的老朋友</span></div>
     <div class="card">
-      <h3>📅 人生时间线<button class="btn sm" id="genTl" style="margin-left:auto">重新生成</button></h3>
-      <div id="tlBox" class="mut">加载中…</div>
+      <div class="mut" style="line-height:1.8">他不打官腔：会引用你自己的原话点醒你，也承认哪些事他「真没印象」。关于你自己、某段关系、某个拿不定的主意，都可以问他。</div>
+      <div style="margin-top:12px" class="orachips">
+        <span class="chip" data-ora="我是一个怎样的人？">我是一个怎样的人？</span>
+        <span class="chip" data-ora="我和谁关系最好？">我和谁关系最好？</span>
+        <span class="chip" data-ora="我最近和谁联系变少了？">最近和谁联系少了？</span>
+        <span class="chip" data-ora="我身上有哪些自相矛盾的地方？">我的矛盾之处</span>
+      </div>
+      <button class="btn sm" style="margin-top:12px" onclick="openOracle()">🫧 打开旁观者对话</button>
+    </div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">🔎 记忆搜索<span>精确多关键词 + BM25 近似检索 · 点击结果看上下文</span></div>
+    <div class="card">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="mq" placeholder="关键词（可多个，全部命中）" style="flex:1;min-width:200px">
+        <select id="mct" style="max-width:180px"><option value="">全部联系人</option></select>
+        <input id="mfrom" type="date" style="width:140px"><span class="mut">至</span><input id="mto" type="date" style="width:140px">
+        <label class="mut"><input type="checkbox" id="mme"> 只看我发的</label>
+        <button class="btn" id="mgo">搜索</button>
+        <label class="mut"><input type="checkbox" id="mfuzzy" checked> 命中太少时自动近似检索</label>
+      </div>
+      <div id="mres" class="mut" style="margin-top:10px">支持精确多关键词 + BM25 近似检索；点击结果可查看前后上下文。</div>
+      <div id="mctx"></div>
     </div>
   </div>
 </section>
@@ -126,41 +187,20 @@
     </div>
   </div>
   <div class="card qabox">
-    <h3>🤖 关系洞察 Agent<span class="sub">直接向你的关系数据提问，回答基于程序统计 + 原始记录</span></h3>
-    <div class="qa">
-      <textarea id="insQ" placeholder="例如：我这四年最重要的朋友有哪些？我和谁逐渐疏远了？也可以描述一件拿不定主意的事，问「万凯会怎么做、有什么优缺点、有没有不妥」"></textarea>
-      <button class="btn" id="insBtn">提问</button>
+    <h3>🫧 旁观者<span class="sub">读过你全部聊天记录的老朋友 —— 关系、圈子、拿不定的主意，都可以问他（回答基于程序统计 + 原始记录）</span></h3>
+    <div>
+      <span class="chip" data-ora="我这四年最重要的朋友有哪些？">最重要的朋友</span>
+      <span class="chip" data-ora="谁是我工作圈和朋友圈之间的连接人物？">圈层连接人物</span>
+      <span class="chip" data-ora="我和哪些人逐渐疏远了？">逐渐疏远的人</span>
+      <span class="chip" data-ora="我最近一年主要和哪些人交流？">最近一年交流</span>
+      <span class="chip" data-ora="我最近遇到一件事拿不定主意：（在这里补充事情）。你觉得按万凯的性格他会怎么做？这样做有什么优缺点？有没有什么不妥？">决策咨询：万凯会怎么做</span>
+      <span class="chip" data-ora="我打算：（在这里补充你的计划）。你觉得万凯会怎么做？他的做法有什么不妥吗？没有的话就直说，不用硬找。">决策咨询：有不妥吗</span>
     </div>
-    <div class="chip" data-q="我这四年最重要的朋友有哪些？">最重要的朋友</div>
-    <div class="chip" data-q="谁是我工作圈和朋友圈之间的连接人物？">圈层连接人物</div>
-    <div class="chip" data-q="我和哪些人逐渐疏远了？">逐渐疏远的人</div>
-    <div class="chip" data-q="我最近一年主要和哪些人交流？">最近一年交流</div>
-    <div class="chip" data-q="我最近遇到一件事拿不定主意：（在这里补充事情）。你觉得按万凯的性格他会怎么做？这样做有什么优缺点？有没有什么不妥？">决策咨询：万凯会怎么做</div>
-    <div class="chip" data-q="我打算：（在这里补充你的计划）。你觉得万凯会怎么做？他的做法有什么不妥吗？没有的话就直说，不用硬找。">决策咨询：有不妥吗</div>
-    <div id="insOut"></div>
+    <div class="mut" style="margin-top:8px">点击问题会打开右侧「旁观者」对话抽屉；他会先和你确认涉及的人，再检索真实记录回答。之前单独的关系洞察 Agent 已并入旁观者。</div>
   </div>
 </section>
 
-<!-- ═══════════ 个人记忆 ═══════════ -->
-<section id="pg-memory" class="page">
-  <h2 class="pt">个人记忆</h2>
-  <div class="card">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <input id="mq" placeholder="关键词（可多个，全部命中）" style="flex:1;min-width:200px">
-      <select id="mct" style="max-width:180px"><option value="">全部联系人</option></select>
-      <input id="mfrom" type="date" style="width:140px"><span class="mut">至</span><input id="mto" type="date" style="width:140px">
-      <label class="mut"><input type="checkbox" id="mme"> 只看我发的</label>
-      <button class="btn" id="mgo">搜索</button>
-      <label class="mut"><input type="checkbox" id="mfuzzy" checked> 命中太少时自动近似检索</label>
-    </div>
-    <div id="mres" class="mut" style="margin-top:10px">支持精确多关键词 + BM25 近似检索；点击结果可查看前后上下文。</div>
-    <div id="mctx"></div>
-  </div>
-  <div class="card">
-    <h3>🗓 事件记忆<span class="sub">AI 从四年记录中梳理的关键事件（已通过原文校验）</span></h3>
-    <div id="evBox" class="mut">加载中…</div>
-  </div>
-</section>
+<!-- ═══════════ 个人记忆页已并入「认识自己」记忆搜索 ═══════════ -->
 
 <!-- ═══════════ 数字人生(模拟推演) ═══════════ -->
 <section id="pg-sim" class="page">
@@ -234,6 +274,21 @@
 
 </main>
 </div>
+
+<!-- ═══════════ 旁观者: 全局悬浮入口 + 抽屉(所有页面可用, 与旁观者页共用会话) ═══════════ -->
+<button id="oraFab" title="旁观者 · 最懂你的朋友">🫧</button>
+<div id="oraMask"></div>
+<aside id="oraDrawer">
+  <div class="oraHd">
+    <div><b>🫧 旁观者</b><span class="sub2">陪你四年 · 读过你全部聊天记录</span></div>
+    <span id="oraClose" style="cursor:pointer;font-size:18px;opacity:.85">✕</span>
+  </div>
+  <div id="dmsgs"><div class="mut" style="text-align:center;margin-top:24px">问问你的朋友吧 ——<br>关于你自己、某段关系、或一个拿不定的主意。<br><span style="font-size:11px">他会先和你确认涉及的人，再检索真实记录回答</span></div></div>
+  <div class="inrow" style="padding:10px 14px">
+    <textarea id="dchat-in" placeholder="例如：我和桃姐之间有什么梗？我最近是不是疏远了谁？"></textarea>
+    <button class="btn" id="dsendbtn">发送</button>
+  </div>
+</aside>
 </div>
 </template>
 
@@ -267,7 +322,7 @@ const post=(p,b)=>api(p,{method:'POST',headers:{'Content-Type':'application/json
 
 /* ───── 导航 ───── */
 const LOADED={};
-const LOADERS={home:loadHome,twin:loadTwin,self:loadSelf,others:loadOthers,memory:loadMemory,data:loadData,sys:loadSys,sim:loadSim};
+const LOADERS={home:loadHome,twin:loadTwin,self:loadSelf,others:loadOthers,data:loadData,sys:loadSys,sim:loadSim};
 function go(p,sub){
   $$('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===p));
   $$('.page').forEach(s=>s.classList.toggle('on',s.id==='pg-'+p));
@@ -280,7 +335,7 @@ function showErr(id,e){const box=document.getElementById(id);if(!box)return;
   const d=document.createElement('div');d.className='err';d.textContent='加载失败: '+e.message;box.prepend(d)}
 $$('#nav a').forEach(a=>a.onclick=()=>go(a.dataset.p));
 $('#topq').addEventListener('keydown',e=>{if(e.key==='Enter'){const q=e.target.value.trim();if(!q)return;
-  go('memory');$('#mq').value=q;doSearch();}});
+  go('self');$('#mq').value=q;doSearch();}});   // 个人记忆页已并入认识自己
 
 /* ───── 全局提醒: 顶部 toast + 侧栏菜单红点(长任务完成后提示) ───── */
 function toast(t){
@@ -397,7 +452,7 @@ async function loadHome(){
       <div><b>我的社交圈</b><div class="desc">${Object.entries(ins.circles||{}).map(([k,v])=>k+' '+v['人数']+'人').join(' · ')}</div></div>
       <div class="names">查看关系网络 →</div></div>
   </div>
-  <div class="card"><h3>05 · 和数字分身聊聊<span class="sub">基于四年的记忆回答你</span></h3>
+  <div class="card"><h3>05 · 问问旁观者<span class="sub">陪你四年、读过你全部聊天记录的老朋友</span></h3>
     <div class="chip" data-ask="我是什么样的人？">我是什么样的人？</div>
     <div class="chip" data-ask="我和谁关系最好？">我和谁关系最好？</div>
     <div class="chip" data-ask="这几年我有什么变化？">这几年我有什么变化？</div>
@@ -417,9 +472,8 @@ async function loadHome(){
   </div>
   </div></div>`;
   $('#homeBody').innerHTML=html;
-  $$('#homeBody .chip[data-ask]').forEach(c=>c.onclick=()=>askTwin(c.dataset.ask));
+  $$('#homeBody .chip[data-ask]').forEach(c=>c.onclick=()=>openOracle(c.dataset.ask));
 }
-function askTwin(q){go('twin');setMode('ask');$('#chat-in').value=q;$('#chat-in').focus()}
 
 /* ───── 数字人生(模拟推演) ───── */
 async function loadSim(){
@@ -691,7 +745,8 @@ async function send(){
       if(!rs.length)pushMsg('sys','(群里暂时没人冒泡)');
     }else{
     const resp=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contact:CUR,mode:MODE,message:text,history:hist,stream:true})});
+      body:JSON.stringify({contact:CUR,mode:MODE,message:text,history:hist,stream:true,
+        persona:MODE==='ask'?'oracle':undefined})});
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||('HTTP '+resp.status))}
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',reply='',anl=null,err=null,unsure=false,cands=[];
     while(true){
@@ -737,25 +792,28 @@ const BSESS={};
 const bkey=()=>'byst_'+(BCUR||'新朋友');
 function bcurSess(){if(!BSESS[bkey()])BSESS[bkey()]=JSON.parse(localStorage.getItem(bkey())||'[]');return BSESS[bkey()]}
 function bsave(){try{localStorage.setItem(bkey(),JSON.stringify(bcurSess()))}catch(e){}}
-function bAppendDom(m){
-  const box=$('#bmsgs');
-  if(m.who==='sys'){const d=document.createElement('div');d.className='typing';d.textContent='· '+m.text;box.appendChild(d);box.scrollTop=1e9;return}
+/* 旁观者消息渲染: 页面(#bmsgs)与全局抽屉(#dmsgs)共用同一会话, 双端同步显示 */
+const ORA={open:false};
+const ORA_BOXES=()=>['#bmsgs','#dmsgs'].map(s=>$(s)).filter(Boolean);
+function oraRow(m){
+  if(m.who==='sys'){const d=document.createElement('div');d.className='typing';d.textContent='· '+m.text;return d}
   const row=document.createElement('div');row.className='row'+(m.who==='me'?' me':'');
   const av=document.createElement('div');av.className='av';
   const b=document.createElement('div');b.className='bub';
   if(m.who==='me'){av.textContent='我';b.innerHTML=wxface(esc(m.text));row.appendChild(av);row.appendChild(b)}
-  else{av.classList.add('ai');av.textContent='AI';
+  else{av.classList.add('ai');av.textContent='🫧';
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;max-width:600px';
-    wrap.innerHTML=`<div class="who">AI 记忆分析师</div>`;
+    wrap.innerHTML=`<div class="who">旁观者</div>`;
     b.innerHTML=wxface(esc(m.text))+(m.anl||'');wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap)}
-  box.appendChild(row);box.scrollTop=1e9;
+  return row;
 }
-function bRender(){$('#bmsgs').innerHTML='';bcurSess().forEach(bAppendDom)}
+function bAppendDom(m){ORA_BOXES().forEach(box=>{box.appendChild(oraRow(m));box.scrollTop=1e9})}
+function bRender(){ORA_BOXES().forEach(box=>{box.innerHTML='';bcurSess().forEach(m=>box.appendChild(oraRow(m)));box.scrollTop=1e9})}
 /* 人物确认卡片: AI 先识别提问中涉及的人, 用户确认后再检索 */
-function bConfirmCard(cands){
+function bConfirmCard(cands,boxSel){
   return new Promise(resolve=>{
-    const box=$('#bmsgs');
+    const box=$(boxSel||'#bmsgs');
     const card=document.createElement('div');
     card.style.cssText='margin:4px 0 12px 44px;background:#fff;border:1px solid #e8e8ea;border-radius:12px;padding:12px 14px;max-width:540px;box-shadow:0 1px 3px rgba(0,0,0,.06)';
     card.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:6px">🧭 这个问题涉及下面这些人，帮我确认一下（可多选）：</div>'
@@ -779,27 +837,31 @@ function bConfirmCard(cands){
     });
   });
 }
-async function sendB(){
-  const inp=$('#bchat-in'),text=inp.value.trim();
+async function sendB(src){
+  src=src||'page';
+  const inp=src==='fab'?$('#dchat-in'):$('#bchat-in');
+  const boxSel=src==='fab'?'#dmsgs':'#bmsgs';
+  const btn=src==='fab'?$('#dsendbtn'):$('#bsendbtn');
+  const text=inp.value.trim();
   if(!text||BSENDING)return;
-  BSENDING=true;$('#bsendbtn').disabled=true;inp.value='';
+  BSENDING=true;btn.disabled=true;inp.value='';
   const hist=bcurSess().filter(m=>m.who==='me'||m.who==='ai').slice(-10)
-    .map(m=>({speaker:m.who==='me'?'我':'分析师',content:m.text}));   // push 前取
+    .map(m=>({speaker:m.who==='me'?'我':'旁观者',content:m.text}));   // push 前取
   bcurSess().push({who:'me',text});bAppendDom({who:'me',text});bsave();
   // 第一步: 人物识别与确认(识别不到人时直接提问)
   let confirm_names=null;
   try{
     const w=await post('/api/agent/who',{message:text});
-    if(w.candidates&&w.candidates.length)confirm_names=await bConfirmCard(w.candidates);
+    if(w.candidates&&w.candidates.length)confirm_names=await bConfirmCard(w.candidates,boxSel);
   }catch(e){}
-  const tip=document.createElement('div');tip.className='typing';$('#bmsgs').appendChild(tip);
-  const t0=Date.now();let stepTxt='正在唤醒 AI 记忆分析师…';
+  const tip=document.createElement('div');tip.className='typing';$(boxSel).appendChild(tip);
+  const t0=Date.now();let stepTxt='旁观者正在回忆相关记录…';
   const draw=s=>{tip.innerHTML=`<span style="display:inline-block;animation:simpulse 1.2s infinite">⏳</span> ${esc(s)} <b class="mut">${Math.floor((Date.now()-t0)/1000)}s</b>`};
-  draw(stepTxt);$('#bmsgs').scrollTop=1e9;
+  draw(stepTxt);$(boxSel).scrollTop=1e9;
   const tick=setInterval(()=>{draw(stepTxt)},1000);
   try{
     const resp=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contact:'新朋友',mode:'ask',message:text,history:hist,stream:true,confirm_names})});
+      body:JSON.stringify({contact:'新朋友',mode:'ask',message:text,history:hist,stream:true,confirm_names,persona:'oracle'})});
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||('HTTP '+resp.status))}
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',reply='',anl=null,err=null,unsure=false,cands=[];
     while(true){
@@ -809,7 +871,7 @@ async function sendB(){
         const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
         if(!line)continue;
         let ev;try{ev=JSON.parse(line)}catch(e){continue}
-        if(ev.step){stepTxt=ev.step;draw(stepTxt);$('#bmsgs').scrollTop=1e9}
+        if(ev.step){stepTxt=ev.step;draw(stepTxt);$(boxSel).scrollTop=1e9}
         if(ev.done){if(ev.error)err=ev.error;else{reply=ev.reply||'';anl=ev.analysis||null;unsure=!!ev.unsure;cands=ev.candidates||[]}}
       }
     }
@@ -817,71 +879,130 @@ async function sendB(){
     if(err)throw new Error(err);
     const a=anl||{};
     const ans=(a['回答']||reply||'').trim()||'(AI 未返回回答)';
-    if(unsure){ // 分析师没把握 → 人工介入窗
+    if(unsure){ // 旁观者没把握 → 人工介入窗
       const anlHtml=renderAnalysisHTML(a);
       const fr=await openIntervene({question:text,aiDraft:ans,candidates:cands,contact:BCUR||'新朋友',mode:'ask',anlHTML:anlHtml});
       if(fr!=null){
         const marked=anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>';
         bcurSess().push({who:'ai',text:fr,anl:marked});bAppendDom({who:'ai',text:fr,anl:marked});bsave();
-      }else bAppendDom({who:'sys',text:'(已取消：分析师对这个问题没把握，等你亲自补充)'});
+      }else bAppendDom({who:'sys',text:'(已取消：旁观者对这个问题没把握，等你亲自补充)'});
     }else{
       bcurSess().push({who:'ai',text:ans,anl:renderAnalysisHTML(a)});
       bAppendDom({who:'ai',text:ans,anl:renderAnalysisHTML(a)});bsave();
-      if(PAGE()!=='byst'){navDot('byst',true);toast('🧭 旁观者问答已回答：'+ans.slice(0,24)+'…')}
+      if(!ORA.open&&PAGE()!=='byst'){navDot('byst',true);toast('🫧 旁观者已回答：'+ans.slice(0,24)+'…')}
     }
   }catch(e){clearInterval(tick);tip.innerHTML='⚠ '+esc(e.message);setTimeout(()=>tip.remove(),6000)}
-  BSENDING=false;$('#bsendbtn').disabled=false;inp.focus();
+  BSENDING=false;btn.disabled=false;inp.focus();
 }
 function PAGE(){const a=document.querySelector('#nav a.on');return a?a.dataset.p:'home'}
-$('#bsendbtn').onclick=sendB;
-$('#bchat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendB()}});
+/* 旁观者抽屉: 全局悬浮入口, 与旁观者页共用同一会话 */
+function openOracle(q){
+  ORA.open=true;
+  $('#oraDrawer').classList.add('on');$('#oraMask').classList.add('on');
+  bRender();
+  if(q){$('#dchat-in').value=q;sendB('fab')}
+  else setTimeout(()=>{if(ORA.open&&!BSENDING)$('#dchat-in').focus()},300);
+}
+function closeOracle(){ORA.open=false;
+  $('#oraDrawer').classList.remove('on');$('#oraMask').classList.remove('on')}
+$('#oraFab').onclick=()=>ORA.open?closeOracle():openOracle();
+$('#oraClose').onclick=closeOracle;
+$('#oraMask').onclick=closeOracle;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ORA.open)closeOracle()});
+/* 全局旁观者提问 chips(认识自己 05/06 · 认识他人 · 首页) */
+$$('.chip[data-ora]').forEach(c=>c.onclick=()=>openOracle(c.dataset.ora));
+$$('.chip[data-go]').forEach(c=>c.onclick=()=>go(c.dataset.go));
+$('#bsendbtn').onclick=()=>sendB('page');
+$('#bchat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendB('page')}});
+$('#dsendbtn').onclick=()=>sendB('fab');
+$('#dchat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendB('fab')}});
 $('#bClear').onclick=()=>{BSESS[bkey()]=[];bsave();bRender();
   toast('已清空旁观者会话，后续不再携带之前的上下文')};
 async function loadByst(){bRender()}
 LOADERS.byst=loadByst;
 
-/* ───── 认识自己 ───── */
+/* ───── 认识自己(六模块) ───── */
+const ME_BOXES=['meTraits','meSpeak','mePros','meLife','meActive','meSocial','meBlind'];
 async function loadSelf(){
-  api('/api/agent/style').then(s=>{
-    const ld=s['长度分布']||{};
-    $('#styleBox').innerHTML=`
-      <div class="stat3"><div class="st"><b>${s['平均长度_字']}</b><span>平均字数</span></div>
-      <div class="st"><b>${s['带笑_比例%']}%</b><span>带笑比例</span></div>
-      <div class="st"><b>${s['带微信表情_比例%']}%</b><span>带表情比例</span></div></div>
-      <div style="margin:6px 0 2px" class="mut">回复长度分布</div>
-      ${Object.entries(ld).map(([k,v])=>`<div class="pyb"><span class="y">${esc(k)}</span><div class="bar"><i style="width:${Math.min(100,v)}%"></i></div><span class="n">${v}%</span></div>`).join('')}
-      <div style="margin:8px 0 2px" class="mut">高频口头禅</div>
-      ${(s['口头禅_高频完整短句_top30']||[]).slice(0,8).map(x=>`<span class="chip" style="cursor:default">${esc(typeof x==='string'?x:(x['短句']||JSON.stringify(x)))}</span>`).join('')}`;
-  }).catch(e=>$('#styleBox').textContent='加载失败: '+e.message);
+  api('/api/agent/style').then(renderStyle).catch(e=>{$('#styleBox').textContent='加载失败: '+e.message});
   try{const tl=await api('/api/agent/ai/timeline');renderTL(tl)}catch(e){$('#tlBox').textContent='加载失败: '+e.message}
-  try{const me=await api('/api/agent/ai/me');renderMe(me)}catch(e){$('#meBox').textContent='加载失败: '+e.message}
+  try{const me=await api('/api/agent/ai/me');renderMe(me)}catch(e){ME_BOXES.forEach(id=>$('#'+id).textContent='加载失败: '+e.message)}
+  // 记忆搜索(原「个人记忆」页并入): 联系人下拉只填一次
+  if($('#mct').options.length<=1){
+    try{await loadTwin();
+      CONTACTS.forEach(c=>{const o=document.createElement('option');o.value=o.textContent=c['姓名'];$('#mct').appendChild(o)});
+    }catch(e){}
+  }
+  $('#mgo').onclick=doSearch;
+  $('#mq').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+}
+function renderStyle(s){
+  const ld=s['长度分布']||{};
+  const kc=(s['口头禅_高频完整短句_top30']||[]).slice(0,10)
+    .map(x=>`<span class="chip" style="cursor:default">${esc(typeof x==='string'?x:(x['句']||''))}${(x&&x['次数']!=null)?`<span class="mut"> ×${x['次数']}</span>`:''}</span>`).join('');
+  $('#styleBox').innerHTML=`
+    <div class="stat3"><div class="st"><b>${s['平均长度_字']}</b><span>平均字数</span></div>
+    <div class="st"><b>${s['带笑_比例%']}%</b><span>带笑比例</span></div>
+    <div class="st"><b>${s['带微信表情_比例%']}%</b><span>带表情比例</span></div></div>
+    <div style="margin:6px 0 2px" class="mut">回复长度分布</div>
+    ${Object.entries(ld).map(([k,v])=>`<div class="pyb"><span class="y">${esc(k)}</span><div class="bar"><i style="width:${Math.min(100,v)}%"></i></div><span class="n">${v}%</span></div>`).join('')}
+    <div style="margin:8px 0 2px" class="mut">高频口头禅</div>
+    ${kc||'<span class="mut">暂无</span>'}
+    ${(s['活跃时段_按小时']&&Object.keys(s['活跃时段_按小时']).length)?`<div style="margin:8px 0 2px" class="mut">最常活跃时段</div>
+    <div>${Object.entries(s['活跃时段_按小时']).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([h])=>`<span class="chip" style="cursor:default">${esc(h)}</span>`).join('')}</div>`:''}`;
+  // 03 · 分对象说话差异(程序统计)
+  const d=s['分对象说话差异_top15']||{};
+  const ents=Object.entries(d).slice(0,10);
+  $('#styleDiff').innerHTML=ents.length?`<div class="mut" style="margin:4px 0 6px">对不同的人，你的表达差异（程序统计）</div>`+
+    ents.map(([n,v])=>`<div class="srow"><span class="k" style="width:auto;font-weight:600;color:#1c2430">${esc(n)}</span>
+      <span class="mut" style="flex:1">平均 ${esc(v['平均长度'])} 字 · 常说：${esc((v['对该联系人高频短句_top8']||[]).slice(0,5).join('、'))}</span></div>`).join(''):'';
 }
 function renderMe(m){
-  if(!m||!m['一句话总结']){$('#meBox').textContent='尚未生成。';return}
-  const sec=(t,items)=>{const arr=Array.isArray(items)?items:(items?[String(items)]:[]);
-    if(!arr.length)return '';
-    return `<div style="margin-top:10px"><b style="font-size:13px">${t}</b><div style="margin-top:4px">${arr.map(x=>`<div style="font-size:12.5px;color:#4a5568;line-height:1.7">· ${esc(x)}</div>`).join('')}</div></div>`};
-  $('#meBox').innerHTML=`<div style="font-size:14px;line-height:1.7">${esc(m['一句话总结'])}</div>`
-    +(m['性格特点']?sec('性格',m['性格特点']):'')+(m['说话方式']?sec('说话方式',m['说话方式']):'')
-    +(m['社交风格']?sec('社交风格',m['社交风格']):'')+(m['兴趣与生活']?sec('兴趣与生活',m['兴趣与生活']):'')
-    +(m['优点']?sec('优点',m['优点']):'')+(m['注意点']?sec('注意点',m['注意点']):'');
+  if(!m||!m['一句话总结']){
+    ME_BOXES.forEach(id=>$('#'+id).textContent='尚未生成，点击上方「重新生成画像」（约 1-2 分钟）。');
+    $('#shTags').innerHTML='';return}
+  $('#shSummary').textContent=m['一句话总结'];
+  $('#shTags').innerHTML=(m['性格特点']||[]).slice(0,5).map(t=>`<span class="tag" style="background:rgba(255,255,255,.16);color:#eafff5">${esc(t)}</span>`).join(' ');
+  const lst=v=>Array.isArray(v)?v:(v?[String(v)]:[]);
+  const ul=items=>items.length?`<div>${items.map(x=>`<div style="font-size:12.5px;color:#4a5568;line-height:1.7">· ${esc(x)}</div>`).join('')}</div>`:'<span class="mut">空</span>';
+  $('#meTraits').innerHTML=ul(lst(m['性格特点']));
+  // 说话方式: AI 输出为对象{整体风格/句式特点/口头禅/标点与表情}, 分项展示(修复 [object Object])
+  const sp=m['说话方式'];
+  if(sp&&typeof sp==='object'&&!Array.isArray(sp)){
+    $('#meSpeak').innerHTML=['整体风格','句式特点','口头禅','标点与表情'].map(k=>sp[k]
+      ?`<div class="srow"><span class="k">${k}</span><span style="flex:1">${esc(sp[k])}</span></div>`:'').join('')||'<span class="mut">空</span>';
+  }else $('#meSpeak').innerHTML=ul(lst(sp));
+  $('#mePros').innerHTML=ul(lst(m['优点']));
+  $('#meLife').innerHTML=ul(lst(m['兴趣与生活']));
+  // 活跃规律(此前遗漏未渲染)
+  $('#meActive').innerHTML=m['活跃规律']
+    ?`<div style="font-size:12.5px;color:#4a5568;line-height:1.8">${esc(m['活跃规律'])}</div>`:'<span class="mut">空</span>';
+  $('#meSocial').innerHTML=m['社交风格']
+    ?`<div style="font-size:12.5px;color:#4a5568;line-height:1.8">${esc(m['社交风格'])}</div>`:'<span class="mut">空</span>';
+  $('#meBlind').innerHTML=ul(lst(m['注意点']));
 }
 function renderTL(t){
   const r=(t&&t.result)||t||{};
-  const yrs=r['年份']||{};
-  let h=`<div style="font-size:13px;line-height:1.7;margin-bottom:10px">${esc(r['总述']||'')}</div><div class="tl">`;
-  Object.keys(yrs).sort().forEach(y=>{
-    (Array.isArray(yrs[y])?yrs[y]:[]).forEach(ev=>{
-      h+=`<div class="ev2"><div class="tm">${esc(y)}年${ev['月']?'· '+esc(ev['月']):''}</div><b>${esc(ev['标题']||'')}</b><p>${esc(ev['描述']||'')}</p></div>`;});
+  const raw=r['年份']||[];
+  // 后端结构: 年份=[{年,主题,事件:[{月份,标题,描述,依据,置信}]}] (数组, 非对象)
+  const yrs=Array.isArray(raw)?raw:Object.values(raw);
+  if(!yrs.length){$('#tlBox').innerHTML='尚未生成时间线，点击上方「重新生成时间线」（约 2-3 分钟）。';return}
+  let h=`<div style="font-size:13px;line-height:1.7;margin-bottom:12px;color:#4a5568">${esc(r['总述']||'')}</div><div class="tl">`;
+  yrs.slice().sort((a,b)=>String(a['年']||'').localeCompare(String(b['年']||''))).forEach(yv=>{
+    const y=String(yv['年']||'').slice(0,4);
+    h+=`<div class="tlyear"><span class="tyy">${esc(y)}</span>${yv['主题']?`<span class="tag g">${esc(yv['主题'])}</span>`:''}</div>`;
+    (Array.isArray(yv['事件'])?yv['事件']:[]).forEach(ev=>{
+      h+=`<div class="ev2"><div class="tm">${esc(y)}年${ev['月份']?'· '+String(ev['月份']).replace(/^0/,'')+'月':''}</div><b>${esc(ev['标题']||'')}</b><p>${esc(ev['描述']||'')}</p>
+      ${ev['依据']?`<div class="tlev">💬 原话：${esc(ev['依据'])}${ev['置信']==='中'?' <span class="mut">（置信：中）</span>':''}</div>`:''}</div>`;});
   });
   const jz=r['校验']||{};
   h+=`</div><div class="mut" style="margin-top:8px">事件均经过原文回查校验${jz['剔除事件']?`（剔除 ${jz['剔除事件']} 个无法证实的事件）`:''}</div>`;
   $('#tlBox').innerHTML=h;
 }
-$('#genMe').onclick=async()=>{startWait($('#meBox'),'AI 正在读取你的消息样本…（约 1-2 分钟）');
+$('#genMe').onclick=async()=>{startWait($('#meTraits'),'AI 正在读取你的消息样本…（约 1-2 分钟）');
   try{const r=await post('/api/agent/ai/me',{});stopWait();renderMe(r.result);
     if(PAGE()!=='self'){navDot('self',true);toast('🪞 个人画像已生成完毕，点击左侧「认识自己」查看')}}
-  catch(e){stopWait();$('#meBox').textContent='生成失败: '+e.message;if(PAGE()!=='self'){navDot('self',true);toast('⚠ 个人画像生成失败: '+e.message)}}};
+  catch(e){stopWait();$('#meTraits').textContent='生成失败: '+e.message;if(PAGE()!=='self'){navDot('self',true);toast('⚠ 个人画像生成失败: '+e.message)}}};
 $('#genTl').onclick=async()=>{startWait($('#tlBox'),'AI 正在逐年梳理你的人生事件…（约 2-3 分钟）');
   try{const r=await post('/api/agent/ai/timeline',{});stopWait();renderTL(r.result);
     if(PAGE()!=='self'){navDot('self',true);toast('🗓 人生时间线已生成完毕，点击左侧「认识自己」查看')}}
@@ -1091,7 +1212,7 @@ async function showEgo(name){
     <div>${e.shared_with.slice(0,12).map(s=>`<span class="tag" style="background:#f1f4f7;color:#4a5568;margin:2px">${esc(s.name)}·${s.n}群</span>`).join('')||'<span class="mut">未发现</span>'}</div>
     <div class="mut" style="margin-top:8px">⚠ 同群聊仅代表存在共同群，不等于两人真实认识</div>
     <button class="btn sm" style="margin-top:10px" onclick="showRecent('${esc(name).replace(/'/g,"\\'")}')">💬 查看原始聊天</button>
-    <button class="btn sm gray" style="margin-top:10px" onclick="askInsight('我和${esc(name).replace(/'/g,'')}的关系是怎样的？')">🤖 问问 AI：我和 ta 的关系</button>`;
+    <button class="btn sm gray" style="margin-top:10px" onclick="openOracle('我和${esc(name).replace(/'/g,'')}的关系是怎样的？')">🫧 问旁观者：我和 ta 的关系</button>`;
     // 联动"人物画像"下拉框: 点关系图选人时, 画像区同步显示该人的历史画像
     const sel=$('#pplSel');
     if(sel&&[...sel.options].some(o=>o.value===name)){sel.value=name;loadPplFor(name)}
@@ -1180,68 +1301,10 @@ function renderPpl(n,r,genAt){
     +['共同话题','相处方式','关键事件','备注','性格特点','说话方式','与我的关系','聊天氛围','身份推测'].map(k=>r[k]?`<div style="margin:6px 0"><b>${k}</b><div style="margin-top:3px">${arr(r[k]).map(x=>`<div class="mut" style="font-size:12.5px;line-height:1.7">· ${esc(typeof x==='string'?x:JSON.stringify(x))}</div>`).join('')}</div></div>`:'').join('')
     ||'<div class="mut">无结构化内容</div>';
 }
-async function askInsight(q){
-  $('#insQ').value=q;$('#insBtn').click();
-}
-$('#insBtn').onclick=async()=>{
-  const q=$('#insQ').value.trim();if(!q||$('#insBtn').disabled)return;
-  $('#insBtn').disabled=true;
-  $('#insOut').innerHTML='<div class="anl" style="max-width:none"><b>⏳ 关系洞察分析中</b>'
-    +'<div class="mut" id="insWait" style="margin-top:4px">准备中…</div>'
-    +'<div id="insSteps" style="margin-top:6px"></div></div>';
-  const t0=Date.now();
-  const wt=setInterval(()=>{const w=document.getElementById('insWait');
-    if(!w){clearInterval(wt);return}
-    w.textContent='已等待 '+((Date.now()-t0)/1000|0)+' 秒（预计 1-2 分钟）'},1000);
-  const addStep=s=>{const p=document.getElementById('insSteps');if(!p)return;
-    const d=document.createElement('div');d.className='mut';
-    d.style.cssText='font-size:12px;margin-top:3px';d.textContent='▸ '+s;p.appendChild(d)};
-  try{
-    const resp=await fetch('/api/agent/network/insight',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:q,stream:true})});
-    if(!resp.ok){let j=null;try{j=await resp.json()}catch(e){}throw new Error((j&&j.error)||('HTTP '+resp.status))}
-    const rd=resp.body.getReader(),dec=new TextDecoder();let buf='',r=null;
-    while(true){
-      const {value,done}=await rd.read();if(done)break;
-      buf+=dec.decode(value,{stream:true});
-      let i;while((i=buf.indexOf('\n'))>=0){
-        const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
-        if(!line)continue;
-        let ev;try{ev=JSON.parse(line)}catch(e){continue}
-        if(ev.step)addStep(ev.step);
-        if(ev.done){if(ev.error)throw new Error(ev.error);r=ev}
-      }
-    }
-    clearInterval(wt);
-    let h=`<div class="anl" style="max-width:none;margin-top:10px"><b>🤖 关系洞察</b><div style="margin-top:4px;white-space:pre-wrap">${esc(r.reply||'')}</div></div>`;
-    const a=r.analysis||{};
-    (a['关键事实']||[]).slice(0,5).forEach(f=>{
-      h+=`<div class="ev" style="background:#fff">✦ ${esc(f['事实']||'')}`;
-      (f['证据']||[]).slice(0,2).forEach(ev=>{h+=`<div class="mut" style="margin-top:3px">📎 ${esc(ev['时间']||'')} · ${esc(ev['对象']||'')}: ${esc((ev['原文']||'').slice(0,60))}</div>`});
-      h+='</div>';});
-    $('#insOut').innerHTML=h;
-    if(PAGE()!=='others'){navDot('others',true);toast('🤖 关系洞察已分析完毕，点击左侧「认识他人」查看')}
-  }catch(e){clearInterval(wt);$('#insOut').innerHTML='<div class="err">'+e.message+'</div>'}
-  $('#insBtn').disabled=false;
-};
+/* 关系洞察 Agent 已并入「旁观者」: ego 面板的提问直接打开旁观者抽屉 */
 AFTERS.others=sub=>showOthTab(sub||'net');
 
-/* ───── 个人记忆 ───── */
-async function loadMemory(){
-  if($('#mct').options.length<=1){
-    await loadTwin();
-    CONTACTS.forEach(c=>{const o=document.createElement('option');o.value=o.textContent=c['姓名'];$('#mct').appendChild(o)});
-  }
-  api('/api/agent/ai/timeline').then(renderEvents).catch(e=>$('#evBox').textContent='加载失败: '+e.message);
-  $('#mgo').onclick=doSearch;
-  $('#mq').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
-}
-function renderEvents(t){
-  const r=(t&&t.result)||t||{};const yrs=r['年份']||{};let h='';
-  Object.keys(yrs).sort().forEach(y=>{(Array.isArray(yrs[y])?yrs[y]:[]).forEach(ev=>{
-    h+=`<div class="ev2" style="margin:0 0 12px 16px;position:relative"><div class="tm" style="font-size:11.5px;color:var(--mut)">${esc(y)}年${ev['月']?'· '+esc(ev['月']):''}</div><b style="font-size:13px">${esc(ev['标题']||'')}</b><p style="font-size:12.5px;color:#5b6572;margin-top:2px">${esc(ev['描述']||'')}</p></div>`;});});
-  $('#evBox').innerHTML=h?`<div class="tl" style="margin:4px 0">${h}</div>`:'尚未生成时间线事件，去「认识自己」点击「重新生成」。';
-}
+/* 个人记忆页已并入「认识自己」; 以下仅保留记忆搜索逻辑(容器在认识自己页内) */
 async function doSearch(){
   const q=$('#mq').value.trim();if(!q)return;
   $('#mctx').innerHTML='';
@@ -1471,18 +1534,18 @@ $('#topdt').textContent=(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStar
 loadHome().catch(e=>showErr('pg-home',e));
 
   // ---- 内联 onclick/ondblclick 属性走全局作用域: 把组件内函数挂到 window ----
-  window.askInsight = askInsight;
   window.closeEgo = closeEgo;
   window.copyName = copyName;
   window.end = end;
-  window.endB = endB;
   window.gfDemote = gfDemote;
   window.gfPromote = gfPromote;
   window.gfPromoteTop = gfPromoteTop;
   window.go = go;
   window.loadGroupFriends = loadGroupFriends;
+  window.loseOracle = loseOracle;
   window.oCmp = oCmp;
   window.oSearch = oSearch;
+  window.openOracle = openOracle;
   window.rawNet = rawNet;
   window.showDetail = showDetail;
   window.showRecent = showRecent;
@@ -1679,4 +1742,35 @@ background:linear-gradient(120deg,#0d4032 0%,#0e6b4c 55%,#119a68 100%)}
 .bigic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:23px;background:rgba(255,255,255,.62);flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.05)}
 .slbd{flex:1;min-width:0}
 .lc .av{width:38px;height:38px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff}
+/* ───── 认识自己(重构: 六模块) ───── */
+.selfhero{border-radius:16px;padding:26px 30px 20px;color:#fff;margin-bottom:18px;position:relative;overflow:hidden;
+background:linear-gradient(125deg,#0d4032 0%,#0e6b4c 58%,#119a68 100%)}
+.selfhero .sheb{font-size:10.5px;letter-spacing:1.5px;color:#9fd4bd;margin-bottom:10px}
+.selfhero h1{font-size:24px;font-weight:700}
+.selfhero p{margin-top:8px;font-size:14px;color:#d8f3e6;line-height:1.7;max-width:720px}
+.selfhero .shops{margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.selfhero .shops .btn{background:rgba(255,255,255,.16)}
+.selfhero .shops .btn:hover{background:rgba(255,255,255,.28)}
+.selfmod{margin:4px 0 20px}
+.smhd{display:flex;align-items:baseline;gap:10px;font-size:15.5px;font-weight:700;margin:0 2px 10px}
+.smhd span{font-size:11.5px;color:var(--mut);font-weight:400}
+.srow{display:flex;gap:8px;margin:6px 0;font-size:12.5px;line-height:1.7}
+.srow .k{flex-shrink:0;width:76px;color:var(--mut)}
+.tlyear{margin:8px 0 10px;display:flex;align-items:center;gap:8px}
+.tlyear .tyy{font-size:16px;font-weight:700;color:var(--brand2)}
+.tlev{background:var(--cg);border-radius:8px;padding:6px 10px;margin-top:5px;font-size:12px;color:#2f5d4c;line-height:1.6}
+/* ───── 旁观者: 全局悬浮入口 + 抽屉 ───── */
+#oraFab{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+font-size:22px;z-index:1500;box-shadow:0 6px 20px rgba(14,107,76,.42);background:linear-gradient(135deg,#0e9f6e,#0b7f58);transition:transform .15s}
+#oraFab:hover{transform:translateY(-2px)}
+#oraMask{position:fixed;inset:0;background:rgba(15,23,32,.35);z-index:1590;opacity:0;pointer-events:none;transition:opacity .25s}
+#oraMask.on{opacity:1;pointer-events:auto}
+#oraDrawer{position:fixed;top:0;right:-440px;width:410px;max-width:94vw;height:100vh;background:#f7f9f8;z-index:1600;
+display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.18);transition:right .28s}
+#oraDrawer.on{right:0}
+.oraHd{padding:14px 18px;background:linear-gradient(120deg,#0d4032,#0e6b4c 70%,#119a68);color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.oraHd b{font-size:15px;display:block}
+.oraHd .sub2{font-size:11px;color:#9fd4bd}
+#dmsgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+#dmsgs .row{max-width:100%}
 </style>

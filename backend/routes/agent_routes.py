@@ -88,12 +88,12 @@ def _valid_contact(name):
                            or knowledge.contact_info(name) is not None)
 
 
-def _chat_dialog(contact, mode, hist, message, confirms, progress):
+def _chat_dialog(contact, mode, hist, message, confirms, progress, persona=None):
     """dialog=第一人称分身 / ask=旁观者问答; 返回统一 dict(含 unsure/candidates)"""
     if mode == 'ask':
         hint = None if contact == '新朋友' else contact
         r = analysis_agent.answer(hist, message, contact_hint=hint, confirm_names=confirms,
-                                  progress=progress)
+                                  progress=progress, persona=persona)
         return {'reply': r.get('reply', ''), 'analysis': r.get('analysis'),
                 'unsure': r.get('unsure', False), 'candidates': r.get('candidates', [])}
     r = persona_agent.reply(contact, hist, message, progress=progress)
@@ -389,7 +389,8 @@ def chat():
         def work():
             try:
                 r = _chat_dialog(contact, mode, hist, message, confirms,
-                                 progress=lambda s: out_q.put(('step', {'step': s})))
+                                 progress=lambda s: out_q.put(('step', {'step': s})),
+                                 persona='oracle' if b.get('persona') == 'oracle' else None)
                 out_q.put(('done', {'done': True, **r}))
             except (LLMError, ValueError) as e:
                 out_q.put(('done', {'done': True, 'error': str(e)}))
@@ -407,7 +408,8 @@ def chat():
                     break
         return _stream(gen())
 
-    r = _chat_dialog(contact, mode, hist, message, confirms)
+    r = _chat_dialog(contact, mode, hist, message, confirms, None,
+                     persona='oracle' if b.get('persona') == 'oracle' else None)
     # dialog 有把握的回复自动落盘为分身经历(拿不准的走人工介入后记录)
     if mode != 'ask' and not r.get('unsure') and r.get('reply'):
         try:
@@ -472,7 +474,8 @@ def network_insight():
         def work():
             try:
                 r = analysis_agent.answer(hist, message, extra_context=ctx,
-                                          progress=lambda s: out_q.put(('step', {'step': s})))
+                                          progress=lambda s: out_q.put(('step', {'step': s})),
+                                          persona='oracle' if b.get('persona') == 'oracle' else None)
                 out_q.put(('done', {'done': True, 'reply': r.get('reply', ''),
                                     'analysis': r.get('analysis')}))
             except (LLMError, ValueError) as e:
@@ -490,7 +493,8 @@ def network_insight():
                 if kind == 'done':
                     break
         return _stream(gen())
-    return jsonify(analysis_agent.answer(hist, message, extra_context=ctx))
+    return jsonify(analysis_agent.answer(hist, message, extra_context=ctx,
+                                         persona='oracle' if b.get('persona') == 'oracle' else None))
 
 
 @agent_bp.route('/group/chat', methods=['POST'])

@@ -25,6 +25,20 @@ _SYS = """你是「万凯」的私人记忆分析师, 服务于他的个人数�
 5. 涉及敏感隐私(住址、证件、财务)一律模糊处理
 6. 全部中文"""
 
+_SYS_ORACLE = """你是「旁观者」——陪伴万凯多年、读过他全部微信聊天记录的挚友。因为看过他所有的聊天, 你比任何人都了解他和他的每段关系。用户(万凯本人或他授权的人)会向你提问, 你像老朋友聊天一样回答。
+只输出 JSON(不要 markdown 代码块):
+{"回答": "像朋友聊天那样回答, 口语、直接、有温度, 可以吐槽可以共情, 不打官腔; 2-6句",
+ "关键事实": [{"事实": "一句具体结论", "证据": [{"时间": "YYYY-MM-DD HH:MM", "对象": "与谁的聊天", "说话人": "万凯/对方", "原文": "聊天原话摘录"}], "置信": "高/中/低"}],
+ "不确定信息": ["数据不足或无法判断的点, 没有则空数组"],
+ "候选回答": ["仅当存在不确定信息时, 给出2-3个不同依据解读下的候选答案; 完全确定则空数组"]}
+规则:
+1. 你的底色是"懂他的朋友", 不是AI客服: 说话自然, 偶尔引用他自己的原话点醒他("你自己去年还跟XX说过…")
+2. 事实仍然全部来自下方真实数据, 绝不编造; 数据里没有的, 像朋友一样坦白"这个我真没印象, 别瞎猜", 写进「不确定信息」
+3. 每条关键事实必须至少附一条原文证据, 原文从提供的记录中原样摘录
+4. 问到「梗 / 暗号 / 外号 / 习惯 / 私下称呼」时主动从记录里找双方独有的默契并引用原话
+5. 涉及敏感隐私(住址、证件、财务)一律模糊处理
+6. 全部中文"""
+
 _SYS_ADVICE = """你是「万凯」的决策顾问。用户(万凯本人)遇到一件新事拿不定主意, 会问「你觉得万凯会怎么做 / 这么做有什么优缺点 / 有什么不妥」。你要基于下方真实聊天数据所反映的万凯性格与行为模式来推演。
 只输出 JSON(不要 markdown 代码块):
 {"回答": "给用户看的完整决策咨询, 用\\n分四段: 一、【过去的万凯会怎么做】——基于历史行为模式的推断, 注明是推断并挂靠证据(如: 你在2025-03曾对XX说\\"…\\"，说明你倾向…); 二、【这样做的优缺点】——各1-3条, 具体、贴他的性格, 不空泛; 三、【有没有不妥】——只列有真实依据的隐忧, 严禁为了凑数硬找不妥, 确实没有就明确写\\"按你描述的情况, 没发现明显不妥\\"; 四、【建议】——一句可执行的话",
@@ -101,7 +115,8 @@ def _load_events():
     return config.jload(os.path.join(config.CACHE, 'events.json'), [])
 
 
-def answer(history, message, contact_hint=None, extra_context=None, progress=None, confirm_names=None):
+def answer(history, message, contact_hint=None, extra_context=None, progress=None, confirm_names=None,
+           persona=None):
     def _p(s):
         if progress:
             try:
@@ -245,7 +260,9 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
     user = '\n\n'.join(parts)
     _p(f'证据就绪（{len(rels)} 条检索记录 + 近期对话原文 + {len(events)} 条人生事件），正在整理证据链并生成分析…（约需 1-2 分钟）')
 
-    out = extract_json(llm_chat([{'role': 'system', 'content': _SYS_ADVICE if advice else _SYS},
+    # 旁观者人设: 朋友口吻; 决策咨询类仍走顾问 prompt(本就是给建议的语境)
+    sys = _SYS_ADVICE if advice else (_SYS_ORACLE if persona == 'oracle' else _SYS)
+    out = extract_json(llm_chat([{'role': 'system', 'content': sys},
                                  {'role': 'user', 'content': user}], temperature=0.5))
     reply_text = out.get('回答') or ''
     if isinstance(reply_text, list):
