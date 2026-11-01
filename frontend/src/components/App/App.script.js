@@ -1796,6 +1796,8 @@ export default {
     guardedGoToIndustryCycle() { if (this.requireAuthOrPrompt()) return; this.goToIndustryCycle() },
     guardedGoToRedeemCode() { if (this.requireAuthOrPrompt()) return; this.$router.push('/redeem-code') },
     guardedGoToMpAdmin() { if (this.requireAuthOrPrompt()) return; this.$router.push('/mp-admin') },
+    // 个人数字分身 Agent(/agent, 后端 /api/agent/*)
+    guardedGoToAgent() { if (this.requireAuthOrPrompt()) return; this.$router.push('/agent') },
     // 云图按钮：演示态直达云图页（云图页未登录有自己的演示快照），其余未登录态仍先登录
     guardedGotoMarketMap() {
       if (this.demoMode) { this.goToMarketMap(); return }

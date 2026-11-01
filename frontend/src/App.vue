@@ -37,6 +37,7 @@
               <div class="more-dropdown-item" @click="guardedGoToHouseKline(); showMoreMenu = false">房价K线</div>
               <div class="more-dropdown-item" v-if="isAdmin" @click="guardedGoToRedeemCode(); showMoreMenu = false">体验码</div>
               <div class="more-dropdown-item" v-if="isAdmin" @click="guardedGoToMpAdmin(); showMoreMenu = false">小程序数据后台</div>
+              <div class="more-dropdown-item" @click="guardedGoToAgent(); showMoreMenu = false">🤖 数字分身</div>
             </div>
           </div>
         </div>

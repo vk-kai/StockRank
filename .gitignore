@@ -41,6 +41,11 @@ config/session_secret.json
 backend/data/mp_vpay.db
 # 微信送检探针词条(手动填敏感词,绝不入库)
 backend/scripts/sec_probe_words.txt
+# 个人数字分身 Agent: 数据目录(聊天记录+知识库,由人工/本地同步器维护)与含密钥配置不入库
+backend/agent_data/
+backend/agent_core/config.json
+backend/agent_core/cache/
+backend/agent_core/web/
 
 # IDE
 .vscode/

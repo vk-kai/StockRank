@@ -15,6 +15,7 @@ const EconCycle = () => import('./EconCycle.vue')
 const RedeemCode = () => import('./RedeemCode.vue')
 const MpAdmin = () => import('./MpAdmin.vue')
 const MpAdminManage = () => import('./MpAdminManage.vue')
+const AgentAvatar = () => import('./AgentAvatar.vue')
 
 const routes = [
   {
@@ -91,6 +92,11 @@ const routes = [
     path: '/mp-admin/manage',
     name: 'MpAdminManage',
     component: MpAdminManage
+  },
+  {
+    path: '/agent',
+    name: 'AgentAvatar',
+    component: AgentAvatar
   }
 ]
 

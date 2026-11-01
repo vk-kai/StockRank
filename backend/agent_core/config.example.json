@@ -1,0 +1,7 @@
+{
+  "base_url": "https://你的中转站或网关地址/v1",
+  "api_key": "sk-xxx",
+  "model": "gpt-4o-mini",
+  "embedding_model": "",
+  "embedding_dimensions": 0
+}
