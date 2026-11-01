@@ -20,7 +20,7 @@ from analysis.anomaly_detector import (
     load_config as load_anomaly_config, save_config as save_anomaly_config,
     get_baseline, build_baseline
 )
-from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow, get_all_latest_margin_balance, get_market_margin_total
+from data.margin_collector import get_stock_margin_series, trigger_ondemand_update_async, get_all_latest_margin_net_inflow, get_all_latest_margin_balance, get_market_margin_total, fetch_sse_daily
 from analysis.ai_analyzer import analyze_daily_flow, analyze_news, get_news_analysis as get_cached_news_analysis
 from analysis.industry_cycle import start_industry_analysis, get_analysis_status, get_analysis_result, start_batch_analysis, stop_batch_analysis, get_batch_status, get_all_cycle_scores, get_single_cycle_score
 from analysis.intraday_timeline import get_stock_hover_summary
@@ -300,6 +300,8 @@ def market_margin_total():
         latest_date = str(res.get('latest_date') or '')
         if not latest_date or (datetime.now() - datetime.strptime(latest_date, '%Y%m%d')) > timedelta(days=4):
             updating = trigger_ondemand_update_async()
+        # 上证指数日线(融资弹窗融合展示用,新浪源,失败返回空数组不影响主数据)
+        res['sse'] = fetch_sse_daily(90)
         return jsonify({'success': True, 'data': res, 'updating': bool(updating)})
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-margin-total]: {str(e)}")

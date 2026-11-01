@@ -147,11 +147,11 @@
 }
 
 .market-summary-panel {
-  width: min(760px, calc(100vw - 780px));
+  width: min(920px, calc(100vw - 780px));
   margin: 0 auto 4px;
   padding: 8px 14px;
   display: grid;
-  grid-template-columns: auto 84px minmax(120px, 1fr) 84px auto;
+  grid-template-columns: auto auto minmax(120px, 1fr) auto auto;
   grid-template-areas:
     "ts down bar up up2"
     "ts limit turnover limit2 limit3";
@@ -359,6 +359,7 @@ button:active:not(:disabled) {
   justify-content: center;
   gap: 10px;
   min-width: 0;
+  overflow: hidden;
   color: #cbd5e1;
   font-size: 12px;
   font-weight: 600;

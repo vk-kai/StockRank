@@ -635,6 +635,38 @@ def get_market_margin_total():
             'change_pct': None, 'history': []}
 
 
+_SSE_CACHE = {'ts': 0.0, 'data': []}
+_SSE_CACHE_TTL = 1800  # 进程内缓存30分钟(新浪日线一天只变一次,弹窗连开不重复请求)
+
+
+def fetch_sse_daily(lmt=60):
+    """上证指数日线收盘(新浪源 akshare,与经济周期模块同源,公开接口无反爬)。
+    供融资余额弹窗融合展示"上证指数 vs 融资余额"走势。
+    返回 [{'date':'YYYYMMDD','close':float}](升序),失败返回 [](不阻塞融资主数据)。"""
+    now = time.time()
+    if now - _SSE_CACHE['ts'] < _SSE_CACHE_TTL and _SSE_CACHE['data']:
+        return _SSE_CACHE['data'][-lmt:] if lmt else _SSE_CACHE['data']
+    try:
+        import akshare as ak
+        df = ak.stock_zh_index_daily(symbol='sh000001')
+        if df is None or df.empty or 'close' not in df.columns:
+            return []
+        out = []
+        for _, r in df.iterrows():
+            try:
+                d = str(r['date']).replace('-', '').replace('/', '')[:8]
+                out.append({'date': d, 'close': round(float(r['close']), 2)})
+            except (ValueError, TypeError):
+                continue
+        if out:
+            _SSE_CACHE['ts'] = now
+            _SSE_CACHE['data'] = out
+        return out[-lmt:] if lmt else out
+    except Exception as e:
+        error_logger.error(f"获取上证指数日线失败: {e}")
+        return []
+
+
 def trigger_ondemand_update_async():
     """弹窗检测到无数据时调用：后台触发一次当日更新（每天最多一次）。
 

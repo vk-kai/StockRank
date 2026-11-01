@@ -1601,13 +1601,17 @@ export default {
       return applied.some(a => inChangeFilter(stock.change, stock.code, a))
     },
     stockMetricLabel(stock) {
+      if (this.colorMode === 'cycle') return ''  // 行业周期模式个股不显示分数，分数在大区域显示
+      if (this.layoutMode === 'margin') {
+        // 布局=按融资余额：涨跌幅+融资余额组合标签(余额数值来自 marginBalanceMap,单位元)
+        const bal = (this.marginBalanceMap || {})[extractDigits(stock && stock.code)]
+        const balTxt = (bal != null && isFinite(bal)) ? this.formatMoney(bal, true) : '--'
+        return `${fmtPct(stock.change)} ${balTxt}`
+      }
       if (this.colorMode === 'margin') return this.formatMoney(this.marginValue(stock))
       if (this.colorMode === 'score') {
         const v = this.scoreValue(stock)
         return v == null ? '--' : String(v)
-      }
-      if (this.colorMode === 'cycle') {
-        return ''  // 行业周期模式个股不显示分数，分数在大区域显示
       }
       return fmtPct(stock.change)
     },
