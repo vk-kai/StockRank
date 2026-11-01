@@ -464,6 +464,7 @@ def _aggregate_market_margin_total():
     threshold = median_count * 0.85
     history = []
     prev_total = None
+    prev_shown = None   # 上一"展示日"的融资余额(用于逐日净买入差分,与同花顺口径一致)
     filled_days = 0
     fill_streak = 0
     for d in sorted_dates:
@@ -489,9 +490,14 @@ def _aggregate_market_margin_total():
             if total <= 0:
                 # 数据中断(当日全部为0/缺失),不再有可信基线,后续按真实值展示
                 prev_total = None
-        history.append({'date': d, 'total': round(total, 2)})
+        net_buy = None if prev_shown is None else round(total - prev_shown, 2)
+        history.append({'date': d, 'total': round(total, 2), 'net_buy': net_buy})
         if total > 0:
             prev_total = total
+            prev_shown = total
+    # 裁掉开头连续无效日(采集回填不全时前缀 total=0,画图贴底突跳,如 04-07~06-08 全 0 段)
+    while history and not history[0].get('total'):
+        history.pop(0)
     return {'history': history, 'filled_days': filled_days}
 
 
@@ -512,6 +518,7 @@ def refresh_market_margin_total():
             'latest_total': latest['total'],
             'prev_total': prev['total'] if prev else None,
             'change_pct': change_pct,
+            'latest_net_buy': latest.get('net_buy'),
             'history': history,
             'filled_days': agg['filled_days'],
             'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -528,7 +535,10 @@ def refresh_market_margin_total():
 
 
 def _load_ths_total():
-    """读同花顺汇总缓存;不存在/落后超 4 自然日/字段缺失 → None(走回退)。"""
+    """读同花顺汇总缓存;不存在/落后超 6 自然日/字段缺失 → None(走回退)。
+
+    6天而非4天:融资数据 T+1 发布+周末+当日半截被防抖丢弃,最新日可能是 T-2,
+    周一上午距上周四已超 4 天但数据其实是新的,4 天阈值会误判过期走回退。"""
     if not os.path.exists(MARKET_MARGIN_TOTAL_THS_FILE):
         return None
     try:
@@ -539,16 +549,94 @@ def _load_ths_total():
     if not cached or not cached.get('latest_date') or not cached.get('history'):
         return None
     try:
-        if (datetime.now() - datetime.strptime(cached['latest_date'], '%Y%m%d')) > timedelta(days=4):
+        if (datetime.now() - datetime.strptime(cached['latest_date'], '%Y%m%d')) > timedelta(days=6):
             return None
     except ValueError:
         return None
     return cached
 
 
+def _fetch_em_margin_history(size=500):
+    """东财数据中心两融历史汇总(RPTA_RZRQ_LSHJ,沪深合计日级)。
+
+    用途:①补长历史(同花顺分页上限约4页≈40交易日,超页返回第一页重复数据,更早的拿不到)
+    ②THS 失效时的兜底主源。系统已有 em_request 带 WAF 代理回退。
+    返回升序 [{date,total,buy,rzrq,close}](单位元;close=上证收盘,供弹窗指数线兜底);失败返回 []。
+    """
+    try:
+        resp = em_request(
+            EM_MARGIN_URL,
+            params={'reportName': 'RPTA_RZRQ_LSHJ', 'columns': 'ALL', 'source': 'WEB',
+                    'sortColumns': 'dim_date', 'sortTypes': '-1',
+                    'pageSize': str(size), 'pageNumber': '1'},
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                     'Referer': 'https://data.eastmoney.com/'},
+            timeout=15)
+        rows = ((resp.json().get('result') or {}).get('data')) or []
+    except Exception as e:
+        error_logger.error(f"两融历史汇总[EM]抓取失败: {repr(e)[:120]}")
+        return []
+    out = []
+    for row in rows:
+        d = str(row.get('DIM_DATE') or '')[:10].replace('-', '')
+        total = _to_float(row.get('RZYE'), default=None)
+        if len(d) != 8 or total is None:
+            continue
+        buy = _to_float(row.get('RZMRE'), default=None)
+        rzrq = _to_float(row.get('RZRQYE'), default=None)
+        close = _to_float(row.get('NEW'), default=None)
+        out.append({'date': d, 'total': round(total, 0),
+                    'buy': round(buy, 0) if buy is not None else None,
+                    'rzrq': round(rzrq, 0) if rzrq is not None else None,
+                    'close': round(close, 2) if close is not None else None})
+    out.sort(key=lambda x: x['date'])
+    return out
+
+
+def _fill_net_buy(history):
+    """对升序 history 按 Δ融资余额 统一重算 net_buy(与逐股/THS 口径一致)。"""
+    prev = None
+    for x in history:
+        t = x.get('total')
+        x['net_buy'] = round(t - prev, 0) if (t is not None and prev is not None) else None
+        if t is not None:
+            prev = t
+    return history
+
+
+_EM_HIST_CACHE = {'ts': 0.0, 'payload': None}
+_EM_HIST_TTL = 600  # EM 兜底 payload 进程内缓存10分钟
+
+
+def _em_history_payload():
+    """EM 两融历史汇总 → 与 THS 同构的完整 payload(约500交易日,含净买入)。失败/不足返回 None。"""
+    now = time.time()
+    if _EM_HIST_CACHE['payload'] and now - _EM_HIST_CACHE['ts'] < _EM_HIST_TTL:
+        return _EM_HIST_CACHE['payload']
+    rows = _fetch_em_margin_history(500)
+    if len(rows) < 3:
+        return None
+    history = _fill_net_buy(rows)
+    valid = [x for x in history if x['total']]
+    latest = valid[-1]
+    prev_item = valid[-2] if len(valid) >= 2 else None
+    change_pct = None
+    if prev_item and prev_item['total']:
+        change_pct = round((latest['total'] / prev_item['total'] - 1) * 100, 2)
+    payload = {'latest_date': latest['date'], 'latest_total': latest['total'],
+               'prev_total': prev_item['total'] if prev_item else None,
+               'change_pct': change_pct, 'latest_net_buy': latest['net_buy'],
+               'latest_buy': latest.get('buy'), 'latest_rzrq': latest.get('rzrq'),
+               'history': history, 'source': 'em_lshj'}
+    _EM_HIST_CACHE['ts'] = now
+    _EM_HIST_CACHE['payload'] = payload
+    return payload
+
+
 def refresh_market_margin_total_ths():
     """同花顺融资融券市场汇总(主源):融资余额合计+融资净买入+两融余额,4页≈40交易日。
 
+    同花顺分页上限约4页(超页返回第一页重复数据),更早历史由东财两融历史汇总补齐。
     净买入口径:Δ融资余额(当日合计−上一交易日合计),与逐股口径一致。
     半截数据防抖:最新一日融资余额较前日跌幅>15%(交易所当日数据未出全的中间态,
     如 2026-10-30 同花顺提前展示沪市半截 11989 亿 vs 前日 23567 亿)→丢弃最新日;
@@ -579,6 +667,25 @@ def refresh_market_margin_total_ths():
                             'buy': round(r['buy'] * 1e8, 0) if r.get('buy') is not None else None,
                             'rzrq': round(r['rzrq'] * 1e8, 0) if r.get('rzrq') is not None else None})
             prev = rzye
+        # 补长历史:同花顺分页上限约4页,更早的用东财两融历史汇总(约500交易日)按日期合并;
+        # 旧缓存也参与合并,防个别页失败/接口异常时丢历史。优先级:THS(主源) > EM(长历史) > 旧缓存
+        try:
+            if os.path.exists(MARKET_MARGIN_TOTAL_THS_FILE):
+                with open(MARKET_MARGIN_TOTAL_THS_FILE, 'r', encoding='utf-8') as f:
+                    old_hist = (json.load(f) or {}).get('history') or []
+            else:
+                old_hist = []
+        except Exception:
+            old_hist = []
+        merged = {x['date']: x for x in old_hist}
+        for x in _fetch_em_margin_history(500):
+            merged[x['date']] = x
+        for x in history:
+            old_item = merged.get(x['date'])
+            if old_item and x.get('close') is None:
+                x['close'] = old_item.get('close')  # THS 行无指数,继承已合并的 EM 上证收盘
+            merged[x['date']] = x
+        history = _fill_net_buy([merged[d] for d in sorted(merged.keys())])[-600:]  # 上限600日≈两年半
         valid = [x for x in history if x['total']]
         if not valid:
             error_logger.error("同花顺融资汇总无有效数据,保留旧缓存")
@@ -609,11 +716,15 @@ def refresh_market_margin_total_ths():
 
 def get_market_margin_total():
     """读全市场融资余额合计。主源:同花顺市场汇总(官方口径,含净买入);
-    同花顺不可用时回退旧路径(聚合个股融资余额 b)。"""
+    同花顺不可用时回退 EM 两融历史汇总;再不可用回退旧路径(聚合个股融资余额 b)。"""
     ths = _load_ths_total()
     if ths:
         return ths
-    # 回退:旧自算路径(个股聚合)
+    # 回退1:EM 两融历史汇总(约500交易日+完整净买入,比逐股自算更权威且免聚合)
+    em = _em_history_payload()
+    if em:
+        return em
+    # 回退2:旧自算路径(个股聚合)
     if os.path.exists(MARKET_MARGIN_TOTAL_FILE):
         try:
             with open(MARKET_MARGIN_TOTAL_FILE, 'r', encoding='utf-8') as f:
@@ -621,8 +732,10 @@ def get_market_margin_total():
         except Exception:
             cached = None
         if cached:
-            # 个股缓存没有更新的交易日 → 缓存仍有效,直接返回
-            if str(cached.get('latest_date', '')) >= str(_ensure_mem().get('latest_date', '')):
+            hist0 = (cached.get('history') or [{}])[0]
+            # 个股缓存没有更新的交易日 且 已是新格式(含逐日 net_buy) → 直接返回
+            # 旧格式缓存(无 net_buy/带 0 值前缀)不复用,落到下面重算一次升级
+            if 'net_buy' in hist0 and str(cached.get('latest_date', '')) >= str(_ensure_mem().get('latest_date', '')):
                 return cached
     # 首次/已落后:立即计算 + 存
     try:

@@ -1,4 +1,4 @@
-# 一键部署脚本: git push -> paramiko SSH(密码内置 deploy_remote.py) -> git pull -> docker 重建
+﻿# 一键部署脚本: git push -> paramiko SSH(密码内置 deploy_remote.py) -> git pull -> docker 重建
 # 用法: 在 StockRank 目录下执行  .\deploy.ps1  或  git deploy  (全自动, 无需输密码)
 
 $ErrorActionPreference = 'Stop'

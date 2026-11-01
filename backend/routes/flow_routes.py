@@ -300,8 +300,13 @@ def market_margin_total():
         latest_date = str(res.get('latest_date') or '')
         if not latest_date or (datetime.now() - datetime.strptime(latest_date, '%Y%m%d')) > timedelta(days=4):
             updating = trigger_ondemand_update_async()
-        # 上证指数日线(融资弹窗融合展示用,新浪源,失败返回空数组不影响主数据)
-        res['sse'] = fetch_sse_daily(90)
+        # 上证指数日线(融资弹窗融合展示用):优先取融资历史里 EM 附带的上证收盘
+        # (覆盖全部历史区间且与余额同源对齐);为空时回退新浪源(仅90日)
+        sse = [{'date': h['date'], 'close': h['close']}
+               for h in (res.get('history') or []) if h.get('close')]
+        if not sse:
+            sse = fetch_sse_daily(90)
+        res['sse'] = sse
         return jsonify({'success': True, 'data': res, 'updating': bool(updating)})
     except Exception as e:
         system_logger.error(f"API错误 [/api/flow/market-margin-total]: {str(e)}")

@@ -1603,10 +1603,10 @@ export default {
     stockMetricLabel(stock) {
       if (this.colorMode === 'cycle') return ''  // 行业周期模式个股不显示分数，分数在大区域显示
       if (this.layoutMode === 'margin') {
-        // 布局=按融资余额：涨跌幅+融资余额组合标签(余额数值来自 marginBalanceMap,单位元)
+        // 布局=按融资余额：涨跌幅/融资余额 两行上下结构(余额来自 marginBalanceMap,单位元)
         const bal = (this.marginBalanceMap || {})[extractDigits(stock && stock.code)]
         const balTxt = (bal != null && isFinite(bal)) ? this.formatMoney(bal, true) : '--'
-        return `${fmtPct(stock.change)} ${balTxt}`
+        return [fmtPct(stock.change), balTxt]
       }
       if (this.colorMode === 'margin') return this.formatMoney(this.marginValue(stock))
       if (this.colorMode === 'score') {
@@ -2345,13 +2345,31 @@ export default {
       ctx.fillStyle = '#fff'
       const font = s => `bold ${s}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`
       if (withMetric) {
-        const nameSize = clamp(Math.min(w, h) * 0.19, 10, 15)
-        const pctSize = nameSize * 0.8
+        // metric 支持数组=多行上下结构(如按融资余额布局:涨跌幅一行、余额一行)
+        const lines = Array.isArray(metric) ? metric.filter(v => v != null && v !== '') : [metric]
+        const multi = lines.length > 1
+        const nameSize = multi ? clamp(Math.min(w, h) * 0.17, 9, 14) : clamp(Math.min(w, h) * 0.19, 10, 15)
+        const lineSize = nameSize * 0.72
         const cy = y + h / 2
-        ctx.font = font(nameSize)
-        ctx.fillText(name, cx, cy - nameSize * 0.55)
-        ctx.font = font(pctSize)
-        ctx.fillText(metric, cx, cy + pctSize * 0.6)
+        if (!multi) {
+          ctx.font = font(nameSize)
+          ctx.fillText(name, cx, cy - nameSize * 0.55)
+          ctx.font = font(lineSize * 1.1)
+          ctx.fillText(lines[0] || '', cx, cy + lineSize * 0.6)
+        } else if (h >= 34) {
+          // 三行:名称/涨跌幅/余额 整体居中
+          ctx.font = font(nameSize)
+          ctx.fillText(name, cx, cy - nameSize * 0.9)
+          ctx.font = font(lineSize)
+          ctx.fillText(lines[0], cx, cy + lineSize * 0.15)
+          ctx.fillText(lines[1], cx, cy + lineSize * 1.25)
+        } else {
+          // 中格偏矮:名称+余额 两行(余额是该布局的核心信息)
+          ctx.font = font(nameSize)
+          ctx.fillText(name, cx, cy - lineSize * 0.7)
+          ctx.font = font(lineSize)
+          ctx.fillText(lines[1] || lines[0], cx, cy + lineSize * 0.8)
+        }
       } else {
         // 仅名称：按宽高自适应字号，保证名称能放进格子
         const n = Math.max(name.length, 2)

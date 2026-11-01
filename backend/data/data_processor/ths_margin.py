@@ -10,6 +10,8 @@
   Chromium 现场生成 hexin-v cookie(refresh_ths_cookie,10分钟缓存) +
   随机化请求头 + 401/403 强刷重试。仅做汇总页(日级数据),不走代理池。
 """
+import time
+
 import requests
 
 from ._common import error_logger
@@ -112,6 +114,7 @@ def fetch_ths_margin_summary(pages=4):
                 error_logger.error(f"融资融券汇总 page={page} 第{retry + 1}次异常: {e}")
         if not ok:
             error_logger.error(f"融资融券汇总 page={page} 最终失败,跳过该页")
+        time.sleep(0.25)  # 页间温和限速:翻页多时降低触发同花顺风控的概率
 
     # 汇总页数据只增不改(交易所回填极少),日期降序抓取,升序返回
     return [collected[d] for d in sorted(collected.keys())]

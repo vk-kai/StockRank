@@ -40,7 +40,7 @@ from agent_core.memory import human_feedback, experience, indexer, retrieval
 from agent_core.analysis import profile as ai_profile
 from agent_core.analysis import timeline as ai_timeline
 from agent_core.analysis import relationships, home
-from agent_core.agents import persona_agent, analysis_agent, contact_agent
+from agent_core.agents import persona_agent, analysis_agent, contact_agent, eq_agent
 from agent_core.simulation import engine as sim_engine
 
 agent_bp = Blueprint('agent', __name__, url_prefix='/api/agent')
@@ -477,6 +477,46 @@ def twin_build():
     if not _valid_contact(name):
         raise ValueError(f'联系人「{name}」不在档案中')
     return jsonify(contact_agent.build(name))
+
+
+# ─── 高情商练习(eq): 与分身主对话完全隔离的独立存档 cache/eq_chats/ ───
+
+@agent_bp.route('/eq/chat')
+def eq_chat():
+    # 读取某发展对象的会话历史
+    import urllib.parse as _up
+    name = _up.unquote(request.args.get('contact', ''))
+    return jsonify({'chat': eq_agent.load_chat(name)})
+
+
+@agent_bp.route('/eq/reply', methods=['POST'])
+def eq_reply():
+    # 三方一轮: 她说 girl → 万凯原话 mine → 高情商版回复(一次性落盘三条)
+    b = _body()
+    contact = str(b.get('contact') or '').strip()[:60]
+    girl = str(b.get('girl') or '').strip()[:2000]
+    mine = str(b.get('mine') or '').strip()[:2000]
+    if not contact or not girl or not mine:
+        raise ValueError('需要 contact / girl / mine 三个字段')
+    return jsonify(eq_agent.reply(contact, girl, mine))
+
+
+@agent_bp.route('/eq/diagnose', methods=['POST'])
+def eq_diagnose():
+    # 诊断万凯原话 vs 高情商版(不落盘)
+    b = _body()
+    return jsonify(eq_agent.diagnose(str(b.get('contact') or '')[:60],
+                                     str(b.get('girl') or '')[:2000],
+                                     str(b.get('mine') or '')[:2000],
+                                     str(b.get('eq') or '')[:2000]))
+
+
+@agent_bp.route('/eq/clear', methods=['POST'])
+def eq_clear():
+    # 清空某发展对象的会话记忆
+    b = _body()
+    eq_agent.delete_chat(str(b.get('contact') or '').strip()[:60])
+    return jsonify({'ok': True})
 
 
 @agent_bp.route('/who', methods=['POST'])
