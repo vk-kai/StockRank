@@ -45,11 +45,13 @@
     <div class="modebar">
       <button class="mb on" data-m="dialog">🎭 模拟聊天（你演 ta，分身演我）</button>
       <button class="mb" data-m="ask">🧭 旁观者提问（第三人称）</button>
-      <span class="hint" id="modehint">模拟模式：你在输入框扮演「联系人」，分身用万凯的口吻回复</span>
+      <span class="hint" id="modehint">模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）</span>
       <button class="btn gray sm" id="mbMembers" style="display:none">👥 成员性格</button>
       <button class="btn gray sm" id="mbRaw">💬 原始聊天</button>
+      <button class="btn gray sm" id="mbSwap" style="display:none" title="互换身份：你演万凯本人，AI 扮演这位联系人">🔄 身份互换</button>
       <button class="btn gray sm" id="clearChat" style="margin-left:auto">🗑 清空对话记忆</button>
     </div>
+    <div id="roleBanner"></div>
     <div id="msgs"></div>
     <div class="inrow">
       <textarea id="chat-in" placeholder="和你的数字分身聊聊…（Enter 发送，Shift+Enter 换行）"></textarea>
@@ -544,9 +546,13 @@ $('#simMerge').onchange=e=>post('/api/agent/sim/config',{merge:e.target.checked}
 
 /* ───── 数字分身(聊天) ───── */
 let CONTACTS=[],STRANGERS=[],CUR='新朋友',MODE='dialog',SENDING=false;
+let DIR='A';   // 模拟模式方向: A=你演联系人/分身演万凯, B=身份互换(你演万凯本人/AI演联系人, 需先塑造画像)
+const dkey=()=>'twinDir_'+CUR;
+const dirLoad=()=>{try{return localStorage.getItem(dkey())==='B'?'B':'A'}catch(e){return 'A'}};
+const dirSave=()=>{try{localStorage.setItem(dkey(),DIR)}catch(e){}};
 const dn=n=>String(n).replace(/^陌生·/,'');   // 陌生访客显示名
 let SESSIONS={};   // key=联系人|模式 → [{who,text,anl}] —— localStorage 持久化, F5/重开浏览器不丢
-const skey=()=>CUR+'|'+MODE;
+const skey=()=>CUR+'|'+MODE+((MODE==='dialog'&&DIR==='B')?'|B':'');
 const skeyLS=()=>'twin_'+skey();
 const curSess=()=>{if(!SESSIONS[skey()]){
   try{SESSIONS[skey()]=JSON.parse(localStorage.getItem(skeyLS())||'[]')}
@@ -585,22 +591,25 @@ function renderCtList(q){
       sysTip(`陌生访客「${dn(CUR)}」已上线 · 你在输入框扮演 ta，分身将第一次回应这位陌生人（基于你的真实人格，对陌生人保持距离感，不泄露朋友隐私）`);
       return;
     }
-    CUR=el.dataset.n;renderCtList($('#ctq').value.trim());renderMsgs();setPlaceholder();
+    CUR=el.dataset.n;DIR=dirLoad();renderCtList($('#ctq').value.trim());renderMsgs();setPlaceholder();updateRoleBanner();
     sysTip(MODE==='dialog'
       ?(ISG()?`已切换到群「${dn(CUR)}」· 群聊模拟：你以万凯身份在群里发消息，主要成员将按各自性格冒泡（可点「👥 成员性格」查看分析）`
+        :DIR==='B'
+        ?`已切换到「${dn(CUR)}」· 身份互换：你是万凯本人，对面是 ta 的 AI 分身`
         :`已切换到「${dn(CUR)}」· 模拟模式：你在输入框扮演 ${dn(CUR)}，分身用万凯的口吻回复`)
       :`已切换到「${dn(CUR)}」· 旁观者模式：以第三人称分析你和 ${dn(CUR)} 的关系`)});
 }
 function setPlaceholder(){
   $('#chat-in').placeholder=MODE==='dialog'
-    ?(ISG()?'在群里发条消息，看谁冒泡…（Enter 发送）':`以「${dn(CUR)}」的身份给分身发条消息…（Enter 发送）`)
+    ?(ISG()?'在群里发条消息，看谁冒泡…（Enter 发送）'
+      :DIR==='B'?'以万凯本人的身份说句话…（Enter 发送）':`以「${dn(CUR)}」的身份给分身发条消息…（Enter 发送）`)
     :'以旁观者身份提问，例如：我和 ta 之间有什么梗或暗号？';
 }
 function setMode(m){
   const changed=MODE!==m;MODE=m;
   $$('.modebar .mb').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
   $('#modehint').textContent=m==='dialog'
-    ?'模拟模式：你在输入框扮演「联系人」，分身用万凯的口吻回复 —— 各联系人的模拟对话独立保存'
+    ?'模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）—— 各联系人的模拟对话独立保存'
     :'旁观者模式：你以第三者身份提问，AI 分析你和 ta 的关系并引用原话证据 —— 与模拟对话互相独立';
   setPlaceholder();
   if(changed)renderMsgs();      // 切模式 = 切到另一个独立会话, 上下文绝不互带
@@ -622,8 +631,8 @@ $('#clearChat').onclick=()=>{SESSIONS[skey()]=[];ssave();renderMsgs();
 function appendDom(m){
   const box=$('#msgs');
   if(m.who==='sys'){const d=document.createElement('div');d.className='typing';d.textContent='· '+m.text;box.appendChild(d);box.scrollTop=1e9;return}
-  const isAI=(m.who==='aime'||m.who==='ai');          // aime=AI 扮演万凯, ai=AI 分析师
-  const row=document.createElement('div');row.className='row'+((m.who==='me'||m.who==='aime')?' me':'');
+  const isAI=(m.who==='aime'||m.who==='ai'||m.who==='ctwin');   // aime=AI 扮演万凯, ctwin=AI 扮演联系人, ai=AI 分析师
+  const row=document.createElement('div');row.className='row'+((m.who==='me'||m.who==='contact')?' me':'');
   const av=document.createElement('div');av.className='av';
   const b=document.createElement('div');b.className='bub';
   if(isAI){av.classList.add('ai');av.textContent='AI'}
@@ -641,18 +650,70 @@ function appendDom(m){
     wrap.innerHTML=`<div class="who">${esc(sp)}</div>`;
     b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
-  }else if(m.who==='aime'){ // 模拟模式: AI 数字分身扮演万凯
-    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
+  }else if(m.who==='aime'){ // 模拟模式: AI 数字分身扮演万凯 —— 放左侧+AI标识, 避免截图分享时被误认为真人输入
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;max-width:560px';
     wrap.innerHTML=`<div class="who">AI 数字分身 · 万凯${m.human?' <span class="tag g" style="font-size:10px">🔧 本人确认</span>':''}</div>`;
     b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap);
   }
-  else if(m.who==='me'){b.innerHTML=wxface(esc(m.text));row.appendChild(av);row.appendChild(b)}
+  else if(m.who==='contact'){ // 模拟模式: 你本人扮演联系人 —— 右侧绿泡(真人输入侧), 与左侧 AI 生成内容区分
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
+    wrap.innerHTML=`<div class="who">你扮演 · ${esc(dn(CUR))}</div>`;
+    b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
+  else if(m.who==='ctwin'){ // 身份互换: AI 扮演联系人 —— 左侧白泡+AI标识, 与真人输入区分
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;max-width:560px';
+    wrap.innerHTML=`<div class="who">AI 分身 · ${esc(dn(CUR))}${m.human?' <span class="tag g" style="font-size:10px">🔧 本人确认</span>':''}</div>`;
+    b.innerHTML=wxface(esc(String(m.text).replace(/\n+/g,'  ')));wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
+  else if(m.who==='me'){ // 本人输入(旁观者提问/群聊/身份互换) —— 右侧绿泡, 标注真人身份
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
+    wrap.innerHTML=`<div class="who">万凯本人</div>`;
+    b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
+    row.appendChild(av);row.appendChild(wrap);
+  }
   else{b.innerHTML=wxface(esc(m.text));row.appendChild(av);row.appendChild(b)}
   box.appendChild(row);box.scrollTop=1e9;
 }
+function updateRoleBanner(){
+  const el=$('#roleBanner'),sw=$('#mbSwap');
+  if(!el)return;
+  const canSwap=PAGE()==='twin'&&MODE==='dialog'&&!ISG()&&CUR!=='新朋友'&&!CUR.startsWith('陌生·')
+    &&CONTACTS.some(c=>c['姓名']===CUR);
+  if(sw)sw.style.display=canSwap?'':'none';
+  if(PAGE()!=='twin'){el.style.display='none';return}
+  el.style.display='';
+  if(MODE==='ask'){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（提问中） · 对面：旁观者 AI（引用真实记忆回答）'}
+  else if(ISG()){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（在群里发言） · 群成员由 AI 按真实性格扮演'}
+  else if(DIR==='B'){el.className='rb-b';
+    el.innerHTML=`🖥 屏幕前正在输入：<b>万凯本人</b> · 对面回复：AI 分身（扮演「${esc(dn(CUR))}」，每条带 AI 标识）`}
+  else{el.className='';
+    el.innerHTML=`🖥 屏幕前正在输入：<b>你（扮演「${esc(dn(CUR))}」）</b> · 对面回复：AI 数字分身（万凯）`}
+}
+/* 身份互换: A(你演联系人) ⇄ B(你演万凯本人, AI 演联系人 —— 需先塑造联系人分身画像) */
+$('#mbSwap').onclick=async()=>{
+  if(MODE!=='dialog'||ISG()||!CUR||CUR==='新朋友')return;
+  if(DIR==='B'){DIR='A';dirSave();sysTip(`已换回：你扮演「${dn(CUR)}」，AI 数字分身扮演万凯`);
+    updateRoleBanner();setPlaceholder();renderMsgs();return}
+  let st;try{st=await api('/api/agent/twin/contact/status?contact='+encodeURIComponent(CUR))}
+  catch(e){sysTip('⚠ '+e.message);return}
+  if(st.is_group){sysTip('群聊暂不支持身份互换');return}
+  if(!st.ready){toast(`「${dn(CUR)}」的历史发言仅 ${st.total} 条，未达塑造门槛（${st.min} 条）—— 聊得再多一点再来`);return}
+  if(!st.has_profile){
+    sysTip(`正在为「${dn(CUR)}」塑造数字分身：通读 ta 的 ${st.total} 条真实发言，提炼说话风格/口头禅/话题…（首次约 30-90 秒）`);
+    try{await post('/api/agent/twin/contact/build',{contact:CUR})}
+    catch(e){sysTip('⚠ 塑造失败：'+e.message);return}
+    toast(`「${dn(CUR)}」的分身塑造完成`);
+  }
+  DIR='B';dirSave();
+  sysTip(`身份已互换：屏幕前的你是万凯本人，对面由 AI 分身扮演「${dn(CUR)}」（每条回复带 AI 标识，截图一目了然；再点一次「🔄 身份互换」可换回）`);
+  updateRoleBanner();setPlaceholder();renderMsgs();
+};
 function renderMsgs(){$('#msgs').innerHTML='';curSess().forEach(appendDom);
-  const mb=$('#mbMembers');if(mb)mb.style.display=ISG()&&MODE==='dialog'?'':'none'}
+  const mb=$('#mbMembers');if(mb)mb.style.display=ISG()&&MODE==='dialog'?'':'none';
+  updateRoleBanner()}
 function pushMsg(who,text,anlHTML,extra){const m=Object.assign({who,text,anl:anlHTML||null},extra||{});curSess().push(m);appendDom(m);ssave()}
 function sysTip(t){appendDom({who:'sys',text:t})}
 /* ───── 人工介入: 分身拿不准时弹窗请本人拿主意(直答/选候选/直接采用) ───── */
@@ -700,6 +761,9 @@ function openIntervene(o){ // o={question,aiDraft,candidates,contact,mode,anlHTM
         const r=await post('/api/agent/interventions',{contact:o.contact||'',mode:o.mode||'dialog',
           question:o.question||'',ai_draft:o.aiDraft||'',choice,human_answer:ta.value.trim(),
           candidates:cands,candidate_index:pick?+pick.value:null});
+        toast(r.memory_saved===false
+          ?'✅ 已回答（本次内容对训练分身没有帮助，未存入纠正记忆）'
+          :'✅ 已回答并存入人工纠正记忆 —— 越纠正越像你');
         close(r.final_reply);
       }catch(e){toast('⚠ 保存失败: '+e.message);b.disabled=false}
     });
@@ -719,7 +783,7 @@ function renderAnalysisHTML(a){
 }
 function histFor(n){
   // 从当前独立会话派生 API history; speaker 语义: dialog=联系人/我(含AI扮演的aime), ask=我/分析师
-  return curSess().filter(m=>m.who==='me'||m.who==='contact'||m.who==='ai'||m.who==='aime').slice(-n).map(m=>({
+  return curSess().filter(m=>m.who==='me'||m.who==='contact'||m.who==='ai'||m.who==='aime'||m.who==='ctwin').slice(-n).map(m=>({
     speaker: MODE==='dialog'?((m.who==='me'||m.who==='aime')?'我':CUR):(m.who==='me'?'我':'分析师'),
     content: m.text}));
 }
@@ -730,7 +794,7 @@ async function send(){
   const hist=isGroupDialog
     ?curSess().filter(m=>m.who==='me'||m.who==='gmem').slice(-10).map(m=>({speaker:m.who==='me'?'我':m.speaker,text:m.text}))
     :histFor(MODE==='dialog'?8:30);      // push 前取, 防同句重复
-  pushMsg(isGroupDialog?'me':(MODE==='dialog'?'contact':'me'),text);
+  pushMsg(isGroupDialog?'me':(MODE==='dialog'?(DIR==='B'?'me':'contact'):'me'),text);
   // 思考进度 tip(不入会话): 实时显示 AI 当前阶段 + 已用时
   const tip=document.createElement('div');tip.className='typing';$('#msgs').appendChild(tip);
   const t0=Date.now();let stepTxt=isGroupDialog?'群里正在讨论…':'正在唤醒分身…';
@@ -750,6 +814,7 @@ async function send(){
     }else{
     const resp=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({contact:CUR,mode:MODE,message:text,history:hist,stream:true,
+        direction:(MODE==='dialog'&&DIR==='B')?'contact':'owner',
         persona:MODE==='ask'?'oracle':undefined})});
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||('HTTP '+resp.status))}
     const reader=resp.body.getReader(),dec=new TextDecoder();let buf='',reply='',anl=null,err=null,unsure=false,cands=[];
@@ -767,12 +832,13 @@ async function send(){
     clearInterval(tick);tip.remove();
     if(err)throw new Error(err);
     if(MODE==='dialog'){
+      const rwho=DIR==='B'?'ctwin':'aime';   // B=AI 扮演联系人, A=AI 扮演万凯
       if(unsure){ // 分身拿不准 → 弹窗请本人拿主意, 绝不强行回复
         const fr=await openIntervene({question:text,aiDraft:reply,candidates:cands,contact:CUR,mode:'dialog'});
-        if(fr!=null)pushMsg('aime',fr,null,{human:true});
+        if(fr!=null)pushMsg(rwho,fr,null,{human:true});
         else pushMsg('sys','(本次没有回复：分身拿不准，而你选择暂不介入)');
       }
-      else if(reply)pushMsg('aime',reply);            // AI 数字分身以万凯身份回复(明确标注 AI) → 右侧绿色
+      else if(reply)pushMsg(rwho,reply);            // AI 分身回复(明确标注 AI)
     }else{
       const a=anl||{};
       const ans=(a['回答']||reply||'').trim()||'(AI 未返回回答)';
@@ -1257,7 +1323,7 @@ async function loadPplFor(n){
   if(PPL_CACHE[n]){renderPpl(n,PPL_CACHE[n]);return}
   $('#pplBox').innerHTML='<div class="mut">正在查看历史画像…</div>';
   try{const r=await api('/api/agent/ai/contact?name='+encodeURIComponent(n));
-    if(r&&r.result&&r.result['总结']){PPL_CACHE[n]=r.result;renderPpl(n,r.result,r.generated_at)}
+    if(r&&r.result&&Object.keys(r.result).length){PPL_CACHE[n]=r.result;renderPpl(n,r.result,r.generated_at)}
     else $('#pplBox').innerHTML='<div class="mut">该联系人尚未生成画像，点击「生成 / 刷新画像」。生成的画像会一直保存，切换回来时仍显示。</div>'}
   catch(e){$('#pplBox').innerHTML='<div class="mut">尚未生成画像，点击「生成 / 刷新画像」。</div>'}
 }
@@ -1297,13 +1363,35 @@ $('#genPpl').onclick=async()=>{
 $('#pplSel').onchange=()=>loadPplFor($('#pplSel').value);
 function renderPpl(n,r,genAt){
   if(!r){$('#pplBox').innerHTML='<div class="mut">暂无</div>';return}
-  const arr=v=>Array.isArray(v)?v:[v].filter(Boolean);
-  $('#pplBox').innerHTML=(genAt?`<div class="mut" style="margin-bottom:6px">🗓 画像生成于 ${esc(String(genAt).replace('T',' '))}（数据更新后不会自动变化，重新生成才会刷新）</div>`:'')
-    +(r['总结']?`<div style="font-size:13.5px;line-height:1.7;margin-bottom:8px">${esc(r['总结'])}</div>`:'')
-    +(r['关系']?`<div style="margin:6px 0"><b>关系</b><div class="mut" style="margin-top:3px">${esc(r['关系'])}</div></div>`:'')
-    +['共同话题','相处方式','关键事件','备注','性格特点','说话方式','与我的关系','聊天氛围','身份推测'].map(k=>r[k]?`<div style="margin:6px 0"><b>${k}</b><div style="margin-top:3px">${arr(r[k]).map(x=>`<div class="mut" style="font-size:12.5px;line-height:1.7">· ${esc(typeof x==='string'?x:JSON.stringify(x))}</div>`).join('')}</div></div>`:'').join('')
-    ||'<div class="mut">无结构化内容</div>';
+  const IC={'关系':'🤝','性格特点':'🧠','说话方式':'💬','相处方式':'🍵','共同话题':'🔥','关键事件':'📌',
+    '聊天氛围':'🌡️','身份推测':'🪪','与我的关系':'❤️','事业':'💼','雷点':'⚡','负面记录':'⚠️',
+    '备注':'🗒️','活跃时段':'⏰','联系方式':'📇','兴趣':'🎯','习惯':'🔁'};
+  const clampable=inner=>`<div class="clampable closed">${inner}</div><span class="more">展开 ▾</span>`;
+  const tx=v=>`<div class="tx">${esc(v)}</div>`;
+  const lis=v=>v.map(x=>`<div class="li">${esc(typeof x==='string'?x:JSON.stringify(x))}</div>`).join('');
+  const valHtml=v=>{ // string | 数组 | 嵌套对象(如 性格特点:{外在表现,内在动机}) 统一转可折叠内容
+    if(typeof v==='string')return clampable(tx(v));
+    if(Array.isArray(v))return clampable(lis(v));
+    if(v&&typeof v==='object')return Object.entries(v).map(([k2,v2])=>
+      `<div class="ppl-sec"><b>${esc(k2)}</b>${Array.isArray(v2)?clampable(lis(v2)):clampable(tx(typeof v2==='string'?v2:JSON.stringify(v2)))}</div>`).join('');
+    return `<div class="mut">${esc(String(v))}</div>`;
+  };
+  const keys=Object.keys(r).filter(k=>k!=='总结'&&r[k]!==null&&r[k]!==''&&!(Array.isArray(r[k])&&!r[k].length));
+  $('#pplBox').innerHTML=(genAt?`<div class="mut" style="margin-bottom:8px">🗓 生成于 ${esc(String(genAt).replace('T',' '))} · 每个维度默认收起，点「展开」看全文</div>`:'')
+    +(r['总结']?`<div class="ppl-hero"><b>📌 一句话画像</b><p>${esc(r['总结'])}</p></div>`:'')
+    +(keys.length?`<div class="ppl-grid">${keys.map(k=>
+      `<div class="ppl-card"><h4>${IC[k]||'▫️'} ${esc(k)}</h4>${valHtml(r[k])}</div>`).join('')}</div>`:'<div class="mut">无结构化内容</div>');
+  // 内容不足 3 行的卡片隐藏「展开」按钮
+  document.querySelectorAll('#pplBox .more').forEach(m=>{
+    const c=m.parentElement.querySelector('.clampable');
+    if(c&&c.scrollHeight<=c.clientHeight+4)m.style.display='none'});
 }
+$('#pplBox').addEventListener('click',e=>{
+  const m=e.target.closest('.more');if(!m)return;
+  const c=m.parentElement.querySelector('.clampable');if(!c)return;
+  c.classList.toggle('closed');
+  m.textContent=c.classList.contains('closed')?'展开 ▾':'收起 ▴';
+});
 /* 关系洞察 Agent 已并入「旁观者」: ego 面板的提问直接打开旁观者抽屉 */
 AFTERS.others=sub=>showOthTab(sub||'net');
 
@@ -1498,9 +1586,13 @@ async function loadSys(){
     $('#fbBox').innerHTML=(fb.items||[]).length?fb.items.map(i=>`
       <div style="margin-bottom:9px"><b style="font-size:12.5px">${esc((i['时间']||'').slice(0,16).replace('T',' '))} · ${esc(i['联系人']||'—')}</b>
         <span class="tag" style="margin-left:4px">${esc(i['决定']||'')}</span>
+        <span class="fbdel" data-ts="${esc(i['时间']||'')}" style="float:right;cursor:pointer;font-size:11px;color:#c0392b;opacity:.7">🗑 删除</span>
         <div class="mut" style="font-size:12px;margin-top:2px">问: ${esc(i['问题'])}</div>
         <div style="font-size:12.5px;margin-top:2px">→ ${esc(i['最终回答'])}</div></div>`).join('')
       :'还没有纠正记录。当分身拿不准时你会收到确认弹窗，你的决定会保存在这里，并自动注入分身记忆。';
+    document.querySelectorAll('#fbBox .fbdel').forEach(el=>el.onclick=async()=>{
+      if(!confirm('删除这条纠正记忆？'))return;
+      try{await post('/api/agent/feedback/delete',{时间:el.dataset.ts});toast('已删除');loadSys()}catch(e){toast('⚠ 删除失败: '+e.message)}});
   }catch(e){$('#fbBox').textContent='加载失败: '+e.message}
 }
 $('#pipeRun').onclick=async()=>{
@@ -1618,6 +1710,22 @@ th{color:var(--mut);font-weight:500;font-size:11.5px;white-space:nowrap}
 .chip{display:inline-block;padding:4px 12px;border-radius:14px;background:#f1f4f7;font-size:12px;color:#4a5563;cursor:pointer;margin:3px 4px 0 0}
 .chip:hover{background:var(--cg);color:var(--brand2)}
 .chip.on{background:var(--brand);color:#fff}
+/* ───── 人物画像: 摘要前置 + 分维度卡片网格 + 长文折叠 ───── */
+.ppl-hero{background:linear-gradient(135deg,#f0faf5,#eef6ff);border:1px solid #d9ede2;border-radius:12px;padding:13px 16px;margin-bottom:12px}
+.ppl-hero p{font-size:13.5px;line-height:1.85;margin-top:6px}
+.ppl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;align-items:start}
+.ppl-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.ppl-card h4{font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:7px;color:#1c2430}
+.ppl-sec{margin-top:8px}
+.ppl-sec>b{font-size:12px;color:#5b6572;display:block;margin-bottom:2px}
+.ppl-card .li{font-size:12.5px;color:#4a5568;line-height:1.7;padding-left:12px;position:relative}
+.ppl-card .li::before{content:'·';position:absolute;left:2px;color:#9aa3b0}
+.ppl-card .tx{font-size:12.5px;color:#4a5568;line-height:1.7;white-space:pre-wrap}
+.clampable{overflow:hidden;position:relative}
+.clampable.closed{max-height:5.3em}
+.clampable.closed::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2em;background:linear-gradient(transparent,#fff)}
+.more{font-size:11.5px;color:var(--brand2);cursor:pointer;user-select:none;margin-top:4px;display:inline-block}
+.more:hover{color:var(--brand)}
 /* ───── 首页 ───── */
 #pg-home .hero{border-radius:16px;padding:26px 30px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden;
 background:linear-gradient(120deg,#0d4032 0%,#0e6b4c 55%,#119a68 100%)}
@@ -1660,6 +1768,10 @@ background:linear-gradient(120deg,#0d4032 0%,#0e6b4c 55%,#119a68 100%)}
 .modebar .mb{padding:6px 13px;border-radius:9px;font-size:12.5px;cursor:pointer;background:#f1f4f7;color:#5b6572;border:none}
 .modebar .mb.on{background:var(--brand);color:#fff}
 .modebar .hint{font-size:11px;color:var(--mut)}
+/* 身份横幅: 始终显示屏幕前正在输入的人是谁, 截图分享时一目了然 */
+#roleBanner{padding:7px 16px;font-size:12.5px;background:#fdf3e8;color:#8a5a00;border-bottom:1px solid #f0e0c8;display:none}
+#roleBanner.rb-b{background:var(--cg);color:var(--brand2);border-color:#cfe8dd}
+#roleBanner b{font-weight:700}
 #msgs{flex:1;overflow-y:auto;padding:18px 26px;display:flex;flex-direction:column;gap:12px}
 .row{display:flex;gap:10px;align-items:flex-start;max-width:92%}
 .row.me{flex-direction:row-reverse;align-self:flex-end}

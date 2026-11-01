@@ -9,50 +9,107 @@ from agent_core.knowledge import contacts, contact_info, facts, style_summary, l
 from agent_core.memory.retrieval import retrieve
 from agent_core.memory import human_feedback  # 人工介入闭环: 注入本人纠正记忆 + 低确定性判定
 
-PROMPT_VER = 'v2'
+PROMPT_VER = 'v3'
 
 _SYS = """你是「万凯」的私人记忆分析师, 服务于他的个人数字分身系统。用户会问关于万凯本人、他的朋友、关系与经历的问题, 你以第三人称、基于下方提供的真实聊天数据做客观分析。
 只输出 JSON(不要 markdown 代码块):
 {"回答": "2-5句, 直接回答用户的问题, 客观但口语化",
+ "无法回答": false,
  "关键事实": [{"事实": "一句具体结论", "证据": [{"时间": "YYYY-MM-DD HH:MM", "对象": "与谁的聊天", "说话人": "万凯/对方", "原文": "聊天原话摘录"}], "置信": "高/中/低"}],
- "不确定信息": ["数据不足或无法判断的点, 没有则空数组"],
- "候选回答": ["仅当存在不确定信息时, 给出2-3个不同依据解读下的候选答案; 完全确定则空数组"]}
+ "不确定信息": ["回答后的补充备注: 哪些点证据较弱/可进一步查证, 供用户参考; 大多数时候就是空数组, 严禁为了凑数硬写"],
+ "候选回答": []}
 规则:
-1. 只用下方提供的真实数据回答; 数据里没有的结论放进「不确定信息」并给出「候选回答」, 绝不编造
-2. 每条关键事实必须至少附一条原文证据, 原文必须从提供的记录中原样摘录
-3. 「回答」就是给用户看的话, 不要暴露 JSON 结构
-4. 当用户问到两人之间的「梗 / 暗号 / 外号 / 内部笑话 / 习惯 / 私下称呼」时, 主动从相关记录里找出双方独有的玩笑、重复出现的梗、特殊称呼和默契, 并引用原话; 记录里确实找不到就明说「记录里没发现明显的梗」
-5. 涉及敏感隐私(住址、证件、财务)一律模糊处理
-6. 全部中文"""
+1. 只用下方提供的真实数据回答, 绝不编造。性格/习惯/关系风格这类问题, 基于行为证据做侧写推断是完全允许且鼓励的 —— 只要结论挂靠了「关键事实」里的原文证据, 就不算数据不足
+2. 「无法回答」= true 仅限一种情况: 用户问的核心问题在提供的所有数据里完全找不到任何依据(如问某次具体约定但记录里毫无痕迹); 此时「回答」写明缺什么数据, 并在「候选回答」里给出 2-3 个基于不同假设的猜测。其余情况一律 false, 大胆回答
+3. 「不确定信息」只是备注, 不代表回答不了; 能回答的问题就不要写它
+4. 每条关键事实必须至少附一条原文证据, 原文必须从提供的记录中原样摘录
+5. 「回答」就是给用户看的话, 不要暴露 JSON 结构
+6. 当用户问到两人之间的「梗 / 暗号 / 外号 / 内部笑话 / 习惯 / 私下称呼」时, 主动从相关记录里找出双方独有的玩笑、重复出现的梗、特殊称呼和默契, 并引用原话; 记录里确实找不到就明说「记录里没发现明显的梗」
+7. 涉及敏感隐私(住址、证件、财务)一律模糊处理
+8. 预测/趋势/局势类问题: 你不是算命先生 —— 先从【已梳理的相关人生事件】【万凯个人画像】提炼"他现在在哪、正在做什么", 再结合【近期公开信息】(网络检索)给出分析; 每个判断都要注明依据是"他的历史轨迹"还是"公开时事"; 时事部分如信息不足要明确说"没法实时核实", 绝不把猜测说成确定的事实; 最终落点应是具体的建议而非空泛预测
+9. 全部中文"""
 
 _SYS_ORACLE = """你是「旁观者」——陪伴万凯多年、读过他全部微信聊天记录的挚友。因为看过他所有的聊天, 你比任何人都了解他和他的每段关系。用户(万凯本人或他授权的人)会向你提问, 你像老朋友聊天一样回答。
 只输出 JSON(不要 markdown 代码块):
 {"回答": "像朋友聊天那样回答, 口语、直接、有温度, 可以吐槽可以共情, 不打官腔; 2-6句",
+ "无法回答": false,
  "关键事实": [{"事实": "一句具体结论", "证据": [{"时间": "YYYY-MM-DD HH:MM", "对象": "与谁的聊天", "说话人": "万凯/对方", "原文": "聊天原话摘录"}], "置信": "高/中/低"}],
- "不确定信息": ["数据不足或无法判断的点, 没有则空数组"],
- "候选回答": ["仅当存在不确定信息时, 给出2-3个不同依据解读下的候选答案; 完全确定则空数组"]}
+ "不确定信息": ["回答后的补充备注: 哪些点证据较弱/可进一步查证; 大多数时候就是空数组, 严禁为了凑数硬写"],
+ "候选回答": []}
 规则:
 1. 你的底色是"懂他的朋友", 不是AI客服: 说话自然, 偶尔引用他自己的原话点醒他("你自己去年还跟XX说过…")
-2. 事实仍然全部来自下方真实数据, 绝不编造; 数据里没有的, 像朋友一样坦白"这个我真没印象, 别瞎猜", 写进「不确定信息」
-3. 每条关键事实必须至少附一条原文证据, 原文从提供的记录中原样摘录
-4. 问到「梗 / 暗号 / 外号 / 习惯 / 私下称呼」时主动从记录里找双方独有的默契并引用原话
-5. 涉及敏感隐私(住址、证件、财务)一律模糊处理
-6. 全部中文"""
+2. 事实全部来自下方真实数据, 绝不编造。性格/习惯这类问题, 基于行为证据做侧写推断是完全允许且鼓励的 —— 只要挂靠了原文证据就大胆说, 别动不动"没直接聊过"
+3. 「无法回答」= true 仅限一种情况: 核心问题在所有提供的数据里完全找不到依据; 此时「回答」像朋友一样坦白"这个我真没印象, 别瞎猜", 并在「候选回答」里给出 2-3 个不同假设下的猜测。其余一律 false
+4. 「不确定信息」只是给用户的备注, 不是弃答声明; 能回答就不要写
+5. 每条关键事实必须至少附一条原文证据, 原文从提供的记录中原样摘录
+6. 问到「梗 / 暗号 / 外号 / 习惯 / 私下称呼」时主动从记录里找双方独有的默契并引用原话
+7. 涉及敏感隐私(住址、证件、财务)一律模糊处理
+8. 预测/趋势/局势类问题: 你不是算命先生 —— 先从【已梳理的相关人生事件】【万凯个人画像】提炼"他现在在哪、正在做什么", 再结合【近期公开信息】(网络检索)给出分析; 每个判断都要注明依据是"他的历史轨迹"还是"公开时事"; 时事部分如信息不足要明确说"没法实时核实", 绝不把猜测说成确定的事实; 最终落点应是具体的建议而非空泛预测
+9. 全部中文"""
 
 _SYS_ADVICE = """你是「万凯」的决策顾问。用户(万凯本人)遇到一件新事拿不定主意, 会问「你觉得万凯会怎么做 / 这么做有什么优缺点 / 有什么不妥」。你要基于下方真实聊天数据所反映的万凯性格与行为模式来推演。
 只输出 JSON(不要 markdown 代码块):
 {"回答": "给用户看的完整决策咨询, 用\\n分四段: 一、【过去的万凯会怎么做】——基于历史行为模式的推断, 注明是推断并挂靠证据(如: 你在2025-03曾对XX说\\"…\\"，说明你倾向…); 二、【这样做的优缺点】——各1-3条, 具体、贴他的性格, 不空泛; 三、【有没有不妥】——只列有真实依据的隐忧, 严禁为了凑数硬找不妥, 确实没有就明确写\\"按你描述的情况, 没发现明显不妥\\"; 四、【建议】——一句可执行的话",
+ "无法回答": false,
  "关键事实": [{"事实": "一句具体结论", "证据": [{"时间": "YYYY-MM-DD HH:MM", "对象": "与谁的聊天", "说话人": "万凯/对方", "原文": "聊天原话摘录"}], "置信": "高/中/低"}],
- "不确定信息": ["数据不足或无法判断的点, 没有则空数组"],
- "候选回答": ["仅当存在不确定信息时, 给出2-3个不同依据解读下的候选答案; 完全确定则空数组"]}
+ "不确定信息": ["回答后的补充备注, 大多数时候就是空数组, 严禁为了凑数硬写"],
+ "候选回答": []}
 规则:
 1. 推演必须挂靠真实证据: 每个行为模式判断都要能对应到关键事实里的证据; 绝不编造万凯没做过的事
-2. 新事情本身聊天记录里没有, 这不是错误 —— 推演依据是万凯的性格和他在过去类似情境下的真实选择
+2. 新事情本身聊天记录里没有, 这不是错误 —— 推演依据是万凯的性格和他在过去类似情境下的真实选择, 因此「无法回答」几乎总应该是 false(仅当万凯在数据里没有任何可挂靠的行为模式时才 true)
 3. 「有没有不妥」宁缺毋滥: 没有真实依据就直说没有
-4. 涉及敏感隐私(住址、证件、财务)一律模糊处理
-5. 「回答」直接给用户看, 不要暴露 JSON 结构; 全部中文"""
+4. 「不确定信息」「候选回答」仅配合「无法回答」= true 使用, 其余时候为空
+5. 涉及敏感隐私(住址、证件、财务)一律模糊处理
+6. 「回答」直接给用户看, 不要暴露 JSON 结构; 全部中文"""
 
 _ADVICE_PAT = None
+
+# 预测/局势类问题: 需要补充网络时事检索(个人聊天记录里没有"现在的世界")
+_FUTURE_PAT = None
+
+
+def _needs_web(message):
+    import re as _re
+    global _FUTURE_PAT
+    if _FUTURE_PAT is None:
+        _FUTURE_PAT = _re.compile(
+            r'预测|预判|推演未来|未来.{0,6}(工作|方向|趋势|怎么|如何)|会变成什么样|'
+            r'局势|形势|行情|大环境|就业|行业趋势|风口|新闻|最近外界|今年.{0,8}(趋势|局势)')
+    return bool(_FUTURE_PAT.search(message or ''))
+
+
+def _web_news(message, progress=None):
+    """Bing 检索与问题相关的近期时事(无需 key)。任何失败都返回空串, 绝不阻塞回答。"""
+    import re as _re, urllib.request, urllib.parse
+    q = _re.sub(r'[，。？！、,\.\?!~\[E\]【】（）()]', ' ', message)[:40].strip()
+    if not q:
+        return ''
+    try:
+        if progress:
+            progress('正在检索近期相关时事/新闻…')
+        url = 'https://cn.bing.com/search?q=' + urllib.parse.quote(q) + '&count=8'
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            'Accept-Language': 'zh-CN,zh;q=0.9'})
+        html = urllib.request.urlopen(req, timeout=8).read().decode('utf-8', 'ignore')
+        items = _re.findall(r'<li class="b_algo".*?<h2>.*?<a[^>]*>(.*?)</a>.*?</h2>.*?(?:<p[^>]*>(.*?)</p>)?',
+                            html, _re.S)
+        out, seen = [], set()
+        for title, snip in items:
+            clean = lambda s: _re.sub(r'<[^>]+>', '', s or '').strip()
+            t, s = clean(title), clean(snip)[:160]
+            if t and t not in seen:
+                seen.add(t)
+                out.append(f'· {t}' + (f'：{s}' if s else ''))
+            if len(out) >= 5:
+                break
+        if out and progress:
+            progress(f'已获取 {len(out)} 条近期公开信息')
+        return '\n'.join(out)
+    except Exception:
+        if progress:
+            progress('时事检索不可用（网络受限），将仅基于你的个人数据回答')
+        return ''
 
 
 def _is_advice(message):
@@ -153,12 +210,14 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
             line += '\n  此前 AI 画像: ' + json.dumps(cached, ensure_ascii=False)[:600]
         profiles.append(line)
 
-    # 事件记忆(时间线校验通过的事件), 只带与提到的人相关的
+    # 事件记忆(时间线校验通过的事件): 提到人时只带相关事件;
+    # 预测/局势类问题即使没提到人, 也带上全部事件(回答"我现在在干嘛、接下来怎么走"需要人生轨迹)
     events = []
-    if mentioned:
+    want_all = _needs_web(message)
+    if mentioned or want_all:
         for ev in _load_events():
             blob = json.dumps(ev, ensure_ascii=False)
-            if any(n in blob for n in mentioned):
+            if not mentioned or any(n in blob for n in mentioned):
                 events.append(f"· [{ev.get('年','')}-{ev.get('月','')}] {ev.get('标题','')}: {ev.get('描述','')}")
     events = events[:12]
 
@@ -244,6 +303,12 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
         parts.append(f"【近期真实对话原文(程序直取, 优先作为了解双方互动的依据)】\n{recent_txt}")
     if extra_context:
         parts.append(f"【关系网络结构化背景(程序统计, 优先可信)】\n{extra_context}")
+    if want_all:
+        web = _web_news(message, _p)
+        if web:
+            parts.append(f"【近期公开信息(网络检索自 Bing, 截取摘要)】\n{web}")
+        else:
+            parts.append("【近期公开信息】(检索不可用, 请基于你的知识回答并在回答中注明无法获取实时信息)")
     try:
         from agent_core.simulation.engine import sim_note_for
         sim = sim_note_for(contact_hint or '', limit=4)
@@ -257,6 +322,14 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
     parts.append(f"【万凯风格速览】\n{style_summary()[:600]}")
     if samples:
         parts.append(f"【万凯代表性发言(节选)】\n{samples}")
+    # 已生成的个人画像: 问答"我是怎样的人"类问题时的关键背景, 缺了模型会误以为数据不足
+    try:
+        me_prof = config.jload(os.path.join(config.CACHE, 'profile_me.json'), None)
+        if isinstance(me_prof, dict) and me_prof:
+            me_txt = json.dumps(me_prof, ensure_ascii=False)[:1600]
+            parts.append(f"【万凯个人画像(AI 依据全部数据生成, 可直接引用其中的性格/习惯结论)】\n{me_txt}")
+    except Exception:
+        pass
     user = '\n\n'.join(parts)
     _p(f'证据就绪（{len(rels)} 条检索记录 + 近期对话原文 + {len(events)} 条人生事件），正在整理证据链并生成分析…（约需 1-2 分钟）')
 
@@ -267,11 +340,13 @@ def answer(history, message, contact_hint=None, extra_context=None, progress=Non
     reply_text = out.get('回答') or ''
     if isinstance(reply_text, list):
         reply_text = ' '.join(str(x) for x in reply_text)
-    # 低确定性判定(程序化, 不靠模型自评): 不确定信息非空 / 存在低置信关键事实
+    # 低确定性判定(程序化): 仅当模型明确"无法回答"(核心问题无数据)或回答为空时才触发人工介入;
+    # 「不确定信息」「低置信事实」只是备注, 不再触发弹窗 —— 避免开放性问题几乎必弹窗的过敏感问题
     cands = out.get('候选回答') or []
     if isinstance(cands, str):
         cands = [cands]
-    unsure = bool(out.get('不确定信息')) or any(
-        (f or {}).get('置信') == '低' for f in (out.get('关键事实') or []) if isinstance(f, dict))
+    nr = out.get('无法回答')
+    refused = nr is True or (isinstance(nr, str) and nr.strip().lower() in ('true', '是', 'yes'))
+    unsure = refused or not (reply_text or '').strip()
     return {'reply': (reply_text or '(AI 未返回回答)').strip(), 'analysis': out,
             'unsure': bool(unsure), 'candidates': [str(c).strip()[:200] for c in cands if str(c).strip()][:3]}

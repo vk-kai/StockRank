@@ -40,7 +40,7 @@ from agent_core.memory import human_feedback, experience, indexer, retrieval
 from agent_core.analysis import profile as ai_profile
 from agent_core.analysis import timeline as ai_timeline
 from agent_core.analysis import relationships, home
-from agent_core.agents import persona_agent, analysis_agent
+from agent_core.agents import persona_agent, analysis_agent, contact_agent
 from agent_core.simulation import engine as sim_engine
 
 agent_bp = Blueprint('agent', __name__, url_prefix='/api/agent')
@@ -88,14 +88,21 @@ def _valid_contact(name):
                            or knowledge.contact_info(name) is not None)
 
 
-def _chat_dialog(contact, mode, hist, message, confirms, progress, persona=None):
-    """dialog=第一人称分身 / ask=旁观者问答; 返回统一 dict(含 unsure/candidates)"""
+def _chat_dialog(contact, mode, hist, message, confirms, progress, persona=None,
+                 direction='owner'):
+    """dialog=第一人称分身 / ask=旁观者问答; 返回统一 dict(含 unsure/candidates)
+    direction='contact' 为身份互换: AI 扮演联系人(回复不落盘为万凯经历)"""
     if mode == 'ask':
         hint = None if contact == '新朋友' else contact
         r = analysis_agent.answer(hist, message, contact_hint=hint, confirm_names=confirms,
                                   progress=progress, persona=persona)
         return {'reply': r.get('reply', ''), 'analysis': r.get('analysis'),
                 'unsure': r.get('unsure', False), 'candidates': r.get('candidates', [])}
+    if direction == 'contact':
+        r = contact_agent.reply(contact, hist, message, progress=progress)
+        pr = human_feedback.parse_reply(r)
+        return {'reply': pr['reply'], 'unsure': pr['unsure'],
+                'candidates': pr['candidates'], '_twin': True}
     r = persona_agent.reply(contact, hist, message, progress=progress)
     pr = human_feedback.parse_reply(r)
     return {'reply': pr['reply'], 'unsure': pr['unsure'], 'candidates': pr['candidates']}
@@ -390,7 +397,8 @@ def chat():
             try:
                 r = _chat_dialog(contact, mode, hist, message, confirms,
                                  progress=lambda s: out_q.put(('step', {'step': s})),
-                                 persona='oracle' if b.get('persona') == 'oracle' else None)
+                                 persona='oracle' if b.get('persona') == 'oracle' else None,
+                                 direction='contact' if (b.get('direction') or 'owner') == 'contact' else 'owner')
                 out_q.put(('done', {'done': True, **r}))
             except (LLMError, ValueError) as e:
                 out_q.put(('done', {'done': True, 'error': str(e)}))
@@ -409,9 +417,11 @@ def chat():
         return _stream(gen())
 
     r = _chat_dialog(contact, mode, hist, message, confirms, None,
-                     persona='oracle' if b.get('persona') == 'oracle' else None)
+                     persona='oracle' if b.get('persona') == 'oracle' else None,
+                     direction='contact' if (b.get('direction') or 'owner') == 'contact' else 'owner')
     # dialog 有把握的回复自动落盘为分身经历(拿不准的走人工介入后记录)
-    if mode != 'ask' and not r.get('unsure') and r.get('reply'):
+    # 身份互换(direction=contact, AI 扮演联系人)是模拟对话, 不落盘为万凯经历
+    if mode != 'ask' and not r.get('_twin') and not r.get('unsure') and r.get('reply'):
         try:
             experience.log_exchange(contact, message, r['reply'])
         except Exception:
@@ -422,8 +432,9 @@ def chat():
 @agent_bp.route('/interventions', methods=['POST'])
 def interventions_save():
     # 人工介入闭环: 保存本人决定(人工直答/选定候选/直接采用)并写入知识库
+    # 经记忆质检后, 对分身训练没有帮助的回答只回复但不入纠正记忆
     b = _body()
-    fr = human_feedback.save_decision(
+    fr, saved = human_feedback.save_decision(
         question=str(b.get('question') or ''),
         ai_draft=str(b.get('ai_draft') or ''),
         contact=str(b.get('contact') or '')[:60],
@@ -439,7 +450,33 @@ def interventions_save():
                                     str(b.get('question') or ''), fr)
         except Exception:
             pass
-    return jsonify({'ok': True, 'final_reply': fr})
+    return jsonify({'ok': True, 'final_reply': fr, 'memory_saved': bool(saved)})
+
+
+@agent_bp.route('/feedback/delete', methods=['POST'])
+def feedback_delete():
+    # 手动删除一条纠正记忆(设置页清理噪音)
+    b = _body()
+    ok = human_feedback.delete_record(str(b.get('时间') or '')[:30])
+    return jsonify({'ok': bool(ok)})
+
+
+@agent_bp.route('/twin/contact/status')
+def twin_status():
+    # 身份互换: 查联系人分身塑造状态(消息量门槛/是否已塑造)
+    import urllib.parse as _up
+    name = _up.unquote(request.args.get('contact', ''))
+    return jsonify(contact_agent.status(name))
+
+
+@agent_bp.route('/twin/contact/build', methods=['POST'])
+def twin_build():
+    # 身份互换: 为联系人塑造数字分身画像(耗时 30-90 秒, 结果缓存)
+    b = _body()
+    name = str(b.get('contact') or '').strip()[:60]
+    if not _valid_contact(name):
+        raise ValueError(f'联系人「{name}」不在档案中')
+    return jsonify(contact_agent.build(name))
 
 
 @agent_bp.route('/who', methods=['POST'])

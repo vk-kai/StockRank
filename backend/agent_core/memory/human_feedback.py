@@ -42,9 +42,34 @@ def parse_reply(text):
     return {'reply': ' '.join(keep).strip(), 'unsure': True, 'candidates': cands[:3]}
 
 
+def _worth_saving(question, ai_draft, contact, mode, choice, final):
+    """记忆质检: 判断本次人工介入的「最终回答」是否值得存入纠正记忆。
+    纠正记忆的唯一用途是让分身学会"万凯本人的说法/偏好/事实" —— 纯咨询、一次性分析
+    结论这类内容存进去只是噪音。任何异常都返回 True(默认保存, 保持旧行为)。"""
+    try:
+        from agent_core.llm_client import llm_chat, extract_json
+        msgs = [{'role': 'system', 'content':
+            """你是记忆质检员。个人数字分身系统里 AI 拿不准时由本人(万凯)介入给出了「最终回答」。请判断这条内容是否值得存入「人工纠正记忆」—— 该记忆的唯一用途: 以后分身模仿万凯说话、回答关于万凯的问题时, 把这些记录当作「万凯本人的说法/偏好/事实」优先遵循。
+只输出 JSON(不要 markdown 代码块): {"存入": true/false, "理由": "一句话"}
+判定标准:
+- 存入: 最终回答体现了万凯本人的口吻/表达方式(分身可直接学着说); 本人对事实的更正(如"我其实已经离职了"); 本人对某类事务的处置偏好(如"这种忙我从来帮")
+- 不存: 回答是对问题的复述/补充说明; 一次性的分析结论或建议(即便被本人选中, 那也只是"采纳了建议", 不代表本人的事实或立场); 纯寒暄; 与本人无关的客观信息
+拿不准时倾向不存(宁缺毋滥, 记忆质量优先)。全部中文。"""},
+            {'role': 'user', 'content':
+                f"【场景】{'模拟聊天(分身扮演万凯回复消息)' if mode == 'dialog' else '第三人称问答(旁观者/分析师回答关于万凯的问题)'} · 介入方式: {choice}\n"
+                f"【问题】{str(question or '')[:300]}\n【AI 当时草稿】{str(ai_draft or '')[:200]}\n【本人最终回答】{str(final or '')[:400]}"}]
+        out = extract_json(llm_chat(msgs, temperature=0.2))
+        if isinstance(out, list):
+            out = out[0] if out else {}
+        return bool(out.get('存入', True)), str(out.get('理由', '') or '')[:80]
+    except Exception:
+        return True, ''
+
+
 def save_decision(question, ai_draft, contact, mode, choice,
                   human_answer='', candidates=None, candidate_index=None):
-    """保存本人决定, 返回最终要发送的回答 (choice: human/candidate/adopt)"""
+    """保存本人决定, 返回 (最终要发送的回答, 是否已存入纠正记忆)
+    (choice: human/candidate/adopt)"""
     candidates = [str(c or '').strip() for c in (candidates or []) if str(c or '').strip()]
     choice = str(choice or '')
     if choice == 'human':
@@ -69,6 +94,11 @@ def save_decision(question, ai_draft, contact, mode, choice,
            '模式': mode or 'dialog', '问题': (question or '').strip()[:500],
            'AI草稿': (ai_draft or '').strip()[:500], '最终回答': final[:500],
            '决定': label, '候选': candidates[:3]}
+    # 记忆质检: 不值得作为分身训练记忆的直接丢弃(回答照常返回给用户)
+    keep, reason = _worth_saving(question, ai_draft, contact, mode, choice, final)
+    rec['质检'] = keep
+    if not keep:
+        return final, False
     with _lock:
         os.makedirs(config.KB, exist_ok=True)
         items = []
@@ -89,7 +119,7 @@ def save_decision(question, ai_draft, contact, mode, choice,
             if (old.get('联系人') == rec['联系人']
                     and ' '.join(str(old.get('问题', '')).split()) == dup_q
                     and old.get('最终回答') == rec['最终回答']):
-                return final
+                return final, True
         items.append(json.dumps(rec, ensure_ascii=False))
         if len(items) > _MAX_FEEDBACK:
             items = items[-_MAX_FEEDBACK:]
@@ -97,7 +127,7 @@ def save_decision(question, ai_draft, contact, mode, choice,
         with open(tmp, 'w', encoding='utf-8') as f:
             f.write('\n'.join(items) + '\n')
         os.replace(tmp, _FEEDBACK_P)
-    return final
+    return final, True
 
 
 def load_recent(limit=6):
@@ -117,6 +147,35 @@ def load_recent(limit=6):
     except Exception:
         pass
     return {'count': len(items), 'items': list(reversed(items))[:max(1, int(limit or 6))]}
+
+
+def delete_record(ts):
+    """按时间戳删除一条纠正记录(设置页手动清理噪音), 返回是否删除成功"""
+    with _lock:
+        try:
+            with open(_FEEDBACK_P, encoding='utf-8') as f:
+                items = [ln.strip() for ln in f if ln.strip()]
+        except FileNotFoundError:
+            return False
+        except Exception:
+            return False
+        kept = []
+        removed = False
+        for ln in items:
+            try:
+                if json.loads(ln).get('时间') == ts and not removed:
+                    removed = True
+                    continue
+            except Exception:
+                pass
+            kept.append(ln)
+        if not removed:
+            return False
+        tmp = _FEEDBACK_P + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(kept) + ('\n' if kept else ''))
+        os.replace(tmp, _FEEDBACK_P)
+    return True
 
 
 def context_note(question, contact='', limit=3):
