@@ -192,10 +192,12 @@ def _build():
                             'co_n': sum(cnt.values())})
     bridges.sort(key=lambda x: (-len(x['circles']), -x['co_n']))
 
-    # 6) 圈层统计
+    # 6) 圈层统计(同样只统计人, 群聊条目不占人数/消息量)
     now = datetime.datetime.now()
     circles = {}
     for c in contacts():
+        if c.get('类别') != '私聊':
+            continue
         b = _bucket(c.get('圈层猜测', ''))
         cc = circles.setdefault(b, {'人数': 0, '消息': 0, '近120天活跃': 0})
         cc['人数'] += 1
@@ -248,7 +250,9 @@ def graph(year=None, limit=140):
                         if v.get(year, {}).get('n')), key=lambda x: -x[1])[:limit]
         values = {n: n_ for n, n_ in nodes}
     else:
-        allc = {c['姓名']: c.get('总消息', 0) for c in contacts()}
+        # 只有"人"参与关系网络, 群聊不是节点(人与人的关系靠共同群边表达)
+        allc = {c['姓名']: c.get('总消息', 0) for c in contacts()
+                if c.get('类别') == '私聊'}
         values = dict(sorted(allc.items(), key=lambda x: -x[1])[:limit])
     circle_of = {c['姓名']: _bucket(c.get('圈层猜测', '')) for c in contacts()}
     info_of = {c['姓名']: c for c in contacts()}
