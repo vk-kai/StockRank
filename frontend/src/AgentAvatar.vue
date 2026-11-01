@@ -1773,4 +1773,7 @@ display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.18);transi
 .oraHd .sub2{font-size:11px;color:#9fd4bd}
 #dmsgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 #dmsgs .row{max-width:100%}
+/* 旁观者独立页消息区: 与数字分身聊天页同布局, 撑满可用高度, 输入框固定在底部 */
+#bmsgs{flex:1;overflow-y:auto;padding:18px 26px;display:flex;flex-direction:column;gap:12px}
+#bmsgs .row{max-width:92%}
 </style>
