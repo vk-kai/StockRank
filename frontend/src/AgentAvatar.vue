@@ -1449,7 +1449,7 @@ async function showOthTab(t){
   $('#tab-gf').style.display=t==='gf'?'':'none';
   if(t==='net')drawNet();
   if(t==='circ'&&!$('#tab-circ').dataset.done){$('#tab-circ').dataset.done=1;renderCirc()}
-  if(t==='ppl')loadTwin();
+  if(t==='ppl'){loadTwin();pplMoreCheck()}   // tab 激活后重测折叠(此前不可见时量不到高度)
   if(t==='gf')loadGroupFriends();
 }
 
@@ -1745,10 +1745,15 @@ function renderPpl(n,r,genAt){
     +(r['总结']?`<div class="ppl-hero"><b>📌 一句话画像</b><p>${esc(r['总结'])}</p></div>`:'')
     +(keys.length?`<div class="ppl-grid">${keys.map(k=>
       `<div class="ppl-card"><h4>${IC[k]||'▫️'} ${esc(k)}</h4>${valHtml(r[k])}</div>`).join('')}</div>`:'<div class="mut">无结构化内容</div>');
-  // 内容不足 3 行的卡片隐藏「展开」按钮
+  // 内容不足 3 行的卡片隐藏「展开」按钮(容器不可见时量出 0 高, 先保持显示, 等 tab 激活再重测)
+  pplMoreCheck();
+}
+function pplMoreCheck(){
   document.querySelectorAll('#pplBox .more').forEach(m=>{
     const c=m.parentElement.querySelector('.clampable');
-    if(c&&c.scrollHeight<=c.clientHeight+4)m.style.display='none'});
+    if(!c)return;
+    if(!c.clientHeight){m.style.display='';return}   // display:none 里量不到高度 → 显示展开, 待可见后重测
+    m.style.display=c.scrollHeight<=c.clientHeight+4?'none':''});
 }
 $('#pplBox').addEventListener('click',e=>{
   const m=e.target.closest('.more');if(!m)return;
