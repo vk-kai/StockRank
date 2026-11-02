@@ -205,7 +205,8 @@
   <div id="tab-ppl" style="display:none">
     <div class="card">
       <h3>人物画像
-        <select id="pplSel" style="margin-left:12px;max-width:260px"></select>
+        <input id="pplQ" placeholder="🔍 搜人…" style="margin-left:12px;width:110px" title="输入名字过滤下拉列表">
+        <select id="pplSel" style="max-width:240px"></select>
         <button class="btn sm" id="genPpl" style="margin-left:auto">生成 / 刷新画像</button>
       </h3>
       <div id="pplBox" class="mut">选择联系人后生成画像（AI 总结你们的关系、话题与相处方式）。</div>
@@ -1713,6 +1714,17 @@ $('#genPpl').onclick=async()=>{
   }catch(e){clearInterval(wt);box.innerHTML='<div class="err">'+e.message+'</div>';if(PAGE()!=='others'){navDot('others',true);toast('⚠ 画像生成失败: '+e.message)}}
 };
 $('#pplSel').onchange=()=>loadPplFor($('#pplSel').value);
+function filterPpl(q){   // 人物画像搜人: 输入名字过滤下拉(首次记录全量名单)
+  const sel=$('#pplSel');
+  if(!sel.dataset.all)sel.dataset.all=[...sel.options].map(o=>o.value).join('\n');
+  if(!sel.dataset.all)return;
+  const cur=sel.value;
+  const names=sel.dataset.all.split('\n').filter(n=>!q||n.toLowerCase().includes(q.toLowerCase()));
+  sel.innerHTML='';
+  names.forEach(n=>{const o=document.createElement('option');o.value=o.textContent=n;sel.appendChild(o)});
+  if(names.includes(cur))sel.value=cur;
+}
+$('#pplQ')&&$('#pplQ').addEventListener('input',e=>filterPpl(e.target.value.trim()));
 function renderPpl(n,r,genAt){
   if(!r){$('#pplBox').innerHTML='<div class="mut">暂无</div>';return}
   const IC={'关系':'🤝','性格特点':'🧠','说话方式':'💬','相处方式':'🍵','共同话题':'🔥','关键事件':'📌',
