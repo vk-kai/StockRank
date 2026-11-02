@@ -77,13 +77,35 @@
 <section id="pg-byst" class="page chatpg">
   <div class="chatwrap">
     <div class="modebar">
-      <span class="hint">🫧 旁观者 —— 陪你四年、读过你全部聊天记录的老朋友。直接提问即可：提到谁会先和你确认，回答都带原话依据</span>
+      <button class="mb on" data-bt="ask">💬 问答</button>
+      <button class="mb" data-bt="sb">🎲 沙盘推演</button>
+      <span class="hint" id="bhint">🫧 旁观者 —— 陪你四年、读过你全部聊天记录的老朋友。直接提问即可：提到谁会先和你确认，回答都带原话依据</span>
       <button class="btn gray sm" id="bClear" style="margin-left:auto">🗑 清空本会话</button>
     </div>
     <div id="bmsgs"></div>
-    <div class="inrow">
+    <div class="inrow" id="bAskRow">
       <textarea id="bchat-in" placeholder="例如：我和刘炀和Mi谁关系更好？我和桃姐之间有什么梗？我最近遇到一件事拿不定主意…（Enter 发送）"></textarea>
       <button class="btn" id="bsendbtn">发送</button>
+    </div>
+    <div id="sbPanel" style="display:none;flex:1;overflow-y:auto;padding:20px 24px">
+      <div class="card" style="max-width:880px;margin:0 auto">
+        <h3>🎲 沙盘推演<span class="sub">强化版分身 —— 比你更冷静、完全了解你的参谋</span></h3>
+        <div class="mut" style="line-height:1.8;margin-bottom:10px">遇到拿捏不定的事、想预测某件事的走向时用这里。它会综合你的<b>性格画像、会的技能、这几年的真实经历、相关聊天记录</b>，先还原"以你的人设你大概率会怎么做"，再把每条路推演一遍，最后给你明确建议 —— 该提醒你避开哪个惯性就直说。</div>
+        <textarea id="sbIssue" style="width:100%;height:72px" placeholder="把事情说清楚：背景是什么、你在纠结什么、目前你的打算是…（越具体推演越准）"></textarea>
+        <input id="sbOptions" style="width:100%;margin-top:8px" placeholder="可选：你在考虑的方案，用 / 分隔（例：直接去说 / 先冷处理几天 / 什么都不做）">
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button class="btn" id="sbGo">🎲 开始推演</button>
+          <button class="btn gray sm" id="sbReset" style="display:none">🧹 清空推演</button>
+          <span class="mut">首次推演约 1-2 分钟（要翻你的档案和聊天记录）</span>
+        </div>
+        <div id="sbOut" style="margin-top:14px"></div>
+        <div id="sbFollow" style="display:none;margin-top:12px">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <textarea id="sbQ" style="flex:1;height:44px" placeholder="继续追问：换个方案再推一次 / 如果对方不回应怎么办 / 把建议拆成第一步该做什么…"></textarea>
+            <button class="btn" id="sbQGo">追问</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -98,6 +120,7 @@
     <div class="shops">
       <button class="btn sm" id="genMe">🔄 重新生成画像</button>
       <button class="btn sm" id="genTl">🗓 重新生成时间线</button>
+      <button class="btn sm" id="genSk">🛠 重新提炼技能与经历</button>
       <span class="mut" id="shMeta" style="color:#bfe6d4"></span>
     </div>
   </div>
@@ -124,6 +147,14 @@
       <div id="styleDiff" style="margin-top:10px"></div>
       <div style="margin-top:12px"><span class="chip" data-go="others">去「认识他人」看关系网络、圈层与每个人聊了什么 →</span></div>
     </div>
+  </div>
+
+  <div class="selfmod"><div class="smhd">03.5 · 我会什么、做过什么<span>技能分类 · 这几年做的事（依据日程大事与真实聊天，非 AI 想象）</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="card"><h3>🛠 我会的技能<span class="sub">有据可查，没把握的不写</span></h3><div id="skBox" class="mut">加载中…</div></div>
+      <div class="card"><h3>📈 一句话</h3><div id="skOne" class="mut">—</div></div>
+    </div>
+    <div class="card" style="margin-top:12px"><h3>🧾 这几年做的事<span class="sub">按年份 · 详细</span></h3><div id="expBox" class="mut">加载中…</div></div>
   </div>
 
   <div class="selfmod"><div class="smhd">04 · 这些年我发生了什么变化<span>纵向人生叙事 · 每个事件都有原话依据</span></div>
@@ -1244,12 +1275,66 @@ $('#bClear').onclick=()=>{BSESS[bkey()]=[];bsave();bRender();
 async function loadByst(){bRender()}
 LOADERS.byst=loadByst;
 
+/* ───── 旁观者页 tab: 问答 / 沙盘推演(强化版分身参谋) ───── */
+$$('.modebar .mb[data-bt]').forEach(b=>b.onclick=()=>{
+  $$('.modebar .mb[data-bt]').forEach(x=>x.classList.toggle('on',x===b));
+  const sb=b.dataset.bt==='sb';
+  $('#bmsgs').style.display=sb?'none':'';
+  $('#bAskRow').style.display=sb?'none':'';
+  $('#sbPanel').style.display=sb?'':'none';
+  $('#bhint').textContent=sb
+    ?'🎲 沙盘推演 —— 强化版分身：把拿不定的事交给"比你更了解你"的自己参谋'
+    :'🫧 旁观者 —— 陪你四年、读过你全部聊天记录的老朋友。直接提问即可：提到谁会先和你确认，回答都带原话依据';
+});
+let SB_HIST=[], SB_ORIG='';   // 沙盘多轮: [{q, a(结论摘要)}]; SB_ORIG=首次的问题(追问时复用)
+function renderSb(r,follow){
+  const card=document.createElement('div');
+  card.className='card';
+  card.style.cssText='margin-bottom:12px;border-left:3px solid var(--brand)';
+  const paths=(r.paths||[]).map(p=>`<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px">
+    <b style="font-size:13px">方案：${esc(p.plan||'—')}</b>
+    <div style="font-size:12.5px;color:#4a5568;line-height:1.75;margin-top:4px">
+    ${p.short?`<div><span class="tag b">短期</span> ${esc(p.short)}</div>`:''}
+    ${p.long?`<div style="margin-top:3px"><span class="tag p">长期</span> ${esc(p.long)}</div>`:''}
+    ${p.risk?`<div style="margin-top:3px"><span class="tag o">风险</span> ${esc(p.risk)}</div>`:''}</div></div>`).join('');
+  card.innerHTML=`${follow?`<div style="font-size:12px;color:#8a93a3;margin-bottom:6px">🔁 追问：${esc(follow)}</div>`:''}
+    ${r.essence?`<div style="font-size:14px;font-weight:700;line-height:1.6">🎯 ${esc(r.essence)}</div>`:''}
+    ${r.default?`<div style="margin-top:8px;font-size:12.5px;color:#4a5568;line-height:1.8"><span class="tag g">你的人设默认走向</span><br>${esc(r.default)}</div>`:''}
+    ${paths?`<div style="margin-top:10px;font-size:12px;color:#8a93a3">—— 各方案推演 ——</div>${paths}`:''}
+    ${r.advice?`<div style="margin-top:10px;background:var(--cg);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.8"><b>💡 强化版分身的建议</b><br>${esc(r.advice)}</div>`:''}
+    ${(r.evidence||[]).length?`<div style="margin-top:8px;font-size:12px;color:#5b6572;line-height:1.8"><b>🧾 判断依据（来自你的真实记录）</b><br>${r.evidence.map(x=>`· ${esc(x)}`).join('<br>')}</div>`:''}`;
+  $('#sbOut').prepend(card);
+}
+async function sbRun(q,isFollow){
+  const btn=isFollow?$('#sbQGo'):$('#sbGo');
+  btn.disabled=true;const old=btn.textContent;btn.textContent='推演中…';
+  if(!isFollow){$('#sbOut').innerHTML='<div class="mut" style="padding:14px">🎲 正在翻你的画像、技能、这几年的经历和相关聊天记录…（约 1-2 分钟）</div>'}
+  try{
+    if(!isFollow)SB_ORIG=q;
+    const r=await post('/api/agent/sandbox',isFollow
+      ?{issue:SB_ORIG,options:'',history:SB_HIST.concat([{q:q,a:''}])}
+      :{issue:q,options:$('#sbOptions').value.trim()});
+    if(!isFollow){$('#sbOut').innerHTML=''}
+    const q0=isFollow?q:q;
+    renderSb(r.result||r,q0);
+    SB_HIST.push({q:q0,a:((r.result||r).essence||'')+' '+((r.result||r).advice||'')});
+    $('#sbFollow').style.display='';$('#sbReset').style.display='';
+    if(!isFollow){$('#sbIssue').value='';$('#sbOptions').value='';$('#sbQ').value='';$('#sbQ').focus()}
+  }catch(e){if(!isFollow)$('#sbOut').innerHTML='';toast('⚠ '+e.message)}
+  btn.disabled=false;btn.textContent=old;
+}
+$('#sbGo').onclick=()=>{const q=$('#sbIssue').value.trim();if(!q){toast('先把事情说清楚');return}sbRun(q,false)};
+$('#sbQGo').onclick=()=>{const q=$('#sbQ').value.trim();if(!q){toast('想追问什么？');return}sbRun(q,true)};
+$('#sbQ').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#sbQGo').click()}});
+$('#sbReset').onclick=()=>{SB_HIST=[];SB_ORIG='';$('#sbOut').innerHTML='';$('#sbFollow').style.display='none';$('#sbReset').style.display='none';toast('沙盘已清空，重新开始')};
+
 /* ───── 认识自己(六模块) ───── */
 const ME_BOXES=['meTraits','meSpeak','mePros','meLife','meActive','meSocial','meBlind'];
 async function loadSelf(){
   api('/api/agent/style').then(renderStyle).catch(e=>{$('#styleBox').textContent='加载失败: '+e.message});
   try{const tl=await api('/api/agent/ai/timeline');renderTL(tl)}catch(e){$('#tlBox').textContent='加载失败: '+e.message}
   try{const me=await api('/api/agent/ai/me');renderMe(me)}catch(e){ME_BOXES.forEach(id=>$('#'+id).textContent='加载失败: '+e.message)}
+  loadSkills();
   // 记忆搜索(原「个人记忆」页并入): 联系人下拉只填一次
   if($('#mct').options.length<=1){
     try{await loadTwin();
@@ -1259,6 +1344,27 @@ async function loadSelf(){
   $('#mgo').onclick=doSearch;
   $('#mq').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
 }
+/* ── 03.5 技能与这几年做的事 ── */
+function renderSkills(s){
+  const cats=(s&&s['技能'])||[];
+  if(!cats.length){$('#skBox').textContent='尚未提炼，点击上方「🛠 重新提炼技能与经历」（约 1-2 分钟）。';$('#expBox').textContent='尚未提炼。';$('#skOne').textContent='—';return}
+  $('#skBox').innerHTML=cats.map(c=>`<div style="margin-bottom:8px"><b style="font-size:12.5px">${esc(c['类别']||'其他')}</b>
+    ${(c['技能']||[]).map(t=>`<span class="chip" style="cursor:default;margin:2px 4px 0 0">${esc(t)}</span>`).join('')}</div>`).join('');
+  $('#skOne').innerHTML=s['一句话']?`<div style="font-size:13px;line-height:1.8;color:#1c2430">${esc(s['一句话'])}</div>`:'—';
+  const yrs=(s['这几年']||[]).slice().sort((a,b)=>String(a['年份']||'').localeCompare(String(b['年份']||'')));
+  $('#expBox').innerHTML=yrs.map(y=>`<div style="margin-bottom:10px">
+    <div class="tlyear"><span class="tyy">${esc(y['年份']||'')}</span>${y['主题']?`<span class="tag g">${esc(y['主题'])}</span>`:''}</div>
+    ${(y['事情']||[]).map(t=>`<div style="font-size:12.5px;color:#4a5568;line-height:1.75;padding-left:14px;position:relative;margin-top:3px"><span style="position:absolute;left:2px;color:#9aa3b0">·</span>${esc(t)}</div>`).join('')}</div>`).join('')
+    +'<div class="mut" style="margin-top:6px">依据：指尖时光日程（本人手动记录）+ 真实聊天话题与发言，AI 只整理不编造。</div>';
+}
+async function loadSkills(){
+  try{const s=await api('/api/agent/skills');renderSkills(s)}
+  catch(e){$('#skBox').textContent='加载失败: '+e.message;$('#expBox').textContent='加载失败: '+e.message}
+}
+$('#genSk').onclick=async()=>{startWait($('#skBox'),'AI 正在从日程大事与聊天记录中提炼你的技能与经历…（约 1-2 分钟）');
+  try{const r=await post('/api/agent/skills/build',{});stopWait();renderSkills(r.result);
+    if(PAGE()!=='self'){navDot('self',true);toast('🛠 技能与经历已提炼完毕，点击左侧「认识自己」查看')}}
+  catch(e){stopWait();$('#skBox').textContent='生成失败: '+e.message;if(PAGE()!=='self'){navDot('self',true);toast('⚠ 技能提炼失败: '+e.message)}}};
 function renderStyle(s){
   const ld=s['长度分布']||{};
   const kc=(s['口头禅_高频完整短句_top30']||[]).slice(0,10)
