@@ -40,7 +40,8 @@ from agent_core.memory import human_feedback, experience, indexer, retrieval
 from agent_core.analysis import profile as ai_profile
 from agent_core.analysis import timeline as ai_timeline
 from agent_core.analysis import relationships, home
-from agent_core.agents import persona_agent, analysis_agent, contact_agent, eq_agent
+from agent_core.agents import persona_agent, analysis_agent, contact_agent, eq_agent, sandbox_agent
+from agent_core.analysis import skills as agent_skills
 from agent_core.simulation import engine as sim_engine
 
 agent_bp = Blueprint('agent', __name__, url_prefix='/api/agent')
@@ -517,6 +518,32 @@ def eq_clear():
     b = _body()
     eq_agent.delete_chat(str(b.get('contact') or '').strip()[:60])
     return jsonify({'ok': True})
+
+
+# ─── 技能与经历提炼(认识自己页 03.5) + 沙盘推演(旁观者页强化版分身) ───
+
+@agent_bp.route('/skills')
+def skills_get():
+    # 技能与这几年做的事(依据日程+真实聊天提炼, 读缓存)
+    import os
+    r, _ = cache_store.load(os.path.join(agent_config.CACHE, 'profile_skills.json'))
+    return jsonify(r or {})
+
+
+@agent_bp.route('/skills/build', methods=['POST'])
+def skills_build():
+    # 重新提炼技能与经历(约 1-2 分钟, 绑定日程/档案指纹缓存)
+    return jsonify({'result': agent_skills.generate_skills()})
+
+
+@agent_bp.route('/sandbox', methods=['POST'])
+def sandbox():
+    # 沙盘推演: 强化版分身参谋拿不定的事(综合画像+技能+时间线+真实聊天)
+    b = _body()
+    hist = b.get('history') if isinstance(b.get('history'), list) else []
+    hist = [h for h in hist if isinstance(h, dict) and h.get('q')][:6]
+    return jsonify({'result': sandbox_agent.run(str(b.get('issue') or ''),
+                                                str(b.get('options') or '')[:600], hist)})
 
 
 @agent_bp.route('/who', methods=['POST'])
