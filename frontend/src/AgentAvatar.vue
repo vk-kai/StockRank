@@ -77,35 +77,13 @@
 <section id="pg-byst" class="page chatpg">
   <div class="chatwrap">
     <div class="modebar">
-      <button class="mb on" data-bt="ask">💬 问答</button>
-      <button class="mb" data-bt="sb">🎲 沙盘推演</button>
-      <span class="hint" id="bhint">🫧 知己 —— 读过你全部聊天记录，又比你聪明、见识更广：紧跟时事新闻、政策动向、经济行业趋势。看不透的人、拿不定的事、外面世界怎么变，直接问：提到谁会先和你确认，回答都带原话依据</span>
+      <span class="hint" id="bhint">🫧 知己 —— 读过你全部聊天记录，又比你聪明、见识更广：紧跟时事新闻、政策动向、经济行业趋势。聊天八卦直接问；拿不定的事说一声（要不要/值不值/帮我推演…），他自动切沙盘推演模式给你参谋</span>
       <button class="btn gray sm" id="bClear" style="margin-left:auto">🗑 清空本会话</button>
     </div>
     <div id="bmsgs"></div>
     <div class="inrow" id="bAskRow">
-      <textarea id="bchat-in" placeholder="例如：我和刘炀和Mi谁关系更好？我和桃姐之间有什么梗？我最近遇到一件事拿不定主意…（Enter 发送）"></textarea>
+      <textarea id="bchat-in" placeholder="例如：我和刘炀和Mi谁关系更好？现在裁员形势怎么看？我最近遇到一件事拿不定主意，帮我推演下…（Enter 发送）"></textarea>
       <button class="btn" id="bsendbtn">发送</button>
-    </div>
-    <div id="sbPanel" style="display:none;flex:1;overflow-y:auto;padding:20px 24px">
-      <div class="card" style="max-width:880px;margin:0 auto">
-        <h3>🎲 沙盘推演<span class="sub">强化版分身 —— 比你更冷静、完全了解你的参谋</span></h3>
-        <div class="mut" style="line-height:1.8;margin-bottom:10px">遇到拿捏不定的事、想预测某件事的走向时用这里。它会综合你的<b>性格画像、会的技能、这几年的真实经历、相关聊天记录</b>，先还原"以你的人设你大概率会怎么做"，再把每条路推演一遍，最后给你明确建议 —— 该提醒你避开哪个惯性就直说。</div>
-        <textarea id="sbIssue" style="width:100%;height:72px" placeholder="把事情说清楚：背景是什么、你在纠结什么、目前你的打算是…（越具体推演越准）"></textarea>
-        <input id="sbOptions" style="width:100%;margin-top:8px" placeholder="可选：你在考虑的方案，用 / 分隔（例：直接去说 / 先冷处理几天 / 什么都不做）">
-        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-          <button class="btn" id="sbGo">🎲 开始推演</button>
-          <button class="btn gray sm" id="sbReset" style="display:none">🧹 清空推演</button>
-          <span class="mut">首次推演约 1-2 分钟（要翻你的档案和聊天记录）</span>
-        </div>
-        <div id="sbOut" style="margin-top:14px"></div>
-        <div id="sbFollow" style="display:none;margin-top:12px">
-          <div style="display:flex;gap:8px;align-items:flex-start">
-            <textarea id="sbQ" style="flex:1;height:44px" placeholder="继续追问：换个方案再推一次 / 如果对方不回应怎么办 / 把建议拆成第一步该做什么…"></textarea>
-            <button class="btn" id="sbQGo">追问</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -1030,14 +1008,14 @@ function openIntervene(o){ // o={question,aiDraft,candidates,contact,mode,anlHTM
 }
 function renderAnalysisHTML(a){
   if(!a)return '';
-  let h='<div class="anl"><b>📎 分析依据</b>';
+  let h='<details class="anl"><summary>📎 分析依据（点击展开）</summary>';
   (a['关键事实']||[]).slice(0,5).forEach(f=>{
     h+=`<div style="margin-top:7px">✦ ${esc(f['事实']||'')}<span class="mut">（${esc(f['置信']||'')}）</span>`;
     (f['证据']||[]).slice(0,2).forEach(ev=>{h+=`<div class="ev">💬 ${esc(ev['时间']||'')} · 与${esc(ev['对象']||'')} · ${esc(ev['说话人']||'')}：${esc(ev['原文']||'')}</div>`});
     if(!f['证据']||!f['证据'].length)h+='<div class="ev">⚠ 未找到原文证据</div>';
     h+='</div>';});
   if((a['不确定信息']||[]).length)h+=`<div class="mut" style="margin-top:6px">不确定: ${esc((a['不确定信息']||[]).join('；'))}</div>`;
-  return h+'</div>';
+  return h+'</details>';
 }
 function histFor(n){
   // 从当前独立会话派生 API history; speaker 语义: dialog=联系人/我(含AI扮演的aime), ask=我/分析师
@@ -1150,6 +1128,10 @@ function bsave(){try{localStorage.setItem(bkey(),JSON.stringify(bcurSess()))}cat
 /* 知己消息渲染: 页面(#bmsgs)与全局抽屉(#dmsgs)共用同一会话, 双端同步显示 */
 const ORA={open:false};
 const ORA_BOXES=()=>['#bmsgs','#dmsgs'].map(s=>$(s)).filter(Boolean);
+/* 知己回答排版: 转义 + **加粗** + 换行保留(sandbox 卡片等富文本走 m.html) */
+function mdlite(t){
+  return esc(t||'').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+}
 function oraRow(m){
   if(m.who==='sys'){const d=document.createElement('div');d.className='typing';d.textContent='· '+m.text;return d}
   const row=document.createElement('div');row.className='row'+(m.who==='me'?' me':'');
@@ -1159,7 +1141,7 @@ function oraRow(m){
   else{av.classList.add('ai');av.textContent='🫧';
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;max-width:600px';
     wrap.innerHTML=`<div class="who">知己</div>`;
-    b.innerHTML=wxface(esc(m.text))+(m.anl||'');wrap.appendChild(b);
+    b.innerHTML=(m.html||mdlite(m.text))+(m.anl||'');wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap)}
   return row;
 }
@@ -1203,6 +1185,31 @@ async function sendB(src){
   const hist=bcurSess().filter(m=>m.who==='me'||m.who==='ai').slice(-10)
     .map(m=>({speaker:m.who==='me'?'我':'知己',content:m.text}));   // push 前取
   bcurSess().push({who:'me',text});bAppendDom({who:'me',text});bsave();
+  // 第零步: 沙盘路由 —— 拿不定主意/预测类自动切沙盘; 上一轮是沙盘时短语作追问
+  const lastSb=[...bcurSess()].reverse().find(m=>m.who==='ai'&&m.sb);
+  if(isSandboxQ(text)||(lastSb&&isFollowUp(text))){
+    const follow=!!lastSb&&isFollowUp(text);
+    const ctx=sbCtx();
+    const issue=follow?(ctx.orig||lastSb.sbIssue||text):text;
+    const history=follow?ctx.hist.concat([{q:text,a:''}]):[];
+    const waitTxt=follow?'正在结合前面的推演继续翻你的档案…':'正在翻你的画像、技能、这几年的经历和相关聊天记录…';
+    const tips=ORA_BOXES().map(x=>{const t=document.createElement('div');t.className='typing';x.appendChild(t);x.scrollTop=1e9;return t});
+    const t0=Date.now();
+    const draw=()=>{tips.forEach(t=>t.innerHTML=`<span style="display:inline-block;animation:simpulse 1.2s infinite">🎲</span> ${esc(waitTxt)} <b class="mut">${Math.floor((Date.now()-t0)/1000)}s</b>`)};
+    draw();const tick=setInterval(draw,1000);
+    try{
+      const r=await post('/api/agent/sandbox',{issue,options:'',history});
+      const res=r.result||r;
+      clearInterval(tick);tips.forEach(t=>t.remove());
+      const msg={who:'ai',sb:true,sbIssue:issue,sbEss:res.essence||'',sbAdv:res.advice||'',
+                 html:renderSbHTML(res,follow?text:''),text:res.essence||'沙盘推演'};
+      bcurSess().push(msg);bAppendDom(msg);bsave();
+      if(!ORA.open&&PAGE()!=='byst'){navDot('byst',true);toast('🎲 沙盘推演已完成')}
+    }catch(e){
+      clearInterval(tick);tips.forEach(t=>{t.innerHTML='⚠ '+esc(e.message);setTimeout(()=>t.remove(),6000)});
+    }
+    BSENDING=false;btn.disabled=false;inp.focus();return;
+  }
   // 第一步: 人物识别与确认(识别不到人时直接提问)
   let confirm_names=null;
   try{
@@ -1275,58 +1282,31 @@ $('#bClear').onclick=()=>{BSESS[bkey()]=[];bsave();bRender();
 async function loadByst(){bRender()}
 LOADERS.byst=loadByst;
 
-/* ───── 知己页 tab: 问答 / 沙盘推演(强化版分身参谋) ───── */
-$$('.modebar .mb[data-bt]').forEach(b=>b.onclick=()=>{
-  $$('.modebar .mb[data-bt]').forEach(x=>x.classList.toggle('on',x===b));
-  const sb=b.dataset.bt==='sb';
-  $('#bmsgs').style.display=sb?'none':'';
-  $('#bAskRow').style.display=sb?'none':'';
-  $('#sbPanel').style.display=sb?'':'none';
-  $('#bhint').textContent=sb
-    ?'🎲 沙盘推演 —— 强化版分身：把拿不定的事交给"比你更了解你"的自己参谋'
-    :'🫧 知己 —— 陪你四年、读过你全部聊天记录的老朋友。直接提问即可：提到谁会先和你确认，回答都带原话依据';
-});
-let SB_HIST=[], SB_ORIG='';   // 沙盘多轮: [{q, a(结论摘要)}]; SB_ORIG=首次的问题(追问时复用)
-function renderSb(r,follow){
-  const card=document.createElement('div');
-  card.className='card';
-  card.style.cssText='margin-bottom:12px;border-left:3px solid var(--brand)';
+/* ───── 问答/沙盘合一: 自动路由, 无需切换 tab ───── */
+const SB_PAT=/沙盘|推演|拿不定|纠结|要不要|值不值|值得吗|划算吗|该不该|该怎么选|会怎么做|怎么选|选哪个|换不换|帮我拿主意|帮我决策|帮我参谋|预测|预判|哪个更(好|值|合适)/;
+function isSandboxQ(t){return SB_PAT.test(t||'')}
+function isFollowUp(t){   // 上一轮是沙盘时的追问: 短句 + 追问口吻
+  return (t||'').length<60&&(/^(那|如果|要是|假如|再|继续|为什么|凭啥|还有|换|按你|第[二三四五]种)/.test(t)||/呢[?？。!！]?$|风险|建议|概率|会怎样|结果会/.test(t))}
+function sbCtx(){   // 从会话记录重建沙盘上下文(刷新页面后追问依然可用)
+  const sb=bcurSess().filter(m=>m.sb);
+  return {orig:(sb[0]&&sb[0].sbIssue)||'',
+          hist:sb.map(m=>({q:m.sbIssue||'',a:((m.sbEss||'')+' '+(m.sbAdv||'')).trim()})).filter(x=>x.q)}}
+function renderSbHTML(r,follow){
   const paths=(r.paths||[]).map(p=>`<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px">
-    <b style="font-size:13px">方案：${esc(p.plan||'—')}</b>
+    <b style="font-size:13px">方案：${mdlite(p.plan||'—')}</b>
     <div style="font-size:12.5px;color:#4a5568;line-height:1.75;margin-top:4px">
-    ${p.short?`<div><span class="tag b">短期</span> ${esc(p.short)}</div>`:''}
-    ${p.long?`<div style="margin-top:3px"><span class="tag p">长期</span> ${esc(p.long)}</div>`:''}
-    ${p.risk?`<div style="margin-top:3px"><span class="tag o">风险</span> ${esc(p.risk)}</div>`:''}</div></div>`).join('');
-  card.innerHTML=`${follow?`<div style="font-size:12px;color:#8a93a3;margin-bottom:6px">🔁 追问：${esc(follow)}</div>`:''}
-    ${r.essence?`<div style="font-size:14px;font-weight:700;line-height:1.6">🎯 ${esc(r.essence)}</div>`:''}
-    ${r.default?`<div style="margin-top:8px;font-size:12.5px;color:#4a5568;line-height:1.8"><span class="tag g">你的人设默认走向</span><br>${esc(r.default)}</div>`:''}
+    ${p.short?`<div><span class="tag b">短期</span> ${mdlite(p.short)}</div>`:''}
+    ${p.long?`<div style="margin-top:3px"><span class="tag p">长期</span> ${mdlite(p.long)}</div>`:''}
+    ${p.risk?`<div style="margin-top:3px"><span class="tag o">风险</span> ${mdlite(p.risk)}</div>`:''}</div></div>`).join('');
+  const ev=(r.evidence||[]).length?`<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:#5b6572;user-select:none">🧾 判断依据（来自你的真实记录，点击展开）</summary>
+    <div style="font-size:12px;color:#5b6572;line-height:1.8;margin-top:6px">${r.evidence.map(x=>'· '+mdlite(x)).join('<br>')}</div></details>`:'';
+  return `${follow?`<div style="font-size:12px;color:#8a93a3;margin-bottom:6px">🔁 追问：${esc(follow)}</div>`:''}
+    ${r.essence?`<div style="font-size:14px;font-weight:700;line-height:1.7">🎯 ${mdlite(r.essence)}</div>`:''}
+    ${r.default?`<div style="margin-top:8px;font-size:12.5px;color:#4a5568;line-height:1.8"><span class="tag g">你的人设默认走向</span><br>${mdlite(r.default)}</div>`:''}
     ${paths?`<div style="margin-top:10px;font-size:12px;color:#8a93a3">—— 各方案推演 ——</div>${paths}`:''}
-    ${r.advice?`<div style="margin-top:10px;background:var(--cg);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.8"><b>💡 强化版分身的建议</b><br>${esc(r.advice)}</div>`:''}
-    ${(r.evidence||[]).length?`<div style="margin-top:8px;font-size:12px;color:#5b6572;line-height:1.8"><b>🧾 判断依据（来自你的真实记录）</b><br>${r.evidence.map(x=>`· ${esc(x)}`).join('<br>')}</div>`:''}`;
-  $('#sbOut').prepend(card);
+    ${r.advice?`<div style="margin-top:10px;background:var(--cg);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.8"><b>💡 强化版分身的建议</b><br>${mdlite(r.advice)}</div>`:''}
+    ${ev}`;
 }
-async function sbRun(q,isFollow){
-  const btn=isFollow?$('#sbQGo'):$('#sbGo');
-  btn.disabled=true;const old=btn.textContent;btn.textContent='推演中…';
-  if(!isFollow){$('#sbOut').innerHTML='<div class="mut" style="padding:14px">🎲 正在翻你的画像、技能、这几年的经历和相关聊天记录…（约 1-2 分钟）</div>'}
-  try{
-    if(!isFollow)SB_ORIG=q;
-    const r=await post('/api/agent/sandbox',isFollow
-      ?{issue:SB_ORIG,options:'',history:SB_HIST.concat([{q:q,a:''}])}
-      :{issue:q,options:$('#sbOptions').value.trim()});
-    if(!isFollow){$('#sbOut').innerHTML=''}
-    const q0=isFollow?q:q;
-    renderSb(r.result||r,q0);
-    SB_HIST.push({q:q0,a:((r.result||r).essence||'')+' '+((r.result||r).advice||'')});
-    $('#sbFollow').style.display='';$('#sbReset').style.display='';
-    if(!isFollow){$('#sbIssue').value='';$('#sbOptions').value='';$('#sbQ').value='';$('#sbQ').focus()}
-  }catch(e){if(!isFollow)$('#sbOut').innerHTML='';toast('⚠ '+e.message)}
-  btn.disabled=false;btn.textContent=old;
-}
-$('#sbGo').onclick=()=>{const q=$('#sbIssue').value.trim();if(!q){toast('先把事情说清楚');return}sbRun(q,false)};
-$('#sbQGo').onclick=()=>{const q=$('#sbQ').value.trim();if(!q){toast('想追问什么？');return}sbRun(q,true)};
-$('#sbQ').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#sbQGo').click()}});
-$('#sbReset').onclick=()=>{SB_HIST=[];SB_ORIG='';$('#sbOut').innerHTML='';$('#sbFollow').style.display='none';$('#sbReset').style.display='none';toast('沙盘已清空，重新开始')};
 
 /* ───── 认识自己(六模块) ───── */
 const ME_BOXES=['meTraits','meSpeak','mePros','meLife','meActive','meSocial','meBlind'];
@@ -1345,17 +1325,27 @@ async function loadSelf(){
   $('#mq').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
 }
 /* ── 03.5 技能与这几年做的事 ── */
+function splitEv(t){   // 「技能名（日程：xxx）」→ 干净主名 + 依据(收进悬浮/折叠)
+  const m=String(t||'').match(/^(.*?)[（(]\s*((?:日程|依据|聊天|话题|记录)[^）)]*)[）)]\s*$/);
+  return m?{name:m[1].trim()||t,ev:m[2].trim()}:{name:String(t||'').trim(),ev:''};
+}
 function renderSkills(s){
   const cats=(s&&s['技能'])||[];
   if(!cats.length){$('#skBox').textContent='尚未提炼，点击上方「🛠 重新提炼技能与经历」（约 1-2 分钟）。';$('#expBox').textContent='尚未提炼。';$('#skOne').textContent='—';return}
-  $('#skBox').innerHTML=cats.map(c=>`<div style="margin-bottom:8px"><b style="font-size:12.5px">${esc(c['类别']||'其他')}</b>
-    ${(c['技能']||[]).map(t=>`<span class="chip" style="cursor:default;margin:2px 4px 0 0">${esc(t)}</span>`).join('')}</div>`).join('');
+  $('#skBox').innerHTML=cats.map(c=>{
+    const items=(c['技能']||[]).map(splitEv);
+    const evs=items.filter(x=>x.ev);
+    return `<div style="margin-bottom:13px"><b style="font-size:12.5px">${esc(c['类别']||'其他')}</b><span class="mut" style="font-size:11px;margin-left:6px">${items.length} 项</span>
+    <div style="margin-top:5px">${items.map(x=>`<span class="chip" style="cursor:${x.ev?'help':'default'};margin:3px 5px 0 0"${x.ev?` title="${esc(x.ev)}"`:''}>${esc(x.name)}</span>`).join('')}</div>
+    ${evs.length?`<details style="margin-top:5px"><summary style="cursor:pointer;font-size:11px;color:#8a93a3;user-select:none;width:fit-content">依据明细（${evs.length}）</summary>
+      <div style="font-size:11.5px;color:#8a93a3;line-height:1.9;margin-top:4px;padding-left:2px">${evs.map(x=>`· <b style="color:#5b6572;font-weight:600">${esc(x.name)}</b>：${esc(x.ev)}`).join('<br>')}</div></details>`:''}</div>`;
+  }).join('');
   $('#skOne').innerHTML=s['一句话']?`<div style="font-size:13px;line-height:1.8;color:#1c2430">${esc(s['一句话'])}</div>`:'—';
   const yrs=(s['这几年']||[]).slice().sort((a,b)=>String(a['年份']||'').localeCompare(String(b['年份']||'')));
-  $('#expBox').innerHTML=yrs.map(y=>`<div style="margin-bottom:10px">
+  $('#expBox').innerHTML=yrs.map(y=>`<div style="margin-bottom:12px">
     <div class="tlyear"><span class="tyy">${esc(y['年份']||'')}</span>${y['主题']?`<span class="tag g">${esc(y['主题'])}</span>`:''}</div>
-    ${(y['事情']||[]).map(t=>`<div style="font-size:12.5px;color:#4a5568;line-height:1.75;padding-left:14px;position:relative;margin-top:3px"><span style="position:absolute;left:2px;color:#9aa3b0">·</span>${esc(t)}</div>`).join('')}</div>`).join('')
-    +'<div class="mut" style="margin-top:6px">依据：指尖时光日程（本人手动记录）+ 真实聊天话题与发言，AI 只整理不编造。</div>';
+    ${(y['事情']||[]).map(t=>{const p=splitEv(t);return `<div style="font-size:12.5px;color:#4a5568;line-height:1.75;padding-left:14px;position:relative;margin-top:4px"${p.ev?` title="${esc(p.ev)}"`:''}><span style="position:absolute;left:2px;color:#9aa3b0">·</span>${esc(p.name)}${p.ev?' <span style="color:#c4cbd4;font-size:10.5px">ⓘ</span>':''}</div>`}).join('')}</div>`).join('')
+    +'<div class="mut" style="margin-top:6px">带 ⓘ 的条目悬浮可看日程依据；数据来自指尖时光日程（本人手动记录）+ 真实聊天，AI 只整理不编造。</div>';
 }
 async function loadSkills(){
   try{const s=await api('/api/agent/skills');renderSkills(s)}
@@ -2147,6 +2137,8 @@ background:linear-gradient(120deg,#0d4032 0%,#0e6b4c 55%,#119a68 100%)}
 .eqdiag b{color:#b07a10}
 .eqdiag .iss{background:#fff;border-radius:7px;padding:6px 10px;margin:5px 0}
 .anl{background:#f6fafd;border-left:3px solid #3b82f6;border-radius:8px;padding:10px 13px;font-size:12.5px;margin-top:8px;max-width:560px;line-height:1.7}
+.anl summary{cursor:pointer;font-weight:700;color:#2563eb;user-select:none}
+.anl summary::marker{color:#3b82f6}
 .anl b{color:#2563eb}
 .anl .ev{background:#fff;border-radius:7px;padding:7px 10px;margin:6px 0;font-size:12px;color:#4a5568}
 .typing{color:#98a2b3;font-size:12px;padding:2px 6px}
