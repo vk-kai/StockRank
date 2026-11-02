@@ -49,27 +49,26 @@ def _ensure():
             _state = {'ok': False}
             return _state
         idx = indexer.mem_index()
-        n_rows = -1
+        # 只用「真实聊天」条数判断是否重建: 分身经历持续增长但不需重建(有 recent_for 直注通道),
+        # 而真实聊天哪怕新增几十条(如新导入某联系人的记录)也必须重建, 否则检索永远搜不到
+        real_n = sum(1 for it in idx if not it['rel'].startswith('经历/'))
+        n_real = None
         if os.path.exists(DB_PATH):
             try:
                 conn = sqlite3.connect(DB_PATH)
-                n_rows = conn.execute('SELECT v FROM meta WHERE k="count"').fetchone()
-                n_rows = int(n_rows[0]) if n_rows else -1
+                row = conn.execute('SELECT v FROM meta WHERE k="real"').fetchone()
+                n_real = int(row[0]) if row else None   # 旧库无 real 键 → 强制重建一次
                 conn.close()
             except Exception:
-                n_rows = -1
+                n_real = None
         flag = DB_PATH + '.rebuild'   # 数据同步后强制重建标记
         if os.path.exists(flag):
             try:
                 os.remove(flag)
             except Exception:
                 pass
-            n_rows = -1
-        if n_rows is not None and 0 <= len(idx) - n_rows <= 100:
-            # 分身经历/新消息少量增长: 不整库重建(避免每聊一句就重建几十万行索引),
-            # 新条目暂不进 FTS —— 近期经历另有 recent_for 直注通道, 旧条目等下次大变更一起建
-            n_rows = len(idx)
-        if n_rows != len(idx):
+            n_real = None
+        if n_real != real_n:
             try:
                 if os.path.exists(DB_PATH):
                     os.remove(DB_PATH)
@@ -90,9 +89,10 @@ def _ensure():
                 if batch:
                     conn.executemany('INSERT INTO msgs VALUES(?,?,?,?,?,?,?)', batch)
                 conn.execute('INSERT INTO meta VALUES("count", ?)', (str(len(idx)),))
+                conn.execute('INSERT INTO meta VALUES("real", ?)', (str(real_n),))
                 conn.commit()
                 conn.close()
-                print(f'[检索] FTS5 索引已建立: {len(idx)} 条', flush=True)
+                print(f'[检索] FTS5 索引已建立: 真实聊天 {real_n} 条 + 经历 {len(idx) - real_n} 条', flush=True)
             except Exception as e:
                 print(f'[检索] FTS5 建立失败, 回退 2-gram 扫描: {e}', flush=True)
                 _state = {'ok': False}

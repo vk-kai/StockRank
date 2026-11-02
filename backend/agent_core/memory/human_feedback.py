@@ -56,7 +56,7 @@ def _worth_saving(question, ai_draft, contact, mode, choice, final):
 - 不存: 回答是对问题的复述/补充说明; 一次性的分析结论或建议(即便被本人选中, 那也只是"采纳了建议", 不代表本人的事实或立场); 纯寒暄; 与本人无关的客观信息
 拿不准时倾向不存(宁缺毋滥, 记忆质量优先)。全部中文。"""},
             {'role': 'user', 'content':
-                f"【场景】{'模拟聊天(分身扮演万凯回复消息)' if mode == 'dialog' else '第三人称问答(旁观者/分析师回答关于万凯的问题)'} · 介入方式: {choice}\n"
+                f"【场景】{'模拟聊天(分身扮演万凯回复消息)' if mode == 'dialog' else '第三人称问答(知己/分析师回答关于万凯的问题)'} · 介入方式: {choice}\n"
                 f"【问题】{str(question or '')[:300]}\n【AI 当时草稿】{str(ai_draft or '')[:200]}\n【本人最终回答】{str(final or '')[:400]}"}]
         out = extract_json(llm_chat(msgs, temperature=0.2))
         if isinstance(out, list):
