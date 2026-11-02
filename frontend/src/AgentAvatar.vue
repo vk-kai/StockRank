@@ -7,7 +7,7 @@
   <nav id="nav">
     <a data-p="home" class="on"><span class="ic">🏠</span><div>首页<small>数字人生观察室</small></div></a>
     <a data-p="twin"><span class="ic">💬</span><div>数字分身<small>和另一个「自己」聊天</small></div></a>
-    <a data-p="byst"><span class="ic">🧭</span><div>知己<small>比你聪明、懂时事政策的清醒老友</small></div></a>
+    <a data-p="byst"><span class="ic">⚡</span><div>贾维斯<small>无所不知的私人 AI 管家 · 钢铁侠同款</small></div></a>
     <a data-p="self"><span class="ic">🪞</span><div>认识自己<small>画像 · 时间线 · 记忆搜索</small></div></a>
     <a data-p="others"><span class="ic">👥</span><div>认识他人<small>联系人 · 关系 · 关系网络</small></div></a>
     <a data-p="sim"><span class="ic">🌌</span><div>数字人生<small>虚拟推演 · 永续计划</small></div></a>
@@ -44,7 +44,7 @@
   <div class="chatwrap">
     <div class="modebar">
       <button class="mb on" data-m="dialog">🎭 模拟聊天（你演 ta，分身演我）</button>
-      <button class="mb" data-m="ask">🧭 知己提问（第三人称）</button>
+      <button class="mb" data-m="ask">🧭 贾维斯提问（第三人称）</button>
       <button class="mb" data-m="eq">💚 高情商练习</button>
       <span class="hint" id="modehint">模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）</span>
       <button class="btn gray sm" id="mbMembers" style="display:none">👥 成员性格</button>
@@ -73,11 +73,12 @@
   </div>
 </section>
 
-<!-- ═══════════ 知己问答(独立页, 与全局抽屉共用同一会话) ═══════════ -->
+<!-- ═══════════ 贾维斯问答(独立页, 与全局抽屉共用同一会话) ═══════════ -->
 <section id="pg-byst" class="page chatpg">
   <div class="chatwrap">
     <div class="modebar">
-      <span class="hint" id="bhint">🫧 知己 —— 读过你全部聊天记录，又比你聪明、见识更广：紧跟时事新闻、政策动向、经济行业趋势。聊天八卦直接问；拿不定的事说一声（要不要/值不值/帮我推演…），他自动切沙盘推演模式给你参谋</span>
+      <span class="hint" id="bhint">⚡ 贾维斯 —— 你的私人 AI 管家（钢铁侠同款）：读过你全部聊天记录，紧跟时事政策，能分析局势、沙盘推演。任何困境疑惑直接说，他一步步给你拆解；拿不定的事（要不要/值不值/帮我推演…）自动进入沙盘模式</span>
+      <button class="btn gray sm" id="bEqGo" title="高情商练习：她说→你答→看高情商版怎么说">💚 高情商练习</button>
       <button class="btn gray sm" id="bClear" style="margin-left:auto">🗑 清空本会话</button>
     </div>
     <div id="bmsgs"></div>
@@ -146,11 +147,11 @@
         <span class="chip" data-ora="我经常说要做、但一直没做的事有哪些？">说过没做的事</span>
         <span class="chip" data-ora="这几年我对哪些事情的看法发生了明显变化？">观点变化</span>
       </div>
-      <div class="mut" style="margin-top:6px">这类问题交给知己回答 —— 他会引用你自己的原话。</div>
+      <div class="mut" style="margin-top:6px">这类问题交给贾维斯回答 —— 他会引用你自己的原话。</div>
     </div>
   </div>
 
-  <div class="selfmod"><div class="smhd">06 · 与另一个自己对话<span>知己 · 陪你四年、读过你全部记录的老朋友</span></div>
+  <div class="selfmod"><div class="smhd">06 · 与另一个自己对话<span>贾维斯 · 陪你四年、读过你全部记录的老朋友</span></div>
     <div class="card">
       <div class="mut" style="line-height:1.8">他不打官腔：会引用你自己的原话点醒你，也承认哪些事他「真没印象」。关于你自己、某段关系、某个拿不定的主意，都可以问他。</div>
       <div style="margin-top:12px" class="orachips">
@@ -159,7 +160,7 @@
         <span class="chip" data-ora="我最近和谁联系变少了？">最近和谁联系少了？</span>
         <span class="chip" data-ora="我身上有哪些自相矛盾的地方？">我的矛盾之处</span>
       </div>
-      <button class="btn sm" style="margin-top:12px" onclick="openOracle()">🫧 打开知己对话</button>
+      <button class="btn sm" style="margin-top:12px" onclick="openOracle()">🫧 打开贾维斯对话</button>
     </div>
   </div>
 
@@ -211,7 +212,7 @@
     </div>
   </div>
   <div class="card qabox">
-    <h3>🫧 知己<span class="sub">读过你全部聊天记录的老朋友 —— 关系、圈子、拿不定的主意，都可以问他（回答基于程序统计 + 原始记录）</span></h3>
+    <h3>🫧 贾维斯<span class="sub">读过你全部聊天记录的老朋友 —— 关系、圈子、拿不定的主意，都可以问他（回答基于程序统计 + 原始记录）</span></h3>
     <div>
       <span class="chip" data-ora="我这四年最重要的朋友有哪些？">最重要的朋友</span>
       <span class="chip" data-ora="谁是我工作圈和朋友圈之间的连接人物？">圈层连接人物</span>
@@ -220,7 +221,7 @@
       <span class="chip" data-ora="我最近遇到一件事拿不定主意：（在这里补充事情）。你觉得按万凯的性格他会怎么做？这样做有什么优缺点？有没有什么不妥？">决策咨询：万凯会怎么做</span>
       <span class="chip" data-ora="我打算：（在这里补充你的计划）。你觉得万凯会怎么做？他的做法有什么不妥吗？没有的话就直说，不用硬找。">决策咨询：有不妥吗</span>
     </div>
-    <div class="mut" style="margin-top:8px">点击问题会打开右侧「知己」对话抽屉；他会先和你确认涉及的人，再检索真实记录回答。之前单独的关系洞察 Agent 已并入知己。</div>
+    <div class="mut" style="margin-top:8px">点击问题会打开右侧「贾维斯」对话抽屉；他会先和你确认涉及的人，再检索真实记录回答。之前单独的关系洞察 Agent 已并入贾维斯。</div>
   </div>
 </section>
 
@@ -299,11 +300,11 @@
 </main>
 </div>
 
-<!-- ═══════════ 知己抽屉(由各页提问 chips / ego 按钮唤起; 平时从左侧菜单进知己页) ═══════════ -->
+<!-- ═══════════ 贾维斯抽屉(由各页提问 chips / ego 按钮唤起; 平时从左侧菜单进贾维斯页) ═══════════ -->
 <div id="oraMask"></div>
 <aside id="oraDrawer">
   <div class="oraHd">
-    <div><b>🫧 知己</b><span class="sub2">陪你四年 · 读过你全部聊天记录</span></div>
+    <div><b>🫧 贾维斯</b><span class="sub2">陪你四年 · 读过你全部聊天记录</span></div>
     <span id="oraClose" style="cursor:pointer;font-size:18px;opacity:.85">✕</span>
   </div>
   <div id="dmsgs"><div class="mut" style="text-align:center;margin-top:24px">问问你的朋友吧 ——<br>关于你自己、某段关系、或一个拿不定的主意。<br><span style="font-size:11px">他会先和你确认涉及的人，再检索真实记录回答</span></div></div>
@@ -475,7 +476,7 @@ async function loadHome(){
       <div><b>我的社交圈</b><div class="desc">${Object.entries(ins.circles||{}).map(([k,v])=>k+' '+v['人数']+'人').join(' · ')}</div></div>
       <div class="names">查看关系网络 →</div></div>
   </div>
-  <div class="card"><h3>05 · 问问知己<span class="sub">陪你四年、读过你全部聊天记录的老朋友</span></h3>
+  <div class="card"><h3>05 · 问问贾维斯<span class="sub">陪你四年、读过你全部聊天记录的老朋友</span></h3>
     <div class="chip" data-ask="我是什么样的人？">我是什么样的人？</div>
     <div class="chip" data-ask="我和谁关系最好？">我和谁关系最好？</div>
     <div class="chip" data-ask="这几年我有什么变化？">这几年我有什么变化？</div>
@@ -598,7 +599,7 @@ async function loadTwin(){
   if(!CONTACTS.length){
     const d=await api('/api/agent/contacts');
     CONTACTS=(d.contacts||[]).sort((a,b)=>(a['类别']===b['类别']?(b['总消息']||0)-(a['总消息']||0):(a['类别']==='私聊'?-1:1)));
-    renderCtList('');
+    if(MODE!=='eq')renderCtList('');   // 从贾维斯页跳入高情商模式时, 不要用联系人列表覆盖发展对象侧栏
     $('#ctq').oninput=e=>renderCtList(e.target.value.trim());
   }
   const sel=$('#pplSel');
@@ -631,14 +632,14 @@ function renderCtList(q){
         :DIR==='B'
         ?`已切换到「${dn(CUR)}」· 身份互换：你是万凯本人，对面是 ta 的 AI 分身`
         :`已切换到「${dn(CUR)}」· 模拟模式：你在输入框扮演 ${dn(CUR)}，分身用万凯的口吻回复`)
-      :`已切换到「${dn(CUR)}」· 知己模式：以第三人称分析你和 ${dn(CUR)} 的关系`,'role')});
+      :`已切换到「${dn(CUR)}」· 贾维斯模式：以第三人称分析你和 ${dn(CUR)} 的关系`,'role')});
 }
 function setPlaceholder(){
   if(MODE==='eq'){updateEqUI();return}
   $('#chat-in').placeholder=MODE==='dialog'
     ?(ISG()?'在群里发条消息，看谁冒泡…（Enter 发送）'
       :DIR==='B'?'以万凯本人的身份说句话…（Enter 发送）':`以「${dn(CUR)}」的身份给分身发条消息…（Enter 发送）`)
-    :'以知己身份提问，例如：我和 ta 之间有什么梗或暗号？';
+    :'以贾维斯身份提问，例如：我和 ta 之间有什么梗或暗号？';
 }
 /* ───── 高情商练习: 三方对话(她→你的原话→高情商版) + 诊断 ───── */
 function pushEq(c,msg){eqSess(c).push(msg);eqSave(c);
@@ -773,7 +774,7 @@ function setMode(m){
     ?'模拟模式：你在输入框扮演「联系人」（右侧绿泡），分身用万凯的口吻回复（左侧，带 AI 标识）—— 各联系人的模拟对话独立保存'
     :m==='eq'
     ?'高情商练习：左侧选「发展对象」→ 她说一句 → 你回一句 → 高情商版分身同步给出它的版本，可点「🔍 诊断」看差异；对方还没说过话时用「🚀 首次开场」填背景引话题'
-    :'知己模式：你以第三者身份提问，AI 分析你和 ta 的关系并引用原话证据 —— 与模拟对话互相独立';
+    :'贾维斯模式：你以第三者身份提问，AI 分析你和 ta 的关系并引用原话证据 —— 与模拟对话互相独立';
   if(m==='eq'){
     try{EQCUR=localStorage.getItem('eqCur')||''}catch(e){}
     renderEqList($('#ctq').value.trim());renderMsgs();
@@ -806,7 +807,7 @@ $('#clearChat').onclick=async()=>{
     return;
   }
   SESSIONS[skey()]=[];ssave();renderMsgs();
-  sysTip(`已清空当前对话记忆（${MODE==='dialog'?'模拟':'知己'} · ${CUR}）—— 后续不再携带之前的上下文，本地记录不受影响`)};
+  sysTip(`已清空当前对话记忆（${MODE==='dialog'?'模拟':'贾维斯'} · ${CUR}）—— 后续不再携带之前的上下文，本地记录不受影响`)};
 function appendDom(m){
   const box=$('#msgs');
   if(m.who==='sys'){const d=document.createElement('div');d.className='typing';d.textContent='· '+m.text;box.appendChild(d);box.scrollTop=1e9;return}
@@ -817,7 +818,7 @@ function appendDom(m){
   if(isAI){av.classList.add('ai');av.textContent='AI'}
   else if(m.who==='me'){av.textContent='我'}
   else{av.textContent=CUR.startsWith('陌生·')?'🌑':(CUR==='新朋友'?'ta':CUR.slice(0,1))}
-  if(m.who==='ai'){ // 知己: AI 记忆分析师
+  if(m.who==='ai'){ // 贾维斯: AI 记忆分析师
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;max-width:600px';
     wrap.innerHTML=`<div class="who">AI 记忆分析师</div><div class="bub">${wxface(esc(m.text))}</div>`+(m.anl||'');
     row.appendChild(av);row.appendChild(wrap);
@@ -881,7 +882,7 @@ function appendDom(m){
     tools.appendChild(dbtn);wrap.appendChild(tools);
     row.appendChild(av);row.appendChild(wrap);
   }
-  else if(m.who==='me'){ // 本人输入(知己提问/群聊/身份互换) —— 右侧绿泡, 标注真人身份
+  else if(m.who==='me'){ // 本人输入(贾维斯提问/群聊/身份互换) —— 右侧绿泡, 标注真人身份
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;max-width:560px';
     wrap.innerHTML=`<div class="who">万凯本人</div>`;
     b.innerHTML=wxface(esc(m.text));wrap.appendChild(b);
@@ -899,7 +900,7 @@ function updateRoleBanner(){
   if(sw)sw.style.display=canSwap?'':'none';
   if(PAGE()!=='twin'){el.style.display='none';return}
   el.style.display='';
-  if(MODE==='ask'){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（提问中） · 对面：知己 AI（引用真实记忆回答）'}
+  if(MODE==='ask'){el.className='';el.innerHTML='🖥 屏幕前：<b>万凯本人</b>（提问中） · 对面：贾维斯 AI（引用真实记忆回答）'}
   else if(MODE==='eq'){
     el.className='';
     el.innerHTML=EQCUR
@@ -1108,8 +1109,8 @@ async function send(){
           if(fr!=null)pushMsg('ai',fr,anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>');
           else pushMsg('sys','(已取消：分析师对这个问题没把握，等你亲自补充)');}
       }else{
-        if(moved){pushTo(sCur,sMode,sDir,'ai',ans,anlHtml);toast(`💬 「${dn(sCur)}」的知己回答已存入原会话`)}
-        else pushMsg('ai',ans,anlHtml);   // 知己: 分析师回答+依据卡
+        if(moved){pushTo(sCur,sMode,sDir,'ai',ans,anlHtml);toast(`💬 「${dn(sCur)}」的贾维斯回答已存入原会话`)}
+        else pushMsg('ai',ans,anlHtml);   // 贾维斯: 分析师回答+依据卡
       }
     }
     }
@@ -1119,16 +1120,16 @@ async function send(){
 $('#sendbtn').onclick=send;
 $('#chat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 
-/* ───── 知己问答(独立页): 与数字分身各自独立会话, 可同时进行 ───── */
+/* ───── 贾维斯问答(独立页): 与数字分身各自独立会话, 可同时进行 ───── */
 let BCUR='',BSENDING=false;
 const BSESS={};
 const bkey=()=>'byst_'+(BCUR||'新朋友');
 function bcurSess(){if(!BSESS[bkey()])BSESS[bkey()]=JSON.parse(localStorage.getItem(bkey())||'[]');return BSESS[bkey()]}
 function bsave(){try{localStorage.setItem(bkey(),JSON.stringify(bcurSess()))}catch(e){}}
-/* 知己消息渲染: 页面(#bmsgs)与全局抽屉(#dmsgs)共用同一会话, 双端同步显示 */
+/* 贾维斯消息渲染: 页面(#bmsgs)与全局抽屉(#dmsgs)共用同一会话, 双端同步显示 */
 const ORA={open:false};
 const ORA_BOXES=()=>['#bmsgs','#dmsgs'].map(s=>$(s)).filter(Boolean);
-/* 知己回答排版: 转义 + **加粗** + 换行保留(sandbox 卡片等富文本走 m.html) */
+/* 贾维斯回答排版: 转义 + **加粗** + 换行保留(sandbox 卡片等富文本走 m.html) */
 function mdlite(t){
   return esc(t||'').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
 }
@@ -1140,7 +1141,7 @@ function oraRow(m){
   if(m.who==='me'){av.textContent='我';b.innerHTML=wxface(esc(m.text));row.appendChild(av);row.appendChild(b)}
   else{av.classList.add('ai');av.textContent='🫧';
     const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;max-width:600px';
-    wrap.innerHTML=`<div class="who">知己</div>`;
+    wrap.innerHTML=`<div class="who">贾维斯</div>`;
     b.innerHTML=(m.html||mdlite(m.text))+(m.anl||'');wrap.appendChild(b);
     row.appendChild(av);row.appendChild(wrap)}
   return row;
@@ -1183,7 +1184,7 @@ async function sendB(src){
   if(!text||BSENDING)return;
   BSENDING=true;btn.disabled=true;inp.value='';
   const hist=bcurSess().filter(m=>m.who==='me'||m.who==='ai').slice(-10)
-    .map(m=>({speaker:m.who==='me'?'我':'知己',content:m.text}));   // push 前取
+    .map(m=>({speaker:m.who==='me'?'我':'贾维斯',content:m.text}));   // push 前取
   bcurSess().push({who:'me',text});bAppendDom({who:'me',text});bsave();
   // 第零步: 沙盘路由 —— 拿不定主意/预测类自动切沙盘; 上一轮是沙盘时短语作追问
   const lastSb=[...bcurSess()].reverse().find(m=>m.who==='ai'&&m.sb);
@@ -1217,7 +1218,7 @@ async function sendB(src){
     if(w.candidates&&w.candidates.length)confirm_names=await bConfirmCard(w.candidates,boxSel);
   }catch(e){}
   const tip=document.createElement('div');tip.className='typing';$(boxSel).appendChild(tip);
-  const t0=Date.now();let stepTxt='知己正在回忆相关记录…';
+  const t0=Date.now();let stepTxt='贾维斯正在回忆相关记录…';
   const draw=s=>{tip.innerHTML=`<span style="display:inline-block;animation:simpulse 1.2s infinite">⏳</span> ${esc(s)} <b class="mut">${Math.floor((Date.now()-t0)/1000)}s</b>`};
   draw(stepTxt);$(boxSel).scrollTop=1e9;
   const tick=setInterval(()=>{draw(stepTxt)},1000);
@@ -1241,23 +1242,23 @@ async function sendB(src){
     if(err)throw new Error(err);
     const a=anl||{};
     const ans=(a['回答']||reply||'').trim()||'(AI 未返回回答)';
-    if(unsure){ // 知己没把握 → 人工介入窗
+    if(unsure){ // 贾维斯没把握 → 人工介入窗
       const anlHtml=renderAnalysisHTML(a);
       const fr=await openIntervene({question:text,aiDraft:ans,candidates:cands,contact:BCUR||'新朋友',mode:'ask',anlHTML:anlHtml});
       if(fr!=null){
         const marked=anlHtml+'<div class="mut" style="margin-top:4px">🔧 本人确认的回答</div>';
         bcurSess().push({who:'ai',text:fr,anl:marked});bAppendDom({who:'ai',text:fr,anl:marked});bsave();
-      }else bAppendDom({who:'sys',text:'(已取消：知己对这个问题没把握，等你亲自补充)'});
+      }else bAppendDom({who:'sys',text:'(已取消：贾维斯对这个问题没把握，等你亲自补充)'});
     }else{
       bcurSess().push({who:'ai',text:ans,anl:renderAnalysisHTML(a)});
       bAppendDom({who:'ai',text:ans,anl:renderAnalysisHTML(a)});bsave();
-      if(!ORA.open&&PAGE()!=='byst'){navDot('byst',true);toast('🫧 知己已回答：'+ans.slice(0,24)+'…')}
+      if(!ORA.open&&PAGE()!=='byst'){navDot('byst',true);toast('🫧 贾维斯已回答：'+ans.slice(0,24)+'…')}
     }
   }catch(e){clearInterval(tick);tip.innerHTML='⚠ '+esc(e.message);setTimeout(()=>tip.remove(),6000)}
   BSENDING=false;btn.disabled=false;inp.focus();
 }
 function PAGE(){const a=document.querySelector('#nav a.on');return a?a.dataset.p:'home'}
-/* 知己抽屉: 全局悬浮入口, 与知己页共用同一会话 */
+/* 贾维斯抽屉: 全局悬浮入口, 与贾维斯页共用同一会话 */
 function openOracle(q){
   ORA.open=true;
   $('#oraDrawer').classList.add('on');$('#oraMask').classList.add('on');
@@ -1270,7 +1271,7 @@ function closeOracle(){ORA.open=false;
 $('#oraClose').onclick=closeOracle;
 $('#oraMask').onclick=closeOracle;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ORA.open)closeOracle()});
-/* 全局知己提问 chips(认识自己 05/06 · 认识他人 · 首页) */
+/* 全局贾维斯提问 chips(认识自己 05/06 · 认识他人 · 首页) */
 $$('.chip[data-ora]').forEach(c=>c.onclick=()=>openOracle(c.dataset.ora));
 $$('.chip[data-go]').forEach(c=>c.onclick=()=>go(c.dataset.go));
 $('#bsendbtn').onclick=()=>sendB('page');
@@ -1278,7 +1279,8 @@ $('#bchat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e
 $('#dsendbtn').onclick=()=>sendB('fab');
 $('#dchat-in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendB('fab')}});
 $('#bClear').onclick=()=>{BSESS[bkey()]=[];bsave();bRender();
-  toast('已清空知己会话，后续不再携带之前的上下文')};
+  toast('已清空贾维斯会话，后续不再携带之前的上下文')};
+$('#bEqGo').onclick=()=>{go('twin');setMode('eq')};   // 高情商练习入口: 集成自数字分身页的完整练习 UI
 async function loadByst(){bRender()}
 LOADERS.byst=loadByst;
 
@@ -1631,7 +1633,7 @@ async function showEgo(name){
     <div>${e.shared_with.slice(0,12).map(s=>`<span class="tag" style="background:#f1f4f7;color:#4a5568;margin:2px">${esc(s.name)}·${s.n}群</span>`).join('')||'<span class="mut">未发现</span>'}</div>
     <div class="mut" style="margin-top:8px">⚠ 同群聊仅代表存在共同群，不等于两人真实认识</div>
     <button class="btn sm" style="margin-top:10px" onclick="showRecent('${esc(name).replace(/'/g,"\\'")}')">💬 查看原始聊天</button>
-    <button class="btn sm gray" style="margin-top:10px" onclick="openOracle('我和${esc(name).replace(/'/g,'')}的关系是怎样的？')">🫧 问知己：我和 ta 的关系</button>`;
+    <button class="btn sm gray" style="margin-top:10px" onclick="openOracle('我和${esc(name).replace(/'/g,'')}的关系是怎样的？')">🫧 问贾维斯：我和 ta 的关系</button>`;
     // 联动"人物画像"下拉框: 点关系图选人时, 画像区同步显示该人的历史画像
     const sel=$('#pplSel');
     if(sel&&[...sel.options].some(o=>o.value===name)){sel.value=name;loadPplFor(name)}
@@ -1742,7 +1744,7 @@ $('#pplBox').addEventListener('click',e=>{
   c.classList.toggle('closed');
   m.textContent=c.classList.contains('closed')?'展开 ▾':'收起 ▴';
 });
-/* 关系洞察 Agent 已并入「知己」: ego 面板的提问直接打开知己抽屉 */
+/* 关系洞察 Agent 已并入「贾维斯」: ego 面板的提问直接打开贾维斯抽屉 */
 AFTERS.others=sub=>showOthTab(sub||'net');
 
 /* 个人记忆页已并入「认识自己」; 以下仅保留记忆搜索逻辑(容器在认识自己页内) */
@@ -2233,7 +2235,7 @@ background:linear-gradient(125deg,#0d4032 0%,#0e6b4c 58%,#119a68 100%)}
 .tlyear{margin:8px 0 10px;display:flex;align-items:center;gap:8px}
 .tlyear .tyy{font-size:16px;font-weight:700;color:var(--brand2)}
 .tlev{background:var(--cg);border-radius:8px;padding:6px 10px;margin-top:5px;font-size:12px;color:#2f5d4c;line-height:1.6}
-/* ───── 知己: 抽屉(由提问 chips 唤起, 不设全局悬浮按钮) ───── */
+/* ───── 贾维斯: 抽屉(由提问 chips 唤起, 不设全局悬浮按钮) ───── */
 #oraMask{position:fixed;inset:0;background:rgba(15,23,32,.35);z-index:1590;opacity:0;pointer-events:none;transition:opacity .25s}
 #oraMask.on{opacity:1;pointer-events:auto}
 #oraDrawer{position:fixed;top:0;right:-440px;width:410px;max-width:94vw;height:100vh;background:#f7f9f8;z-index:1600;
@@ -2244,7 +2246,7 @@ display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.18);transi
 .oraHd .sub2{font-size:11px;color:#9fd4bd}
 #dmsgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 #dmsgs .row{max-width:100%}
-/* 知己独立页消息区: 与数字分身聊天页同布局, 撑满可用高度, 输入框固定在底部 */
+/* 贾维斯独立页消息区: 与数字分身聊天页同布局, 撑满可用高度, 输入框固定在底部 */
 #bmsgs{flex:1;overflow-y:auto;padding:18px 26px;display:flex;flex-direction:column;gap:12px}
 #bmsgs .row{max-width:92%}
 </style>
