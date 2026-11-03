@@ -21,7 +21,10 @@ deploy_bp = Blueprint('deploy', __name__, url_prefix='/api/deploy')
 system_logger = get_logger('system')
 error_logger = get_logger('error')
 
-DEPLOY_SSH_HOST = os.environ.get('DEPLOY_SSH_HOST', '123.56.175.189')
+# SSH 目标:容器内默认走 host.docker.internal 网关内网回连(compose 已配
+# extra_hosts host-gateway)——宿主机 22 端口有公网来源限制,容器走公网 IP
+# 回连会被安全组挡;裸机/本地调试时可设 DEPLOY_SSH_HOST=公网IP 直连。
+DEPLOY_SSH_HOST = os.environ.get('DEPLOY_SSH_HOST', 'host.docker.internal')
 DEPLOY_SSH_USER = os.environ.get('DEPLOY_SSH_USER', 'root')
 DEPLOY_MIN_INTERVAL = 300   # 两次手动部署最小间隔(秒),防连点
 

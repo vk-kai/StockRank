@@ -20,9 +20,15 @@ services:
     init: true
     ports:
       - "5000:5000"
+    extra_hosts:
+      # 配置页部署按钮 SSH 回连宿主机的内网通道:宿主机 22 端口有来源限制,
+      # 容器走公网 IP 回连会被安全组挡;经网关(host-gateway)内网回连不受影响
+      - "host.docker.internal:host-gateway"
     environment:
       - THS_BROWSER_PATH=/usr/bin/chromium
       - MALLOC_ARENA_MAX=2          # 限制 glibc 内存 arena 数，减少多线程内存碎片（6个采集线程的 Python 进程预计降 200-400MB）
+      # 部署按钮 SSH 目标:网关回连(见 backend/routes/deploy_routes.py)
+      - DEPLOY_SSH_HOST=host.docker.internal
     mem_limit: 1200m                # 安全网：限制 backend 内存上限，防止失控拖垮系统（正常 600-816M，不会触及）
     shm_size: "512mb"
     volumes:
