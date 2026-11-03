@@ -698,6 +698,26 @@
           </template>
         </div>
       </div>
+
+      <!-- 部署运维:页面一键触发 git pull + docker 重建(deploy_remote.py 的页面化) -->
+      <div v-if="activeTab === 'deploy'" class="config-section">
+        <h2>🚀 部署运维</h2>
+        <div class="config-form">
+          <p class="deploy-desc">
+            点击后将拉取 GitHub 最新代码并重建全部 Docker 容器(后端/前端/量化),
+            过程与服务器 auto_update 自动部署完全一致。期间服务中断约 1-3 分钟,
+            完成后自动恢复。<b>请输入服务器 SSH 密码确认。</b>
+          </p>
+          <div v-if="deployStatus.phase !== 'idle'" class="deploy-status" :class="deployStatus.phase">
+            {{ deployStatus.message }}
+          </div>
+          <div class="form-actions">
+            <button @click="startDeploy" class="btn-primary" :disabled="deployStatus.phase === 'recovering'">
+              {{ deployStatus.phase === 'recovering' ? '部署中…' : '拉取最新代码并重建容器' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="password-modal" v-if="passwordModal.show" @click.self="closePasswordModal">
@@ -706,7 +726,7 @@
           <h3>🔐 密码验证</h3>
         </div>
         <div class="password-modal-body">
-          <p>请输入密码以保存配置</p>
+          <p>{{ passwordModal.hint || '请输入密码以保存配置' }}</p>
           <input 
             type="password" 
             v-model="passwordModal.password" 

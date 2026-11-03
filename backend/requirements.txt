@@ -9,3 +9,6 @@ qrcode[pil]>=7.4
 
 # 小程序后台 Excel 报表导出（轻量纯 Python，放轻量层）
 openpyxl>=3.1
+
+# 配置页手动部署按钮:SSH 到宿主机执行 git pull + docker 重建(paramiko, 轻量纯Python)
+paramiko>=3.4

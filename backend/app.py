@@ -12,7 +12,7 @@ from data.data_collector import data_collection_thread as data_collection_func
 from data.news_collector import news_collection_thread as news_collection_func, init_news_data
 from data.margin_collector import margin_collection_thread as margin_collection_func
 from monitors.health_checker import get_health_status, load_health_status, get_crawler_status, load_crawler_status, start_health_checker
-from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp, econ_cycle_bp, demo_bp, agent_bp
+from routes import flow_bp, news_bp, config_bp, log_bp, house_bp, auth_bp, jarvis_app_bp, mp_sec_bp, mp_game_bp, mp_admin_bp, mp_vpay_bp, econ_cycle_bp, demo_bp, agent_bp, deploy_bp
 from routes.auth_routes import install_auth_guard
 from core.session_secret import load_session_secret
 from monitors.thread_monitor import get_all_status, register_thread
@@ -101,6 +101,7 @@ def create_app():
     app.register_blueprint(econ_cycle_bp)
     app.register_blueprint(demo_bp)
     app.register_blueprint(agent_bp)   # 个人数字分身 Agent(/api/agent/*, 登录守卫自动覆盖)
+    app.register_blueprint(deploy_bp)  # 配置页手动部署按钮(/api/deploy/docker-restart, vk登录态+SSH密码双门)
     install_auth_guard(app)
     
     # ==================== SocketIO 事件 ====================

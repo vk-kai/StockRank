@@ -12,7 +12,8 @@ from .mp_vpay_routes import mp_vpay_bp
 from .econ_cycle_routes import bp as econ_cycle_bp
 from .demo_routes import demo_bp
 from .agent_routes import agent_bp
+from .deploy_routes import deploy_bp
 
 __all__ = ['flow_bp', 'news_bp', 'config_bp', 'log_bp', 'house_bp', 'auth_bp', 'jarvis_app_bp',
            'mp_sec_bp', 'mp_game_bp', 'mp_admin_bp', 'mp_vpay_bp', 'econ_cycle_bp', 'demo_bp',
-           'agent_bp']
+           'agent_bp', 'deploy_bp']

@@ -1688,3 +1688,10 @@ export async function mpAdminCleanupDevData() {
   return response.data
 }
 
+
+/** 配置页手动部署:SSH 到宿主机 git pull + docker 重建(需登录态 + SSH 密码双门)。
+ * 返回即"已触发"而非"已完成"——down 会杀掉 backend 容器,连接必然中断。 */
+export async function deployDockerRestart(password) {
+  const response = await apiClient.post('/deploy/docker-restart', { password })
+  return response.data
+}

@@ -26,7 +26,8 @@ import {
   getOtpStatus,
   getOtpSetup,
   enableOtp,
-  disableOtp
+  disableOtp,
+  deployDockerRestart
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -52,7 +53,8 @@ export default {
         { id: 'security', name: 'IP黑名单', icon: '🛡️' },
         { id: 'otp', name: '动态口令', icon: '🔑' },
         { id: 'anomaly', name: '异动检测', icon: '🚨' },
-        { id: 'notify', name: '桌面通知', icon: '🔔' }
+        { id: 'notify', name: '桌面通知', icon: '🔔' },
+        { id: 'deploy', name: '部署运维', icon: '🚀' }
       ],
       // 全局桌面通知设置（与 services/notificationManager 共享 localStorage key）
       notifyEnabled: true,
@@ -125,7 +127,12 @@ export default {
       passwordModal: {
         show: false,
         password: '',
-        callback: null
+        callback: null,
+        hint: ''
+      },
+      deployStatus: {
+        phase: 'idle',   // idle | recovering | done
+        message: ''
       },
       toast: {
         show: false,
@@ -883,11 +890,12 @@ export default {
       }
     },
 
-    showPasswordModal(callback) {
+    showPasswordModal(callback, hint = '') {
       this.passwordModal = {
         show: true,
         password: '',
-        callback: callback
+        callback: callback,
+        hint: hint
       }
     },
 
@@ -895,7 +903,8 @@ export default {
       this.passwordModal = {
         show: false,
         password: '',
-        callback: null
+        callback: null,
+        hint: ''
       }
     },
 
@@ -907,12 +916,73 @@ export default {
 
       const password = this.passwordModal.password
       const callback = this.passwordModal.callback
-      
+
       this.closePasswordModal()
-      
+
       if (callback) {
         callback(password)
       }
+    },
+
+    // ===== 部署运维:页面按钮触发 SSH 部署(deploy_remote.py 的页面化) =====
+    startDeploy() {
+      if (this.deployStatus.phase === 'recovering') return
+      this.showPasswordModal(
+        (password) => this.confirmDeploy(password),
+        '请输入服务器 SSH 密码以触发部署'
+      )
+    },
+
+    async confirmDeploy(password) {
+      this.deployStatus = { phase: 'recovering', message: '🚀 正在触发部署…' }
+      try {
+        const res = await deployDockerRestart(password)
+        if (!res || !res.success) {
+          this.deployStatus = { phase: 'idle', message: '' }
+          this.showToast((res && res.message) || '触发失败', 'error')
+          return
+        }
+        this.deployStatus = {
+          phase: 'recovering',
+          message: '🚀 部署已触发,服务中断 1-3 分钟,正在等待恢复(每 10 秒探测)…'
+        }
+        this.pollDeployRecovery()
+      } catch (e) {
+        // 网络层错误有两种:密码错(后端 401 已带 message)或部署已启动、连接被断
+        const msg = (e && e.response && e.response.data && e.response.data.message)
+        this.deployStatus = { phase: 'idle', message: '' }
+        this.showToast(msg || '触发失败:连接异常', 'error')
+      }
+    },
+
+    pollDeployRecovery(attempt = 0) {
+      // 部署会重启全部容器,轮询首页 HEAD:连续 2 次通 = 服务已恢复;上限 5 分钟
+      if (attempt >= 30) {
+        this.deployStatus = {
+          phase: 'done',
+          message: '⏱ 等待超时(5 分钟),请稍后手动刷新页面确认服务状态'
+        }
+        return
+      }
+      setTimeout(() => {
+        fetch('/', { method: 'HEAD', cache: 'no-store' })
+          .then(() => {
+            this._deployOkCount = (this._deployOkCount || 0) + 1
+            if (this._deployOkCount >= 2) {
+              this._deployOkCount = 0
+              this.deployStatus = {
+                phase: 'done',
+                message: '✅ 服务已恢复,部署完成!刷新页面即可使用最新版本'
+              }
+            } else {
+              this.pollDeployRecovery(attempt + 1)
+            }
+          })
+          .catch(() => {
+            this._deployOkCount = 0
+            this.pollDeployRecovery(attempt + 1)
+          })
+      }, 10000)
     }
   }
 }
