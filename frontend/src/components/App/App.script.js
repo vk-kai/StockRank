@@ -880,9 +880,10 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'line' },
-          appendTo: document.body,
-          // 弹窗遮罩 z-index=1000,tooltip 挂 body 必须显式抬高否则被遮住"悬停无反应"
-          zIndex: 100000,
+          // tooltip 必须留在图表容器内:echarts 5.5+ 支持 appendTo,挂到 body 后按
+          // 视口坐标写 absolute 定位,页面一滚动就整体偏移出视口(十字光标在动但
+          // tooltip 消失)。容器内默认 z-index 已高于弹窗内容,无需任何抬高。
+          confine: true,
           formatter: (params) => {
             const p = params && params[0]
             if (!p) return ''
