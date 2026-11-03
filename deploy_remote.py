@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
-"""自动部署远程执行器: paramiko SSH(密码内置, 服务器为本人的低风险环境) → git pull + docker 重建
+"""自动部署远程执行器: paramiko SSH → git pull + docker 重建
 由 deploy.ps1 调用; 等价于手工 ssh root@123.56.175.189 后执行远程命令。
+密码优先读环境变量 DEPLOY_SSH_PASSWORD, 未设置则交互输入, 不再落盘仓库。
 用法: python deploy_remote.py   (退出码 0=部署成功)"""
+import os
 import sys
+import getpass
 import paramiko
 
-HOST, USER, PASSWORD = '123.56.175.189', 'root', 'Wk20010826!'
+HOST, USER = '123.56.175.189', 'root'
+PASSWORD = os.environ.get('DEPLOY_SSH_PASSWORD') or getpass.getpass(f'SSH密码 {USER}@{HOST}: ')
 CMD = ('cd /root/StockRank/docker && git pull && '
        'docker compose down && docker compose up -d --build')
 
