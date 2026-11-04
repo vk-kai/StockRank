@@ -19,10 +19,7 @@
   align-items: stretch;
   margin-bottom: 12px;
   gap: 10px;
-  max-width: 1560px;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 /* ===== 第一层:标题 + 主操作按钮 ===== */
@@ -423,7 +420,6 @@
 
 /* ===== 服务监控:收缩成一条状态胶囊,点开看详情 ===== */
 .monitor-bar {
-  max-width: 1560px;
   width: 100%;
   margin: 0 auto 4px;
   display: flex;
@@ -547,10 +543,7 @@ button:active:not(:disabled) {
   flex-direction: column;
   /* 兜底最小高度:未登录时图表区显示登录遮罩,避免容器塌陷 */
   min-height: 420px;
-  max-width: 1560px;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 /* 折线图右上角横屏全屏按钮:仅移动端可见 */
@@ -814,10 +807,7 @@ button:active:not(:disabled) {
   margin-top: 0;
   margin-bottom: 16px;
   overflow: visible;
-  max-width: 1560px;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .sector-list h3 {
@@ -876,8 +866,9 @@ button:active:not(:disabled) {
   min-width: 0;
 }
 
+/* 行背景由内联 rgba 按资金量分级:hover 用内阴影提亮(不能盖掉分级底色) */
 .rank-row:hover {
-  background: #1d2b40;
+  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.07);
 }
 
 .rank-row.top-3 .rank-no {
@@ -1332,15 +1323,6 @@ button:active:not(:disabled) {
     grid-template-columns: 1fr;
     gap: 10px;
   }
-}
-
-/* ===== 宽屏居中限宽 ===== */
-.sector-list,
-.monitor-bar,
-.market-strip-row {
-  max-width: 1560px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 /* 弹窗样式 */

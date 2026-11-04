@@ -1271,7 +1271,7 @@ export default {
 
     unhighlightSector() {
       if (!this.chartInstance) return
-      
+
       try {
         this.chartInstance.dispatchAction({
           type: 'downplay'
@@ -1279,6 +1279,18 @@ export default {
       } catch (e) {
         console.warn('unhighlightSector error:', e)
       }
+    },
+
+    // 榜单行背景:按真实净流入/流出金额分档着色(流入红/流出绿,金额越大越浓)
+    rankRowBg(sector) {
+      if (!sector) return null
+      const net = Number(sector.net_flow ?? sector.total_net_flow ?? 0)
+      if (!net) return null
+      const isIn = (sector.flow_direction || sector.flow_group) !== 'out' && net >= 0
+      // 今日榜由模板预计算 flow_alpha(0.18~0.68);多日榜没有,按 rank 档位推:TOP1 最浓
+      const alpha = Number(sector.flow_alpha) || (0.55 - (sector.rank - 1) * 0.09)
+      const base = isIn ? '240, 82, 95' : '16, 185, 129'
+      return { background: `rgba(${base}, ${alpha})` }
     },
 
     async fetchCurrentData(options = {}) {

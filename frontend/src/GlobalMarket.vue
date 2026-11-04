@@ -192,7 +192,36 @@ const COUNTRY_ZH_MAP = {
   'W. Sahara': '西撒哈拉', 'Falkland Is.': '福克兰群岛', 'Greenland': '格陵兰',
   'Fr. S. Antarctic Lands': '法兰西南方领地', 'Antarctica': '南极洲',
   'Taiwan': '台湾', 'Hong Kong': '香港',
-  'Solomon Is.': '所罗门群岛', 'New Caledonia': '新喀里多尼亚', 'Fiji': '斐济'
+  'Solomon Is.': '所罗门群岛', 'New Caledonia': '新喀里多尼亚', 'Fiji': '斐济',
+  // ── 补全剩余国家/地区(悬停 tooltip 显示中文名) ──
+  'Aland': '奥兰群岛', 'American Samoa': '美属萨摩亚', 'Andorra': '安道尔',
+  'Antigua and Barb.': '安提瓜和巴布达', 'Bahamas': '巴哈马', 'Bahrain': '巴林',
+  'Barbados': '巴巴多斯', 'Belize': '伯利兹', 'Benin': '贝宁', 'Bermuda': '百慕大',
+  'Bhutan': '不丹', 'Botswana': '博茨瓦纳', 'Br. Indian Ocean Ter.': '英属印度洋领地',
+  'Brunei': '文莱', 'Burkina Faso': '布基纳法索', 'Burundi': '布隆迪',
+  'Cape Verde': '佛得角', 'Cayman Is.': '开曼群岛', 'Comoros': '科摩罗',
+  'Congo': '刚果(布)', 'Costa Rica': '哥斯达黎加', 'Curaçao': '库拉索',
+  'Cyprus': '塞浦路斯', 'Czech Rep.': '捷克', 'Côte d\'Ivoire': '科特迪瓦',
+  'Djibouti': '吉布提', 'Dominica': '多米尼克', 'El Salvador': '萨尔瓦多',
+  'Eritrea': '厄立特里亚', 'Faeroe Is.': '法罗群岛', 'Fr. Polynesia': '法属波利尼西亚',
+  'Gabon': '加蓬', 'Gambia': '冈比亚', 'Grenada': '格林纳达', 'Guam': '关岛',
+  'Guinea': '几内亚', 'Guinea-Bissau': '几内亚比绍', 'Haiti': '海地',
+  'Heard I. and McDonald Is.': '赫德岛', 'Isle of Man': '马恩岛', 'Jersey': '泽西岛',
+  'Kiribati': '基里巴斯', 'Kuwait': '科威特', 'Lao PDR': '老挝', 'Lesotho': '莱索托',
+  'Liberia': '利比里亚', 'Liechtenstein': '列支敦士登', 'Luxembourg': '卢森堡',
+  'Malawi': '马拉维', 'Malta': '马耳他', 'Mauritania': '毛里塔尼亚',
+  'Mauritius': '毛里求斯', 'Micronesia': '密克罗尼西亚', 'Montserrat': '蒙特塞拉特',
+  'N. Cyprus': '北塞浦路斯', 'N. Mariana Is.': '北马里亚纳', 'Niger': '尼日尔',
+  'Niue': '纽埃', 'Palau': '帕劳', 'Palestine': '巴勒斯坦', 'Puerto Rico': '波多黎各',
+  'Qatar': '卡塔尔', 'Rwanda': '卢旺达', 'S. Geo. and S. Sandw. Is.': '南乔治亚岛',
+  'Saint Helena': '圣赫勒拿', 'Saint Lucia': '圣卢西亚', 'Samoa': '萨摩亚',
+  'Seychelles': '塞舌尔', 'Siachen Glacier': '锡亚琴冰川', 'Sierra Leone': '塞拉利昂',
+  'Singapore': '新加坡', 'St. Pierre and Miquelon': '圣皮埃尔和密克隆',
+  'St. Vin. and Gren.': '圣文森特', 'Swaziland': '斯威士兰',
+  'São Tomé and Principe': '圣多美和普林西比', 'Timor-Leste': '东帝汶', 'Togo': '多哥',
+  'Tonga': '汤加', 'Trinidad and Tobago': '特立尼达和多巴哥',
+  'Turks and Caicos Is.': '特克斯和凯科斯', 'U.S. Virgin Is.': '美属维尔京群岛',
+  'Vanuatu': '瓦努阿图'
 }
 
 export default {
@@ -556,6 +585,42 @@ export default {
       // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
 
+      // ── 地图分层配色:有市场的国家"点亮",其余沉入暗处 ──
+      // 活跃国家映射:指数的 region 字段 → world.json 里的国家注册名(翻译后的中文名)
+      const activeRegions = [...new Set(list.map(i => i.region))]
+      const REGION_COUNTRY = {
+        '中国': ['中国'], '香港': ['香港'], '台湾': ['台湾'],
+        '日本': ['日本'], '韩国': ['韩国'], '马来西亚': ['马来西亚'],
+        '印尼': ['印度尼西亚'], '越南': ['越南'], '印度': ['印度'],
+        '澳大利亚': ['澳大利亚'], '美国': ['美国'], '巴西': ['巴西'],
+        '英国': ['英国'], '德国': ['德国'], '法国': ['法国'],
+        '荷兰': ['荷兰'], '瑞士': ['瑞士'], '俄罗斯': ['俄罗斯']
+      }
+      const activeCountries = new Set()
+      for (const r of activeRegions) {
+        for (const c of (REGION_COUNTRY[r] || [r])) activeCountries.add(c)
+      }
+
+      // regions 数组:活跃国家渐变蓝 + 亮边,其他国家暗底细边
+      const regions = []
+      for (const c of activeCountries) {
+        regions.push({
+          name: c,
+          itemStyle: {
+            areaColor: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [{ offset: 0, color: '#16324f' }, { offset: 1, color: '#0f2338' }] },
+            borderColor: '#2f7fd6',
+            borderWidth: 1.1,
+            shadowColor: 'rgba(47, 127, 214, 0.45)',
+            shadowBlur: 10
+          },
+          emphasis: {
+            itemStyle: { areaColor: '#1d4a75', borderColor: '#5aa7f0', borderWidth: 1.4 },
+            label: { show: true, color: '#cfe3f7', fontSize: 11, fontWeight: 'bold' }
+          }
+        })
+      }
+
       this.chart.setOption({
         backgroundColor: 'transparent',
         tooltip: {
@@ -582,17 +647,16 @@ export default {
           zoom: 1.3,
           center: this.regionFilter === 'all' ? null : this.filteredRegionCenter(),
           scaleLimit: { min: 0.8, max: 8 },
-          // 深色海洋 + 发光边界(发光只保留在地图本体,符合"少发光"原则)
+          // 基础层:无市场国家沉底(暗),有市场国家由 regions[] 点亮(渐变蓝+发光边)
           itemStyle: {
-            areaColor: '#0d1524',
-            borderColor: '#1e5a8e',
-            borderWidth: 0.6,
-            shadowColor: 'rgba(30, 90, 142, 0.35)',
-            shadowBlur: 8
+            areaColor: '#0a111e',
+            borderColor: '#17304d',
+            borderWidth: 0.5
           },
+          // 名单动态:活跃国家渐变蓝底+蓝色发光边;非活跃走默认暗样式
+          regions,
           emphasis: {
-            itemStyle: { areaColor: '#172235', borderColor: '#398BFF' },
-            label: { show: true, color: '#8795AA', fontSize: 10 }
+            label: { show: true, color: '#cfe3f7', fontSize: 10 }
           },
           silent: false
         },

@@ -278,6 +278,7 @@
             :key="`${sector.flow_direction || sector.flow_group || 'flow'}-${sector.rank}-${sector.name}`"
             class="rank-row clickable"
             :class="{ 'top-3': sector.rank <= 3 }"
+            :style="rankRowBg(sector)"
             @mouseenter="highlightSector(sector.name)"
             @mouseleave="unhighlightSector()"
             @click="openStockModal(sector)"
@@ -306,6 +307,7 @@
             :key="`${sector.flow_direction}-${sector.rank}-${sector.name}`"
             class="rank-row"
             :class="{ 'top-3': sector.rank <= 3 }"
+            :style="rankRowBg(sector)"
             @mouseenter="highlightSector(sector.name)"
             @mouseleave="unhighlightSector()"
           >

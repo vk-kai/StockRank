@@ -1,4 +1,4 @@
-import { formatFlow, formatNetFlow } from '../utils/formatters'
+import { formatNetFlow } from '../utils/formatters'
 
 // 窄屏折线图末端标签的行业名缩短：去掉常见冗余后缀，最多保留 4 字，避免横向溢出
 function shortenSectorName(name) {
@@ -579,42 +579,36 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#fff;">${list[0].name || ''}</div>`
         list.forEach(param => {
           const change = param.data?.change
-          const inflow = param.data?.inflow
-          const outflow = param.data?.outflow
-          const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#ff7875' : '#7ec699')
+          const changeColor = change === null || change === undefined ? '#94a3b8' : (change >= 0 ? '#F0525F' : '#10B981')
           const changeText = change === null || change === undefined ? '-' : `${(change * 100).toFixed(2)}%`
 
           if (valueMode === 'cum') {
-            // 多日模式:曲线值=窗口累计净流入(realValue),另展示当日净流入/当日涨跌
+            // 多日模式:曲线值=窗口累计净流入(realValue),另展示当日涨跌
             const cumFlow = param.data?.realValue ?? null
-            const dayNet = param.data?.netFlow ?? null
-            const cumColor = cumFlow === null || cumFlow === undefined ? '#94a3b8' : (cumFlow >= 0 ? '#ff7875' : '#7ec699')
-            const dayColor = dayNet === null || dayNet === undefined ? '#94a3b8' : (dayNet >= 0 ? '#ff7875' : '#7ec699')
+            const cumColor = cumFlow === null || cumFlow === undefined ? '#94a3b8' : (cumFlow >= 0 ? '#F0525F' : '#10B981')
             result += `
-            <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:340px;">
+            <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin:4px 0;min-width:250px;">
               <span style="color:#cbd5e1;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:${cumColor};font-weight:600;">累计净流入 ${formatNetFlow(cumFlow)}</span>
-              <span style="color:${dayColor}">当日净流入 ${formatNetFlow(dayNet)}</span>
+              <span style="color:${cumColor};font-weight:600;">${formatNetFlow(cumFlow)}</span>
               <span style="color:${changeColor};font-weight:600;">${changeText}</span>
             </div>
           `
             return
           }
 
+          // 当日模式:只留 净流入 + 涨跌幅,流入/流出明细不再堆在 tooltip(看懂就行)
           const netFlow = param.data?.realValue ?? param.data?.netFlow ?? param.data?.value
-          const netColor = netFlow === null || netFlow === undefined ? '#94a3b8' : (netFlow >= 0 ? '#ff7875' : '#7ec699')
+          const netColor = netFlow === null || netFlow === undefined ? '#94a3b8' : (netFlow >= 0 ? '#F0525F' : '#10B981')
           result += `
-            <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:12px;align-items:center;margin:4px 0;min-width:360px;">
+            <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin:4px 0;min-width:250px;">
               <span style="color:#cbd5e1;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${param.color};margin-right:6px;"></span>
                 ${param.seriesName}
               </span>
-              <span style="color:#94a3b8;">流入 ${formatFlow(inflow)}</span>
-              <span style="color:#94a3b8;">流出 ${formatFlow(outflow)}</span>
-              <span style="color:${netColor};font-weight:600;">净流入 ${formatNetFlow(netFlow)}</span>
+              <span style="color:${netColor};font-weight:600;">${formatNetFlow(netFlow)}</span>
               <span style="color:${changeColor};font-weight:600;">${changeText}</span>
             </div>
           `
