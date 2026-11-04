@@ -180,12 +180,14 @@ export default {
     this.loadOtpStatus()
   },
   watch: {
-    // 切到部署运维页签时拉取版本信息(只读,无需密码)
+    // 部署运维页签激活期间轮询版本信息(60s,只读,无需密码);离开页签即停
     activeTab(tab) {
-      if (tab === 'deploy' && !this.deployVersion.data && !this.deployVersion.loading) {
-        this.loadDeployVersion()
-      }
+      if (tab === 'deploy') this.startDeployVersionPolling()
+      else this.stopDeployVersionPolling()
     }
+  },
+  beforeUnmount() {
+    this.stopDeployVersionPolling()
   },
   computed: {
     datasourceGroups() {
@@ -1010,6 +1012,24 @@ export default {
     },
 
     // ===== 部署运维:版本信息(当前部署 vs GitHub main,只读) =====
+    startDeployVersionPolling() {
+      if (this._deployVersionTimer) return
+      if (!this.deployVersion.data && !this.deployVersion.loading) this.loadDeployVersion()
+      // 不带 fresh:命中后端 180s 缓存,轮询不消耗 GitHub API 限额(匿名仅 60/h);
+      // 立即拉新用面板"刷新"按钮或部署完成回调(均带 fresh)
+      this._deployVersionTimer = setInterval(() => {
+        // 部署进行中后端随容器重启,请求必然失败:跳过,恢复完成时单独拉新
+        if (this.deployStatus.phase === 'recovering') return
+        this.loadDeployVersion()
+      }, 60000)
+    },
+    stopDeployVersionPolling() {
+      if (this._deployVersionTimer) {
+        clearInterval(this._deployVersionTimer)
+        this._deployVersionTimer = null
+      }
+    },
+
     async loadDeployVersion(fresh = false) {
       this.deployVersion = { loading: true, data: this.deployVersion.data, error: null }
       try {
@@ -1017,13 +1037,17 @@ export default {
         if (res && res.success) {
           this.deployVersion = { loading: false, data: res, error: null }
         } else {
+          // 失败保留上一份好数据(轮询期间网络抖动不闪空白),仅换错误横幅
           this.deployVersion = {
-            loading: false, data: null,
+            loading: false, data: this.deployVersion.data,
             error: (res && res.message) || '获取版本信息失败'
           }
         }
       } catch (e) {
-        this.deployVersion = { loading: false, data: null, error: '获取版本信息失败:连接异常' }
+        this.deployVersion = {
+          loading: false, data: this.deployVersion.data,
+          error: '获取版本信息失败:连接异常'
+        }
       }
     },
     fmtCommitTime(iso) {

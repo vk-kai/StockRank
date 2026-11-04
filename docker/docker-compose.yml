@@ -33,6 +33,9 @@ services:
     shm_size: "512mb"
     volumes:
       - ../backend:/app/backend
+      # 只读挂载 .git:配置页版本面板在容器内解析 HEAD→refs 得到当前部署 SHA
+      # (纯 stdlib 读文件,不装 git;git 写 ref 走原子 rename,并发读安全)
+      - ../.git:/app/repo/.git:ro
       - ../config:/app/config
       - ../data:/app/data
       - ../logs:/app/logs

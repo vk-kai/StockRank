@@ -32,11 +32,16 @@ DEPLOY_MIN_INTERVAL = 300   # 两次手动部署最小间隔(秒),防连点
 # 版本信息:仓库公开时匿名 API 够用;私有化后在 compose 配 GITHUB_TOKEN
 GITHUB_REPO = os.environ.get('DEPLOY_GITHUB_REPO', 'vk-kai/StockRank')
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
-# 部署版本标记:宿主机部署脚本在容器起来后写入 backend/DEPLOYED_VERSION,
-# backend 目录以 volume 挂载进容器,这里直接读到
+# 当前部署版本主数据源:compose 把宿主机仓库的 .git 只读挂载进容器
+# (../.git:/app/repo/.git:ro),纯 stdlib 解析 HEAD→refs 即得 SHA,零依赖
+_GIT_DIR = os.environ.get('DEPLOY_GIT_DIR', '/app/repo/.git')
+# 兜底数据源:部署脚本写在 backend/DEPLOYED_VERSION 的标记文件
+# (backend 目录 volume 挂载可见;.git 挂载异常时仍可用)
 _VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              'DEPLOYED_VERSION')
-_VERSION_TTL = 60.0   # GitHub API 匿名限流 60/h,进程内缓存 1 分钟
+# 前端部署页签每 60s 轮询:180s 缓存让 GitHub API 实际只发 ~20 请求/h,
+# 稳稳低于匿名限额 60/h;手动刷新(fresh=1)绕过缓存
+_VERSION_TTL = 180.0
 _version_cache = {'ts': 0.0, 'data': None}
 
 # 进程内节流;down/up 期间本进程随容器重启,时间戳清零,重启后自然解锁
@@ -115,6 +120,50 @@ def docker_restart():
         return jsonify({'success': False, 'message': '触发失败:SSH 连接异常'}), 500
 
 
+def _read_local_head():
+    """纯 stdlib 解析只读挂载的 .git,返回 (40位sha, 更新时间str)。
+
+    HEAD → 'ref: refs/heads/main' → 读该 ref 文件得 sha(引用文件缺失则查
+    packed-refs,git gc 会把引用打包)。git 更新引用走"写临时文件+原子
+    rename",容器侧并发读最多拿到旧值,不会读到半截内容。
+    """
+    def _mtime(path):
+        try:
+            return datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M')
+        except OSError:
+            return None
+
+    try:
+        with open(os.path.join(_GIT_DIR, 'HEAD')) as f:
+            head = f.read().strip()
+        if not head.startswith('ref: '):
+            # detached HEAD(部署流程不会出现,防御性支持)
+            return (head[:40], _mtime(os.path.join(_GIT_DIR, 'HEAD'))) \
+                if len(head) >= 40 else (None, None)
+        ref = head[5:].strip()
+        ref_path = os.path.join(_GIT_DIR, *ref.split('/'))
+        try:
+            with open(ref_path) as f:
+                sha = f.read().strip()
+            if len(sha) >= 40:
+                return sha[:40], _mtime(ref_path)
+        except OSError:
+            pass
+        # 引用被 git gc 打包进 packed-refs:格式 '<sha> <ref>' 每行
+        packed = os.path.join(_GIT_DIR, 'packed-refs')
+        try:
+            with open(packed) as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) == 2 and parts[1] == ref and len(parts[0]) >= 40:
+                        return parts[0][:40], _mtime(packed)
+        except OSError:
+            pass
+    except OSError:
+        pass   # .git 未挂载/不可读 → 交给调用方走标记文件兜底
+    return None, None
+
+
 def _gh(path):
     """GitHub REST API 只读访问(可带 token;仓库公开时匿名即可)。"""
     import requests
@@ -134,8 +183,9 @@ def _gh(path):
 def version_info():
     """部署版本 vs GitHub main:部署 SHA、最近 3 条提交、远程领先数。
 
-    部署 SHA 来自宿主机部署脚本写入的 DEPLOYED_VERSION(volume 挂载可见);
-    远程信息走 GitHub API。只读、无需 SSH 密码,vk 登录态即可查看。
+    部署 SHA 优先从只读挂载的 .git 解析(HEAD→refs),兜底部署脚本写的
+    DEPLOYED_VERSION 标记;远程信息走 GitHub API。只读、无需 SSH 密码,
+    vk 登录态即可查看;前端部署页签每 60s 轮询本接口。
     """
     if not is_authenticated():
         return jsonify({'success': False, 'error': 'auth_required'}), 401
@@ -145,16 +195,17 @@ def version_info():
     if not fresh and _version_cache['data'] and now - _version_cache['ts'] < _VERSION_TTL:
         return jsonify(_version_cache['data'])
 
-    deployed_sha = None
-    deployed_at = None
-    try:
-        with open(_VERSION_FILE) as f:
-            deployed_sha = f.read().strip() or None
-        if deployed_sha:
-            deployed_at = datetime.fromtimestamp(
-                os.path.getmtime(_VERSION_FILE)).strftime('%Y-%m-%d %H:%M')
-    except OSError:
-        pass   # 尚无标记(老部署脚本产物),前端显示"未知"
+    # 当前部署 SHA:主读只读挂载的 .git;读不到退回部署脚本写的标记文件
+    deployed_sha, deployed_at = _read_local_head()
+    if not deployed_sha:
+        try:
+            with open(_VERSION_FILE) as f:
+                deployed_sha = f.read().strip() or None
+            if deployed_sha:
+                deployed_at = datetime.fromtimestamp(
+                    os.path.getmtime(_VERSION_FILE)).strftime('%Y-%m-%d %H:%M')
+        except OSError:
+            pass   # 两个数据源都无(挂载+脚本均未生效),前端显示"未知"
 
     result = {'success': True, 'deployed_sha': deployed_sha, 'deployed_at': deployed_at,
               'commits': [], 'ahead_by': None, 'remote_error': None}

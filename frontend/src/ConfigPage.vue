@@ -730,7 +730,7 @@
               <div class="dv-line">
                 当前部署:
                 <code v-if="deployVersion.data.deployed_sha">{{ deployVersion.data.deployed_sha.slice(0, 7) }}</code>
-                <span v-else class="dv-muted">未知(下次部署后显示)</span>
+                <span v-else class="dv-muted">未知(部署一次后自动显示)</span>
                 <span v-if="deployVersion.data.deployed_at" class="dv-time">· {{ deployVersion.data.deployed_at }}</span>
               </div>
               <div class="dv-line dv-gap" v-if="!deployVersion.data.remote_error">
@@ -738,7 +738,7 @@
                 <template v-else-if="deployVersion.data.ahead_by != null">
                   ⬆️ 远程 main 领先 <b>{{ deployVersion.data.ahead_by }}</b> 个提交,可一键部署更新
                 </template>
-                <template v-else><span class="dv-muted">领先数未知(需先完成一次部署以记录版本)</span></template>
+                <template v-else><span class="dv-muted">领先数未知(部署一次后可计算)</span></template>
               </div>
               <div v-if="deployVersion.data.remote_error" class="dv-error">
                 GitHub 访问失败: {{ deployVersion.data.remote_error }}
