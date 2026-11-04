@@ -735,6 +735,7 @@
               </div>
               <div class="dv-line dv-gap" v-if="!deployVersion.data.remote_error">
                 <template v-if="deployVersion.data.ahead_by === 0">✅ 已是最新,与远程 main 一致</template>
+                <template v-else-if="deployVersion.data.ahead_by === -1">⬆️ 远程 main 有更新,可一键部署更新</template>
                 <template v-else-if="deployVersion.data.ahead_by != null">
                   ⬆️ 远程 main 领先 <b>{{ deployVersion.data.ahead_by }}</b> 个提交,可一键部署更新
                 </template>

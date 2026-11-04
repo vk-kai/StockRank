@@ -273,7 +273,29 @@ def version_info():
                 cmp_data = _gh('/repos/%s/compare/%s...main' % (GITHUB_REPO, deployed_sha))
                 result['ahead_by'] = cmp_data.get('ahead_by')
     except Exception as e:
-        result['remote_error'] = str(e)[:160] or 'GitHub API 不可达'
+        # GitHub REST API 匿名限流(60次/h/IP)或国内访问间歇 403 —— 高发。
+        # 兜底: git smart HTTP 的 info/refs 端点匿名可读公开仓库、无限流,
+        # 能拿到远程 main 的 SHA,足够回答"当前部署是否落后"这一核心问题。
+        try:
+            import requests as _rq
+            r2 = _rq.get('https://github.com/%s.git/info/refs?service=git-upload-pack' % GITHUB_REPO,
+                         timeout=8, headers={'User-Agent': 'git/2.0'})
+            import re as _re
+            m = _re.search(r'([0-9a-f]{40}) HEAD', r2.text)
+            if r2.status_code == 200 and m:
+                remote_sha = m.group(1)
+                if deployed_sha:
+                    result['ahead_by'] = 0 if deployed_sha == remote_sha else -1
+                    if result['ahead_by'] == -1:
+                        result['remote_error'] = (
+                            '远程 main 有更新(%s),GitHub 提交列表暂不可达(API 限流),可一键部署更新'
+                            % remote_sha[:7])
+                else:
+                    result['remote_error'] = None   # 无本地 sha,本来就说"部署一次后显示"
+            else:
+                result['remote_error'] = str(e)[:160] or 'GitHub API 不可达'
+        except Exception:
+            result['remote_error'] = str(e)[:160] or 'GitHub API 不可达'
 
     _version_cache.update(ts=now, data=result)
     return jsonify(result)
