@@ -1,8 +1,12 @@
 <template>
   <div class="dashboard">
     <header class="header">
+      <!-- 第一层:标题 + 主操作 -->
       <div class="header-title-row">
-        <h1>A股板块资金流入统计</h1>
+        <div class="brand-block">
+          <h1>StockRank · 市场资金监控</h1>
+          <span class="brand-sub" v-if="lastUpdate">更新 {{ lastUpdate }}</span>
+        </div>
         <div class="title-actions">
           <button class="ai-analyze-button" @click="guardedAnalyzeDailyFlow" :disabled="aiAnalyzing">
             <span class="button-text">
@@ -19,8 +23,8 @@
             </div>
           </button>
           <button class="yuntu-button" @click="guardedGotoMarketMap"><IconTreemap />大盘云图</button>
-          <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市地图</button>
-          <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易系统</button>
+          <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市</button>
+          <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易</button>
           <button class="flow-alert-button" :class="{ 'has-new': hasUnreadAnomaly, 'has-review': pendingReviewCount > 0 }" @click="openFlowAlertModal">
             🚨 异动预警
             <span class="review-badge" v-if="pendingReviewCount > 0" title="有用户创作待审核，进入异动预警页处理">{{ pendingReviewCount }}</span>
@@ -42,25 +46,91 @@
           </div>
         </div>
       </div>
-      <div class="controls">
-        <div class="last-update" v-if="lastUpdate">
-          最后更新：{{ lastUpdate }}
-        </div>
-        <div class="countdown">
-          下次刷新：{{ countdownMinutes }}:{{ countdownSeconds }}
-        </div>
 
+      <!-- 第二层:指数行情条(指数 + 涨跌家数 + 涨跌停 + 融资) -->
+      <div class="market-strip-row">
         <div class="market-index-strip">
           <span
             v-for="indexItem in marketIndexCards"
             :key="indexItem.code"
             class="market-index-chip"
           >
-            {{ indexItem.name }} {{ formatMarketNumber(indexItem.price) }}
+            <span class="mi-name">{{ indexItem.name }}</span>
+            <span class="mi-price">{{ formatMarketNumber(indexItem.price) }}</span>
             <span :class="getValueTrendClass(indexItem.change)">
               {{ formatMarketPercent(indexItem.change) }}
             </span>
           </span>
+        </div>
+
+        <div class="market-summary-panel">
+          <div class="time-selector">
+            <label>时间跨度</label>
+            <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
+              <option :value="'today'">当天</option>
+              <option :value="7">近7天</option>
+              <option :value="15">近15天</option>
+              <option :value="30">近30天</option>
+            </select>
+          </div>
+          <div class="market-breadth-row">
+            <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
+            <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
+            <span v-if="marketSummary?.breadth?.flat_count != null" class="market-flat">平{{ formatMarketNumber(marketSummary.breadth.flat_count) }}</span>
+          </div>
+          <div class="market-breadth-bar" aria-label="上涨下跌比例">
+            <div class="market-breadth-fill market-breadth-fill-down" :style="{ width: getBreadthPercent('down') }"></div>
+            <div class="market-breadth-divider"></div>
+            <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
+          </div>
+          <div class="market-limit-row">
+            <span class="market-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
+            <span class="market-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
+            <span
+              v-if="marginTotal && marginTotal.latest_total != null"
+              class="market-margin-chip"
+              @click="openMarginTotalModal"
+              title="点击查看全市场融资余额与净买入趋势(口径:融资余额合计)"
+            >
+              融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
+              <span :class="getValueTrendClass(marginTotal.change_pct)">
+                {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
+              </span>
+              <span
+                v-if="marginTotal.latest_net_buy != null"
+                class="margin-net-buy-chip"
+                :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
+              >
+                净买{{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }}亿
+                <span
+                  v-if="marginNetBuyChangePct != null"
+                  :class="getValueTrendClass(marginNetBuyChangePct)"
+                  class="net-buy-trend"
+                >({{ marginNetBuyChangePct >= 0 ? '+' : '' }}{{ marginNetBuyChangePct.toFixed(1) }}%)</span>
+              </span>
+            </span>
+          </div>
+          <div class="market-turnover-row">
+            <span class="market-turnover-label">今日实时成交额</span>
+            <span class="market-turnover-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
+            <span class="market-turnover-spacer"></span>
+            <span class="market-turnover-label">较上一日此时</span>
+            <span class="market-turnover-value num-flash" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">
+              {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
+            </span>
+            <template v-if="marketSummary?.turnover?.predict_turnover != null">
+              <span class="market-turnover-spacer"></span>
+              <span class="market-turnover-label">全天预测</span>
+              <span class="market-turnover-value market-turnover-predict">{{ formatMarketAmount(marketSummary.turnover.predict_turnover, false) }}</span>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第三层:AI环境 + 倒计时 + 新闻滚动条(横向单行,不再独占一块) -->
+      <div class="controls">
+        <div class="countdown">
+          下次刷新：{{ countdownMinutes }}:{{ countdownSeconds }}
         </div>
 
         <div
@@ -85,79 +155,33 @@
           <span class="ai-chain-arrow">›</span>
         </div>
 
-        <button class="config-button" @click="guardedGoToConfig">
-          AI配置
-        </button>
-        <button class="log-button" @click="guardedGoToLogs">
-          日志
-        </button>
-        <button class="house-button" @click="guardedGoToHouseKline">
-          房价K线
-        </button>
+        <div class="news-ticker-container" v-if="!needsAuth && latestNews.length > 0">
+          <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
+          <div class="ticker-scroll" v-if="currentNewsItem">
+            <span
+              class="ticker-item"
+              :class="{ 'important': currentNewsItem.importance === '3' }"
+              @click="openNews(currentNewsItem.url)"
+            >
+              <span v-if="currentNewsItem.importance === '3'" class="important-badge">重要</span>
+              {{ currentNewsItem.title }}
+            </span>
+          </div>
+        </div>
       </div>
     </header>
 
-    <div class="market-summary-panel">
-      <div class="time-selector">
-        <label>时间跨度：</label>
-        <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
-          <option :value="'today'">当天</option>
-          <option :value="7">近7天</option>
-          <option :value="15">近15天</option>
-          <option :value="30">近30天</option>
-        </select>
-      </div>
-      <div class="market-breadth-row">
-        <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
-        <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
-      </div>
-      <div class="market-breadth-bar" aria-label="上涨下跌比例">
-        <div class="market-breadth-fill market-breadth-fill-down" :style="{ width: getBreadthPercent('down') }"></div>
-        <div class="market-breadth-divider"></div>
-        <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
-      </div>
-      <div class="market-limit-row">
-        <span class="market-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
-        <span class="market-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
-        <span
-          v-if="marginTotal && marginTotal.latest_total != null"
-          class="market-margin-chip"
-          @click="openMarginTotalModal"
-          title="点击查看全市场融资余额与净买入趋势(口径:融资余额合计)"
-        >
-          融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
-          <span :class="getValueTrendClass(marginTotal.change_pct)">
-            {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
-          </span>
-          <span
-            v-if="marginTotal.latest_net_buy != null"
-            class="margin-net-buy-chip"
-            :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
-          >
-            净买{{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }}亿
-          </span>
-        </span>
-      </div>
-
-      <div class="market-turnover-row">
-        <span class="market-turnover-label">今日实时成交额</span>
-        <span class="market-turnover-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
-        <span class="market-turnover-spacer"></span>
-        <span class="market-turnover-label">较上一日此时</span>
-        <span class="market-turnover-value num-flash" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">
-          {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
-        </span>
-      </div>
-    </div>
-
-    <div class="monitor-card-container" ref="monitorCard" @click="refreshHealth" v-if="!needsAuth && !demoMode">
-      <div class="monitor-card-header">
-        <span class="monitor-card-label">服务监控</span>
-        <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
-          {{ healthChecking ? '检测中...' : '检测' }}
-        </button>
-      </div>
-      <div class="monitor-card-body">
+    <div class="monitor-bar" ref="monitorCard" v-if="!needsAuth && !demoMode">
+      <button class="monitor-toggle" @click="showMonitorDetail = !showMonitorDetail">
+        <span class="monitor-dot" :class="monitorToggleClass"></span>
+        <span class="monitor-toggle-label">服务监控</span>
+        <span class="monitor-toggle-state" :class="monitorToggleClass">{{ monitorToggleText }}</span>
+        <span class="monitor-toggle-arrow">{{ showMonitorDetail ? '▾' : '▸' }}</span>
+      </button>
+      <button class="health-check-btn" @click="refreshHealth" :disabled="healthChecking">
+        {{ healthChecking ? '检测中...' : '检测' }}
+      </button>
+      <div class="monitor-detail" v-if="showMonitorDetail">
         <div
           v-for="row in healthDisplayItems"
           :key="row.key"
@@ -178,27 +202,6 @@
         <div v-if="healthDisplayItems.length === 0" class="monitor-card-row monitor-loading">
           <span class="monitor-dot"></span>
           <span class="monitor-text">检测中...</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="news-ticker-container" v-if="!needsAuth && latestNews.length > 0">
-      <div class="news-ticker-header">
-        <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
-      </div>
-      <div class="news-ticker-content">
-        <div 
-          v-if="currentNewsItem"
-          class="ticker-item"
-          :class="{ 'important': currentNewsItem.importance === '3' }"
-          @click="openNews(currentNewsItem.url)"
-        >
-          <div class="news-title">
-            <span class="news-index">{{ currentNewsIndex + 1 }}:</span>
-            <span v-if="currentNewsItem.importance === '3'" class="important-badge">重要</span>
-            {{ currentNewsItem.title }}
-          </div>
-          <div class="news-time">{{ formatNewsTime(currentNewsItem.timestamp) }}</div>
         </div>
       </div>
     </div>
@@ -265,76 +268,55 @@
 
     <div class="sector-list" ref="sectorList" v-if="selectedTimeRange === 'today' && replayTop10Sectors.length > 0">
       <h3 class="sector-title">{{ replayTop10Title }}</h3>
-      <div class="sector-grid">
-        <div 
-          v-for="sector in replayTop10Sectors" 
-          :key="`${sector.flow_direction || sector.flow_group || 'flow'}-${sector.rank}-${sector.name}`"
-          class="sector-card clickable"
-          :class="{
-            'top-3': sector.rank <= 3,
-            'net-in-card': (sector.flow_direction || sector.flow_group) !== 'out' && (sector.flow_direction || sector.flow_group) !== 'net_out',
-            'net-out-card': (sector.flow_direction || sector.flow_group) === 'out' || (sector.flow_direction || sector.flow_group) === 'net_out'
-          }"
-          :style="{
-            '--flow-alpha': sector.flow_alpha || 0.22,
-            '--flow-deep-alpha': sector.flow_deep_alpha || 0.25,
-            '--flow-border-alpha': sector.flow_border_alpha || 0.31,
-            '--flow-strength': sector.flow_strength || 0.5
-          }"
-          @mouseenter="highlightSector(sector.name)"
-          @mouseleave="unhighlightSector()"
-          @click="openStockModal(sector)"
-        >
-          <div class="rank">{{ sector.rank }}</div>
-          <div class="name">{{ sector.name }}</div>
-          <div class="net-flow" :class="{ 'net-negative': sector.net_flow < 0 }">
-            净流入: {{ formatNetFlow(sector.net_flow) }}
+      <div class="sector-rank-grid">
+        <div class="rank-column rank-in" v-for="dirGroup in replayRankColumns" :key="'in-'+dirGroup.direction" :class="'col-' + dirGroup.direction">
+          <div class="rank-column-head">
+            <span class="rank-column-tag">资金净{{ dirGroup.direction === 'in' ? '流入' : '流出' }} TOP5</span>
           </div>
-          <div class="flow">流入: {{ formatFlow(sector.flow) }}</div>
-          <div class="change" :class="{ 'positive': sector.change > 0, 'negative': sector.change < 0 }">
-            {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
-            <span class="trend-arrow">
-              {{ sector.change > 0 ? '↑' : (sector.change < 0 ? '↓' : '→') }}
+          <div
+            v-for="sector in dirGroup.items"
+            :key="`${sector.flow_direction || sector.flow_group || 'flow'}-${sector.rank}-${sector.name}`"
+            class="rank-row clickable"
+            :class="{ 'top-3': sector.rank <= 3 }"
+            @mouseenter="highlightSector(sector.name)"
+            @mouseleave="unhighlightSector()"
+            @click="openStockModal(sector)"
+          >
+            <span class="rank-no">{{ sector.rank }}</span>
+            <span class="rank-name">{{ sector.name }}</span>
+            <span class="rank-flow" :class="{ 'net-negative': sector.net_flow < 0 }">{{ formatNetFlow(sector.net_flow) }}</span>
+            <span class="rank-chg" :class="sector.change > 0 ? 'positive' : (sector.change < 0 ? 'negative' : '')">
+              {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             </span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 多日模式(7/15/30天): 累计净流入TOP5 + 净流出TOP5,卡片结构与当天模式同款(红/绿着色) -->
+    <!-- 多日模式(7/15/30天): 累计净流入TOP5 + 净流出TOP5 双榜单,附上榜次数(资金持续性) -->
     <div class="sector-list" ref="sectorList" v-if="selectedTimeRange !== 'today' && accumulatedTop10Sectors.length > 0">
       <h3 class="sector-title">{{ accumulatedTitle }}</h3>
-      <div class="sector-grid">
-        <div
-          v-for="sector in accumulatedTop10Sectors"
-          :key="`${sector.flow_direction}-${sector.rank}-${sector.name}`"
-          class="sector-card"
-          :class="{
-            'top-3': sector.rank <= 3,
-            'net-in-card': (sector.flow_direction || sector.flow_group) !== 'out' && (sector.flow_direction || sector.flow_group) !== 'net_out',
-            'net-out-card': (sector.flow_direction || sector.flow_group) === 'out' || (sector.flow_direction || sector.flow_group) === 'net_out'
-          }"
-          :style="{
-            '--flow-alpha': sector.flow_alpha || 0.22,
-            '--flow-deep-alpha': sector.flow_deep_alpha || 0.25,
-            '--flow-border-alpha': sector.flow_border_alpha || 0.31,
-            '--flow-strength': sector.flow_strength || 0.5
-          }"
-          @mouseenter="highlightSector(sector.name)"
-          @mouseleave="unhighlightSector()"
-        >
-          <div class="rank">{{ sector.rank }}</div>
-          <div class="name">{{ sector.name }}</div>
-          <div class="flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">
-            累计净流入: {{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}
+      <div class="sector-rank-grid">
+        <div class="rank-column" v-for="dirGroup in accumulatedRankColumns" :key="'acc-'+dirGroup.direction" :class="'col-' + dirGroup.direction">
+          <div class="rank-column-head">
+            <span class="rank-column-tag">累计净{{ dirGroup.direction === 'in' ? '流入' : '流出' }} TOP5</span>
           </div>
-          <div class="change" :class="{ 'positive': sector.accumulated_change_percent > 0, 'negative': sector.accumulated_change_percent < 0 }">
-            {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
-            <span class="trend-arrow">
-              {{ sector.accumulated_change_percent > 0 ? '↑' : (sector.accumulated_change_percent < 0 ? '↓' : '→') }}
+          <div
+            v-for="sector in dirGroup.items"
+            :key="`${sector.flow_direction}-${sector.rank}-${sector.name}`"
+            class="rank-row"
+            :class="{ 'top-3': sector.rank <= 3 }"
+            @mouseenter="highlightSector(sector.name)"
+            @mouseleave="unhighlightSector()"
+          >
+            <span class="rank-no">{{ sector.rank }}</span>
+            <span class="rank-name">{{ sector.name }}</span>
+            <span class="rank-flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">{{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}</span>
+            <span class="rank-chg" :class="sector.accumulated_change_percent > 0 ? 'positive' : (sector.accumulated_change_percent < 0 ? 'negative' : '')">
+              {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             </span>
+            <span class="rank-streak" v-if="sector.appearances" :title="`窗口内上榜 ${sector.appearances} 次`">上榜{{ sector.appearances }}次</span>
           </div>
-            <div class="appearances">上榜: {{ sector.appearances }}次</div>
         </div>
       </div>
     </div>

@@ -15,31 +15,68 @@
       </div>
     </header>
 
+    <!-- 全球市场环境观察:美元/原油/美债 → 外部环境对A股的参考信号(前端JSONP直连东财) -->
+    <div class="gm-env-strip" v-if="envItems.length" :class="envOverallClass">
+      <div class="gm-env-head">
+        <span class="gm-env-title">全球市场环境</span>
+        <span class="gm-env-verdict">{{ envOverallText }}</span>
+      </div>
+      <div class="gm-env-items">
+        <div class="gm-env-item" v-for="e in envItems" :key="e.key" :title="e.hint">
+          <span class="gm-env-name">{{ e.name }}</span>
+          <span class="gm-env-price">{{ e.price }}</span>
+          <span class="gm-env-chg" :class="e.chg >= 0 ? 'up' : 'down'">
+            {{ e.chg >= 0 ? '+' : '' }}{{ e.chg.toFixed(2) }}%
+          </span>
+          <span class="gm-env-note">{{ e.note }}</span>
+        </div>
+      </div>
+      <div class="gm-env-desc">{{ envDescText }}</div>
+    </div>
+
     <div class="gm-body">
       <div class="gm-chart-wrapper">
+        <div class="gm-region-filter">
+          <button
+            v-for="r in regionFilters"
+            :key="r.key"
+            class="gm-region-btn"
+            :class="{ active: regionFilter === r.key }"
+            @click="setRegionFilter(r.key)"
+          >{{ r.label }}</button>
+        </div>
         <div ref="chartEl" class="gm-chart"></div>
         <div class="gm-legend">
           <span class="legend-item"><i class="dot up"></i>上涨</span>
           <span class="legend-item"><i class="dot down"></i>下跌</span>
-          <span class="legend-tip">颜色越深=涨跌幅越大 · 滚轮缩放 · 拖动平移</span>
+          <span class="legend-tip">气泡大小=涨跌幅 · 颜色深浅=幅度 · 滚轮缩放 · 拖动平移</span>
         </div>
       </div>
 
       <div class="gm-intraday-section">
         <div class="gi-section-head">
-          <h3>📊 主要指数分时</h3>
-          <span class="gi-update" v-if="intradayUpdatedAt">更新：{{ intradayUpdatedAt }}</span>
+          <h3>📊 全球主要指数</h3>
+          <span class="gi-update" v-if="intradayUpdatedAt">分时更新：{{ intradayUpdatedAt }}</span>
           <span class="gi-loading" v-if="intradayLoading">分时加载中…</span>
+          <div class="gm-matrix-controls">
+            <button
+              v-for="c in matrixFilters"
+              :key="c.key"
+              class="gm-region-btn"
+              :class="{ active: matrixFilter === c.key }"
+              @click="matrixFilter = c.key"
+            >{{ c.label }}</button>
+          </div>
         </div>
-        <div class="gm-intraday" v-if="globalCards.length">
-          <div class="gi-card" v-for="ix in globalCards" :key="ix.code" :class="ix.change >= 0 ? 'up' : 'down'">
+        <div class="gm-intraday" v-if="matrixCards.length">
+          <div class="gi-card" v-for="ix in matrixCards" :key="ix.code" :class="ix.change >= 0 ? 'up' : 'down'">
             <div class="gi-head">
               <span class="gi-name">{{ ix.name }}</span>
               <span class="gi-chg" :class="ix.change >= 0 ? 'up' : 'down'">{{ formatChange(ix.change) }}</span>
             </div>
             <svg v-if="ix.series && ix.series.length >= 2" class="gi-spark" viewBox="0 0 100 36" preserveAspectRatio="none">
-              <path v-if="sparkArea(ix)" :d="sparkArea(ix)" :fill="ix.change >= 0 ? 'rgba(255,77,79,0.16)' : 'rgba(82,196,26,0.16)'" stroke="none" />
-              <path :d="sparkPath(ix)" :stroke="ix.change >= 0 ? '#ff4d4f' : '#52c41a'" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
+              <path v-if="sparkArea(ix)" :d="sparkArea(ix)" :fill="ix.change >= 0 ? 'rgba(240,82,95,0.16)' : 'rgba(16,185,129,0.16)'" stroke="none" />
+              <path :d="sparkPath(ix)" :stroke="ix.change >= 0 ? '#F0525F' : '#10B981'" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
             </svg>
             <div v-else class="gi-noline">暂无分时</div>
             <div class="gi-foot">
@@ -170,18 +207,83 @@ export default {
       intraday: [],
       intradayLoading: false,
       intradayUpdatedAt: '',
-      intradayTimer: null
+      intradayTimer: null,
+      // 全球市场环境观察:美元指数/NYMEX原油/美债10Y,JSONP 直连东财
+      envRaw: [],
+      envTimer: null,
+      // 地图区域筛选:all=全部,其余按 region 字段前缀匹配
+      regionFilter: 'all',
+      // 指数矩阵排序:change_desc=涨幅/price=点位/abs=波动幅度
+      matrixFilter: 'change_desc'
     }
   },
   computed: {
     indices() {
       return (this.data && this.data.indices) || []
     },
-    topGainers() {
-      return this.indices.slice(0, 8)
+    // ===== 全球市场环境观察 =====
+    envItems() {
+      // 固定展示顺序:科技风向标 → 流动性 → 通胀 → 利率
+      const order = ['ndx', 'udi', 'oil', 'us10y']
+      return order.map(k => this.envRaw.find(e => e.key === k)).filter(Boolean)
     },
-    topLosers() {
-      return this.indices.slice(-8).reverse()
+    // 风险偏好粗判:美元跌+油稳/股涨 → 偏暖;美元大涨/美债利率大动 → 偏冷。仅观察参考,不构成结论。
+    envOverallClass() {
+      const udi = this.envRaw.find(e => e.key === 'udi')
+      const us10y = this.envRaw.find(e => e.key === 'us10y')
+      if (!udi) return 'neutral'
+      if (udi.chg <= -0.3 && !(us10y && us10y.chg >= 1)) return 'risk-on'
+      if (udi.chg >= 0.3 || (us10y && Math.abs(us10y.chg) >= 1)) return 'risk-off'
+      return 'neutral'
+    },
+    envOverallText() {
+      const cls = this.envOverallClass
+      return cls === 'risk-on' ? '美元走弱 · 风险偏好偏暖' : cls === 'risk-off' ? '美元/利率扰动 · 风险偏好偏冷' : '外部环境中性'
+    },
+    envDescText() {
+      const cls = this.envOverallClass
+      if (cls === 'risk-on') return '美元指数走弱通常利于外资流入A股，关注科技/有色等对流动性敏感板块'
+      if (cls === 'risk-off') return '美元或美债利率上行压制成长股估值，关注A股高估值板块承压与防御方向'
+      return '外部变量波动不大，以A股自身资金面为主'
+    },
+    // ===== 地图区域筛选 =====
+    regionFilters() {
+      return [
+        { key: 'all', label: '全部' },
+        { key: '中国', label: '中国' },
+        { key: '亚洲', label: '亚洲' },
+        { key: '欧洲', label: '欧洲' },
+        { key: '美国', label: '美洲' }
+      ]
+    },
+    // 当前筛选下可见的指数(地图气泡同步显隐)
+    filteredIndices() {
+      const list = this.indices
+      const f = this.regionFilter
+      if (f === 'all') return list
+      if (f === '中国') return list.filter(i => i.region === '中国' || i.region === '香港' || i.region === '台湾')
+      if (f === '亚洲') return list.filter(i => ['中国', '香港', '台湾', '日本', '韩国', '马来西亚', '印尼', '越南', '印度', '澳大利亚'].includes(i.region))
+      if (f === '欧洲') return list.filter(i => ['英国', '德国', '法国', '荷兰', '瑞士', '俄罗斯'].includes(i.region))
+      if (f === '美国') return list.filter(i => ['美国', '巴西'].includes(i.region))
+      return list
+    },
+    // ===== 指数矩阵(卡片) =====
+    matrixFilters() {
+      return [
+        { key: 'change_desc', label: '涨幅' },
+        { key: 'change_asc', label: '跌幅' },
+        { key: 'abs', label: '波动' },
+        { key: 'price', label: '点位' }
+      ]
+    },
+    // 卡片矩阵:沿用 globalCards(上证/KOSPI/纳指固定前三 + 分时叠加),再按用户选择的排序重排
+    matrixCards() {
+      const cards = this.globalCards
+      const f = this.matrixFilter
+      if (f === 'change_asc') return [...cards].sort((a, b) => a.change - b.change)
+      if (f === 'abs') return [...cards].sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
+      if (f === 'price') return [...cards].sort((a, b) => (b.price || 0) - (a.price || 0))
+      return [...cards].sort((a, b) => b.change - a.change)
     },
     // 分时序列按 code 建立查找表（分时接口只返回 series，不含涨跌幅/价格）
     intradaySeriesMap() {
@@ -208,11 +310,14 @@ export default {
     this.timer = setInterval(() => this.fetchData(false), 30000)
     this.fetchIntraday()
     this.intradayTimer = setInterval(() => this.fetchIntraday(), 300000)
+    this.fetchEnv()
+    this.envTimer = setInterval(() => this.fetchEnv(), 60000)
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
     clearInterval(this.timer)
     clearInterval(this.intradayTimer)
+    clearInterval(this.envTimer)
     window.removeEventListener('resize', this.handleResize)
     if (this.chart) {
       this.chart.dispose()
@@ -222,6 +327,35 @@ export default {
   methods: {
     goBack() {
       this.$router.push('/')
+    },
+
+    // ===== 全球市场环境观察:东财批量实时报价(JSONP,与分时同机制) =====
+    async fetchEnv() {
+      try {
+        const url = 'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=100.UDI,102.CL00Y,171.US10Y,100.NDX&fields=f2,f3,f12,f14&fltt=2'
+        const body = await jsonp(url, 8000)
+        const diff = body && body.data && body.data.diff
+        if (!Array.isArray(diff)) return
+        const meta = {
+          NDX: { key: 'ndx', name: '纳斯达克', note: '科技风向标', hint: '美股科技股强弱影响A股AI/半导体链情绪(详见首页AI环境条)' },
+          UDI: { key: 'udi', name: '美元指数', note: '全球流动性', hint: '美元强弱反映全球流动性松紧,走弱利于新兴市场与A股外资流入' },
+          CL00Y: { key: 'oil', name: 'NYMEX原油', note: '通胀与地缘', hint: '原油价格影响通胀预期与能源板块,大涨常伴随地缘风险' },
+          US10Y: { key: 'us10y', name: '美债10Y收益率', note: '利率环境', hint: '美债收益率上行压制成长股估值,关注A股高估值板块压力' }
+        }
+        this.envRaw = diff.filter(d => meta[d.f12]).map(d => ({
+          ...meta[d.f12],
+          price: Number(d.f2),
+          chg: Number(d.f3) || 0
+        }))
+      } catch (e) {
+        // 环境条拿不到就整体隐藏,不影响地图主功能
+      }
+    },
+
+    // 地图区域筛选:切换时重设气泡数据(echarts notMerge 重渲染)
+    setRegionFilter(key) {
+      this.regionFilter = key
+      this.renderChart()
     },
 
     // 点击榜单项：缩放到对应国家位置并高亮
@@ -394,7 +528,11 @@ export default {
       if (this.chart) this.chart.resize()
     },
     renderChart() {
-      const list = this.indices
+      const list = this.filteredIndices
+      if (!list.length && this.regionFilter !== 'all') {
+        // 筛选后无数据:仍渲染地图本体,只清空气泡
+        if (!this.chart) return
+      }
       if (!list.length) return
       const el = this.$refs.chartEl
       if (!el) return
@@ -411,10 +549,10 @@ export default {
       const colorOf = v => {
         const pct = Math.abs(v[2])
         const opacity = Math.min(Math.max(0.5 + (pct / 3) * 0.46, 0.5), 0.97)
-        return v[2] >= 0 ? `rgba(240, 45, 45, ${opacity})` : `rgba(30, 185, 55, ${opacity})`
+        return v[2] >= 0 ? `rgba(240, 82, 95, ${opacity})` : `rgba(16, 185, 129, ${opacity})`
       }
       // 边框：亮红/亮绿，勾出圆圈轮廓
-      const borderColorOf = v => v[2] >= 0 ? '#ff7875' : '#95de64'
+      const borderColorOf = v => v[2] >= 0 ? '#f08a94' : '#5eead4'
       // 圆圈大小：按涨跌幅绝对值，最小30最大60
       const sizeOf = v => Math.min(Math.max(Math.abs(v[2]) * 4 + 30, 30), 60)
 
@@ -422,19 +560,19 @@ export default {
         backgroundColor: 'transparent',
         tooltip: {
           trigger: 'item',
-          backgroundColor: 'rgba(20,25,45,0.95)',
-          borderColor: '#3a4a6b',
+          backgroundColor: 'rgba(17, 24, 39, 0.95)',
+          borderColor: '#253247',
           borderWidth: 1,
           padding: [12, 16],
-          textStyle: { color: '#e0e6f0', fontSize: 13 },
+          textStyle: { color: '#E5EAF2', fontSize: 13 },
           formatter: p => {
             const v = p.value
             const chg = v[2]
-            const c = chg >= 0 ? '#ff4d4f' : '#52c41a'
+            const c = chg >= 0 ? '#F0525F' : '#10B981'
             return `<div style="min-width:170px">
-              <div style="font-weight:bold;font-size:14px;border-bottom:1px solid #3a4a6b;padding-bottom:6px;margin-bottom:8px">${v[4]} · ${p.name}</div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#8ba4c7">最新价</span><span style="font-weight:500">${v[3]}</span></div>
-              <div style="display:flex;justify-content:space-between"><span style="color:#8ba4c7">涨跌幅</span><span style="color:${c};font-weight:bold">${chg >= 0 ? '+' : ''}${chg}%</span></div>
+              <div style="font-weight:bold;font-size:14px;border-bottom:1px solid #253247;padding-bottom:6px;margin-bottom:8px">${v[4]} · ${p.name}</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#8795AA">最新价</span><span style="font-weight:500">${v[3]}</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:#8795AA">涨跌幅</span><span style="color:${c};font-weight:bold">${chg >= 0 ? '+' : ''}${chg}%</span></div>
             </div>`
           }
         },
@@ -442,23 +580,24 @@ export default {
           map: 'world',
           roam: true,
           zoom: 1.3,
+          center: this.regionFilter === 'all' ? null : this.filteredRegionCenter(),
           scaleLimit: { min: 0.8, max: 8 },
-          // 深色科技感海洋 + 发光边界
+          // 深色海洋 + 发光边界(发光只保留在地图本体,符合"少发光"原则)
           itemStyle: {
-            areaColor: '#0a1628',
-            borderColor: '#1e90ff',
+            areaColor: '#0d1524',
+            borderColor: '#1e5a8e',
             borderWidth: 0.6,
-            shadowColor: 'rgba(30, 144, 255, 0.4)',
+            shadowColor: 'rgba(30, 90, 142, 0.35)',
             shadowBlur: 8
           },
           emphasis: {
-            itemStyle: { areaColor: '#1a3050', borderColor: '#00e0ff' },
-            label: { show: true, color: '#8ba4c7', fontSize: 10 }
+            itemStyle: { areaColor: '#172235', borderColor: '#398BFF' },
+            label: { show: true, color: '#8795AA', fontSize: 10 }
           },
           silent: false
         },
         series: [
-          // 0) 脉冲散点（涟漪环）—— 各指数涨跌气泡，常驻脉冲
+          // 0) 脉冲散点(涟漪环)—— 各指数涨跌气泡,常驻脉冲
           {
             type: 'effectScatter',
             coordinateSystem: 'geo',
@@ -471,7 +610,7 @@ export default {
               borderColor: p => borderColorOf(p.value),
               borderWidth: 2.5,
               shadowBlur: 16,
-              shadowColor: p => (p.value[2] >= 0 ? 'rgba(255,77,79,0.5)' : 'rgba(82,196,26,0.5)')
+              shadowColor: p => (p.value[2] >= 0 ? 'rgba(240, 82, 95, 0.5)' : 'rgba(16, 185, 129, 0.5)')
             },
             label: {
               show: true,
@@ -483,13 +622,17 @@ export default {
               textShadowColor: 'rgba(0,0,0,0.45)',
               textShadowBlur: 3
             },
+            // 亚洲/欧洲密集区气泡标签自动避让,重叠的直接隐藏(悬停仍可见详情)
+            labelLayout: {
+              hideOverlap: true
+            },
             emphasis: {
               scale: 1.5,
-              label: { fontSize: 13 }
+              label: { fontSize: 13, show: true }
             },
             zlevel: 2
           },
-          // 2) 国名标签（圆圈下方，无散点本体）
+          // 1) 国名标签(圆圈下方,无散点本体)——同样参与避让
           {
             type: 'scatter',
             coordinateSystem: 'geo',
@@ -498,22 +641,36 @@ export default {
             label: {
               show: true,
               formatter: p => p.data.name,
-              color: '#e0e6f0',
+              color: '#E5EAF2',
               fontSize: 12,
               fontWeight: 'bold',
               position: 'bottom',
               distance: 8,
               textShadowColor: '#000',
               textShadowBlur: 4,
-              backgroundColor: 'rgba(13, 27, 42, 0.7)',
+              backgroundColor: 'rgba(13, 21, 36, 0.7)',
               padding: [2, 6],
               borderRadius: 3
+            },
+            labelLayout: {
+              hideOverlap: true
             },
             tooltip: { show: false },
             zlevel: 2
           }
         ]
       }, true)
+    },
+
+    // 区域筛选时把地图视野居中到对应区域(经纬度重心)
+    filteredRegionCenter() {
+      const centers = {
+        '中国': [110, 30],
+        '亚洲': [110, 25],
+        '欧洲': [12, 50],
+        '美国': [-70, 5]
+      }
+      return centers[this.regionFilter] || null
     }
   }
 }
@@ -522,8 +679,8 @@ export default {
 <style scoped>
 .global-market-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
-  color: #e0e6f0;
+  background: #080D18;
+  color: #E5EAF2;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -533,19 +690,19 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 290px 15px 20px; /* 右侧避让固定北京时间+登录入口 */
-  background: rgba(26, 35, 53, 0.8);
-  border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  backdrop-filter: blur(10px);
-  margin-bottom: 20px;
+  padding: 14px 290px 14px 20px; /* 右侧避让固定北京时间+登录入口 */
+  background: #111827;
+  border-radius: 10px;
+  border: 1px solid #253247;
+  margin-bottom: 12px;
 }
 
 .gm-header h1 {
-  font-size: 1.4rem;
-  color: #fff;
+  font-size: 1.25rem;
+  color: #E5EAF2;
   margin: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 .gm-header-right {
@@ -555,50 +712,50 @@ export default {
 }
 
 .gm-source-tag {
-  padding: 5px 12px;
-  background: rgba(24, 144, 255, 0.15);
-  border: 1px solid rgba(24, 144, 255, 0.4);
-  border-radius: 6px;
+  padding: 4px 12px;
+  background: rgba(57, 139, 255, 0.12);
+  border: 1px solid rgba(57, 139, 255, 0.35);
+  border-radius: 999px;
   font-size: 12px;
-  color: #69c0ff;
+  color: #5da2ff;
 }
 
 .gm-update {
   font-size: 12px;
-  color: #8ba4c7;
+  color: #8795AA;
 }
 
 .gm-back-button {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
-  border: 1px solid #4a5a7b;
+  padding: 8px 18px;
+  background: #172235;
+  border: 1px solid #253247;
   border-radius: 8px;
-  color: #e0e6f0;
+  color: #E5EAF2;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   font-size: 14px;
 }
 
 .gm-back-button:hover {
-  background: linear-gradient(135deg, #4a5a7b, #3a4a6b);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: #1d2b40;
+  border-color: rgba(135, 149, 170, 0.45);
+  transform: translateY(-1px);
 }
 
 .gm-refresh-btn {
   padding: 8px 16px;
-  background: linear-gradient(135deg, #1890ff, #096dd9);
-  border: 1px solid #40a9ff;
+  background: #398BFF;
+  border: 1px solid #5da2ff;
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .gm-refresh-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #40a9ff, #1890ff);
-  transform: translateY(-2px);
+  background: #5da2ff;
+  transform: translateY(-1px);
 }
 
 .gm-refresh-btn:disabled {
@@ -606,10 +763,85 @@ export default {
   cursor: not-allowed;
 }
 
+/* ===== 全球市场环境观察条 ===== */
+.gm-env-strip {
+  border: 1px solid #253247;
+  border-radius: 10px;
+  background: #111827;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+}
+.gm-env-strip.risk-on { border-color: rgba(240, 82, 95, 0.45); }
+.gm-env-strip.risk-off { border-color: rgba(16, 185, 129, 0.45); }
+
+.gm-env-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.gm-env-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #8795AA;
+  letter-spacing: 1px;
+}
+.gm-env-verdict {
+  font-size: 14px;
+  font-weight: 800;
+}
+.gm-env-strip.risk-on .gm-env-verdict { color: #F0525F; }
+.gm-env-strip.risk-off .gm-env-verdict { color: #10B981; }
+.gm-env-strip.neutral .gm-env-verdict { color: #E5EAF2; }
+
+.gm-env-items {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.gm-env-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: default;
+}
+.gm-env-name {
+  font-size: 12px;
+  color: #8795AA;
+  font-weight: 600;
+}
+.gm-env-price {
+  font-size: 15px;
+  font-weight: 700;
+  color: #E5EAF2;
+  font-variant-numeric: tabular-nums;
+}
+.gm-env-chg {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.gm-env-chg.up { color: #F0525F; }
+.gm-env-chg.down { color: #10B981; }
+.gm-env-note {
+  font-size: 11px;
+  color: #6b7c93;
+  padding: 1px 8px;
+  background: rgba(135, 149, 170, 0.08);
+  border-radius: 999px;
+}
+
+.gm-env-desc {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8795AA;
+  line-height: 1.5;
+}
+
 .gm-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
 }
@@ -618,12 +850,43 @@ export default {
   position: relative;
   height: 56vh;
   min-height: 340px;
-  background: rgba(26, 35, 53, 0.6);
-  border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  background: #111827;
+  border-radius: 10px;
+  border: 1px solid #253247;
   padding: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+}
+
+/* 区域筛选按钮组(地图左上角悬浮) */
+.gm-region-filter {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  background: rgba(23, 34, 53, 0.85);
+  border: 1px solid #253247;
+  border-radius: 8px;
+  padding: 4px;
+  backdrop-filter: blur(6px);
+}
+.gm-region-btn {
+  background: transparent;
+  border: none;
+  color: #8795AA;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.gm-region-btn:hover { color: #E5EAF2; }
+.gm-region-btn.active {
+  background: #398BFF;
+  color: #fff;
 }
 
 .gm-chart {
@@ -632,11 +895,11 @@ export default {
   min-height: 320px;
 }
 
-/* ===== 下方分时图网格 ===== */
+/* ===== 指数矩阵 ===== */
 .gm-intraday-section {
-  background: rgba(26, 35, 53, 0.6);
-  border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  background: #111827;
+  border-radius: 10px;
+  border: 1px solid #253247;
   padding: 14px 16px;
 }
 
@@ -649,45 +912,58 @@ export default {
 .gi-section-head h3 {
   margin: 0;
   font-size: 15px;
-  color: #e0e6f0;
+  color: #E5EAF2;
+  font-weight: 700;
 }
-.gi-update { font-size: 12px; color: #8ba4c7; }
-.gi-loading { font-size: 12px; color: #69c0ff; }
+.gi-update { font-size: 12px; color: #8795AA; }
+.gi-loading { font-size: 12px; color: #5da2ff; }
+
+.gm-matrix-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  background: rgba(23, 34, 53, 0.6);
+  border: 1px solid #253247;
+  border-radius: 8px;
+  padding: 3px;
+}
 
 .gm-intraday {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px;
 }
 
 .gi-card {
-  background: rgba(13, 19, 32, 0.55);
-  border: 1px solid rgba(58, 74, 107, 0.45);
+  background: #172235;
+  border: 1px solid #253247;
   border-left-width: 3px;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
-.gi-card.up { border-left-color: #ff4d4f; }
-.gi-card.down { border-left-color: #52c41a; }
+.gi-card:hover { transform: translateY(-2px); }
+.gi-card.up { border-left-color: #F0525F; }
+.gi-card.down { border-left-color: #10B981; }
 
 .gi-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 6px;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 .gi-name {
-  font-size: 12px;
-  color: #e0e6f0;
-  font-weight: 600;
+  font-size: 13px;
+  color: #E5EAF2;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.gi-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.gi-chg.up { color: #ff4d4f; }
-.gi-chg.down { color: #52c41a; }
+.gi-chg { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.gi-chg.up { color: #F0525F; }
+.gi-chg.down { color: #10B981; }
 
 .gi-spark {
   display: block;
@@ -701,7 +977,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  color: #5a6b85;
+  color: #6b7c93;
 }
 
 .gi-foot {
@@ -709,14 +985,14 @@ export default {
   align-items: baseline;
   justify-content: space-between;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
-.gi-region { font-size: 11px; color: #8ba4c7; }
-.gi-price { font-size: 11px; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+.gi-region { font-size: 11px; color: #8795AA; }
+.gi-price { font-size: 12px; color: #E5EAF2; font-variant-numeric: tabular-nums; }
 
 .gi-empty {
   text-align: center;
-  color: #8ba4c7;
+  color: #8795AA;
   font-size: 13px;
   padding: 24px 0;
 }
@@ -729,7 +1005,7 @@ export default {
   align-items: center;
   gap: 18px;
   font-size: 12px;
-  color: #8ba4c7;
+  color: #8795AA;
   pointer-events: none;
 }
 
@@ -746,109 +1022,15 @@ export default {
   display: inline-block;
 }
 
-.legend-item .dot.up { background: #ff2d55; box-shadow: 0 0 10px #ff2d55; }
-.legend-item .dot.down { background: #13d17c; box-shadow: 0 0 10px #13d17c; }
-
-.gm-rank {
-  width: 280px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.gm-rank-section {
-  background: rgba(26, 35, 53, 0.6);
-  border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  padding: 16px;
-}
-
-.gm-rank-title {
-  font-size: 15px;
-  margin: 0 0 12px 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(58, 74, 107, 0.5);
-}
-
-.gm-rank-title.up { color: #ff7875; }
-.gm-rank-title.down { color: #73d13d; }
-
-.gm-rank-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.gm-rank-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 8px;
-  border-radius: 6px;
-  transition: background 0.2s ease;
-  font-size: 13px;
-}
-
-.gm-rank-item:hover {
-  background: rgba(58, 74, 107, 0.4);
-}
-
-.gm-rank-region {
-  color: #8ba4c7;
-  font-size: 12px;
-  min-width: 48px;
-}
-
-.gm-rank-name {
-  flex: 1;
-  color: #e0e6f0;
-  margin: 0 8px;
-}
-
-.gm-rank-change {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.gm-rank-change.up { color: #ff4d4f; }
-.gm-rank-change.down { color: #52c41a; }
-
-.gm-empty {
-  text-align: center;
-  color: #8ba4c7;
-  padding: 20px;
-  font-size: 13px;
-}
+.legend-item .dot.up { background: #F0525F; box-shadow: 0 0 8px rgba(240, 82, 95, 0.6); }
+.legend-item .dot.down { background: #10B981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
 
 .gm-footer {
   text-align: center;
   padding: 14px;
-  color: #8ba4c7;
+  color: #8795AA;
   font-size: 0.85rem;
   margin-top: 16px;
-}
-
-.gm-rank-list::-webkit-scrollbar {
-  width: 5px;
-}
-.gm-rank-list::-webkit-scrollbar-thumb {
-  background: rgba(58, 74, 107, 0.6);
-  border-radius: 3px;
-}
-
-@media (max-width: 1024px) {
-  .gm-body {
-    flex-direction: column;
-  }
-  .gm-rank {
-    width: 100%;
-    flex-direction: row;
-  }
-  .gm-rank-section {
-    flex: 1;
-  }
 }
 
 @media (max-width: 768px) {
@@ -859,17 +1041,22 @@ export default {
     flex-direction: column;
     gap: 10px;
     text-align: center;
-    /* 清除桌面端 padding:15px 130px 15px 20px 的 130px 右内边距 */
+    /* 清除桌面端右内边距避让 */
     padding: 12px;
   }
   .gm-header h1 {
     font-size: 1.1rem;
   }
-  /* 移动端：地图高度收紧，分时网格两列 */
+  /* 移动端:地图高度收紧,环境条与矩阵自适应 */
   .gm-chart-wrapper {
     height: 44vh;
     min-height: 260px;
     padding: 8px;
+  }
+  .gm-region-filter {
+    top: 14px;
+    left: 14px;
+    flex-wrap: wrap;
   }
   .gm-intraday {
     grid-template-columns: repeat(2, 1fr);
@@ -877,6 +1064,13 @@ export default {
   .gi-section-head {
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .gm-matrix-controls {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .gm-env-items {
+    gap: 12px;
   }
 }
 </style>

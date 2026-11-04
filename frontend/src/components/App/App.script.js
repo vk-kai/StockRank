@@ -96,6 +96,8 @@ export default {
       stocksError: null,
       stockSortField: 'change',
       stockSortOrder: 'desc',
+      // 服务监控:收缩成顶栏状态胶囊,详情面板默认收起(点胶囊展开)
+      showMonitorDetail: false,
       isReplayingToday: false,
       replayCursor: null,
       replayTimer: null,
@@ -142,6 +144,17 @@ export default {
     }
   },
   computed: {
+    // 当日融资净买入 vs 上日净买入的涨跌幅(首页标签括号展示)。
+    // history 每项含 {date,total,net_buy};net_buy 为 None(首日)或上日平滑
+    // 缺失时不显示。涨跌幅可能为负(净买入收缩),正负均原样展示。
+    marginNetBuyChangePct() {
+      const h = this.marginTotal?.history
+      if (!Array.isArray(h) || h.length < 2) return null
+      const cur = h[h.length - 1]?.net_buy
+      const prev = h[h.length - 2]?.net_buy
+      if (cur == null || prev == null || prev === 0) return null
+      return ((cur - prev) / Math.abs(prev)) * 100
+    },
     minReplayDate() {
       const date = new Date()
       date.setDate(date.getDate() - 30)
@@ -419,6 +432,42 @@ export default {
     accumulatedTitle() {
       if (this.selectedTimeRange === 'today') return ''
       return `近${this.selectedTimeRange}天累计净流入TOP5 / 净流出TOP5`
+    },
+    // 双榜单布局:按 flow_direction 拆成 流入/流出 两列(当天模式)
+    replayRankColumns() {
+      const in5 = this.replayTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)
+      const out5 = this.replayTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)
+      return [
+        { direction: 'in', items: in5 },
+        { direction: 'out', items: out5 }
+      ]
+    },
+    // 双榜单布局(多日模式)
+    accumulatedRankColumns() {
+      const in5 = this.accumulatedTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)
+      const out5 = this.accumulatedTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)
+      return [
+        { direction: 'in', items: in5 },
+        { direction: 'out', items: out5 }
+      ]
+    },
+    // 服务监控胶囊:整体状态灯与文案(所有行 ok=正常,任一 failed=异常,其余=检测中/部分)
+    monitorToggleClass() {
+      const rows = this.healthDisplayItems
+      if (!rows.length) return 'monitor-loading'
+      if (rows.some(r => r.kind === 'ths' && this.thsCrawlerFailed())) return 'monitor-error'
+      if (rows.some(r => ['error', 'failed'].includes(r.item?.status))) return 'monitor-error'
+      if (rows.some(r => ['partial', 'no_client', 'warning'].includes(r.item?.status))) return 'monitor-partial'
+      if (this.healthChecking || rows.some(r => r.item?.status === 'checking')) return 'monitor-checking'
+      return 'monitor-ok'
+    },
+    monitorToggleText() {
+      const cls = this.monitorToggleClass
+      if (cls === 'monitor-ok') return '正常'
+      if (cls === 'monitor-error') return '异常'
+      if (cls === 'monitor-partial') return '部分异常'
+      if (cls === 'monitor-checking' || cls === 'monitor-loading') return '检测中'
+      return '--'
     },
     renderedAIAnalysis() {
       if (!this.aiAnalysisResult) return ''

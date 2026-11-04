@@ -76,3 +76,4 @@ quant/backend/account.json*
 quant/data/trading.db*
 data/stockrank.db*
 data/migration_backup_*/
+临时
