@@ -29,6 +29,7 @@ import {
   disableOtp,
   deployDockerRestart
   , getDeployVersionInfo
+  , getDeployStatus
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -972,11 +973,14 @@ export default {
     },
 
     pollDeployRecovery(attempt = 0) {
-      // 部署会重启全部容器,轮询后端 /health(公共动态接口:nginx+backend 都活着才 200,
-      // 不会被缓存,静态页 '/' 在后端没起时也能 200,不能当恢复信号)。
-      // 连续 2 次成功 = 已恢复;上限 10 分钟。
-      // fetch 必须带超时:容器 down 期间端口可能黑洞式挂起,一个不超时的 fetch
-      // 会把整条轮询链卡住数分钟——表现为"页面明明能访问了,按钮一直'部署中'"。
+      // 部署真实进度以 /deploy/status 为准(宿主机脚本每步写状态文件,volume
+      // 挂载可见):pull 失败等"容器根本没重启"的场景,状态会停在 failed——
+      // 页面立刻显示死因,而不是永远"部署中"。仅当状态不可读(后端随容器
+      // 重启/暂时失联)时,退回 /health 探测:动态接口,nginx+backend 都活着
+      // 才 200;连续 2 次 OK = 已恢复;上限 10 分钟。
+      // fetch 必须带超时:容器 down 期间端口可能黑洞式挂起,一个不超时的
+      // fetch 会把整条轮询链卡住数分钟——表现为"页面明明能访问了,按钮一直
+      // '部署中'"。
       if (attempt >= 60) {
         this.deployStatus = {
           phase: 'done',
@@ -985,30 +989,76 @@ export default {
         return
       }
       setTimeout(() => {
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 8000)
-        fetch('/health', { method: 'HEAD', cache: 'no-store', signal: ctrl.signal })
-          .then((r) => {
-            clearTimeout(timer)
-            if (!r.ok) throw new Error('not-ok')   // 5xx/CDN 错误页不算恢复
-            this._deployOkCount = (this._deployOkCount || 0) + 1
-            if (this._deployOkCount >= 2) {
-              this._deployOkCount = 0
-              this.deployStatus = {
-                phase: 'done',
-                message: '✅ 服务已恢复,部署完成!刷新页面即可使用最新版本'
+        getDeployStatus()
+          .then((res) => {
+            if (res && res.success) {
+              if (res.phase === 'failed') {
+                this._deployOkCount = 0
+                this.deployStatus = {
+                  phase: 'failed',
+                  message: '❌ 部署失败: ' + (res.detail || '未知原因') +
+                    '(可在服务器 /root/manual_deploy.log 看完整日志)'
+                }
+                return   // 停止轮询;按钮未禁用,可直接重试
               }
-              this.loadDeployVersion(true)
-            } else {
+              if (res.phase === 'done') {
+                this._deployOkCount = 0
+                this.deployStatus = {
+                  phase: 'done',
+                  message: '✅ 部署完成!刷新页面即可使用最新版本'
+                }
+                this.loadDeployVersion(true)
+                return
+              }
+              // triggered/pulling/pull_retry/building:真实进行中,显示阶段并继续
+              const labels = {
+                triggered: '🚀 已触发,正在启动部署脚本…',
+                pulling: '⬇️ 正在拉取最新代码…',
+                pull_retry: '⚠️ 拉取失败重试中',
+                building: '🔧 正在重建容器(1-3 分钟)…'
+              }
+              this.deployStatus = {
+                phase: 'recovering',
+                message: (labels[res.phase] || '部署中') +
+                  (res.phase === 'pull_retry' && res.detail ? '(' + res.detail + ')' : '')
+              }
               this.pollDeployRecovery(attempt + 1)
+              return
             }
+            // 状态接口返回异常:退回 /health 探测
+            this._pollByHealth(attempt)
           })
           .catch(() => {
-            clearTimeout(timer)
-            this._deployOkCount = 0
-            this.pollDeployRecovery(attempt + 1)
+            // 后端不可达(容器重启中):/health 探测恢复
+            this._pollByHealth(attempt)
           })
       }, 10000)
+    },
+
+    _pollByHealth(attempt) {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 8000)
+      fetch('/health', { method: 'HEAD', cache: 'no-store', signal: ctrl.signal })
+        .then((r) => {
+          clearTimeout(timer)
+          if (!r.ok) throw new Error('not-ok')   // 5xx/CDN 错误页不算恢复
+          this._deployOkCount = (this._deployOkCount || 0) + 1
+          if (this._deployOkCount >= 2) {
+            this._deployOkCount = 0
+            this.deployStatus = {
+              phase: 'done',
+              message: '✅ 服务已恢复,部署完成!刷新页面即可使用最新版本'
+            }
+            this.loadDeployVersion(true)
+          } else {
+            this.pollDeployRecovery(attempt + 1)
+          }
+        })
+        .catch(() => {
+          clearTimeout(timer)
+          this._deployOkCount = 0
+          this.pollDeployRecovery(attempt + 1)
+        })
     },
 
     // ===== 部署运维:版本信息(当前部署 vs GitHub main,只读) =====

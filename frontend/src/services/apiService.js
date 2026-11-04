@@ -1702,3 +1702,10 @@ export async function getDeployVersionInfo(fresh = false) {
   const response = await apiClient.get('/deploy/version-info', { params: fresh ? { fresh: 1 } : {} })
   return response.data
 }
+
+/** 部署实时进度(宿主机脚本写的状态文件转述):{phase, detail, ts}。
+ * phase: none|triggered|pulling|pull_retry|building|done|failed|stale */
+export async function getDeployStatus() {
+  const response = await apiClient.get('/deploy/status', { timeout: 8000 })
+  return response.data
+}

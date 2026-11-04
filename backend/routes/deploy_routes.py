@@ -48,17 +48,42 @@ _version_cache = {'ts': 0.0, 'data': None}
 _last_deploy_ts = 0.0
 _deploy_lock = threading.Lock()
 
+# 部署实时状态:宿主机脚本每步写一行 "unix时间戳|phase|detail" 到
+# backend/DEPLOY_STATUS(volume 挂载,容器内可读),/deploy/status 端点转述给
+# 配置页。phase: triggered→pulling→pull_retry→building→done|failed
+_STATUS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'DEPLOY_STATUS')
+
 # 部署脚本与 auto_update.sh 同构:ff-only pull → down --timeout 10 →
-# 清 CNI 残留 DNAT(2026-09-06 事故根因,倒序删防行号移位) → up --build
+# 清 CNI 残留 DNAT(2026-09-06 事故根因,倒序删防行号移位) → up --build。
+# 与旧版的差别:①不再用 && 静默串联——git pull 失败会把原因写进状态文件
+# 并退出,配置页能看到死因(此前 && 链一断,页面永远"部署中",真相只在
+# 宿主机 manual_deploy.log);②git pull 重试 3 次(国内服务器到 GitHub 的
+# 网络抖动是高发死因);③每步进度落盘,面板实时显示。
 _SCRIPT = (
-    "cd /root/StockRank/docker && "
-    "git pull --ff-only origin main && "
-    "docker compose down --timeout 10 && sleep 2 && "
+    "S=/root/StockRank/backend/DEPLOY_STATUS ; "
+    "L=/root/manual_deploy.log ; "
+    "wr(){ printf '%s|%s|%s\\n' \"$(date +%s)\" \"$1\" \"$2\" >\"$S\" ; } ; "
+    "wr triggered '' ; "
+    "cd /root/StockRank/docker || { wr failed 'cd docker 目录失败' ; exit 1 ; } ; "
+    "wr pulling '' ; "
+    "ok=0 ; out=pull-not-run ; "
+    "for i in 1 2 3 ; do "
+    "out=$(git pull --ff-only origin main 2>&1) ; rc=$? ; "
+    "out=$(printf '%s' \"$out\" | tr '\\n' ' ' | cut -c1-240) ; "
+    "if [ \"$rc\" = 0 ] ; then ok=1 ; break ; fi ; "
+    "wr pull_retry \"第${i}次拉取失败: $out\" ; sleep 5 ; "
+    "done ; "
+    "if [ \"$ok\" = 0 ] ; then wr failed \"git pull 失败: $out\" ; exit 1 ; fi ; "
+    "wr building '' ; "
+    "{ docker compose down --timeout 10 && sleep 2 && "
     "iptables -t nat -L CNI-HOSTPORT-DNAT --line-numbers -n 2>/dev/null | "
     "grep docker_stock-network | awk '{print $1}' | sort -rn | "
     "xargs -r -I{} iptables -t nat -D CNI-HOSTPORT-DNAT {} ; "
-    "docker compose up -d --build ; "
-    "git rev-parse HEAD > /root/StockRank/backend/DEPLOYED_VERSION"
+    "docker compose up -d --build ; } >>\"$L\" 2>&1 ; "
+    "rc=$? ; "
+    "git rev-parse HEAD >/root/StockRank/backend/DEPLOYED_VERSION 2>/dev/null ; "
+    "if [ \"$rc\" = 0 ] ; then wr done '' ; else wr failed \"compose 退出码 $rc(详见宿主机 $L)\" ; fi"
 )
 REMOTE_CMD = ("nohup bash -c " + shlex.quote(_SCRIPT)
               + " >/root/manual_deploy.log 2>&1 & echo DEPLOY_TRIGGERED")
@@ -108,6 +133,9 @@ def docker_restart():
             error_logger.error(f'手动部署远程命令无触发回显: {out[:200]}')
             return jsonify({'success': False,
                             'message': '远程命令触发异常,详见服务端日志'}), 500
+        # 状态行由宿主机脚本自己写(第一步 wr triggered):此处不写,避免在脚本
+        # 已推进到 pulling 后反而把它倒退覆盖成 triggered。前端 10s 后才首 poll,
+        # 脚本早已落笔,不会读到上一轮残留。
         system_logger.info('手动部署已触发(配置页按钮): 宿主机后台执行 git pull + docker 重建')
         return jsonify({'success': True,
                         'message': '部署已触发,服务将中断 1-3 分钟后自动恢复'})
@@ -162,6 +190,26 @@ def _read_local_head():
     except OSError:
         pass   # .git 未挂载/不可读 → 交给调用方走标记文件兜底
     return None, None
+
+
+@deploy_bp.route('/status', methods=['GET'])
+def deploy_status():
+    """读宿主机脚本写的部署状态行,配置页轮询用。只读,无需 SSH 密码。"""
+    if not is_authenticated():
+        return jsonify({'success': False, 'error': 'auth_required'}), 401
+    try:
+        with open(_STATUS_FILE) as f:
+            ts, _, rest = f.read().strip().partition('|')
+            phase, _, detail = rest.partition('|')
+        ts = int(ts) if ts.isdigit() else None
+    except (OSError, ValueError):
+        return jsonify({'success': True, 'phase': 'none',
+                        'detail': '', 'ts': None})
+    # done/failed 超过 30 分钟视为陈旧,不再当作"进行中"展示
+    fresh_window = 1800
+    if phase in ('done', 'failed') and ts and time.time() - ts > fresh_window:
+        phase = 'stale'
+    return jsonify({'success': True, 'phase': phase, 'detail': detail, 'ts': ts})
 
 
 def _gh(path):

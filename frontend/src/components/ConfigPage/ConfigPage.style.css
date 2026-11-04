@@ -1198,6 +1198,11 @@
   border: 1px solid rgba(61, 143, 95, 0.45);
   color: #5ec489;
 }
+.deploy-status.failed {
+  background: rgba(224, 82, 82, 0.12);
+  border: 1px solid rgba(224, 82, 82, 0.45);
+  color: #e05252;
+}
 
 /* 版本信息面板:当前部署 SHA vs GitHub main */
 .deploy-version {
