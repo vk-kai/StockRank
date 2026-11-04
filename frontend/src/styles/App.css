@@ -109,10 +109,10 @@
   min-width: 0;
   padding: 8px 14px;
   display: grid;
-  grid-template-columns: auto minmax(150px, 1fr) auto;
+  grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
   grid-template-areas:
-    "ts down bar"
-    "ts limit turnover";
+    "ts down bar up up2"
+    "ts limit turnover limit2 limit3";
   align-items: center;
   gap: 6px 14px;
   background: #111827;
@@ -151,29 +151,51 @@
 }
 
 /* 涨跌家数行 */
+/* 同花顺式涨跌分布:跌N(右对齐大字) | 比例条 | 涨N(左对齐大字) 平N(小字) */
 .market-breadth-row {
-  grid-area: down;
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  font-size: 17px;
+  display: contents;
+  font-size: 18px;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1;
+}
+
+.market-breadth-row .market-down {
+  grid-area: down;
+  justify-self: end;
   white-space: nowrap;
 }
 
+.market-breadth-row .market-up {
+  grid-area: up;
+  justify-self: start;
+  white-space: nowrap;
+}
+
+.market-breadth-row .market-flat {
+  grid-area: up2;
+  align-self: center;
+  padding-left: 10px;
+  color: #8795AA;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 第二行:跌停N(右对齐) | 成交额(中) | 涨停N(左对齐) | 融资chip(右) */
 .market-limit-row {
-  grid-area: limit;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: contents;
   font-size: 11px;
   font-weight: 800;
   line-height: 1.1;
   white-space: nowrap;
 }
 
+.market-limit-row .market-limit-down { grid-area: limit; justify-self: end; }
+.market-limit-row .market-limit-up { grid-area: limit2; justify-self: start; }
+
 .market-limit-row .market-margin-chip {
+  grid-area: limit3;
+  justify-self: end;
   cursor: pointer;
   padding: 1px 6px;
   border-radius: 4px;
@@ -1238,12 +1260,12 @@ button:active:not(:disabled) {
     padding: 8px 12px;
   }
   .market-summary-panel {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: auto 1fr auto;
     grid-template-areas:
-      "ts ts"
-      "down bar"
-      "limit limit"
-      "turnover turnover";
+      "ts ts ts"
+      "down bar up"
+      "limit limit limit"
+      "turnover turnover turnover";
     gap: 6px 10px;
   }
   .time-selector {
@@ -1254,15 +1276,29 @@ button:active:not(:disabled) {
     padding-right: 0;
     gap: 8px;
   }
+  /* 移动端恢复行内布局:display:contents 在新网格下涨/跌已是独立格子,改回flex居中 */
   .market-breadth-row {
-    font-size: 15px;
+    display: flex;
+    align-items: baseline;
     justify-content: center;
+    gap: 12px;
+    font-size: 15px;
+    grid-column: 1 / -1;
+  }
+  .market-breadth-row .market-down,
+  .market-breadth-row .market-up {
+    justify-self: center;
+  }
+  .market-breadth-row .market-flat {
+    padding-left: 0;
   }
   .market-breadth-bar {
     grid-area: bar;
   }
   .market-limit-row {
+    display: flex;
     justify-content: center;
+    grid-column: 1 / -1;
   }
   .market-turnover-row {
     justify-content: center;

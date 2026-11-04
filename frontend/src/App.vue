@@ -84,8 +84,8 @@
             <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
           </div>
           <div class="market-limit-row">
-            <span class="market-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
-            <span class="market-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
+            <span class="market-down market-limit-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
+            <span class="market-up market-limit-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
             <span
               v-if="marginTotal && marginTotal.latest_total != null"
               class="market-margin-chip"
