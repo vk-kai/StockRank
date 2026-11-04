@@ -81,6 +81,8 @@
 
 <script>
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 import { getHouseKline, getHouseDatasets, saveHouseDataset, deleteHouseDataset } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 
@@ -346,7 +348,7 @@ export default {
       const chartDom = this.$refs.mainChart
       if (!chartDom) return
       if (this.mainChart) this.mainChart.dispose()
-      this.mainChart = echarts.init(chartDom)
+      this.mainChart = markRaw(echarts.init(chartDom))
 
       if (!data.length) {
         this.mainChart.setOption({ backgroundColor: 'transparent' })

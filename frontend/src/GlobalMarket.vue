@@ -59,6 +59,8 @@
 
 <script>
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 import SecurityAlert from './components/SecurityAlert.vue'
 import { getGlobalIndices } from './services/apiService'
 
@@ -397,7 +399,7 @@ export default {
       const el = this.$refs.chartEl
       if (!el) return
       if (!this.chart) {
-        this.chart = echarts.init(el)
+        this.chart = markRaw(echarts.init(el))
       }
 
       const scatterData = list.map(i => ({

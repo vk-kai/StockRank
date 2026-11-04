@@ -1,4 +1,6 @@
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 import {
   getAuthSession, getMpAdminOverview, getMpAdminQuizRank, getMpAdminVpay,
   mpAdminVpayRevoke, mpAdminVpayDeleteOrder, exportMpAdminVpay, exportMpAdminReport
@@ -284,7 +286,7 @@ export default {
       const dom = this.$refs.vpayChart
       if (!dom) return
       if (this.vpayChart) this.vpayChart.dispose()
-      this.vpayChart = echarts.init(dom)
+      this.vpayChart = markRaw(echarts.init(dom))
       const revenue = d.revenue_fen.map(fen => Math.round(fen) / 100)
       this.vpayChart.setOption({
         backgroundColor: 'transparent',
@@ -363,7 +365,7 @@ export default {
       const dom = this.$refs[refName]
       if (!dom) return null
       if (this[key]) this[key].dispose()
-      this[key] = echarts.init(dom)
+      this[key] = markRaw(echarts.init(dom))
       return this[key]
     },
     renderBarChart(refName, items, color) {

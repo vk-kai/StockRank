@@ -1,4 +1,8 @@
 import * as echarts from 'echarts'
+// echarts 实例必须 markRaw:Vue3 会深度代理存进 data 的对象,代理层会破坏
+// echarts 内部的 === 身份判断(axisPointer 的系列挂链首当其冲),表现为
+// "十字光标在动但 tooltip 永不出现"。这是 Vue3 + echarts 的官方要求。
+import { markRaw } from 'vue'
 import { marked } from 'marked'
 import { formatFlow, formatNetFlow } from '../../utils/formatters'
 import { getCurrentFlow, getHistoryData, getMinuteData, getMinuteDataByDate, getNews, getAccumulatedFlow, getSectorStocks, getHealth, resetCrawler, getMarketSummary, startAnalyzeDailyFlow, getAnalyzeDailyFlowStatus, getAuthSession, getAnomalyAlerts, getAiChain, getEventCalendar, getGlobalIndices, getMarketMarginTotal, testPushService as testPushServiceApi, getDemoHome, getStockPulseSummary, getStockPulseAlerts, mpAdminFeedbackList, mpAdminDraftList } from '../../services/apiService'
@@ -860,7 +864,7 @@ export default {
     renderMarginTotalChart() {
       if (!this.$refs.marginTotalChartEl || !this.marginTotal || !this.marginTotal.history) return
       if (!this.marginTotalChart) {
-        this.marginTotalChart = echarts.init(this.$refs.marginTotalChartEl, null, { renderer: 'canvas' })
+        this.marginTotalChart = markRaw(echarts.init(this.$refs.marginTotalChartEl, null, { renderer: 'canvas' }))
       }
       const history = this.marginTotal.history
       const sse = Array.isArray(this.marginTotal.sse) ? this.marginTotal.sse : []
@@ -985,9 +989,9 @@ export default {
       
       this.$nextTick(() => {
         try {
-          this.chartInstance = echarts.init(this.$refs.chart, null, {
+          this.chartInstance = markRaw(echarts.init(this.$refs.chart, null, {
             renderer: 'canvas'
-          })
+          }))
           this.updateLayoutHeight()
           if (this.currentData.length > 0 || Object.keys(this.minuteData).length > 0 || Object.keys(this.historyData).length > 0) {
             this.updateChart()
@@ -1120,7 +1124,7 @@ export default {
       }
 
       try {
-        this.fullscreenChart = echarts.init(el, null, { renderer: 'canvas' })
+        this.fullscreenChart = markRaw(echarts.init(el, null, { renderer: 'canvas' }))
       } catch (e) {
         console.error('横屏图表初始化失败:', e)
         return
@@ -1528,8 +1532,9 @@ export default {
 
         try {
           this.chartInstance.setOption(option, {
-            replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
-            lazyUpdate: true
+            // 不用 lazyUpdate:与 replaceMerge 组合时首帧渲染竞态会抛
+            // getAxesOnZeroOf undefined(轴组件已被替换但布局仍读旧引用)
+            replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip']
           })
         } catch (e) {
           console.error('setOption 失败:', e)
@@ -1559,8 +1564,7 @@ export default {
 
       try {
         this.chartInstance.setOption(option, {
-          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip'],
-          lazyUpdate: true
+          replaceMerge: ['series', 'legend', 'xAxis', 'yAxis', 'tooltip']
         })
       } catch (e) {
         console.error('setOption 失败:', e)

@@ -259,6 +259,8 @@
 
 <script>
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 import { getEconOverview, getEconPhases, getEconPlaybook, runEconCollect } from './services/apiService'
 
 const PHASE_LABELS = {
@@ -519,7 +521,7 @@ export default {
     renderTrend() {
       const dom = this.$refs.trendChart
       if (!dom) return
-      if (!this.trendChart) this.trendChart = echarts.init(dom)
+      if (!this.trendChart) this.trendChart = markRaw(echarts.init(dom))
       // 默认只显示 chartYears 年,避免长历史稀释当前状态
       const all = this.bands[this.chartScope] || []
       const months = this.chartYears * 12

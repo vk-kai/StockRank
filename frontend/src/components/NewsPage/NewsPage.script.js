@@ -1,6 +1,8 @@
 import { getNews, getHealth, searchNews, isSecurityError, analyzeNews, getNewsScoreSummary, getNewsScoreTrend, startNewsSummary, getNewsSummaryStatus } from '../../services/apiService'
 import { marked } from 'marked'
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 import SecurityAlert from '../SecurityAlert.vue'
 
 export default {
@@ -242,7 +244,7 @@ export default {
       
       // 初始化图表
       if (!this.scoreTrendChart) {
-        this.scoreTrendChart = echarts.init(chartDom)
+        this.scoreTrendChart = markRaw(echarts.init(chartDom))
       }
       // 绑定柱子点击(模拟双击:350ms 内同一柱第二次点击视为双击 → 筛选该时段)
       if (!this._trendClickBound) {
@@ -533,7 +535,7 @@ export default {
       if (this.scorePieChart) {
         this.scorePieChart.dispose()
       }
-      this.scorePieChart = echarts.init(chartDom)
+      this.scorePieChart = markRaw(echarts.init(chartDom))
 
       const pieData = this.getFilteredPieData()
       if (!pieData || pieData.total === 0) {

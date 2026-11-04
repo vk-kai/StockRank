@@ -477,6 +477,8 @@
 import { getMarketMap, getMarketMapStructure, refreshMarketMapCache, getStockFinancing, getStockHoverSummary, getStockIntradaySeries, getMarketMapSnapshots, getMarketMapSnapshot, getMarketMapPush, clearMarketMapPush, getMarketMapMargin, getMarketMapMarginBalance, getStockScores, startStockScoring, getStockScoringStatus, stopStockScoring, getAIConfig, startIndustryCycleBatch, getIndustryCycleBatchStatus, stopIndustryCycleBatch, getIndustryCycleAllScores, getAuthSession, getDemoMarketMap } from './services/apiService'
 import SecurityAlert from './components/SecurityAlert.vue'
 import * as echarts from 'echarts'
+// echarts 实例须 markRaw,避免 Vue3 深度代理破坏 echarts 内部 === 身份判断
+import { markRaw } from 'vue'
 
 // 配色色阶：涨跌幅(%) → [R,G,B]。跌=绿、涨=红、0%=灰。
 // 颜色按参考云图逐块读真实涨跌幅锚点后插值得到（红：+0.33/+1.51/+2.88%、绿：-0.87/-2.04/-3.97%），
@@ -2584,7 +2586,7 @@ export default {
         try { this.finChart.dispose() } catch (e) { /* noop */ }
         this.finChart = null
       }
-      if (!this.finChart) this.finChart = echarts.init(el)
+      if (!this.finChart) this.finChart = markRaw(echarts.init(el))
       const all = this.finModal.series
       const data = all.slice(Math.max(0, all.length - this.finModal.period))
       const xData = data.map(x => {
