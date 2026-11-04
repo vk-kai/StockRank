@@ -105,7 +105,6 @@ export default {
       replayTopSectors: [],
       replayDate: formatDate(new Date()),
       todayDate: formatDate(new Date()),
-      hasBootstrappedTodayReplay: false,
       historicalMinuteData: null,
       lastTimeKeys: [],
       autoGrowCursor: null,
@@ -1293,9 +1292,7 @@ export default {
       return { background: `rgba(${base}, ${alpha})` }
     },
 
-    async fetchCurrentData(options = {}) {
-      const { skipMinuteData = false } = options
-
+    async fetchCurrentData() {
       if (this.isReplayingToday) return
 
       // 非交易日：先展示当天（空数据），再自动跳转到最近周五
@@ -1320,18 +1317,14 @@ export default {
 
       try {
         const response = await getCurrentFlow()
-        
+
         if (response.success) {
           this.currentData = response.data
           const timestamp = new Date(response.timestamp)
           this.lastUpdate = timestamp.toLocaleString('zh-CN')
-          
+
           if (this.selectedTimeRange === 'today') {
-            if (skipMinuteData) {
-              this.updateChart()
-            } else {
-              await this.fetchMinuteData()
-            }
+            await this.fetchMinuteData()
           } else {
             this.updateChart()
           }
@@ -1370,15 +1363,33 @@ export default {
         if (response.success) {
           const newTimeKeys = Object.keys(response.data).sort()
           const oldTimeKeys = this.lastTimeKeys
-          
+
           this.minuteData = response.data
-          
+
           if (this.isReplayingToday) {
             this.stopTodayReplay(false)
           }
-          
+
           if (oldTimeKeys.length === 0) {
+            // 首次加载:与盘中增量同款逐点生长动画,从开盘第1点长到最新——
+            // 替代旧的 2099-12-31 规避写法(先假装回放一个不存在的日期再切回来)
             this.lastTimeKeys = newTimeKeys
+            if (newTimeKeys.length > 1) {
+              this.autoGrowCursor = 0
+              this.autoGrowTimer = setInterval(() => {
+                if (this.autoGrowCursor === null) {
+                  this.autoGrowCursor = 0
+                }
+                if (this.autoGrowCursor >= newTimeKeys.length - 1) {
+                  clearInterval(this.autoGrowTimer)
+                  this.autoGrowTimer = null
+                  this.autoGrowCursor = null
+                  return
+                }
+                this.autoGrowCursor += 1
+                this.updateChart()
+              }, this.autoGrowSpeed)
+            }
             this.updateChart()
             return
           }
@@ -1445,17 +1456,7 @@ export default {
       try {
         if (this.selectedTimeRange === 'today') {
           this.accumulatedData = []
-          if (!this.hasBootstrappedTodayReplay && isTradingDay(new Date())) {
-            this.hasBootstrappedTodayReplay = true
-            this.replayDate = '2099-12-31'
-            await this.$nextTick()
-            await this.fetchCurrentData({ skipMinuteData: true })
-            this.replayDate = this.todayDate
-            await this.$nextTick()
-            await this.onReplayDateChange()
-          } else {
-            await this.fetchCurrentData()
-          }
+          await this.fetchCurrentData()
         } else {
           this.currentData = []
           await this.fetchAccumulatedData(this.selectedTimeRange)

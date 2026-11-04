@@ -58,6 +58,7 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  margin-right: 290px; /* 避让右上角固定北京时间+登录入口(Root.vue top-actions) */
 }
 
 /* ===== 第二层:指数条 + 大盘摘要 ===== */
@@ -72,32 +73,41 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 10px 16px;
-  background: #111827;
-  border: 1px solid #253247;
-  border-radius: 10px;
+  gap: 10px;
   overflow: hidden;
 }
 
+/* 指数独立小卡:名称/价格/涨跌幅竖排,涨红跌绿左边框呼应 */
 .market-index-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 96px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #172235;
+  border: 1px solid #253247;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .market-index-chip .mi-name {
-  font-size: 12px;
+  font-size: 11px;
   color: #8795AA;
   font-weight: 600;
 }
 
 .market-index-chip .mi-price {
-  font-size: 15px;
+  font-size: 16px;
   color: #E5EAF2;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.market-index-chip .market-up,
+.market-index-chip .market-down {
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1223,6 +1233,7 @@ button:active:not(:disabled) {
     gap: 8px;
     width: 100%;
     white-space: normal;
+    margin-right: 0; /* 移动端 top-actions 缩小,无需避让 */
   }
   .title-actions > button,
   .title-actions > .more-menu-wrapper {
