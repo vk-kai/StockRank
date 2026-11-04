@@ -1375,6 +1375,10 @@ export default {
             // 替代旧的 2099-12-31 规避写法(先假装回放一个不存在的日期再切回来)
             this.lastTimeKeys = newTimeKeys
             if (newTimeKeys.length > 1) {
+              // 自适应节奏:点数多时(收盘后全天240点)提速,总时长封顶约8秒,
+              // 避免固定200ms/点导致收盘后要长48秒
+              const points = newTimeKeys.length
+              this.autoGrowSpeed = Math.max(33, Math.min(200, Math.round(8000 / points)))
               this.autoGrowCursor = 0
               this.autoGrowTimer = setInterval(() => {
                 if (this.autoGrowCursor === null) {
@@ -1644,6 +1648,8 @@ export default {
       }
       this.multiDayCursor = 0
       this.updateChart()   // 先渲染第1天,此后每个 tick 增加一天(原实现首帧直接跳到第2天)
+      // 自适应节奏:天数多时提速,总时长封顶约8秒(与当天首载同规则)
+      this.autoGrowSpeed = Math.max(80, Math.min(200, Math.round(8000 / dates.length)))
       this.multiDayTimer = setInterval(() => {
         if (this.multiDayCursor === null) {
           this.multiDayCursor = 0

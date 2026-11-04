@@ -354,43 +354,50 @@ def start_health_checker():
     if _check_running:
         return
 
-    now = datetime.now().isoformat()
-    trading_now = _is_trading_now()
-    sector_ok = True
-    if trading_now:
-        _, sector_ok, sector_time = _acquire_headers(3)
+    # 首屏检测要联网探测数据源(内网/断网时每次请求都要耗满超时,最坏约2分钟),
+    # 放后台线程跑,避免阻塞 app.py 主线程的 socketio.run —— 否则服务迟迟不监听端口。
+    def _first_check_then_loop():
+        now = datetime.now().isoformat()
+        trading_now = _is_trading_now()
+        sector_ok = True
+        sector_time = None
+        if trading_now:
+            _, sector_ok, sector_time = _acquire_headers(3)
 
-    news_headers, news_found = _acquire_news_headers(5)
+        news_headers, news_found = _acquire_news_headers(5)
 
-    if sector_ok and news_found:
-        news_ok, _, news_error = _test_news_with_headers(news_headers)
-        _health_status['news'] = {
-            'status': 'ok' if news_ok else 'error',
-            'last_check': now,
-            'error': None if news_ok else news_error,
-            'response_time': None
-        }
-        _health_status['sector'] = {
-            'status': 'ok' if sector_ok else 'error',
-            'last_check': now,
-            'error': None if trading_now else '非交易时间，跳过板块检测',
-            'response_time': sector_time if trading_now else None
-        }
-        save_health_status()
-    else:
-        _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '获取新闻请求头失败', 'response_time': None}
-        _health_status['sector'] = {
-            'status': 'error' if trading_now and not sector_ok else 'ok',
-            'last_check': now,
-            'error': '获取板块请求头失败' if trading_now and not sector_ok else '非交易时间，跳过板块检测',
-            'response_time': None
-        }
-        save_health_status()
-        health_logger.warning('健康检测初始化失败：新闻或板块数据源不可用')
+        if sector_ok and news_found:
+            news_ok, _, news_error = _test_news_with_headers(news_headers)
+            _health_status['news'] = {
+                'status': 'ok' if news_ok else 'error',
+                'last_check': now,
+                'error': None if news_ok else news_error,
+                'response_time': None
+            }
+            _health_status['sector'] = {
+                'status': 'ok' if sector_ok else 'error',
+                'last_check': now,
+                'error': None if trading_now else '非交易时间，跳过板块检测',
+                'response_time': sector_time if trading_now else None
+            }
+            save_health_status()
+        else:
+            _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '获取新闻请求头失败', 'response_time': None}
+            _health_status['sector'] = {
+                'status': 'error' if trading_now and not sector_ok else 'ok',
+                'last_check': now,
+                'error': '获取板块请求头失败' if trading_now and not sector_ok else '非交易时间，跳过板块检测',
+                'response_time': None
+            }
+            save_health_status()
+            health_logger.warning('健康检测初始化失败：新闻或板块数据源不可用')
 
-    _check_running = True
-    _check_thread = threading.Thread(target=_periodic_check_loop, daemon=True)
-    _check_thread.start()
+        # 首屏检测完成后，开启定时检测循环
+        _check_running = True
+        _check_thread = threading.Thread(target=_periodic_check_loop, daemon=True)
+        _check_thread.start()
+
+    threading.Thread(target=_first_check_then_loop, daemon=True).start()
 
 def stop_health_checker():
     """停止定时健康检测"""

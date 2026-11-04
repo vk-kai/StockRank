@@ -17,11 +17,18 @@ system_logger = get_logger('system')
 @news_bp.route('/news', methods=['GET'])
 def get_news():
     try:
-        page = request.args.get('page', '1', type=int)
-        page_size = request.args.get('page_size', '40', type=int)
+        # 旧版 Werkzeug 缺参时返回字符串 default，显式转 int 兼容
+        def _int_arg(name, default):
+            v = request.args.get(name, default, type=int)
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+        page = _int_arg('page', 1)
+        page_size = _int_arg('page_size', 40)
         importance = request.args.get('importance', None, type=str)
-        start_time = request.args.get('start_time', None, type=int)
-        end_time = request.args.get('end_time', None, type=int)
+        start_time = _int_arg('start_time', None)
+        end_time = _int_arg('end_time', None)
 
         page = max(1, page)
         page_size = max(1, min(100, page_size))

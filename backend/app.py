@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import emit
 from werkzeug.exceptions import HTTPException
@@ -103,6 +103,18 @@ def create_app():
     app.register_blueprint(agent_bp)   # 个人数字分身 Agent(/api/agent/*, 登录守卫自动覆盖)
     app.register_blueprint(deploy_bp)  # 配置页手动部署按钮(/api/deploy/docker-restart, vk登录态+SSH密码双门)
     install_auth_guard(app)
+
+    # ==================== 本地直服前端 dist ====================
+    # 生产由 nginx 服务 dist 并把 /api、/socket.io 反代到本服务(本服务收不到静态请求)，
+    # 这里只在检测到 frontend/dist 时注册兜底路由，方便本地无 nginx 环境直接 5000 端口整站试用。
+    _local_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'dist')
+    if os.path.isdir(_local_dist):
+        @app.route('/', defaults={'sub': ''})
+        @app.route('/<path:sub>')
+        def local_frontend(sub):
+            if sub and os.path.isfile(os.path.join(_local_dist, sub)):
+                return send_from_directory(_local_dist, sub)
+            return send_from_directory(_local_dist, 'index.html')
     
     # ==================== SocketIO 事件 ====================
     @socketio.on('connect')

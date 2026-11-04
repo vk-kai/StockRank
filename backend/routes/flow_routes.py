@@ -638,7 +638,12 @@ def get_history():
 @flow_bp.route('/minute', methods=['GET'])
 def get_minute_data():
     try:
-        hours = request.args.get('hours', '24', type=int)
+        # 旧版 Werkzeug 缺参时返回字符串 default，显式转 int 兼容
+        hours = request.args.get('hours', 24, type=int) or 24
+        try:
+            hours = int(hours)
+        except (TypeError, ValueError):
+            hours = 24
         hours = min(hours, 24)
         
         minute_data = load_recent_realtime_data(hours)
