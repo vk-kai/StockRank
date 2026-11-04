@@ -1695,3 +1695,10 @@ export async function deployDockerRestart(password) {
   const response = await apiClient.post('/deploy/docker-restart', { password })
   return response.data
 }
+
+/** 配置页部署运维:版本信息(部署 SHA、GitHub main 最近 3 条提交、远程领先数)。
+ * 只读、无需 SSH 密码;fresh=1 绕过后端 60s 缓存。 */
+export async function getDeployVersionInfo(fresh = false) {
+  const response = await apiClient.get('/deploy/version-info', { params: fresh ? { fresh: 1 } : {} })
+  return response.data
+}

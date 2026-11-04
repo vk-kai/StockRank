@@ -28,6 +28,7 @@ import {
   enableOtp,
   disableOtp,
   deployDockerRestart
+  , getDeployVersionInfo
 } from '../../services/apiService'
 import SecurityAlert from '../SecurityAlert.vue'
 
@@ -134,6 +135,11 @@ export default {
         phase: 'idle',   // idle | recovering | done
         message: ''
       },
+      deployVersion: {
+        loading: false,
+        data: null,
+        error: null
+      },
       toast: {
         show: false,
         message: '',
@@ -172,6 +178,14 @@ export default {
     this.loadNotifySettings()
     this.loadDatasourceConfig()
     this.loadOtpStatus()
+  },
+  watch: {
+    // 切到部署运维页签时拉取版本信息(只读,无需密码)
+    activeTab(tab) {
+      if (tab === 'deploy' && !this.deployVersion.data && !this.deployVersion.loading) {
+        this.loadDeployVersion()
+      }
+    }
   },
   computed: {
     datasourceGroups() {
@@ -956,17 +970,25 @@ export default {
     },
 
     pollDeployRecovery(attempt = 0) {
-      // 部署会重启全部容器,轮询首页 HEAD:连续 2 次通 = 服务已恢复;上限 5 分钟
-      if (attempt >= 30) {
+      // 部署会重启全部容器,轮询后端 /health(公共动态接口:nginx+backend 都活着才 200,
+      // 不会被缓存,静态页 '/' 在后端没起时也能 200,不能当恢复信号)。
+      // 连续 2 次成功 = 已恢复;上限 10 分钟。
+      // fetch 必须带超时:容器 down 期间端口可能黑洞式挂起,一个不超时的 fetch
+      // 会把整条轮询链卡住数分钟——表现为"页面明明能访问了,按钮一直'部署中'"。
+      if (attempt >= 60) {
         this.deployStatus = {
           phase: 'done',
-          message: '⏱ 等待超时(5 分钟),请稍后手动刷新页面确认服务状态'
+          message: '⏱ 等待超时(10 分钟),请手动刷新页面确认服务状态'
         }
         return
       }
       setTimeout(() => {
-        fetch('/', { method: 'HEAD', cache: 'no-store' })
-          .then(() => {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 8000)
+        fetch('/health', { method: 'HEAD', cache: 'no-store', signal: ctrl.signal })
+          .then((r) => {
+            clearTimeout(timer)
+            if (!r.ok) throw new Error('not-ok')   // 5xx/CDN 错误页不算恢复
             this._deployOkCount = (this._deployOkCount || 0) + 1
             if (this._deployOkCount >= 2) {
               this._deployOkCount = 0
@@ -974,15 +996,42 @@ export default {
                 phase: 'done',
                 message: '✅ 服务已恢复,部署完成!刷新页面即可使用最新版本'
               }
+              this.loadDeployVersion(true)
             } else {
               this.pollDeployRecovery(attempt + 1)
             }
           })
           .catch(() => {
+            clearTimeout(timer)
             this._deployOkCount = 0
             this.pollDeployRecovery(attempt + 1)
           })
       }, 10000)
+    },
+
+    // ===== 部署运维:版本信息(当前部署 vs GitHub main,只读) =====
+    async loadDeployVersion(fresh = false) {
+      this.deployVersion = { loading: true, data: this.deployVersion.data, error: null }
+      try {
+        const res = await getDeployVersionInfo(fresh)
+        if (res && res.success) {
+          this.deployVersion = { loading: false, data: res, error: null }
+        } else {
+          this.deployVersion = {
+            loading: false, data: null,
+            error: (res && res.message) || '获取版本信息失败'
+          }
+        }
+      } catch (e) {
+        this.deployVersion = { loading: false, data: null, error: '获取版本信息失败:连接异常' }
+      }
+    },
+    fmtCommitTime(iso) {
+      if (!iso) return ''
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return iso
+      const p = (n) => String(n).padStart(2, '0')
+      return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
     }
   }
 }

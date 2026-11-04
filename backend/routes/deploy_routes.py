@@ -11,6 +11,7 @@ import os
 import shlex
 import threading
 import time
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
@@ -28,6 +29,16 @@ DEPLOY_SSH_HOST = os.environ.get('DEPLOY_SSH_HOST', 'host.docker.internal')
 DEPLOY_SSH_USER = os.environ.get('DEPLOY_SSH_USER', 'root')
 DEPLOY_MIN_INTERVAL = 300   # 两次手动部署最小间隔(秒),防连点
 
+# 版本信息:仓库公开时匿名 API 够用;私有化后在 compose 配 GITHUB_TOKEN
+GITHUB_REPO = os.environ.get('DEPLOY_GITHUB_REPO', 'vk-kai/StockRank')
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
+# 部署版本标记:宿主机部署脚本在容器起来后写入 backend/DEPLOYED_VERSION,
+# backend 目录以 volume 挂载进容器,这里直接读到
+_VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'DEPLOYED_VERSION')
+_VERSION_TTL = 60.0   # GitHub API 匿名限流 60/h,进程内缓存 1 分钟
+_version_cache = {'ts': 0.0, 'data': None}
+
 # 进程内节流;down/up 期间本进程随容器重启,时间戳清零,重启后自然解锁
 _last_deploy_ts = 0.0
 _deploy_lock = threading.Lock()
@@ -41,7 +52,8 @@ _SCRIPT = (
     "iptables -t nat -L CNI-HOSTPORT-DNAT --line-numbers -n 2>/dev/null | "
     "grep docker_stock-network | awk '{print $1}' | sort -rn | "
     "xargs -r -I{} iptables -t nat -D CNI-HOSTPORT-DNAT {} ; "
-    "docker compose up -d --build"
+    "docker compose up -d --build ; "
+    "git rev-parse HEAD > /root/StockRank/backend/DEPLOYED_VERSION"
 )
 REMOTE_CMD = ("nohup bash -c " + shlex.quote(_SCRIPT)
               + " >/root/manual_deploy.log 2>&1 & echo DEPLOY_TRIGGERED")
@@ -101,3 +113,68 @@ def docker_restart():
         # 异常对象不含密码,可安全记录;提示保持模糊防探测
         error_logger.warning(f'手动部署触发失败: {repr(e)[:160]}')
         return jsonify({'success': False, 'message': '触发失败:SSH 连接异常'}), 500
+
+
+def _gh(path):
+    """GitHub REST API 只读访问(可带 token;仓库公开时匿名即可)。"""
+    import requests
+    headers = {'Accept': 'application/vnd.github+json'}
+    if GITHUB_TOKEN:
+        headers['Authorization'] = 'Bearer ' + GITHUB_TOKEN
+    r = requests.get('https://api.github.com' + path, headers=headers, timeout=8)
+    if r.status_code in (401, 403):
+        raise RuntimeError('认证失败或被限流(仓库私有化后需配置 GITHUB_TOKEN)')
+    if r.status_code == 404:
+        raise RuntimeError('仓库不存在或无权限访问(私有化后需配置 GITHUB_TOKEN)')
+    r.raise_for_status()
+    return r.json()
+
+
+@deploy_bp.route('/version-info', methods=['GET'])
+def version_info():
+    """部署版本 vs GitHub main:部署 SHA、最近 3 条提交、远程领先数。
+
+    部署 SHA 来自宿主机部署脚本写入的 DEPLOYED_VERSION(volume 挂载可见);
+    远程信息走 GitHub API。只读、无需 SSH 密码,vk 登录态即可查看。
+    """
+    if not is_authenticated():
+        return jsonify({'success': False, 'error': 'auth_required'}), 401
+
+    fresh = request.args.get('fresh') == '1'
+    now = time.time()
+    if not fresh and _version_cache['data'] and now - _version_cache['ts'] < _VERSION_TTL:
+        return jsonify(_version_cache['data'])
+
+    deployed_sha = None
+    deployed_at = None
+    try:
+        with open(_VERSION_FILE) as f:
+            deployed_sha = f.read().strip() or None
+        if deployed_sha:
+            deployed_at = datetime.fromtimestamp(
+                os.path.getmtime(_VERSION_FILE)).strftime('%Y-%m-%d %H:%M')
+    except OSError:
+        pass   # 尚无标记(老部署脚本产物),前端显示"未知"
+
+    result = {'success': True, 'deployed_sha': deployed_sha, 'deployed_at': deployed_at,
+              'commits': [], 'ahead_by': None, 'remote_error': None}
+
+    try:
+        data = _gh('/repos/%s/commits?per_page=3' % GITHUB_REPO)
+        result['commits'] = [{
+            'sha': c['sha'][:7],
+            'message': ((c.get('commit') or {}).get('message') or '').splitlines()[0][:120],
+            'author': ((c.get('commit') or {}).get('author') or {}).get('name') or '',
+            'date': ((c.get('commit') or {}).get('author') or {}).get('date') or '',
+        } for c in data]
+        if deployed_sha:
+            if deployed_sha == data[0]['sha']:
+                result['ahead_by'] = 0
+            else:
+                cmp_data = _gh('/repos/%s/compare/%s...main' % (GITHUB_REPO, deployed_sha))
+                result['ahead_by'] = cmp_data.get('ahead_by')
+    except Exception as e:
+        result['remote_error'] = str(e)[:160] or 'GitHub API 不可达'
+
+    _version_cache.update(ts=now, data=result)
+    return jsonify(result)

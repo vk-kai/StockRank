@@ -12,3 +12,6 @@ openpyxl>=3.1
 
 # 配置页手动部署按钮:SSH 到宿主机执行 git pull + docker 重建(paramiko, 轻量纯Python)
 paramiko>=3.4
+
+# 配置页部署运维版本信息:GitHub API 查最近提交与领先数(轻量纯Python)
+requests>=2.28

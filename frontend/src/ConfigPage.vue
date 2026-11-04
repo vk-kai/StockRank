@@ -716,6 +716,44 @@
               {{ deployStatus.phase === 'recovering' ? '部署中…' : '拉取最新代码并重建容器' }}
             </button>
           </div>
+
+          <!-- 版本信息:当前部署 vs GitHub main(只读,无需密码) -->
+          <div class="deploy-version">
+            <div class="dv-head">
+              <span class="dv-title">📦 版本信息</span>
+              <button class="dv-refresh" @click="loadDeployVersion(true)" :disabled="deployVersion.loading">
+                {{ deployVersion.loading ? '刷新中…' : '🔄 刷新' }}
+              </button>
+            </div>
+            <div v-if="deployVersion.error" class="dv-error">{{ deployVersion.error }}</div>
+            <template v-else-if="deployVersion.data">
+              <div class="dv-line">
+                当前部署:
+                <code v-if="deployVersion.data.deployed_sha">{{ deployVersion.data.deployed_sha.slice(0, 7) }}</code>
+                <span v-else class="dv-muted">未知(下次部署后显示)</span>
+                <span v-if="deployVersion.data.deployed_at" class="dv-time">· {{ deployVersion.data.deployed_at }}</span>
+              </div>
+              <div class="dv-line dv-gap" v-if="!deployVersion.data.remote_error">
+                <template v-if="deployVersion.data.ahead_by === 0">✅ 已是最新,与远程 main 一致</template>
+                <template v-else-if="deployVersion.data.ahead_by != null">
+                  ⬆️ 远程 main 领先 <b>{{ deployVersion.data.ahead_by }}</b> 个提交,可一键部署更新
+                </template>
+                <template v-else><span class="dv-muted">领先数未知(需先完成一次部署以记录版本)</span></template>
+              </div>
+              <div v-if="deployVersion.data.remote_error" class="dv-error">
+                GitHub 访问失败: {{ deployVersion.data.remote_error }}
+              </div>
+              <ul class="dv-commits" v-if="deployVersion.data.commits.length">
+                <li class="dv-commit-sub">远程 main 最近提交:</li>
+                <li v-for="c in deployVersion.data.commits" :key="c.sha" class="dv-commit">
+                  <code>{{ c.sha }}</code>
+                  <span class="dv-msg" :title="c.message">{{ c.message }}</span>
+                  <span class="dv-time">{{ fmtCommitTime(c.date) }}</span>
+                </li>
+              </ul>
+            </template>
+            <div v-else-if="!deployVersion.loading" class="dv-muted">尚未加载版本信息</div>
+          </div>
         </div>
       </div>
     </div>

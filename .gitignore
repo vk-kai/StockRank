@@ -54,6 +54,9 @@ backend/agent_core/web/
 *.swo
 *~
 
+# 部署版本标记:宿主机部署脚本运行时写入(git rev-parse HEAD),非源码
+backend/DEPLOYED_VERSION
+
 # 系统文件
 .DS_Store
 Thumbs.db

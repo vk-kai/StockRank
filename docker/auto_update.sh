@@ -90,6 +90,13 @@ cd "$REPO_DIR" || { log "错误: 无法进入仓库目录 $REPO_DIR"; exit 1; }
 
 log "自动更新脚本启动 | 仓库=$REPO_DIR | 分支=$GIT_BRANCH | 间隔=${CHECK_INTERVAL}s | 避交易时段=$AVOID_TRADING_HOURS"
 
+# 部署版本标记:backend 目录 volume 挂载进容器,配置页读它显示"当前部署 vs
+# 远程 main 差距"。脚本启动时认为容器即当前 HEAD(稳态);每次重建完成后再覆写。
+write_deployed_version() {
+    git rev-parse HEAD > "$REPO_DIR/backend/DEPLOYED_VERSION" 2>/dev/null || true
+}
+write_deployed_version
+
 PENDING_REBUILD=0   # 已 pull 但尚未重建的标志
 NEED_BUILD=""       # 本次是否需 --build(空=只重启;requirements/Dockerfile 变了才 --build)
 
@@ -147,6 +154,8 @@ while true; do
             up_rc=$?
             t2=$(date +%s)
             log "  up 完成,耗时 $((t2 - t1))s (rc=$up_rc)"
+            # 容器已随当前 HEAD 起来,更新部署版本标记(配置页版本信息数据源)
+            write_deployed_version
             if [ "$down_rc" -eq 0 ] && [ "$up_rc" -eq 0 ]; then
                 # 起来自检:podman(netavark) 的端口转发规则偶发不生效(容器 Up 但内外都不通)。
                 # 只有探测失败才走修复流程,绝不无脑每轮 restart podman。

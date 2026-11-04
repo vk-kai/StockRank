@@ -1198,3 +1198,77 @@
   border: 1px solid rgba(61, 143, 95, 0.45);
   color: #5ec489;
 }
+
+/* 版本信息面板:当前部署 SHA vs GitHub main */
+.deploy-version {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.dv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dv-title { font-weight: 600; color: rgba(255, 255, 255, 0.9); }
+.dv-refresh {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.dv-refresh:hover:not(:disabled) { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.dv-refresh:disabled { opacity: 0.5; cursor: default; }
+.dv-line { color: rgba(255, 255, 255, 0.75); }
+.dv-line code {
+  background: rgba(79, 157, 255, 0.12);
+  color: #4f9dff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+.dv-gap b { color: #f5a623; }
+.dv-muted { color: rgba(255, 255, 255, 0.4); }
+.dv-time { color: rgba(255, 255, 255, 0.4); font-size: 12px; }
+.dv-error {
+  color: #e05252;
+  font-size: 12px;
+}
+.dv-commits {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.dv-commit-sub {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+.dv-commit {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+.dv-commit code {
+  color: #4f9dff;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.dv-msg {
+  color: rgba(255, 255, 255, 0.75);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.dv-commit .dv-time { flex-shrink: 0; }
