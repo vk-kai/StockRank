@@ -54,8 +54,9 @@ backend/agent_core/web/
 *.swo
 *~
 
-# 部署版本标记:宿主机部署脚本运行时写入(git rev-parse HEAD),非源码
+# 部署运行时标记(宿主机部署脚本写入,非源码):版本标记 + 分步状态
 backend/DEPLOYED_VERSION
+backend/DEPLOY_STATUS
 
 # 系统文件
 .DS_Store
