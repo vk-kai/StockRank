@@ -334,55 +334,54 @@
     
     <SecurityAlert />
 
-    <!-- 个股详情弹窗 -->
+    <!-- 个股详情弹窗(760px 窄卡:标题带方向徽章,sticky 表头,数字右对齐) -->
     <div class="modal-overlay" v-if="showStockModal" @click="closeStockModal">
-      <div class="modal-container" @click.stop>
-        <div class="modal-header">
-          <h3>{{ selectedSector?.name }} - 个股详情</h3>
+      <div class="modal-container modal-container--stocks" role="dialog" aria-modal="true" :aria-label="selectedSector?.name + ' 个股详情'" @click.stop>
+        <div class="modal-header stocks-header">
+          <div class="stocks-title-block">
+            <h3>{{ selectedSector?.name }}</h3>
+            <span
+              class="stocks-dir-badge"
+              :class="selectedSector && (Number(selectedSector.net_flow ?? 0) >= 0 && (selectedSector.flow_direction || selectedSector.flow_group) !== 'out') ? 'in' : 'out'"
+            >{{ selectedSector && (Number(selectedSector.net_flow ?? 0) >= 0 && (selectedSector.flow_direction || selectedSector.flow_group) !== 'out') ? '净流入' : '净流出' }} {{ selectedSector?.net_flow != null ? formatNetFlow(selectedSector.net_flow) : '' }}</span>
+          </div>
+          <div class="stocks-meta">共 {{ sectorStocks.length }} 只 · 点击个股名在雪球打开</div>
           <button class="close-btn" @click="closeStockModal">×</button>
         </div>
-        
-        <div class="modal-controls">
-          <div class="sort-controls">
-            <span class="sort-hint">点击表头即可排序</span>
-          </div>
-        </div>
 
-        <div class="modal-body">
+        <div class="modal-body stocks-body">
           <div class="stocks-table">
             <div class="table-header">
-              <div class="col">序号</div>
+              <div class="col col-idx">#</div>
               <div class="col">代码</div>
               <div class="col">名称</div>
-              <div class="col clickable" @click="toggleSort('change')">
-                涨跌幅
-                <span v-if="stockSortField === 'change'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </div>
-              <div class="col clickable" @click="toggleSort('price')">
-                股价
-                <span v-if="stockSortField === 'price'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </div>
-              <div class="col clickable" @click="toggleSort('turnover')">
-                换手率
-                <span v-if="stockSortField === 'turnover'" class="sort-icon">{{ stockSortOrder === 'desc' ? '↓' : '↑' }}</span>
-              </div>
-              <div class="col">成交量</div>
+              <div class="col col-num sortable" :class="{ 'sorted-desc': stockSortField === 'change' && stockSortOrder === 'desc', 'sorted-asc': stockSortField === 'change' && stockSortOrder === 'asc' }" @click="toggleSort('change')">涨跌幅</div>
+              <div class="col col-num sortable" :class="{ 'sorted-desc': stockSortField === 'price' && stockSortOrder === 'desc', 'sorted-asc': stockSortField === 'price' && stockSortOrder === 'asc' }" @click="toggleSort('price')">股价</div>
+              <div class="col col-num sortable" :class="{ 'sorted-desc': stockSortField === 'turnover' && stockSortOrder === 'desc', 'sorted-asc': stockSortField === 'turnover' && stockSortOrder === 'asc' }" @click="toggleSort('turnover')">换手率</div>
+              <div class="col col-num">成交量</div>
             </div>
-            <div 
-              v-for="(stock, index) in sectorStocks" 
-              :key="stock.code || index"
-              class="table-row"
-            >
-              <div class="col">{{ index + 1 }}</div>
-              <div class="col">{{ stock.code }}</div>
-              <div class="col clickable" @click="openXueqiuStock(stock.code)">{{ stock.name }}</div>
-              <div class="col" :class="stock.change >= 0 ? 'positive' : 'negative'">
-                {{ stock.change >= 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
-              </div>
-              <div class="col">{{ stock.price }}</div>
-              <div class="col">{{ stock.turnover }}</div>
-              <div class="col">{{ stock.volume }}</div>
+            <div v-if="loadingStocks" class="stocks-skeleton">
+              <div class="skel-row" v-for="n in 6" :key="'sk'+n"></div>
             </div>
+            <div v-else-if="stocksError" class="stocks-empty stocks-error">{{ stocksError }}</div>
+            <template v-else-if="sectorStocks.length">
+              <div
+                v-for="(stock, index) in sectorStocks"
+                :key="stock.code || index"
+                class="table-row"
+              >
+                <div class="col col-idx">{{ index + 1 }}</div>
+                <div class="col">{{ stock.code }}</div>
+                <div class="col col-name" @click="openXueqiuStock(stock.code)" title="在雪球打开">{{ stock.name }}</div>
+                <div class="col col-num" :class="stock.change > 0 ? 'positive' : (stock.change < 0 ? 'negative' : 'flat')">
+                  {{ stock.change > 0 ? '+' : '' }}{{ (stock.change * 100).toFixed(2) }}%
+                </div>
+                <div class="col col-num">{{ stock.price != null ? Number(stock.price).toFixed(2) : '--' }}</div>
+                <div class="col col-num">{{ stock.turnover != null && stock.turnover !== '' ? Number(String(stock.turnover).replace(/[^\d.-]/g, '')).toFixed(2) + '%' : '--' }}</div>
+                <div class="col col-num">{{ stock.volume || '--' }}</div>
+              </div>
+            </template>
+            <div v-else class="stocks-empty">暂无个股数据</div>
           </div>
         </div>
       </div>

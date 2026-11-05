@@ -1942,6 +1942,14 @@ export default {
       this.stocksError = null
       this.sectorStocks = []
 
+      // Esc 关闭弹窗(打开时挂监听,关闭时移除,防止泄漏)
+      if (!this._stocksEscHandler) {
+        this._stocksEscHandler = (e) => {
+          if (e.key === 'Escape' && this.showStockModal) this.closeStockModal()
+        }
+        window.addEventListener('keydown', this._stocksEscHandler)
+      }
+
       // 前端缓存：同一板块 5 分钟内秒开（配合后端缓存，重复点击即时响应）
       if (!this._sectorStocksCache) this._sectorStocksCache = {}
       const _cachedStocks = this._sectorStocksCache[sectorUrl]
@@ -1976,6 +1984,10 @@ export default {
       this.selectedSector = null
       this.sectorStocks = []
       this.stocksError = null
+      if (this._stocksEscHandler) {
+        window.removeEventListener('keydown', this._stocksEscHandler)
+        this._stocksEscHandler = null
+      }
     },
 
     openXueqiuStock(code) {
