@@ -242,11 +242,13 @@
                 <span class="fa-rank-id" v-else>#{{ f.rank }}</span>
               </div>
               <div class="fa-card-meta">
-                <span class="fa-net" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
-                  净流入 {{ fmt(f.net_flow) }} 亿
+                <span class="fa-net fa-meta-item" :class="f.net_flow >= 0 ? 'pos' : 'neg'">
+                  <span class="fa-meta-num">{{ f.net_flow >= 0 ? '+' : '' }}{{ fmt(f.net_flow) }}</span>
+                  <span class="fa-meta-lbl">亿净流入</span>
                 </span>
-                <span class="fa-chg" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
-                  {{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%
+                <span class="fa-chg fa-meta-item" :class="f.change_pct >= 0 ? 'pos' : 'neg'">
+                  <span class="fa-meta-num">{{ f.change_pct >= 0 ? '+' : '' }}{{ fmt(f.change_pct) }}%</span>
+                  <span class="fa-meta-lbl">板块涨幅</span>
                 </span>
                 <span class="fa-lead" v-if="f.lead_stock">龙头 {{ f.lead_stock }}<template v-if="f.lead_change != null"> {{ f.lead_change >= 0 ? '+' : '' }}{{ fmt(f.lead_change) }}%</template></span>
               </div>
@@ -355,8 +357,14 @@
               <span class="fa-pushed-tag">{{ a.pushed ? '✓ 已送达' : '✗ 未送达' }}</span>
             </div>
             <div class="fa-card-meta">
-              <span class="fa-net" :class="a.net_flow >= 0 ? 'pos' : 'neg'">净流入 {{ fmt(a.net_flow) }} 亿</span>
-              <span class="fa-chg" :class="a.change_pct >= 0 ? 'pos' : 'neg'">{{ a.change_pct >= 0 ? '+' : '' }}{{ fmt(a.change_pct) }}%</span>
+              <span class="fa-net fa-meta-item" :class="a.net_flow >= 0 ? 'pos' : 'neg'">
+                <span class="fa-meta-num">{{ a.net_flow >= 0 ? '+' : '' }}{{ fmt(a.net_flow) }}</span>
+                <span class="fa-meta-lbl">亿净流入</span>
+              </span>
+              <span class="fa-chg fa-meta-item" :class="a.change_pct >= 0 ? 'pos' : 'neg'">
+                <span class="fa-meta-num">{{ a.change_pct >= 0 ? '+' : '' }}{{ fmt(a.change_pct) }}%</span>
+                <span class="fa-meta-lbl">板块涨幅</span>
+              </span>
               <span class="fa-lead" v-if="a.lead_stock">龙头 {{ a.lead_stock }}</span>
             </div>
             <div class="fa-hits">
@@ -820,21 +828,35 @@ export default {
 .chip-spike.active { background: #fa8c16; border-color: #ffa940; }
 .chip-streak.active { background: #06b6d4; border-color: #22d3ee; }
 
-.fa-timeline { display: flex; flex-direction: column; gap: 10px; }
+.fa-timeline { display: flex; flex-direction: column; gap: 14px; }
+/* 分组头:把同一板块/同一股票的多条命中归到一个时间组下,视觉降密的主载体 */
+.fa-group-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px; padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(139, 164, 199, 0.25);
+}
+.fa-group-time { font-size: 15px; font-weight: 700; color: #fff; font-family: monospace; font-variant-numeric: tabular-nums; }
+.fa-group-count { font-size: 11px; color: #6a7a99; }
 .fa-card {
   background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5);
-  border-radius: 8px; padding: 12px 16px; border-left: 3px solid #3a4a6b;
+  border-radius: 8px; padding: 14px 18px; border-left: 3px solid #3a4a6b;
 }
-.fa-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.fa-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .fa-time { font-size: 12px; color: #8ba4c7; font-family: monospace; }
-.fa-sector { font-size: 16px; font-weight: 600; color: #fff; flex: 1; }
+.fa-sector { font-size: 17px; font-weight: 700; color: #fff; flex: 1; letter-spacing: 0.3px; }
 .fa-rank { font-size: 11px; color: #faad14; border: 1px solid #faad14; border-radius: 10px; padding: 1px 8px; }
 .fa-rank-id { font-size: 11px; color: #8ba4c7; }
 .fa-pushed-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(82,196,26,.15); color: #52c41a; border: 1px solid rgba(82,196,26,.4); }
-.fa-card-meta { display: flex; gap: 18px; font-size: 13px; margin-bottom: 8px; flex-wrap: wrap; }
-.fa-net.pos, .fa-chg.pos { color: #ff4d4f; }
-.fa-net.neg, .fa-chg.neg { color: #13d17c; }
-.fa-lead { color: #c0cce0; }
+.fa-card-meta {
+  display: flex; gap: 10px; align-items: center; font-size: 14px; margin-bottom: 10px; flex-wrap: wrap;
+}
+/* 数字块化:数值大字+标签小字,替代一行塞下"净流入 xx 亿 +x.xx%"的密排 */
+.fa-meta-item { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 10px; border-radius: 6px; background: rgba(255,255,255,.04); }
+.fa-meta-num { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fa-meta-lbl { font-size: 11px; color: #8ba4c7; }
+.fa-net.pos .fa-meta-num, .fa-chg.pos .fa-meta-num { color: #ff4d4f; }
+.fa-net.neg .fa-meta-num, .fa-chg.neg .fa-meta-num { color: #13d17c; }
+.fa-lead { color: #c0cce0; font-size: 13px; }
 .fa-hits { display: flex; gap: 8px; flex-wrap: wrap; }
 .fa-hit {
   font-size: 12px; padding: 4px 10px; border-radius: 12px;
@@ -895,18 +917,18 @@ export default {
 .pulse-neg { color: #13d17c; }
 .fa-pulse-summary { margin-bottom: 14px; }
 /* ===== 板块聚集活动卡片（替代原涨跌家数温度卡） ===== */
-.fa-pulse-activity { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
-.fa-activity-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.fa-activity-title { font-weight: 600; color: #fff; }
+.fa-pulse-activity { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 16px; }
+.fa-activity-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.fa-activity-title { font-weight: 700; color: #fff; font-size: 15px; }
 .fa-activity-time { font-size: 11px; color: #6a7a99; }
-.fa-activity-counts { display: flex; gap: 16px; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+.fa-activity-counts { display: flex; gap: 18px; font-size: 15px; font-weight: 700; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed rgba(139,164,199,.25); }
 .act-pos { color: #ff7875; }
 .act-neg { color: #13d17c; }
 .fa-activity-empty { color: #6a7a99; font-size: 12px; padding: 2px 0; }
 .fa-rank-item em { font-style: normal; color: #8ba4c7; font-size: 11px; margin-left: 2px; }
 .fa-pulse-rank { background: rgba(26,35,53,.6); border: 1px solid rgba(58,74,107,.5); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
-.fa-rank-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
-.fa-rank-tag { font-size: 12px; border-radius: 10px; padding: 1px 10px; }
+.fa-rank-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 5px 0; }
+.fa-rank-tag { font-size: 12px; border-radius: 10px; padding: 1px 10px; flex-shrink: 0; }
 .rank-pos { color: #ff7875; border: 1px solid rgba(255,120,117,.5); background: rgba(255,77,79,.12); }
 .rank-neg { color: #13d17c; border: 1px solid rgba(19,209,124,.5); background: rgba(19,209,124,.1); }
 .fa-rank-item { opacity: .92; }

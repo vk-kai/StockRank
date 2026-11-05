@@ -1300,19 +1300,18 @@ export default {
       }
     },
 
-    // 榜单行背景:按真实净流入/流出金额分档着色(流入红/流出绿,金额越大越浓)
+    // 榜单行进度条:方向定色(流入红/流出绿),金额越大条越长越亮(rankBarPct 定长,
+    // flow_deep_alpha 分档亮度)。行底保持中性轨道色,填充层浮于其上。
     rankRowBg(sector) {
       if (!sector) return null
       const net = Number(sector.net_flow ?? sector.total_net_flow ?? 0)
       if (!net) return null
       const isIn = (sector.flow_direction || sector.flow_group) !== 'out' && net >= 0
-      // 行底为极淡方向色(0.05~0.13),主载体是左缘色条(--bar-color 按 flow_deep_alpha 分级亮度)
-      const alpha = Number(sector.flow_alpha) || (0.13 - (sector.rank - 1) * 0.02)
       const barAlpha = Number(sector.flow_deep_alpha) || (0.6 - (sector.rank - 1) * 0.08)
-      const base = isIn ? '240, 82, 95' : '16, 185, 129'
+      const rgb = isIn ? '240, 82, 95' : '16, 185, 129'
       return {
-        background: `rgba(${base}, ${alpha})`,
-        '--bar-color': `rgba(${base}, ${barAlpha})`
+        '--bar-color': `rgba(${rgb}, ${barAlpha})`,
+        '--bar-rgb': rgb
       }
     },
 

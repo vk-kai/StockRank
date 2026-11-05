@@ -120,15 +120,16 @@
 }
 
 /* 摘要卡恢复原始同花顺式布局(用户点名保留):跌N|比例条|涨N 平N / 跌停|成交额|涨停|融资chip */
+/* (时间跨度已挪到图表上方与回放日期并排,不再占摘要卡) */
 .market-summary-panel {
   flex: 1;
   min-width: 0;
   padding: 8px 14px;
   display: grid;
-  grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
+  grid-template-columns: minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
   grid-template-areas:
-    "ts down bar up up2"
-    "ts limit turnover limit2 limit3";
+    "down bar up up2"
+    "limit turnover limit2 limit3";
   align-items: center;
   gap: 6px 14px;
   background: #111827;
@@ -136,35 +137,33 @@
   border-radius: 10px;
 }
 
-.time-selector {
-  grid-area: ts;
+/* 图表控件区的时间跨度(与回放日期并排) */
+.time-selector--inline {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-right: 14px;
-  border-right: 1px solid #253247;
+  align-items: center;
+  gap: 8px;
+  background: #172235;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #253247;
   white-space: nowrap;
 }
-
-.time-selector label {
-  color: #8795AA;
-  font-size: 11px;
+.time-selector--inline label {
+  color: #E5EAF2;
+  font-size: 13px;
+  font-weight: 500;
 }
-
-.time-selector select {
-  background: #172235;
-  border: 1px solid #253247;
+.time-selector--inline select {
+  background: #0b1424;
+  border: 1px solid rgba(135, 149, 170, 0.3);
   color: #E5EAF2;
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
 }
-
-.time-selector select:focus {
-  outline: none;
-  border-color: #398BFF;
-}
+.time-selector--inline select:hover { border-color: rgba(135, 149, 170, 0.5); }
+.time-selector--inline select:focus { outline: none; border-color: #398BFF; }
 
 /* 涨跌家数行:同花顺式 跌N(右对齐大字) | 比例条 | 涨N(左对齐大字) 平N(小字) */
 .market-breadth-row {
@@ -418,13 +417,22 @@
   font-size: 13px;
   cursor: pointer;
   transition: color 0.2s ease;
-  padding: 0;
+  padding: 0 14px;
   background: transparent;
   border-radius: 0;
   line-height: 1.6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 相邻新闻之间的竖直分割线:一眼看清每条的开始/结束 */
+.news-ticker-container .ticker-item + .ticker-item {
+  border-left: 1px solid rgba(135, 149, 170, 0.28);
+}
+
+.news-ticker-container .ticker-item:first-child {
+  padding-left: 0;
 }
 
 .news-ticker-container .ticker-item:hover {
@@ -885,18 +893,32 @@ button:active:not(:disabled) {
   transition: background 0.15s ease;
   min-width: 0;
   position: relative;
+  overflow: hidden;
 }
 
-/* 左缘方向色条:UI 改版主载体——方向看条色,强度看条亮度(flow_deep_alpha 内联),行底中性 */
-.rank-row::before {
-  content: '';
+/* 进度条式行:底层轨道 + .rank-row-fill 填充层(条长=同列最大净额占比,方向定色,金额越大越长越亮) */
+.rank-row-fill {
   position: absolute;
   left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--bar-color, transparent);
+  top: 0;
+  bottom: 0;
+  max-width: 100%;
+  border-radius: 6px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(var(--bar-rgb, 240, 82, 95), 0.05), var(--bar-color, rgba(240, 82, 95, 0.55)));
+  transition: width 0.4s ease;
+}
+/* 条右缘一条亮线,强化"进度条到这儿"的边界感 */
+.rank-row-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--bar-color, rgba(240, 82, 95, 0.8));
+  box-shadow: 0 0 6px var(--bar-color, rgba(240, 82, 95, 0.6));
 }
 
 /* 行底为极淡方向色(rankRowBg 0.05~0.13):hover 用内阴影提亮 */
@@ -937,39 +959,6 @@ button:active:not(:disabled) {
   color: #F0525F;
 }
 .rank-flow.net-negative { color: #10B981; }
-
-/* 金额占比条组合:金额数字 + 下方发光渐变条(参考用户提供的 UI:色条由主色向透明渐隐 + 外发光) */
-.rank-flow-wrap {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  min-width: 0;
-}
-
-.rank-flow-bar {
-  width: 56px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.05);
-  position: relative;
-  overflow: visible;
-}
-
-.rank-flow-bar::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--bar-pct, 0%);
-  border-radius: 2px;
-  /* 流入=红系渐变光条,流出=绿系;右端亮、向左渐隐,叠加微光晕(参考图发光条质感) */
-  background: linear-gradient(90deg, transparent, var(--bar-color, #F0525F));
-  box-shadow: 0 0 6px var(--bar-color, rgba(240, 82, 95, 0.6));
-  transition: width 0.4s ease;
-}
 
 .rank-chg {
   flex: 0 0 62px;
@@ -1258,7 +1247,7 @@ button:active:not(:disabled) {
 
 @media (max-width: 1200px) {
   .market-summary-panel {
-    grid-template-columns: auto minmax(110px, 1fr) auto minmax(110px, 1fr) auto;
+    grid-template-columns: minmax(110px, 1fr) auto minmax(110px, 1fr) auto;
     gap: 6px 10px;
     padding: 8px 10px;
   }
@@ -1319,22 +1308,10 @@ button:active:not(:disabled) {
   .market-summary-panel {
     grid-template-columns: auto 1fr auto;
     grid-template-areas:
-      "ts ts ts"
       "down bar up"
       "limit limit limit"
       "turnover turnover turnover";
     gap: 6px 10px;
-  }
-  .time-selector {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    border-right: none;
-    padding-right: 0;
-    border-top: 1px solid #253247;
-    padding: 8px 12px;
-    gap: 8px;
   }
   .controls {
     gap: 8px;
@@ -2123,25 +2100,37 @@ button:active:not(:disabled) {
 }
 .fa-quick-stat {
   flex: 1;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 10px 8px;
+  padding: 12px 8px 10px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.fa-quick-stat::after {
+  content: '';
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(57, 139, 255, 0.7), transparent);
 }
 .fa-quick-stat .num {
   display: block;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   color: #fff;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: 1.1;
 }
 .fa-quick-stat .lbl {
   display: block;
   font-size: 11px;
   color: #8795AA;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .fa-quick-loading,
@@ -2161,31 +2150,61 @@ button:active:not(:disabled) {
   flex-direction: column;
   gap: 8px;
 }
+/* 速览卡:左侧方向色缘(净流入红/净流出绿),标题行 = 时间 + 板块 + 右对齐大号净额数字 */
 .fa-quick-card {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid #3a4a6b;
-  border-radius: 6px;
-  padding: 9px 12px;
+  border-radius: 8px;
+  padding: 10px 14px;
+  position: relative;
+  overflow: hidden;
 }
+.fa-quick-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #3a4a6b;
+}
+.fa-quick-card.dir-in::before { background: linear-gradient(180deg, #F0525F, rgba(240, 82, 95, 0.35)); }
+.fa-quick-card.dir-out::before { background: linear-gradient(180deg, #10B981, rgba(16, 185, 129, 0.35)); }
+.fa-quick-card.pulse::before { background: linear-gradient(180deg, #f0b90b, rgba(240, 185, 11, 0.35)); }
 .fa-quick-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 .fa-quick-time {
-  font-size: 11px;
+  font-size: 12px;
   color: #8795AA;
   font-family: monospace;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 .fa-quick-sector {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: #fff;
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* 右对齐大号净额:一眼分清方向与量级(红入/绿出) */
+.fa-quick-netnum {
+  flex-shrink: 0;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.fa-quick-netnum i { font-style: normal; font-size: 11px; font-weight: 600; margin-left: 2px; }
+.fa-quick-netnum.pos { color: #F0525F; }
+.fa-quick-netnum.neg { color: #10B981; }
 .fa-quick-push {
   font-size: 11px;
   font-weight: 700;
@@ -2197,13 +2216,13 @@ button:active:not(:disabled) {
 
 .fa-quick-meta {
   display: flex;
-  gap: 14px;
+  gap: 12px;
+  align-items: baseline;
   flex-wrap: wrap;
   font-size: 12px;
 }
-.fa-quick-net.pos,
+.fa-quick-chg { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .fa-quick-chg.pos { color: #F0525F; }
-.fa-quick-net.neg,
 .fa-quick-chg.neg { color: #10B981; }
 .fa-quick-labels { color: #c0cce0; }
 .fa-quick-lead { color: #8795AA; }

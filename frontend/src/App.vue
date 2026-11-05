@@ -64,15 +64,6 @@
         </div>
 
         <div class="market-summary-panel">
-          <div class="time-selector">
-            <label>时间跨度</label>
-            <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
-              <option :value="'today'">当天</option>
-              <option :value="7">近7天</option>
-              <option :value="15">近15天</option>
-              <option :value="30">近30天</option>
-            </select>
-          </div>
           <div class="market-breadth-row">
             <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
             <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
@@ -224,6 +215,16 @@
         </svg>
       </button>
       <div class="chart-controls" v-if="!needsAuth">
+        <!-- 时间跨度:操作折线图与榜单数据的窗口(当天/近7/15/30天),与回放日期并排更好找 -->
+        <div class="time-selector time-selector--inline">
+          <label>时间跨度</label>
+          <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
+            <option :value="'today'">当天</option>
+            <option :value="7">近7天</option>
+            <option :value="15">近15天</option>
+            <option :value="30">近30天</option>
+          </select>
+        </div>
         <!-- 演示模式徽标：未登录访客只看固定历史快照，点击可登录看实时 -->
         <span
           v-if="demoMode"
@@ -285,12 +286,10 @@
             @mouseleave="unhighlightSector()"
             @click="openStockModal(sector)"
           >
+            <span class="rank-row-fill" :style="{ width: rankBarPct(sector), '--bar-color': rankRowBg(sector)['--bar-color'] }"></span>
             <span class="rank-no">{{ sector.rank }}</span>
             <span class="rank-name">{{ sector.name }}</span>
-            <span class="rank-flow-wrap">
-              <span class="rank-flow" :class="{ 'net-negative': sector.net_flow < 0 }">{{ formatNetFlow(sector.net_flow) }}</span>
-              <span class="rank-flow-bar" :style="{ '--bar-pct': rankBarPct(sector) }"></span>
-            </span>
+            <span class="rank-flow" :class="{ 'net-negative': sector.net_flow < 0 }">{{ formatNetFlow(sector.net_flow) }}</span>
             <span class="rank-chg" :class="sector.change > 0 ? 'positive' : (sector.change < 0 ? 'negative' : '')">
               {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             </span>
@@ -316,12 +315,10 @@
             @mouseenter="highlightSector(sector.name)"
             @mouseleave="unhighlightSector()"
           >
+            <span class="rank-row-fill" :style="{ width: rankBarPct(sector, sector.total_net_flow ?? sector.net_flow), '--bar-color': rankRowBg(sector)['--bar-color'] }"></span>
             <span class="rank-no">{{ sector.rank }}</span>
             <span class="rank-name">{{ sector.name }}</span>
-            <span class="rank-flow-wrap">
-              <span class="rank-flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">{{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}</span>
-              <span class="rank-flow-bar" :style="{ '--bar-pct': rankBarPct(sector, sector.total_net_flow ?? sector.net_flow) }"></span>
-            </span>
+            <span class="rank-flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">{{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}</span>
             <span class="rank-chg" :class="sector.accumulated_change_percent > 0 ? 'positive' : (sector.accumulated_change_percent < 0 ? 'negative' : '')">
               {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             </span>
@@ -472,10 +469,10 @@
     <div class="modal-overlay" v-if="showFlowAlertModal" @click="closeFlowAlertModal">
       <div class="flow-alert-modal" @click.stop>
         <div class="modal-header fa-quick-header">
-          <h3>🚨 异动速览</h3>
+          <h3><IconBell /> 异动速览</h3>
           <div class="fa-quick-tabs">
-            <button :class="{active: quickTab==='fund'}" @click="quickTab='fund'">💰 资金</button>
-            <button :class="{active: quickTab==='pulse'}" @click="quickTab='pulse'">📈 个股</button>
+            <button :class="{active: quickTab==='fund'}" @click="quickTab='fund'">资金异动</button>
+            <button :class="{active: quickTab==='pulse'}" @click="quickTab='pulse'">个股异动</button>
           </div>
           <button class="close-btn" @click="closeFlowAlertModal">×</button>
         </div>
@@ -505,16 +502,17 @@
             <p class="fa-quick-empty-sub">交易时段每 5 分钟采集（异动时自动加密到 1 分钟）后触发</p>
           </div>
           <div v-else class="fa-quick-list">
-            <div class="fa-quick-card" v-for="(a, idx) in flowAlertList" :key="idx">
+            <div class="fa-quick-card" :class="a.net_flow >= 0 ? 'dir-in' : 'dir-out'" v-for="(a, idx) in flowAlertList" :key="idx">
               <div class="fa-quick-head">
-                <span class="fa-quick-time">{{ a.date }} {{ a.time }}</span>
+                <span class="fa-quick-time">{{ a.time }}</span>
                 <span class="fa-quick-sector">{{ a.sector }}</span>
-                <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '✓' : '✗' }}</span>
+                <span class="fa-quick-netnum" :class="a.net_flow >= 0 ? 'pos' : 'neg'">
+                  {{ a.net_flow >= 0 ? '+' : '' }}{{ faNet(a.net_flow) }}<i>亿</i>
+                </span>
               </div>
               <div class="fa-quick-meta">
-                <span class="fa-quick-net" :class="a.net_flow >= 0 ? 'pos' : 'neg'">净流入 {{ faNet(a.net_flow) }}亿</span>
                 <span class="fa-quick-chg" :class="a.change_pct >= 0 ? 'pos' : 'neg'">{{ faPct(a.change_pct) }}%</span>
-                <span class="fa-quick-labels" v-if="a.labels && a.labels.length">{{ a.labels.join('、') }}</span>
+                <span class="fa-quick-labels" v-if="a.labels && a.labels.length">{{ a.labels.join(' · ') }}</span>
                 <span class="fa-quick-lead" v-if="a.lead_stock">龙头 {{ a.lead_stock }}</span>
               </div>
             </div>
@@ -551,9 +549,9 @@
             <div v-else class="fa-quick-list">
               <div class="fa-quick-card pulse" v-for="(a, idx) in pulseQuickList" :key="idx">
                 <div class="fa-quick-head">
-                  <span class="fa-quick-time">{{ a.date }} {{ a.time }}</span>
+                  <span class="fa-quick-time">{{ a.time }}</span>
                   <span class="fa-quick-sector" v-if="a.closing">📊 收盘总结</span>
-                  <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '✓' : '✗' }}</span>
+                  <span class="fa-quick-push" :class="a.pushed ? 'ok' : 'fail'">{{ a.pushed ? '已推送' : '未推送' }}</span>
                 </div>
                 <div class="fa-quick-pulse-body">
                   <div v-for="(line, li) in pulseQuickLines(a)" :key="li" class="fa-quick-pulse-line" :class="line.cls">{{ line.text }}</div>
