@@ -11,6 +11,8 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   position: relative;
   color: #E5EAF2;
+  /* 移动端横向溢出兜底:任何子元素意外超宽只裁切不撑破页面(禁整页横向滑动) */
+  overflow-x: hidden;
 }
 
 .header {
@@ -1306,12 +1308,24 @@ button:active:not(:disabled) {
     padding: 8px 12px;
   }
   .market-summary-panel {
-    grid-template-columns: auto 1fr auto;
+    /* 移动端四行:涨跌 | 比例条 | 融资chip 单独占行,涨/平与跌/涨停各归其位
+       (up2/limit2/limit3 必须显式归区,否则掉进隐式列把整卡撑到 400px+ → 页面横向滚动) */
+    grid-template-columns: auto 1fr auto auto;
     grid-template-areas:
-      "down bar up"
-      "limit limit limit"
-      "turnover turnover turnover";
+      "down bar up up2"
+      "limit limit limit2 limit3"
+      "turnover turnover turnover turnover";
     gap: 6px 10px;
+  }
+  /* 融资chip 内容长(融资2.27万亿↑0.06% 净买+13.2亿(+104.1%)),允许在格内截断,
+     不把 grid 撑破;溢出内容横向滑动查看 */
+  .market-limit-row .market-margin-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .market-limit-row {
+    min-width: 0;
   }
   .controls {
     gap: 8px;
@@ -1320,6 +1334,17 @@ button:active:not(:disabled) {
   .ai-chain-strip {
     flex-basis: 100%;
     justify-content: center;
+  }
+  /* AI环境条事件文案 nowrap 且可能很长:允许胶囊收缩+末段省略号,
+     不顶出右缘被 overflow-x:hidden 硬裁(硬裁会把"· 📅 今天"切成半截) */
+  .ai-chain-strip {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .ai-chain-strip .ai-chain-event {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .news-ticker-container {
     flex-basis: 100%;

@@ -3390,17 +3390,29 @@ export default {
 
 @media (max-width: 768px) {
   .market-map-page { padding: 6px; }
-  .mm-header { flex-direction: column; gap: 8px; align-items: stretch; text-align: center; }
+  /* 关键:清掉桌面端为避让右上角时钟的 padding:6px 290px —— 不清的话内容区只剩
+     ~60px,所有按钮被挤成一行一个(移动端时钟在窄屏仍固定右上,按钮区从它下方开始) */
+  .mm-header { flex-direction: column; gap: 8px; align-items: stretch; text-align: left; padding: 8px 10px; margin-top: 44px; }
   .mm-header h1 { font-size: 1rem; }
   .mm-header-left,
   .mm-header-right { width: 100%; }
   /* 搜索框铺满整行 */
   .mm-search-wrap { flex: 1 1 100%; width: 100%; }
   .mm-search { width: 100%; }
-  /* 右侧 7+ 控件允许换行；次要统计文本移动端隐藏以保持头部紧凑（数据仍可从图表/tooltip 看到） */
-  .mm-header-right { flex-wrap: wrap; gap: 8px; justify-content: center; }
+  /* 按钮分组横排流动:同排多个按钮均分,不再一行一个;长文案在窄屏缩短 */
+  .mm-header-left { gap: 6px; }
+  .mm-header-left .mm-back-button { flex: 0 0 auto; }
+  .mm-header-left .mm-search-wrap { order: 5; }
+  .mm-header-right { flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
+  .mm-header-right > button,
+  .mm-header-right .mm-color-mode { flex: 1 1 auto; min-width: 0; }
+  .mm-header-right > button { text-align: center; padding: 6px 8px; font-size: 11px; }
+  .mm-color-select { flex: 1; min-width: 0; max-width: 150px; }
+  /* 次要统计与时间戳移动端隐藏(数据仍可从图表/tooltip 看到) */
   .mm-stats,
   .mm-update { display: none; }
   .mm-chart-wrapper { min-height: 240px; }
+  /* tooltip 在窄屏容易顶出右缘:限制最大宽度并跟随收窄 */
+  .mm-tooltip { max-width: min(320px, calc(100vw - 40px)); }
 }
 </style>
