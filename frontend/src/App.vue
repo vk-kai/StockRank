@@ -8,14 +8,14 @@
           <span class="brand-sub" v-if="lastUpdate">更新 {{ lastUpdate }}</span>
         </div>
         <div class="title-actions">
-          <button class="ai-analyze-button" @click="guardedAnalyzeDailyFlow" :disabled="aiAnalyzing">
+          <button class="ai-analyze-button btn-primary" @click="guardedAnalyzeDailyFlow" :disabled="aiAnalyzing">
             <span class="button-text">
               <template v-if="aiAnalyzing">
                 <span class="step-text">{{ aiAnalysisStep }}</span>
                 <span class="progress-text">{{ Math.round(aiAnalysisProgress) }}%</span>
               </template>
-              <template v-else-if="aiAnalysisError">⚠️ 上次失败，点击重试</template>
-              <template v-else>🤖 AI分析</template>
+              <template v-else-if="aiAnalysisError"><IconAlert /> 上次失败，点击重试</template>
+              <template v-else><IconSparkles /> AI分析</template>
             </span>
             <div class="water-fill" v-if="aiAnalyzing" :style="{ width: aiAnalysisProgress + '%' }">
               <div class="wave"></div>
@@ -23,15 +23,15 @@
             </div>
           </button>
           <button class="yuntu-button" @click="guardedGotoMarketMap"><IconTreemap />大盘云图</button>
-          <button class="global-button" @click="guardedGotoGlobalMarket">🌍 全球股市</button>
-          <button class="quant-button" @click="guardedOpenQuantSystem">📈 量化交易</button>
+          <button class="global-button" @click="guardedGotoGlobalMarket"><IconGlobe />全球股市</button>
+          <button class="quant-button" @click="guardedOpenQuantSystem"><IconTrending />量化交易</button>
           <button class="flow-alert-button" :class="{ 'has-new': hasUnreadAnomaly, 'has-review': pendingReviewCount > 0 }" @click="openFlowAlertModal">
-            🚨 异动预警
+            <IconBell /> 异动预警
             <span class="review-badge" v-if="pendingReviewCount > 0" title="有用户创作待审核，进入异动预警页处理">{{ pendingReviewCount }}</span>
             <span class="unread-dot" v-if="hasUnreadAnomaly" title="有新异动"></span>
           </button>
           <div class="more-menu-wrapper">
-            <button class="more-button" @click="showMoreMenu = !showMoreMenu">☰ 更多</button>
+            <button class="more-button" @click="showMoreMenu = !showMoreMenu"><IconMenu /> 更多</button>
             <div class="more-menu-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
             <div class="more-dropdown" v-if="showMoreMenu">
               <div class="more-dropdown-item" @click="guardedGoToConfig(); showMoreMenu = false">AI配置</div>
@@ -41,7 +41,7 @@
               <div class="more-dropdown-item" @click="guardedGoToHouseKline(); showMoreMenu = false">房价K线</div>
               <div class="more-dropdown-item" v-if="isAdmin" @click="guardedGoToRedeemCode(); showMoreMenu = false">体验码</div>
               <div class="more-dropdown-item" v-if="isAdmin" @click="guardedGoToMpAdmin(); showMoreMenu = false">小程序数据后台</div>
-              <div class="more-dropdown-item" @click="guardedGoToAgent(); showMoreMenu = false">🤖 数字分身</div>
+              <div class="more-dropdown-item" @click="guardedGoToAgent(); showMoreMenu = false"><IconSparkles /> 数字分身</div>
             </div>
           </div>
         </div>
@@ -64,29 +64,6 @@
         </div>
 
         <div class="market-summary-panel">
-          <div class="ms-cell">
-            <div class="ms-label">涨跌家数</div>
-            <div class="ms-value">
-              <span class="ms-tri down">▼</span>{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}
-              <span class="ms-tri up">▲</span>{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}
-            </div>
-            <div class="ms-sub">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }} · 跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</div>
-          </div>
-          <div class="ms-cell">
-            <div class="ms-label">今日成交额</div>
-            <div class="ms-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</div>
-            <div class="ms-sub" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">较昨日 {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}</div>
-          </div>
-          <div class="ms-cell ms-cell-click" @click="openMarginTotalModal" title="点击查看全市场融资余额与净买入趋势">
-            <div class="ms-label">融资余额</div>
-            <div class="ms-value">{{ marginTotal?.latest_total != null ? formatMarketAmount(marginTotal.latest_total, false) : '--' }}</div>
-            <div class="ms-sub" :class="getValueTrendClass(marginTotal?.change_pct)">较昨日 {{ marginTotal?.change_pct != null ? (marginTotal.change_pct >= 0 ? '+' : '') + marginTotal.change_pct.toFixed(2) + '%' : '--' }}</div>
-          </div>
-          <div class="ms-cell">
-            <div class="ms-label">当日净买入</div>
-            <div class="ms-value" :class="marginNetBuyValue >= 0 ? 'market-up' : 'market-down'">{{ marginNetBuyValue != null ? formatYi(Math.abs(marginNetBuyValue)) + '亿' : '--' }}</div>
-            <div class="ms-sub" :class="getValueTrendClass(marginNetBuyChangePct)">较昨日 {{ marginNetBuyChangePct != null ? (marginNetBuyChangePct >= 0 ? '+' : '') + marginNetBuyChangePct.toFixed(1) + '%' : '--' }}</div>
-          </div>
           <div class="time-selector">
             <label>时间跨度</label>
             <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
@@ -95,6 +72,57 @@
               <option :value="15">近15天</option>
               <option :value="30">近30天</option>
             </select>
+          </div>
+          <div class="market-breadth-row">
+            <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
+            <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
+            <span v-if="marketSummary?.breadth?.flat_count != null" class="market-flat">平{{ formatMarketNumber(marketSummary.breadth.flat_count) }}</span>
+          </div>
+          <div class="market-breadth-bar" aria-label="上涨下跌比例">
+            <div class="market-breadth-fill market-breadth-fill-down" :style="{ width: getBreadthPercent('down') }"></div>
+            <div class="market-breadth-divider"></div>
+            <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
+          </div>
+          <div class="market-limit-row">
+            <span class="market-down market-limit-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
+            <span class="market-up market-limit-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
+            <span
+              v-if="marginTotal && marginTotal.latest_total != null"
+              class="market-margin-chip"
+              @click="openMarginTotalModal"
+              title="点击查看全市场融资余额与净买入趋势(口径:融资余额合计)"
+            >
+              融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
+              <span :class="getValueTrendClass(marginTotal.change_pct)">
+                {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
+              </span>
+              <span
+                v-if="marginTotal.latest_net_buy != null"
+                class="margin-net-buy-chip"
+                :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
+              >
+                净买{{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }}亿
+                <span
+                  v-if="marginNetBuyChangePct != null"
+                  :class="getValueTrendClass(marginNetBuyChangePct)"
+                  class="net-buy-trend"
+                >({{ marginNetBuyChangePct >= 0 ? '+' : '' }}{{ marginNetBuyChangePct.toFixed(1) }}%)</span>
+              </span>
+            </span>
+          </div>
+          <div class="market-turnover-row">
+            <span class="market-turnover-label">今日实时成交额</span>
+            <span class="market-turnover-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
+            <span class="market-turnover-spacer"></span>
+            <span class="market-turnover-label">较上一日此时</span>
+            <span class="market-turnover-value num-flash" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">
+              {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
+            </span>
+            <template v-if="marketSummary?.turnover?.predict_turnover != null">
+              <span class="market-turnover-spacer"></span>
+              <span class="market-turnover-label">全天预测</span>
+              <span class="market-turnover-value market-turnover-predict">{{ formatMarketAmount(marketSummary.turnover.predict_turnover, false) }}</span>
+            </template>
           </div>
         </div>
       </div>
@@ -259,7 +287,10 @@
           >
             <span class="rank-no">{{ sector.rank }}</span>
             <span class="rank-name">{{ sector.name }}</span>
-            <span class="rank-flow" :class="{ 'net-negative': sector.net_flow < 0 }">{{ formatNetFlow(sector.net_flow) }}</span>
+            <span class="rank-flow-wrap">
+              <span class="rank-flow" :class="{ 'net-negative': sector.net_flow < 0 }">{{ formatNetFlow(sector.net_flow) }}</span>
+              <span class="rank-flow-bar" :style="{ '--bar-pct': rankBarPct(sector) }"></span>
+            </span>
             <span class="rank-chg" :class="sector.change > 0 ? 'positive' : (sector.change < 0 ? 'negative' : '')">
               {{ sector.change > 0 ? '+' : '' }}{{ (sector.change * 100).toFixed(2) }}%
             </span>
@@ -287,7 +318,10 @@
           >
             <span class="rank-no">{{ sector.rank }}</span>
             <span class="rank-name">{{ sector.name }}</span>
-            <span class="rank-flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">{{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}</span>
+            <span class="rank-flow-wrap">
+              <span class="rank-flow" :class="{ 'net-negative': (sector.total_net_flow ?? sector.net_flow ?? 0) < 0 }">{{ formatFlow(sector.total_net_flow ?? sector.net_flow) }}</span>
+              <span class="rank-flow-bar" :style="{ '--bar-pct': rankBarPct(sector, sector.total_net_flow ?? sector.net_flow) }"></span>
+            </span>
             <span class="rank-chg" :class="sector.accumulated_change_percent > 0 ? 'positive' : (sector.accumulated_change_percent < 0 ? 'negative' : '')">
               {{ sector.accumulated_change_percent > 0 ? '+' : '' }}{{ (sector.accumulated_change_percent * 100).toFixed(2) }}%
             </span>

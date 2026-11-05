@@ -76,6 +76,7 @@ _SCRIPT = (
     "done ; "
     "if [ \"$ok\" = 0 ] ; then wr failed \"git pull 失败: $out\" ; exit 1 ; fi ; "
     "wr building '' ; "
+    "sleep 3 ; "  # 给 /docker-restart 的 HTTP 响应留送达窗口,防止 down 与响应竞态把前端吓成"触发失败"
     "{ docker compose down --timeout 10 && sleep 2 && "
     "iptables -t nat -L CNI-HOSTPORT-DNAT --line-numbers -n 2>/dev/null | "
     "grep docker_stock-network | awk '{print $1}' | sort -rn | "

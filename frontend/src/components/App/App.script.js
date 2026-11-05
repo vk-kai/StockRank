@@ -70,10 +70,11 @@ export default {
       loading: false,
       error: null,
       lastUpdate: null,
+      // 折线调色板(参考用户提供的发光折线 UI):青绿/蓝为主色相,饱和度足够让 shadowBlur 光晕显形
       colors: [
-        '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+        '#10c090', '#3060c0', '#fac858', '#ee6666', '#40cbe0',
         '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#ff5722',
-        '#00bcd4', '#8bc34a', '#ffc107', '#9c27b0', '#3f51b5'
+        '#00e5cc', '#8bc34a', '#ffc107', '#c084fc', '#60a5fa'
       ],
       countdown: 300,
       countdownInterval: null,
@@ -159,13 +160,6 @@ export default {
       const prev = h[h.length - 2]?.net_buy
       if (cur == null || prev == null || prev === 0) return null
       return ((cur - prev) / Math.abs(prev)) * 100
-    },
-    // 当日融资净买入额(亿;正=净买入,负=净卖出),摘要卡"当日净买入"格展示
-    marginNetBuyValue() {
-      const h = this.marginTotal?.history
-      if (!Array.isArray(h) || h.length === 0) return null
-      const cur = h[h.length - 1]?.net_buy
-      return (cur == null || Number.isNaN(Number(cur))) ? null : Number(cur)
     },
     minReplayDate() {
       const date = new Date()
@@ -456,22 +450,27 @@ export default {
       if (this.selectedTimeRange === 'today') return ''
       return `近${this.selectedTimeRange}天累计净流入TOP5 / 净流出TOP5`
     },
-    // 双榜单布局:按 flow_direction 拆成 流入/流出 两列(当天模式)
+    // 双榜单布局:按 flow_direction 拆成 流入/流出 两列(当天模式)。
+    // 每列记录最大绝对净额(_colMaxAbsFlow),供金额占比条(rankBarPct)归一化
     replayRankColumns() {
-      const in5 = this.replayTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)
-      const out5 = this.replayTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)
+      const decorate = (items) => {
+        const maxAbs = Math.max(0, ...items.map(s => Math.abs(Number(s.net_flow ?? s.total_net_flow ?? 0))))
+        return items.map(s => ({ ...s, _colMaxAbsFlow: maxAbs }))
+      }
       return [
-        { direction: 'in', items: in5 },
-        { direction: 'out', items: out5 }
+        { direction: 'in', items: decorate(this.replayTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)) },
+        { direction: 'out', items: decorate(this.replayTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)) }
       ]
     },
     // 双榜单布局(多日模式)
     accumulatedRankColumns() {
-      const in5 = this.accumulatedTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)
-      const out5 = this.accumulatedTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)
+      const decorate = (items) => {
+        const maxAbs = Math.max(0, ...items.map(s => Math.abs(Number(s.total_net_flow ?? s.net_flow ?? 0))))
+        return items.map(s => ({ ...s, _colMaxAbsFlow: maxAbs }))
+      }
       return [
-        { direction: 'in', items: in5 },
-        { direction: 'out', items: out5 }
+        { direction: 'in', items: decorate(this.accumulatedTop10Sectors.filter(s => s.flow_direction !== 'out').slice(0, 5)) },
+        { direction: 'out', items: decorate(this.accumulatedTop10Sectors.filter(s => s.flow_direction === 'out').slice(0, 5)) }
       ]
     },
     // 服务监控胶囊:整体状态灯与文案(所有行 ok=正常,任一 failed=异常,其余=检测中/部分)
@@ -1315,6 +1314,17 @@ export default {
         background: `rgba(${base}, ${alpha})`,
         '--bar-color': `rgba(${base}, ${barAlpha})`
       }
+    },
+
+    // 榜单金额占比条宽度百分比:以同列榜内最大净额为 100%(东财式金额占比条,
+    // 质感参考用户提供的发光渐变条 UI)。sector 金额缺失时返回 null → CSS 不显示。
+    rankBarPct(sector, netOverride) {
+      if (!sector) return null
+      const net = Math.abs(Number(netOverride ?? sector.net_flow ?? sector.total_net_flow ?? 0))
+      if (!net) return null
+      const maxAbs = Number(sector._colMaxAbsFlow) || 0
+      if (maxAbs <= 0) return null
+      return Math.max(6, Math.round((net / maxAbs) * 100)) + '%'
     },
 
     async fetchCurrentData() {

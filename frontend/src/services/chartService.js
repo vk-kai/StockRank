@@ -379,7 +379,12 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
       data,
       lineStyle: {
         width: isMobile ? 2.3 : 1.8,
-        color
+        color,
+        // 发光折线(参考 TradingView pro dark 风):线条本体带同色光晕,
+        // 前 3 名(视觉主曲线)光更强,后排线弱光避免糊成一团
+        shadowBlur: index < 3 ? 10 : 5,
+        shadowColor: color,
+        shadowOffsetY: 0
       },
       itemStyle: {
         color
@@ -417,8 +422,9 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
         scale: 1.1,
         lineStyle: {
           width: 2.5,
-          shadowBlur: 8,
-          shadowColor: 'rgba(15, 23, 42, 0.18)'
+          // hover 聚焦时光晕增强(其余线 focus 后变淡,主线发光更突出)
+          shadowBlur: 18,
+          shadowColor: color
         },
         itemStyle: {
           borderWidth: 2,

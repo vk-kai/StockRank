@@ -58,7 +58,15 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-  margin-right: 290px; /* 避让右上角固定北京时间+登录入口(Root.vue top-actions) */
+  /* 避让右上角固定北京时间+登录入口(Root.vue top-actions):魔数 290px 改自适应,
+     窄屏(<1500px)时钟区换行后无需避让 */
+  margin-right: max(180px, 18vw);
+}
+
+@media (max-width: 1500px) {
+  .title-actions {
+    margin-right: 0;
+  }
 }
 
 /* ===== 第二层:指数条 + 大盘摘要 ===== */
@@ -111,75 +119,21 @@
   font-weight: 700;
 }
 
+/* 摘要卡恢复原始同花顺式布局(用户点名保留):跌N|比例条|涨N 平N / 跌停|成交额|涨停|融资chip */
 .market-summary-panel {
   flex: 1;
   min-width: 0;
-  padding: 10px 0;
+  padding: 8px 14px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr) auto;
-  align-items: stretch;
+  grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
+  grid-template-areas:
+    "ts down bar up up2"
+    "ts limit turnover limit2 limit3";
+  align-items: center;
+  gap: 6px 14px;
   background: #111827;
   border: 1px solid #253247;
   border-radius: 10px;
-}
-
-/* 4 等分格:统一"上标签/中数值/下副行"三行结构(参考同花顺指数卡两行式) */
-.ms-cell {
-  padding: 2px 16px;
-  border-right: 1px solid #253247;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  min-width: 0;
-}
-
-.ms-cell:last-of-type {
-  border-right: none;
-}
-
-.ms-cell-click {
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.ms-cell-click:hover {
-  background: rgba(57, 139, 255, 0.07);
-}
-
-.ms-label {
-  font-size: 11px;
-  color: #8795AA;
-  white-space: nowrap;
-}
-
-.ms-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #E5EAF2;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ms-sub {
-  font-size: 11px;
-  color: #8795AA;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 涨跌三角:红绿仅允许出现在小三角载体上 */
-.ms-tri {
-  font-size: 10px;
-  margin-right: 2px;
-}
-.ms-tri.up { color: #F0525F; }
-.ms-tri.down { color: #10B981; }
-.ms-value .market-up, .ms-value .market-down {
-  font-size: inherit;
 }
 
 .time-selector {
@@ -212,9 +166,65 @@
   border-color: #398BFF;
 }
 
-/* 涨跌比例条:嵌在涨跌家数格内 */
+/* 涨跌家数行:同花顺式 跌N(右对齐大字) | 比例条 | 涨N(左对齐大字) 平N(小字) */
+.market-breadth-row {
+  display: contents;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.market-breadth-row .market-down {
+  grid-area: down;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.market-breadth-row .market-up {
+  grid-area: up;
+  justify-self: start;
+  white-space: nowrap;
+}
+
+.market-breadth-row .market-flat {
+  grid-area: up2;
+  align-self: center;
+  padding-left: 10px;
+  color: #8795AA;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 第二行:跌停N(右对齐) | 成交额(中) | 涨停N(左对齐) | 融资chip(右) */
+.market-limit-row {
+  display: contents;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.market-limit-row .market-limit-down { grid-area: limit; justify-self: end; }
+.market-limit-row .market-limit-up { grid-area: limit2; justify-self: start; }
+
+.market-limit-row .market-margin-chip {
+  grid-area: limit3;
+  justify-self: end;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.market-limit-row .market-margin-chip:hover {
+  background: rgba(57, 139, 255, 0.14);
+}
+
 .market-breadth-bar {
-  height: 5px;
+  grid-area: bar;
+  height: 6px;
   display: flex;
   overflow: hidden;
   border-radius: 3px;
@@ -241,7 +251,20 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
-
+.market-turnover-row {
+  grid-area: turnover;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: #8795AA;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
 
 .market-turnover-value {
   color: #E5EAF2;
@@ -915,6 +938,39 @@ button:active:not(:disabled) {
 }
 .rank-flow.net-negative { color: #10B981; }
 
+/* 金额占比条组合:金额数字 + 下方发光渐变条(参考用户提供的 UI:色条由主色向透明渐隐 + 外发光) */
+.rank-flow-wrap {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rank-flow-bar {
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: visible;
+}
+
+.rank-flow-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--bar-pct, 0%);
+  border-radius: 2px;
+  /* 流入=红系渐变光条,流出=绿系;右端亮、向左渐隐,叠加微光晕(参考图发光条质感) */
+  background: linear-gradient(90deg, transparent, var(--bar-color, #F0525F));
+  box-shadow: 0 0 6px var(--bar-color, rgba(240, 82, 95, 0.6));
+  transition: width 0.4s ease;
+}
+
 .rank-chg {
   flex: 0 0 62px;
   text-align: right;
@@ -972,20 +1028,27 @@ button:active:not(:disabled) {
 }
 
 /* ===== 顶部功能按钮(幽灵样式,统一规范) ===== */
+/* AI 分析按钮:全页唯一实色主按钮(btn-primary),其余按钮保持 ghost */
 .ai-analyze-button {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid #253247;
-  color: #E5EAF2;
+  background: #398BFF;
+  border: 1px solid #398BFF;
+  color: #fff;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
   position: relative;
   overflow: hidden;
-  min-width: 120px;
+  min-width: 96px;
+}
+
+.ai-analyze-button:hover:not(:disabled) {
+  background: #5DA2FF;
+  border-color: #5DA2FF;
+  color: #fff;
 }
 
 .ai-analyze-button .button-text {
@@ -1004,7 +1067,7 @@ button:active:not(:disabled) {
 .ai-analyze-button .progress-text {
   font-size: 12px;
   font-weight: 600;
-  color: #f0b90b;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .ai-analyze-button .water-fill {
@@ -1037,12 +1100,6 @@ button:active:not(:disabled) {
 @keyframes wave-animation {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
-}
-
-.ai-analyze-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
-  border-color: rgba(135, 149, 170, 0.45);
 }
 
 .ai-analyze-button:disabled {
@@ -1201,16 +1258,15 @@ button:active:not(:disabled) {
 
 @media (max-width: 1200px) {
   .market-summary-panel {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: auto minmax(110px, 1fr) auto minmax(110px, 1fr) auto;
+    gap: 6px 10px;
+    padding: 8px 10px;
   }
-  .ms-cell {
-    padding: 8px 14px;
+  .market-breadth-row {
+    font-size: 16px;
   }
-  .ms-cell:nth-child(odd) {
-    border-right: none;
-  }
-  .ms-cell:nth-child(n+3) {
-    border-top: 1px solid #253247;
+  .market-turnover-label {
+    display: none;   /* 窄屏只留数值 */
   }
 }
 
@@ -1270,36 +1326,15 @@ button:active:not(:disabled) {
     gap: 6px 10px;
   }
   .time-selector {
+    grid-column: 1 / -1;
     flex-direction: row;
     align-items: center;
     justify-content: center;
     border-right: none;
     padding-right: 0;
+    border-top: 1px solid #253247;
+    padding: 8px 12px;
     gap: 8px;
-  }
-  /* 移动端摘要卡:2x2 格(TIME 选择器独占一行) */
-  .market-summary-panel {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0;
-  }
-  .ms-cell {
-    padding: 8px 12px;
-  }
-  .ms-cell:nth-child(odd) {
-    border-right: none;
-  }
-  .ms-cell:nth-of-type(n+3) {
-    border-top: 1px solid #253247;
-  }
-  .time-selector {
-    grid-column: 1 / -1;
-    border-top: 1px solid #253247;
-    border-right: none;
-    padding: 8px 12px;
-    justify-content: center;
-  }
-  .ms-value {
-    font-size: 14px;
   }
   .controls {
     gap: 8px;

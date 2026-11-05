@@ -965,8 +965,21 @@ export default {
         }
         this.pollDeployRecovery()
       } catch (e) {
-        // 网络层错误有两种:密码错(后端 401 已带 message)或部署已启动、连接被断
+        // 网络层错误有两种:密码错(后端 401 已带 message)或部署已启动、连接被断。
+        // 后者其实是常态竞态:远程脚本 git pull 很快时,`docker compose down` 可能在
+        // HTTP 响应送回前端之前就杀掉了本容器 → axios 报 network error →
+        // 若直接报"触发失败"用户会误以为部署失败(实际宿主机脚本在后台继续,
+        // 最终部署成功)。因此 network error(无 response)不报红字,转入恢复轮询
+        // 让 /deploy/status 说话:failed 会如实显示死因,done 显示成功。
         const msg = (e && e.response && e.response.data && e.response.data.message)
+        if (!e.response) {
+          this.deployStatus = {
+            phase: 'recovering',
+            message: '⚠️ 触发后连接中断(部署脚本通常已在后台执行),正在探测实际状态…'
+          }
+          this.pollDeployRecovery()
+          return
+        }
         this.deployStatus = { phase: 'idle', message: '' }
         this.showToast(msg || '触发失败:连接异常', 'error')
       }
