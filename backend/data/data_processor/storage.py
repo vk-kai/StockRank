@@ -215,7 +215,9 @@ def generate_daily_summary():
         last_data = realtime_data[last_minute]['data']
         
         # 按最后一次采集到的资金流入排序
-        sorted_sectors = sorted(last_data, key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
+        # 按净流入排序(展示的也是 net_flow;曾按 flow=总流入排,导致排名与展示值不符:
+        # 总流入大但净流出的板块会顶到榜首,用户看到"净流入第一"却是别的板块)
+        sorted_sectors = sorted(last_data, key=lambda x: x.get('net_flow') if x.get('net_flow') else 0, reverse=True)
         top_10 = sorted_sectors[:10]
         
         # 构建当天的代表数据
@@ -258,7 +260,9 @@ def generate_daily_summary_for_date(date_str):
         last_data = realtime_data[last_minute]['data']
         
         # 按最后一次采集到的资金流入排序
-        sorted_sectors = sorted(last_data, key=lambda x: x['flow'] if x['flow'] else 0, reverse=True)
+        # 按净流入排序(展示的也是 net_flow;曾按 flow=总流入排,导致排名与展示值不符:
+        # 总流入大但净流出的板块会顶到榜首,用户看到"净流入第一"却是别的板块)
+        sorted_sectors = sorted(last_data, key=lambda x: x.get('net_flow') if x.get('net_flow') else 0, reverse=True)
         top_10 = sorted_sectors[:10]
         
         # 构建当天的代表数据

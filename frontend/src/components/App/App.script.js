@@ -38,6 +38,17 @@ function isTradingDay(date) {
   return day !== 0 && day !== 6
 }
 
+// 是否处于 A 股连续交易时段(9:30-11:30 / 13:00-15:00,与后端 is_trading_time 同口径)。
+// 用于当天视图动画策略:盘中数据逐点到来→瞬时呈现;非交易时段(收盘后)一次性
+// 整图渲染+原生扫描动画(与历史日期回放同款)。
+function isInTradingSession(date = new Date()) {
+  const d = new Date(date)
+  if (!isTradingDay(d)) return false
+  const minutes = d.getHours() * 60 + d.getMinutes()
+  // 9:25(565) 起与后端 is_trading_time 同步:竞价尾声即盘中,数据实时呈现不重播动画
+  return (minutes >= 565 && minutes <= 690) || (minutes >= 780 && minutes <= 900)
+}
+
 export default {
   name: 'App',
   components: {
@@ -99,17 +110,12 @@ export default {
       // 服务监控:收缩成顶栏状态胶囊,详情面板默认收起(点胶囊展开)
       showMonitorDetail: false,
       isReplayingToday: false,
-      replayCursor: null,
       replayTimer: null,
-      replaySpeed: 200,
       replayTopSectors: [],
       replayDate: formatDate(new Date()),
       todayDate: formatDate(new Date()),
       historicalMinuteData: null,
       lastTimeKeys: [],
-      autoGrowCursor: null,
-      autoGrowTimer: null,
-      autoGrowSpeed: 200,
       // 多日模式(7/15/30天)逐日生长动画:切到多日后曲线按日期一天天长出来
       multiDayCursor: null,
       multiDayTimer: null,
@@ -173,6 +179,16 @@ export default {
     currentNewsItem() {
       if (this.latestNews.length === 0) return null
       return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
+    },
+    // 新闻条一行同屏 3 条:从 currentNewsIndex 起连续取 3 条(取模轮转),
+    // 轮播步进仍 +1,4s 一换,5 条新闻 5 拍滚完所有窗口组合
+    currentNewsItems() {
+      const n = this.latestNews.length
+      if (n === 0) return []
+      const total = Math.min(n, 5)
+      return Array.from({ length: Math.min(3, total) }, (_, k) =>
+        this.latestNews[(this.currentNewsIndex + k) % total]
+      )
     },
     marketIndexCards() {
       const indices = this.marketSummary?.indices || {}
@@ -533,9 +549,6 @@ export default {
     }
     if (this.replayTimer) {
       clearInterval(this.replayTimer)
-    }
-    if (this.autoGrowTimer) {
-      clearInterval(this.autoGrowTimer)
     }
     if (this.multiDayTimer) {
       clearInterval(this.multiDayTimer)
@@ -1362,7 +1375,6 @@ export default {
         const response = await getMinuteData(24)
         if (response.success) {
           const newTimeKeys = Object.keys(response.data).sort()
-          const oldTimeKeys = this.lastTimeKeys
 
           this.minuteData = response.data
 
@@ -1370,66 +1382,15 @@ export default {
             this.stopTodayReplay(false)
           }
 
-          if (oldTimeKeys.length === 0) {
-            // 首次加载:与盘中增量同款逐点生长动画,从开盘第1点长到最新——
-            // 替代旧的 2099-12-31 规避写法(先假装回放一个不存在的日期再切回来)
-            this.lastTimeKeys = newTimeKeys
-            if (newTimeKeys.length > 1) {
-              // 自适应节奏:点数多时(收盘后全天240点)提速,总时长封顶约8秒,
-              // 避免固定200ms/点导致收盘后要长48秒
-              const points = newTimeKeys.length
-              this.autoGrowSpeed = Math.max(33, Math.min(200, Math.round(8000 / points)))
-              this.autoGrowCursor = 0
-              this.autoGrowTimer = setInterval(() => {
-                if (this.autoGrowCursor === null) {
-                  this.autoGrowCursor = 0
-                }
-                if (this.autoGrowCursor >= newTimeKeys.length - 1) {
-                  clearInterval(this.autoGrowTimer)
-                  this.autoGrowTimer = null
-                  this.autoGrowCursor = null
-                  return
-                }
-                this.autoGrowCursor += 1
-                this.updateChart()
-              }, this.autoGrowSpeed)
-            }
-            this.updateChart()
-            return
-          }
-          
-          const newKeys = newTimeKeys.filter(key => !oldTimeKeys.includes(key))
-          
-          if (newKeys.length === 0) {
-            this.updateChart()
-            return
-          }
-          
+          // 旧实现用 JS 定时器逐点 setOption 生长:replaceMerge 每 tick 重建
+          // series → echarts 入场动画每 tick 被打断重播 → 折线"长到一半回 0"
+          // 反复抽搐(2026-11-05 复现:帧捕显示右端在 20%~30% 间抖动两次回 0)。
+          // 根治:彻底弃用 JS 逐点定时器,动画全交 echarts 原生——
+          //   盘中:数据逐分钟到来,animationDuration 0 瞬时呈现(快速加载);
+          //   收盘后/盘中首载历史全长:一次性整图+8s 原生扫描(与历史日期同款)。
+          // cursor 恒为 null,updateChart 不再截断 timeData。
           this.lastTimeKeys = newTimeKeys
-          
-          if (this.autoGrowTimer) {
-            clearInterval(this.autoGrowTimer)
-            this.autoGrowTimer = null
-          }
-          
-          const startIndex = newTimeKeys.indexOf(oldTimeKeys[oldTimeKeys.length - 1])
-          this.autoGrowCursor = startIndex >= 0 ? startIndex : newTimeKeys.length - 1
-          
-          this.autoGrowTimer = setInterval(() => {
-            if (this.autoGrowCursor === null) {
-              this.autoGrowCursor = 0
-            }
-            
-            if (this.autoGrowCursor >= newTimeKeys.length - 1) {
-              clearInterval(this.autoGrowTimer)
-              this.autoGrowTimer = null
-              this.autoGrowCursor = null
-              return
-            }
-            
-            this.autoGrowCursor += 1
-            this.updateChart()
-          }, this.autoGrowSpeed)
+          this.updateChart()
         }
       } catch (err) {
         console.error('获取分钟数据失败:', err)
@@ -1441,20 +1402,14 @@ export default {
       // 未登录时不发起数据请求，直接唤起登录框（满足"所有按钮未登录都先登录"）
       if (this.requireAuthOrPrompt()) return
       await this.fetchHealthStatus()
-      
+
       this.loading = true
       this.error = null
-      
-      if (this.autoGrowTimer) {
-        clearInterval(this.autoGrowTimer)
-        this.autoGrowTimer = null
-        this.autoGrowCursor = null
-      }
+
       this.stopMultiDayGrow()
 
       if (this.selectedTimeRange !== 'today') {
         this.stopTodayReplay(false)
-        this.replayCursor = null
         this.replayTopSectors = []
       }
       try {
@@ -1573,27 +1528,40 @@ export default {
           return !Number.isNaN(minute) && minute >= 0 && minute <= 59
         })
         
-        let cursor = null
-        if (this.isReplayingToday) {
-          cursor = this.replayCursor
-        } else if (this.autoGrowCursor !== null) {
-          cursor = this.autoGrowCursor
-        }
-
+        // JS 逐点定时器废弃后 cursor 恒为 null:数据永远整段渲染,
+        // 生长动画由 echarts 原生入场动画完成(根因注释见 fetchMinuteData)。
         // 非今天或非交易日时当作回放模式
         const isReplayMode = this.replayDate !== this.todayDate || !isTradingDay(new Date())
         const fixedTopSectors = (isReplayMode || this.isReplayingToday) && this.replayTopSectors.length > 0
           ? this.replayTopSectors
           : null
+        // 动画策略:
+        //   历史日期/演示快照/非交易日回放(isReplayMode) → 8s 原生扫描(同款);
+        //   手动回放当天(manualReplay) → 8s 原生扫描,替代旧 replayCursor 截断;
+        //   盘中实时(交易时段) → 0ms 瞬时呈现(用户诉求:开盘时快速加载);
+        //   收盘后看当天 → 一次性整图+8s 原生扫描(用户诉求:收盘用生长式)。
+        const manualReplay = this.isReplayingToday
+        let todayAnim
+        if (isReplayMode || manualReplay) {
+          todayAnim = 8000
+        } else {
+          todayAnim = isInTradingSession() ? 0 : 8000
+        }
+        // 手动回放结束切回实时态:数据没变,跳过动画避免重新扫一遍
+        if (this._skipAnimOnce) {
+          this._skipAnimOnce = false
+          todayAnim = 0
+        }
 
         const option = generateLiveReplayChartOption(
           timeData,
           this.minuteData,
           this.colors,
-          cursor,
+          null,
           10,
           fixedTopSectors,
-          isReplayMode
+          isReplayMode,
+          { animationDuration: todayAnim }
         )
 
         try {
@@ -1619,13 +1587,12 @@ export default {
         timeData,
         this.historyData,
         this.colors,
-        this.multiDayCursor,
+        null,   // 多日生长也交给 echarts 原生入场动画,不再 JS 截断前缀
         10,
         fixedTopSectors.length > 0 ? fixedTopSectors : null,
         false,
-        // 生长动画进行中(multiDayCursor !== null)禁用 echarts 动画:
-        // 每 tick 瞬间渲染当前前缀,否则入场动画反复被打断重播,像"抽搐"
-        { valueMode: 'cum', animate: this.multiDayCursor === null }
+        // 官方生长模式:一次 setOption + 长扫描动画(时长在 startMultiDayGrow 按天数定)
+        { valueMode: 'cum', animate: true, animationDuration: this._multiDayAnim || 0 }
       )
 
       try {
@@ -1637,40 +1604,18 @@ export default {
       }
     },
 
-    // 多日模式逐日生长动画:切到 7/15/30 天后曲线按日期一天天长出来,
-    // 与当天模式的 autoGrow 同款体验、同款速度。
+    // 多日模式(7/15/30天)逐日生长:echarts 官方模式——一次 setOption 传完整
+    // 数据+长 animationDuration(按天数自适应,约8s),原生从左往右画完。
+    // 旧实现 JS 定时器逐日 setOption,与当天模式"抽搐"同根因,一并根治。
+    // multiDayCursor/multiDayTimer 数据字段保留但恒 null,只为少动历史引用。
     startMultiDayGrow() {
-      this.stopMultiDayGrow()
+      this.multiDayCursor = null
       const dates = Object.keys(this.historyData).sort()
-      if (dates.length <= 1) {
-        this.updateChart()
-        return
-      }
-      this.multiDayCursor = 0
-      this.updateChart()   // 先渲染第1天,此后每个 tick 增加一天(原实现首帧直接跳到第2天)
-      // 自适应节奏:天数多时提速,总时长封顶约8秒(与当天首载同规则)
-      this.autoGrowSpeed = Math.max(80, Math.min(200, Math.round(8000 / dates.length)))
-      this.multiDayTimer = setInterval(() => {
-        if (this.multiDayCursor === null) {
-          this.multiDayCursor = 0
-          return
-        }
-        if (this.multiDayCursor >= Object.keys(this.historyData).length - 1) {
-          clearInterval(this.multiDayTimer)
-          this.multiDayTimer = null
-          this.multiDayCursor = null
-          return
-        }
-        this.multiDayCursor += 1
-        this.updateChart()
-      }, this.autoGrowSpeed)
+      this._multiDayAnim = dates.length > 1 ? Math.max(3000, Math.min(10000, dates.length * 600)) : 0
+      this.updateChart()
     },
 
     stopMultiDayGrow() {
-      if (this.multiDayTimer) {
-        clearInterval(this.multiDayTimer)
-        this.multiDayTimer = null
-      }
       this.multiDayCursor = null
     },
 
@@ -1689,24 +1634,14 @@ export default {
       const timeKeys = Object.keys(this.minuteData).sort()
       this.replayTopSectors = buildReplaySectorOrder(timeKeys, this.minuteData, 10)
 
-      if (this.replayTimer) {
-        clearInterval(this.replayTimer)
-        this.replayTimer = null
-      }
-
-      if (this.autoGrowTimer) {
-        clearInterval(this.autoGrowTimer)
-        this.autoGrowTimer = null
-        this.autoGrowCursor = null
-      }
-
+      // 手动回放改为 echarts 原生入场动画完成扫描(updateChart 传 8s),不再用
+      // JS 定时器逐帧截断——与本次"抽搐"根治同一思路:动画全交 echarts 原生
       this.isReplayingToday = true
-      this.replayCursor = timeKeys.length - 1
-      
+
       this.updateChart()
 
       const replayDuration = Math.max(8000, timeKeys.length * 200)
-      
+
       this.replayTimer = setTimeout(() => {
         this.replayTimer = null
         this.stopTodayReplay(true)
@@ -1722,8 +1657,9 @@ export default {
       this.isReplayingToday = false
 
       if (resetToLive) {
-        this.replayCursor = null
         this.replayTopSectors = []
+        // 回放结束切回实时态:数据没变,跳过动画避免重新扫一遍
+        this._skipAnimOnce = true
         this.updateChart()
         if (this.chartInstance) {
           this.chartInstance.dispatchAction({
@@ -1746,12 +1682,6 @@ export default {
     async loadReplayDateData() {
       if (this.isReplayingToday) {
         this.stopTodayReplay(false)
-      }
-
-      if (this.autoGrowTimer) {
-        clearInterval(this.autoGrowTimer)
-        this.autoGrowTimer = null
-        this.autoGrowCursor = null
       }
 
       // 今天是交易日且选的是今天：用实时分钟数据
@@ -1987,6 +1917,13 @@ export default {
         return
       }
       
+      // 默认排序跟随榜单方向:净流入板块默认涨幅榜(desc),净流出板块默认跌幅榜(asc),
+      // 与榜单语义对立(流进来的看谁涨得猛,流出去的看谁跌得狠)。用户仍可点表头改排序。
+      const net = Number(sector.net_flow ?? sector.total_net_flow ?? 0)
+      const isOut = (sector.flow_direction || sector.flow_group) === 'out' || net < 0
+      this.stockSortField = 'change'
+      this.stockSortOrder = isOut ? 'asc' : 'desc'
+
       this.showStockModal = true
       this.selectedSector = { ...sector, sector_url: sectorUrl }
       this.loadingStocks = true

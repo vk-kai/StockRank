@@ -40,8 +40,10 @@ def is_trading_day(date):
 def is_trading_time(time):
     hour = time.hour
     minute = time.minute
-    
-    if hour == 9 and minute >= 30:
+
+    # 9:25 起(集合竞价撮合结束的静默期)即视为交易时段:同花顺板块资金页此时已出今日数据,
+    # 提前采集让开盘瞬间折线/榜单就有起点;9:00-9:25 数据源仍是昨日盘后值,无法区分,不采。
+    if hour == 9 and minute >= 25:
         return True
     if 10 <= hour < 11:
         return True

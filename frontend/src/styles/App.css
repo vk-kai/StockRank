@@ -395,11 +395,14 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 
 .news-ticker-container .ticker-item {
+  flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -414,7 +417,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
 }
 
 .news-ticker-container .ticker-item:hover {
@@ -1318,6 +1320,10 @@ button:active:not(:disabled) {
   }
   .news-ticker-container {
     flex-basis: 100%;
+  }
+  /* 窄屏一行放不下 3 条:第 2、3 条隐藏,退回单条轮播 */
+  .news-ticker-container .ticker-item:nth-child(n+2) {
+    display: none;
   }
   .chart-container {
     margin-top: 8px;

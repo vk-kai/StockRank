@@ -157,14 +157,16 @@
 
         <div class="news-ticker-container" v-if="!needsAuth && latestNews.length > 0">
           <span class="ticker-label clickable" @click="goToNews">最新新闻</span>
-          <div class="ticker-scroll" v-if="currentNewsItem">
+          <div class="ticker-scroll" v-if="currentNewsItems.length > 0">
             <span
+              v-for="(news, i) in currentNewsItems"
+              :key="news.id + '-' + i"
               class="ticker-item"
-              :class="{ 'important': currentNewsItem.importance === '3' }"
-              @click="openNews(currentNewsItem.url)"
+              :class="{ 'important': news.importance === '3' }"
+              @click="openNews(news.url)"
             >
-              <span v-if="currentNewsItem.importance === '3'" class="important-badge">重要</span>
-              {{ currentNewsItem.title }}
+              <span v-if="news.importance === '3'" class="important-badge">重要</span>
+              {{ news.title }}
             </span>
           </div>
         </div>

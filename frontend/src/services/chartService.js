@@ -533,7 +533,11 @@ export function generateLiveReplayChartOption(timeData, allData, colors, replayC
     }
   }
 
-  const animationDuration = isReplayMode ? 8000 : 700
+  // 动画时长可被调用方一次性覆盖(当天首载用 8000 与历史日期回放同款扫描,
+  // 盘中实时传 0 瞬时呈现)。0 是合法覆盖值,不能用 || (0 为 falsy 会误回落 700)
+  const animationDuration = options.animationDuration !== undefined
+    ? options.animationDuration
+    : (isReplayMode ? 8000 : 700)
 
   return {
     backgroundColor: '#111827',
