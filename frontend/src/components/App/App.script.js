@@ -819,7 +819,12 @@ export default {
     async fetchKospi() {
       try {
         const resp = await getGlobalIndices()
-        const kospi = resp?.data?.['100.KS11'] || resp?.['100.KS11']
+        const d = resp?.data || resp || {}
+        // 后端返回 {data:{indices:[{code,...}]}} 数组结构;兼容旧的 {code: {...}} 字典结构
+        const list = Array.isArray(d.indices) ? d.indices : (Array.isArray(d) ? d : null)
+        const kospi = list
+          ? list.find(item => item && item.code === '100.KS11')
+          : (d['100.KS11'] || resp?.['100.KS11'])
         this.kospiIndex = (kospi && kospi.price != null)
           ? { price: kospi.price, change: kospi.change, name: kospi.name || '韩国KOSPI' }
           : null

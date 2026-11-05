@@ -471,7 +471,22 @@ def _has_today_market_summary(summary, now):
         timestamp = datetime.fromisoformat(timestamp_text)
         if timestamp.tzinfo is None:
             timestamp = timestamp.astimezone()
-        return timestamp.astimezone(now.tzinfo).date() == now.date()
+        if timestamp.astimezone(now.tzinfo).date() != now.date():
+            return False
+        # 收盘定格保护:交易日 15:05 后,缓存必须已含 15:00 收盘终值(两个时间戳都过线),
+        # 否则尾盘 14:5X 的中途快照会顶替收盘价一直显示到明天
+        if is_trading_day(now) and (now.hour > 15 or (now.hour == 15 and now.minute >= 5)):
+            market_close = now.replace(hour=15, minute=0, second=0, microsecond=0)
+            for key in ('turnover_timestamp', 'timestamp'):
+                stamp_text = summary.get(key)
+                if not stamp_text:
+                    continue
+                stamp = datetime.fromisoformat(stamp_text)
+                if stamp.tzinfo is None:
+                    stamp = stamp.astimezone()
+                if stamp.astimezone(now.tzinfo) < market_close:
+                    return False
+        return True
     except Exception:
         return False
 

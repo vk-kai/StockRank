@@ -604,7 +604,8 @@ def get_market_summary():
 def get_market_fast_summary():
     cached_summary = load_market_summary_cache() or {}
     breadth = get_jrj_market_breadth() or get_ths_market_breadth() or cached_summary.get('breadth')
-    indices = get_market_index_data() or cached_summary.get('indices')
+    fresh_indices = get_market_index_data()
+    indices = fresh_indices or cached_summary.get('indices')
     main_index = indices.get('000001') if isinstance(indices, dict) else cached_summary.get('main_index')
 
     summary = {
@@ -612,7 +613,9 @@ def get_market_fast_summary():
         'turnover': cached_summary.get('turnover'),
         'indices': indices,
         'main_index': main_index,
-        'timestamp': datetime.now().astimezone().isoformat(),
+        # 时间戳只反映指数快照的真实抓取时刻:新浪/东财都挂掉回落旧缓存时不刷新时间戳,
+        # 否则新鲜度判定(含收盘定格保护)会把任意旧的涨跌值当新鲜数据放行
+        'timestamp': datetime.now().astimezone().isoformat() if fresh_indices else cached_summary.get('timestamp'),
         'turnover_timestamp': cached_summary.get('turnover_timestamp') or cached_summary.get('timestamp')
     }
     latest_market_data['summary'] = summary

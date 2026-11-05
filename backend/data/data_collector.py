@@ -191,7 +191,9 @@ def data_collection_thread():
                 _fast_mode = False
                 _fast_calm_rounds = 0
 
-            if trading_now:
+            if trading_now or (is_trading_day(now) and now.hour == 15 and now.minute <= 10):
+                # 收盘尾盘补采(15:01-15:10):5分钟tick很难恰好落在 is_trading_time 的 15:00 整分,
+                # 不补采的话首页指数/涨跌家数会定格在 14:5X 的中途快照过夜(收盘价丢失)
                 refresh_market_summary_cache()
             
             # 每天 0 点清理任务（通过日期变更触发）
