@@ -64,6 +64,29 @@
         </div>
 
         <div class="market-summary-panel">
+          <div class="ms-cell">
+            <div class="ms-label">涨跌家数</div>
+            <div class="ms-value">
+              <span class="ms-tri down">▼</span>{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}
+              <span class="ms-tri up">▲</span>{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}
+            </div>
+            <div class="ms-sub">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }} · 跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</div>
+          </div>
+          <div class="ms-cell">
+            <div class="ms-label">今日成交额</div>
+            <div class="ms-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</div>
+            <div class="ms-sub" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">较昨日 {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}</div>
+          </div>
+          <div class="ms-cell ms-cell-click" @click="openMarginTotalModal" title="点击查看全市场融资余额与净买入趋势">
+            <div class="ms-label">融资余额</div>
+            <div class="ms-value">{{ marginTotal?.latest_total != null ? formatMarketAmount(marginTotal.latest_total, false) : '--' }}</div>
+            <div class="ms-sub" :class="getValueTrendClass(marginTotal?.change_pct)">较昨日 {{ marginTotal?.change_pct != null ? (marginTotal.change_pct >= 0 ? '+' : '') + marginTotal.change_pct.toFixed(2) + '%' : '--' }}</div>
+          </div>
+          <div class="ms-cell">
+            <div class="ms-label">当日净买入</div>
+            <div class="ms-value" :class="marginNetBuyValue >= 0 ? 'market-up' : 'market-down'">{{ marginNetBuyValue != null ? formatYi(Math.abs(marginNetBuyValue)) + '亿' : '--' }}</div>
+            <div class="ms-sub" :class="getValueTrendClass(marginNetBuyChangePct)">较昨日 {{ marginNetBuyChangePct != null ? (marginNetBuyChangePct >= 0 ? '+' : '') + marginNetBuyChangePct.toFixed(1) + '%' : '--' }}</div>
+          </div>
           <div class="time-selector">
             <label>时间跨度</label>
             <select v-model="selectedTimeRange" @change="fetchDataByTimeRange">
@@ -72,57 +95,6 @@
               <option :value="15">近15天</option>
               <option :value="30">近30天</option>
             </select>
-          </div>
-          <div class="market-breadth-row">
-            <span class="market-down">跌{{ formatMarketNumber(marketSummary?.breadth?.down_count) }}</span>
-            <span class="market-up">涨{{ formatMarketNumber(marketSummary?.breadth?.up_count) }}</span>
-            <span v-if="marketSummary?.breadth?.flat_count != null" class="market-flat">平{{ formatMarketNumber(marketSummary.breadth.flat_count) }}</span>
-          </div>
-          <div class="market-breadth-bar" aria-label="上涨下跌比例">
-            <div class="market-breadth-fill market-breadth-fill-down" :style="{ width: getBreadthPercent('down') }"></div>
-            <div class="market-breadth-divider"></div>
-            <div class="market-breadth-fill market-breadth-fill-up" :style="{ width: getBreadthPercent('up') }"></div>
-          </div>
-          <div class="market-limit-row">
-            <span class="market-down market-limit-down">跌停{{ formatMarketNumber(marketSummary?.breadth?.limit_down_count) }}</span>
-            <span class="market-up market-limit-up">涨停{{ formatMarketNumber(marketSummary?.breadth?.limit_up_count) }}</span>
-            <span
-              v-if="marginTotal && marginTotal.latest_total != null"
-              class="market-margin-chip"
-              @click="openMarginTotalModal"
-              title="点击查看全市场融资余额与净买入趋势(口径:融资余额合计)"
-            >
-              融资{{ formatMarketAmount(marginTotal.latest_total, false) }}
-              <span :class="getValueTrendClass(marginTotal.change_pct)">
-                {{ marginTotal.change_pct >= 0 ? '↑' : '↓' }}{{ Math.abs(marginTotal.change_pct || 0).toFixed(2) }}%
-              </span>
-              <span
-                v-if="marginTotal.latest_net_buy != null"
-                class="margin-net-buy-chip"
-                :class="marginTotal.latest_net_buy >= 0 ? 'net-in' : 'net-out'"
-              >
-                净买{{ marginTotal.latest_net_buy >= 0 ? '+' : '-' }}{{ formatYi(marginTotal.latest_net_buy) }}亿
-                <span
-                  v-if="marginNetBuyChangePct != null"
-                  :class="getValueTrendClass(marginNetBuyChangePct)"
-                  class="net-buy-trend"
-                >({{ marginNetBuyChangePct >= 0 ? '+' : '' }}{{ marginNetBuyChangePct.toFixed(1) }}%)</span>
-              </span>
-            </span>
-          </div>
-          <div class="market-turnover-row">
-            <span class="market-turnover-label">今日实时成交额</span>
-            <span class="market-turnover-value num-flash" :key="'t'+(marketSummary?.turnover?.turnover||0)">{{ formatMarketAmount(marketSummary?.turnover?.turnover, false) }}</span>
-            <span class="market-turnover-spacer"></span>
-            <span class="market-turnover-label">较上一日此时</span>
-            <span class="market-turnover-value num-flash" :class="getValueTrendClass(marketSummary?.turnover?.turnover_change)" :key="'c'+(marketSummary?.turnover?.turnover_change||0)">
-              {{ formatMarketAmount(marketSummary?.turnover?.turnover_change) }}
-            </span>
-            <template v-if="marketSummary?.turnover?.predict_turnover != null">
-              <span class="market-turnover-spacer"></span>
-              <span class="market-turnover-label">全天预测</span>
-              <span class="market-turnover-value market-turnover-predict">{{ formatMarketAmount(marketSummary.turnover.predict_turnover, false) }}</span>
-            </template>
           </div>
         </div>
       </div>

@@ -114,17 +114,72 @@
 .market-summary-panel {
   flex: 1;
   min-width: 0;
-  padding: 8px 14px;
+  padding: 10px 0;
   display: grid;
-  grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr) auto;
-  grid-template-areas:
-    "ts down bar up up2"
-    "ts limit turnover limit2 limit3";
-  align-items: center;
-  gap: 6px 14px;
+  grid-template-columns: repeat(4, 1fr) auto;
+  align-items: stretch;
   background: #111827;
   border: 1px solid #253247;
   border-radius: 10px;
+}
+
+/* 4 等分格:统一"上标签/中数值/下副行"三行结构(参考同花顺指数卡两行式) */
+.ms-cell {
+  padding: 2px 16px;
+  border-right: 1px solid #253247;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ms-cell:last-of-type {
+  border-right: none;
+}
+
+.ms-cell-click {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ms-cell-click:hover {
+  background: rgba(57, 139, 255, 0.07);
+}
+
+.ms-label {
+  font-size: 11px;
+  color: #8795AA;
+  white-space: nowrap;
+}
+
+.ms-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #E5EAF2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-sub {
+  font-size: 11px;
+  color: #8795AA;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 涨跌三角:红绿仅允许出现在小三角载体上 */
+.ms-tri {
+  font-size: 10px;
+  margin-right: 2px;
+}
+.ms-tri.up { color: #F0525F; }
+.ms-tri.down { color: #10B981; }
+.ms-value .market-up, .ms-value .market-down {
+  font-size: inherit;
 }
 
 .time-selector {
@@ -157,66 +212,9 @@
   border-color: #398BFF;
 }
 
-/* 涨跌家数行 */
-/* 同花顺式涨跌分布:跌N(右对齐大字) | 比例条 | 涨N(左对齐大字) 平N(小字) */
-.market-breadth-row {
-  display: contents;
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.market-breadth-row .market-down {
-  grid-area: down;
-  justify-self: end;
-  white-space: nowrap;
-}
-
-.market-breadth-row .market-up {
-  grid-area: up;
-  justify-self: start;
-  white-space: nowrap;
-}
-
-.market-breadth-row .market-flat {
-  grid-area: up2;
-  align-self: center;
-  padding-left: 10px;
-  color: #8795AA;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* 第二行:跌停N(右对齐) | 成交额(中) | 涨停N(左对齐) | 融资chip(右) */
-.market-limit-row {
-  display: contents;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-.market-limit-row .market-limit-down { grid-area: limit; justify-self: end; }
-.market-limit-row .market-limit-up { grid-area: limit2; justify-self: start; }
-
-.market-limit-row .market-margin-chip {
-  grid-area: limit3;
-  justify-self: end;
-  cursor: pointer;
-  padding: 1px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.market-limit-row .market-margin-chip:hover {
-  background: rgba(57, 139, 255, 0.14);
-}
-
+/* 涨跌比例条:嵌在涨跌家数格内 */
 .market-breadth-bar {
-  grid-area: bar;
-  height: 6px;
+  height: 5px;
   display: flex;
   overflow: hidden;
   border-radius: 3px;
@@ -229,11 +227,11 @@
 }
 
 .market-breadth-fill-down {
-  background: linear-gradient(90deg, #0e9f6e 0%, #10B981 100%);
+  background: #10B981;
 }
 
 .market-breadth-fill-up {
-  background: linear-gradient(90deg, #F0525F 0%, #e0364a 100%);
+  background: #F0525F;
 }
 
 .market-breadth-divider {
@@ -243,20 +241,7 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
-.market-turnover-row {
-  grid-area: turnover;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-  color: #8795AA;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-}
+
 
 .market-turnover-value {
   color: #E5EAF2;
@@ -871,20 +856,33 @@ button:active:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  padding: 7px 10px 7px 13px;
   border-radius: 6px;
   background: #172235;
   transition: background 0.15s ease;
   min-width: 0;
+  position: relative;
 }
 
-/* 行背景由内联 rgba 按资金量分级:hover 用内阴影提亮(不能盖掉分级底色) */
+/* 左缘方向色条:UI 改版主载体——方向看条色,强度看条亮度(flow_deep_alpha 内联),行底中性 */
+.rank-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--bar-color, transparent);
+}
+
+/* 行底为极淡方向色(rankRowBg 0.05~0.13):hover 用内阴影提亮 */
 .rank-row:hover {
-  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.05);
 }
 
 .rank-row.top-3 .rank-no {
-  color: #f0b90b;
+  color: #E5EAF2;
   font-weight: 800;
 }
 
@@ -933,10 +931,6 @@ button:active:not(:disabled) {
   font-size: 10px;
   font-weight: 600;
   color: #8795AA;
-  background: rgba(57, 139, 255, 0.1);
-  border: 1px solid rgba(57, 139, 255, 0.25);
-  padding: 1px 6px;
-  border-radius: 999px;
   white-space: nowrap;
 }
 
@@ -1207,13 +1201,16 @@ button:active:not(:disabled) {
 
 @media (max-width: 1200px) {
   .market-summary-panel {
-    grid-template-columns: auto minmax(120px, 1fr) auto;
+    grid-template-columns: repeat(2, 1fr);
   }
-  .market-turnover-row {
-    gap: 6px;
+  .ms-cell {
+    padding: 8px 14px;
   }
-  .market-turnover-value {
-    font-size: 12px;
+  .ms-cell:nth-child(odd) {
+    border-right: none;
+  }
+  .ms-cell:nth-child(n+3) {
+    border-top: 1px solid #253247;
   }
 }
 
@@ -1280,35 +1277,29 @@ button:active:not(:disabled) {
     padding-right: 0;
     gap: 8px;
   }
-  /* 移动端恢复行内布局:display:contents 在新网格下涨/跌已是独立格子,改回flex居中 */
-  .market-breadth-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 12px;
-    font-size: 15px;
+  /* 移动端摘要卡:2x2 格(TIME 选择器独占一行) */
+  .market-summary-panel {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+  }
+  .ms-cell {
+    padding: 8px 12px;
+  }
+  .ms-cell:nth-child(odd) {
+    border-right: none;
+  }
+  .ms-cell:nth-of-type(n+3) {
+    border-top: 1px solid #253247;
+  }
+  .time-selector {
     grid-column: 1 / -1;
-  }
-  .market-breadth-row .market-down,
-  .market-breadth-row .market-up {
-    justify-self: center;
-  }
-  .market-breadth-row .market-flat {
-    padding-left: 0;
-  }
-  .market-breadth-bar {
-    grid-area: bar;
-  }
-  .market-limit-row {
-    display: flex;
+    border-top: 1px solid #253247;
+    border-right: none;
+    padding: 8px 12px;
     justify-content: center;
-    grid-column: 1 / -1;
   }
-  .market-turnover-row {
-    justify-content: center;
-    flex-wrap: wrap;
-    column-gap: 14px;
-    row-gap: 2px;
+  .ms-value {
+    font-size: 14px;
   }
   .controls {
     gap: 8px;

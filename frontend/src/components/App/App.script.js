@@ -160,6 +160,13 @@ export default {
       if (cur == null || prev == null || prev === 0) return null
       return ((cur - prev) / Math.abs(prev)) * 100
     },
+    // 当日融资净买入额(亿;正=净买入,负=净卖出),摘要卡"当日净买入"格展示
+    marginNetBuyValue() {
+      const h = this.marginTotal?.history
+      if (!Array.isArray(h) || h.length === 0) return null
+      const cur = h[h.length - 1]?.net_buy
+      return (cur == null || Number.isNaN(Number(cur))) ? null : Number(cur)
+    },
     minReplayDate() {
       const date = new Date()
       date.setDate(date.getDate() - 30)
@@ -387,10 +394,11 @@ export default {
           rank: index + 1,
           flow_direction: direction,
           flow_strength: strength,
-          // 流入/流出越大越浓：抬高上限拉开梯度（TOP1 明显比 TOP5 红/绿）
-          flow_alpha: (0.18 + strength * 0.5).toFixed(3),
-          flow_deep_alpha: (0.22 + strength * 0.55).toFixed(3),
-          flow_border_alpha: (0.28 + strength * 0.6).toFixed(3)
+          // UI 改版(参考同花顺dark/东财占比条):整行实底废弃,行底中性,
+          // 资金强度由左缘色条亮度+金额占比条表达;alpha 调低为极淡行底(0.05~0.13)
+          flow_alpha: (0.05 + strength * 0.08).toFixed(3),
+          flow_deep_alpha: (0.35 + strength * 0.5).toFixed(3),
+          flow_border_alpha: (0.45 + strength * 0.45).toFixed(3)
         }
       })
 
@@ -433,9 +441,9 @@ export default {
           rank: index + 1,
           flow_direction: direction,
           flow_strength: strength,
-          flow_alpha: (0.18 + strength * 0.5).toFixed(3),
-          flow_deep_alpha: (0.22 + strength * 0.55).toFixed(3),
-          flow_border_alpha: (0.28 + strength * 0.6).toFixed(3)
+          flow_alpha: (0.05 + strength * 0.08).toFixed(3),
+          flow_deep_alpha: (0.35 + strength * 0.5).toFixed(3),
+          flow_border_alpha: (0.45 + strength * 0.45).toFixed(3)
         }
       })
 
@@ -766,7 +774,7 @@ export default {
       if (total <= 0) return type === 'up' ? '50%' : '50%'
 
       const value = type === 'up' ? upCount : downCount
-      return `${Math.max(8, Math.min(92, (value / total) * 100))}%`
+      return `${Math.max(2, Math.min(98, (value / total) * 100))}%`
     },
 
     formatTurnoverCompare(value) {
@@ -1299,10 +1307,14 @@ export default {
       const net = Number(sector.net_flow ?? sector.total_net_flow ?? 0)
       if (!net) return null
       const isIn = (sector.flow_direction || sector.flow_group) !== 'out' && net >= 0
-      // 今日榜由模板预计算 flow_alpha(0.18~0.68);多日榜没有,按 rank 档位推:TOP1 最浓
-      const alpha = Number(sector.flow_alpha) || (0.55 - (sector.rank - 1) * 0.09)
+      // 行底为极淡方向色(0.05~0.13),主载体是左缘色条(--bar-color 按 flow_deep_alpha 分级亮度)
+      const alpha = Number(sector.flow_alpha) || (0.13 - (sector.rank - 1) * 0.02)
+      const barAlpha = Number(sector.flow_deep_alpha) || (0.6 - (sector.rank - 1) * 0.08)
       const base = isIn ? '240, 82, 95' : '16, 185, 129'
-      return { background: `rgba(${base}, ${alpha})` }
+      return {
+        background: `rgba(${base}, ${alpha})`,
+        '--bar-color': `rgba(${base}, ${barAlpha})`
+      }
     },
 
     async fetchCurrentData() {
