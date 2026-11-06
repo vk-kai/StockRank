@@ -32,18 +32,26 @@ def get_news_data(page=1, pagesize=400):
     
     try:
         response = requests.get(api_url, params=params, headers=headers, timeout=10)
-        
+
         if response.status_code != 200:
-            error_logger.error(f"新闻API请求失败: HTTP {response.status_code}")
+            _fetch_fail_streak += 1
+            if _fetch_fail_streak == 1:
+                error_logger.error(f"新闻API请求失败: HTTP {response.status_code}")
+            elif _fetch_fail_streak % 20 == 0:
+                error_logger.warning(f"新闻API持续异常(已连续{_fetch_fail_streak}次): HTTP {response.status_code}")
             set_crawler_idle('news')
             return []
-        
+
         try:
             data = response.json()
             if dev_mode:
                 info_logger.debug(f"[DEV模式] 新闻API响应: {json.dumps(data, ensure_ascii=False)}")
         except Exception as e:
-            error_logger.error(f"新闻API返回非JSON: {response.text[:200]}")
+            _fetch_fail_streak += 1
+            if _fetch_fail_streak == 1:
+                error_logger.error(f"新闻API返回非JSON: {response.text[:200]}")
+            elif _fetch_fail_streak % 20 == 0:
+                error_logger.warning(f"新闻API持续返回非JSON(已连续{_fetch_fail_streak}次): {response.text[:120]}")
             set_crawler_idle('news')
             return []
         

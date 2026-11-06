@@ -66,7 +66,7 @@ def load_ai_prompt():
         with open(AI_PROMPT_FILE, 'r', encoding='utf-8') as f:
             return f.read()
     except Exception as e:
-        error_logger.error(f"加载AI提示词失败: {e}")
+        error_logger.error_once(f"加载AI提示词失败: {e}")
         return None
 
 # ============ AI 预算熔断 + token 统计(防烧钱)============
@@ -369,7 +369,7 @@ def load_ai_daily_prompt():
         with open(AI_DAILY_PROMPT_FILE, 'r', encoding='utf-8') as f:
             return f.read()
     except Exception as e:
-        error_logger.error(f"加载首页AI分析提示词失败: {e}")
+        error_logger.error_once(f"加载首页AI分析提示词失败: {e}")
         return None
 
 def analyze_daily_flow(minute_data, top_sectors, market_summary=None):
