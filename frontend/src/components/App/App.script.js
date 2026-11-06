@@ -1953,6 +1953,15 @@ export default {
       this.stockSortField = 'change'
       this.stockSortOrder = isOut ? 'asc' : 'desc'
 
+      // 同花顺板块详情页(q.10jqka.com.cn/thshy/detail/code/xxx/)默认按涨跌幅
+      // 降序只回第一页20条——跌停股根本不在其中,前端对这20条再怎么升序也只是
+      // "矮子里拔将军"(实测原URL首屏全在-1.5%~+3%,而 /order/asc/ 首条-9.94%)。
+      // 把排序意图写进URL:净流出板块追加 /order/asc/(真·跌幅榜),净流入板块
+      // 默认URL已是降序(涨幅榜)不用动。用户点表头仍可对本页重排。
+      if (isOut && sectorUrl && !/\/order\/asc\//.test(sectorUrl)) {
+        sectorUrl = sectorUrl.replace(/\/$/, '') + '/order/asc/'
+      }
+
       this.showStockModal = true
       this.selectedSector = { ...sector, sector_url: sectorUrl }
       this.loadingStocks = true
