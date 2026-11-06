@@ -54,6 +54,29 @@ log() {
     echo "[$(date '+%F %T')] $*" | tee -a "$LOG_FILE"
 }
 
+# 部署结果同步写后端 system.log(与 core.logger 行格式一致,站点日志页"系统日志"
+# 可直接检索)。自动更新脚本在宿主机跑,容器重建期间后端日志线程已死,部署成败
+# 这笔账只有这里能落;RotatingFileHandler(maxBytes=10M,backupCount=5)轮转时
+# 简单追加不冲突,容器起来后继续接管同一文件。
+slog() {
+    # $1=LEVEL $2=message
+    mkdir -p "$REPO_DIR/logs"
+    printf '%s | %s | system | 系统运行 | auto_update:0 | %s\n' \
+        "$(date '+%F %T,%3N')" "$1" "$2" >>"$REPO_DIR/logs/system.log"
+}
+
+# 丢弃运行时状态文件的本地改动:它们被后端每天自动重写,已解除 git 跟踪,但
+# 历史版本曾跟踪过——服务器工作区里旧版文件的未提交改动若不丢弃,会与远端
+# 删除该文件的提交冲突,git pull --ff-only 永久失败(2026-11-06 部署卡死根因)。
+# 内容运行后自动再生,丢弃无损失。2>/dev/null:首次部署时文件可能不存在。
+discard_runtime_state() {
+    git checkout -- \
+        config/ai_news_summary_status.json config/ai_news_summary_result.md \
+        config/ai_daily_status.json config/ai_daily_result.md \
+        config/industry_cycle_status.json config/industry_cycle_result.json \
+        config/name_code_cache.json 2>/dev/null
+}
+
 # 判断当前是否处于 A 股交易时段(工作日 09:30-11:30 / 13:00-15:00)
 is_trading_hours() {
     local dow hour min now_min
@@ -111,8 +134,10 @@ while true; do
             git log --oneline --no-decorate "HEAD..origin/$GIT_BRANCH" >>"$LOG_FILE" 2>&1 || \
                 log "(无法获取提交明细)"
             # --ff-only:仅快进合并,避免本地有意外的分叉提交被合并,失败则不破坏工作区
+            discard_runtime_state
             if git pull --ff-only origin "$GIT_BRANCH" >>"$LOG_FILE" 2>&1; then
                 log "git pull 成功,代码已更新到磁盘(运行中容器仍用旧代码,需重建生效)"
+                slog INFO "[自动更新] 代码拉取成功: ${LOCAL:0:7} -> ${REMOTE:0:7}(重建按交易时段策略执行)"
                 # 判断是否需要重建镜像:只有 Dockerfile 依赖的文件(requirements*/start.sh)变了才 --build。
                 # 业务 .py 靠 volume 挂载,只重启即生效,不必 build(每次 build 即使全 cache 命中也有开销)。
                 # 注意 NEED_BUILD 只置位不清零:上一轮已 pull 但被交易时段推迟的依赖变更,
@@ -126,6 +151,7 @@ while true; do
                 PENDING_REBUILD=1
             else
                 log "git pull 失败(可能有本地改动或非快进可合并),跳过本次,工作区未改动"
+                slog ERROR "[自动更新] git pull 失败,已跳过本次更新(工作区未改动,详见 $LOG_FILE)"
             fi
         fi
     else
@@ -163,6 +189,7 @@ while true; do
                 sleep 5
                 if curl -s -m 5 -o /dev/null "http://127.0.0.1:${HEALTH_PORT:-80}/"; then
                     log "======== 容器重建完成(总耗时 $((t2 - t0))s),本地探测正常,新代码已生效 ========"
+                    slog INFO "[自动更新] 容器重建完成(总耗时 $((t2 - t0))s),本地探测正常,新代码已生效: ${REMOTE:0:7}"
                     PENDING_REBUILD=0
                     NEED_BUILD=""
                 else
@@ -173,14 +200,17 @@ while true; do
                     sleep 5
                     if curl -s -m 5 -o /dev/null "http://127.0.0.1:${HEALTH_PORT:-80}/"; then
                         log "======== 转发修复成功,容器已恢复,新代码已生效 ========"
+                        slog INFO "[自动更新] 端口转发修复成功,容器已恢复,新代码已生效: ${REMOTE:0:7}"
                     else
                         log "======== 转发修复后仍不通!代码已生效,请人工检查: docker compose ps / iptables -t nat -S ========"
+                        slog ERROR "[自动更新] 端口转发修复后仍不通!代码已生效,请人工检查(详见 $LOG_FILE)"
                     fi
                     PENDING_REBUILD=0   # 代码已部署,不再无限重试;转发问题转人工,避免循环破坏
                     NEED_BUILD=""
                 fi
             else
                 log "======== 容器重建失败(down_rc=$down_rc up_rc=$up_rc),保留待重建标志,下一轮重试 ========"
+                slog ERROR "[自动更新] 容器重建失败(down_rc=$down_rc up_rc=$up_rc),下一轮重试(详见 $LOG_FILE)"
             fi
         fi
     fi

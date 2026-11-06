@@ -54,19 +54,34 @@ _deploy_lock = threading.Lock()
 _STATUS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             'DEPLOY_STATUS')
 
-# 部署脚本与 auto_update.sh 同构:ff-only pull → down --timeout 10 →
-# 清 CNI 残留 DNAT(2026-09-06 事故根因,倒序删防行号移位) → up --build。
+# 部署脚本与 auto_update.sh 同构:丢弃运行时状态改动 → ff-only pull →
+# down --timeout 10 → 清 CNI 残留 DNAT(2026-09-06 事故根因,倒序删防行号移位) → up --build。
 # 与旧版的差别:①不再用 && 静默串联——git pull 失败会把原因写进状态文件
 # 并退出,配置页能看到死因(此前 && 链一断,页面永远"部署中",真相只在
 # 宿主机 manual_deploy.log);②git pull 重试 3 次(国内服务器到 GitHub 的
-# 网络抖动是高发死因);③每步进度落盘,面板实时显示。
+# 网络抖动是高发死因);③每步进度落盘,面板实时显示;④拉取前对已解除
+# git 跟踪的运行时状态文件做 checkout 丢弃——它们被后端每天自动重写,
+# 本地改动与远端提交冲突会永久卡死拉取(2026-11-06 事故根因),内容运行
+# 后自动再生,丢弃无损失;⑤部署成败同步追加写 logs/system.log(与
+# core.logger 的行格式一致,日志页"系统日志"可直接检索;容器重建期间
+# 后端已死,只有宿主机脚本能落这笔账)。
 _SCRIPT = (
     "S=/root/StockRank/backend/DEPLOY_STATUS ; "
     "L=/root/manual_deploy.log ; "
+    "SY=/root/StockRank/logs/system.log ; "
     "wr(){ printf '%s|%s|%s\\n' \"$(date +%s)\" \"$1\" \"$2\" >\"$S\" ; } ; "
+    "slog(){ mkdir -p /root/StockRank/logs ; "
+    "printf '%s | %s | system | 系统运行 | manual_deploy:0 | %s\\n' "
+    "\"$(date '+%F %T,%3N')\" \"$1\" \"$2\" >>\"$SY\" ; } ; "
     "wr triggered '' ; "
     "cd /root/StockRank/docker || { wr failed 'cd docker 目录失败' ; exit 1 ; } ; "
     "wr pulling '' ; "
+    "git -C /root/StockRank checkout -- "
+    "config/ai_news_summary_status.json config/ai_news_summary_result.md "
+    "config/ai_daily_status.json config/ai_daily_result.md "
+    "config/industry_cycle_status.json config/industry_cycle_result.json "
+    "config/name_code_cache.json 2>/dev/null ; "
+    "OLD=$(git -C /root/StockRank rev-parse --short HEAD 2>/dev/null) ; "
     "ok=0 ; out=pull-not-run ; "
     "for i in 1 2 3 ; do "
     "out=$(git pull --ff-only origin main 2>&1) ; rc=$? ; "
@@ -74,7 +89,11 @@ _SCRIPT = (
     "if [ \"$rc\" = 0 ] ; then ok=1 ; break ; fi ; "
     "wr pull_retry \"第${i}次拉取失败: $out\" ; sleep 5 ; "
     "done ; "
-    "if [ \"$ok\" = 0 ] ; then wr failed \"git pull 失败: $out\" ; exit 1 ; fi ; "
+    "if [ \"$ok\" = 0 ] ; then wr failed \"git pull 失败: $out\" ; "
+    "slog ERROR \"[部署] git pull 失败(3次重试后放弃): $out\" ; exit 1 ; fi ; "
+    "NEW=$(git -C /root/StockRank rev-parse --short HEAD 2>/dev/null) ; "
+    "slog INFO \"[部署] 代码拉取成功: ${OLD:-?} -> ${NEW:-?},开始重建容器\" ; "
+    "T0=$(date +%s) ; "
     "wr building '' ; "
     "sleep 3 ; "  # 给 /docker-restart 的 HTTP 响应留送达窗口,防止 down 与响应竞态把前端吓成"触发失败"
     "{ docker compose down --timeout 10 && sleep 2 && "
@@ -84,7 +103,10 @@ _SCRIPT = (
     "docker compose up -d --build ; } >>\"$L\" 2>&1 ; "
     "rc=$? ; "
     "git rev-parse HEAD >/root/StockRank/backend/DEPLOYED_VERSION 2>/dev/null ; "
-    "if [ \"$rc\" = 0 ] ; then wr done '' ; else wr failed \"compose 退出码 $rc(详见宿主机 $L)\" ; fi"
+    "if [ \"$rc\" = 0 ] ; then wr done '' ; "
+    "slog INFO \"[部署] 容器重建完成(耗时 $(($(date +%s)-T0))s),新代码已生效: ${NEW:-?}\" ; "
+    "else wr failed \"compose 退出码 $rc(详见宿主机 $L)\" ; "
+    "slog ERROR \"[部署] 容器重建失败(compose 退出码 $rc,详见宿主机 $L),代码已拉取到 ${NEW:-?} 但未生效\" ; fi"
 )
 REMOTE_CMD = ("nohup bash -c " + shlex.quote(_SCRIPT)
               + " >/root/manual_deploy.log 2>&1 & echo DEPLOY_TRIGGERED")

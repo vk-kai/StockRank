@@ -37,6 +37,16 @@ config/jarvis_token.json
 config/redemption_codes.json
 config/otp_config.json
 config/session_secret.json
+# 运行时状态/缓存文件(后端运行中重写,每天变化):不入版本库——否则生产环境
+# git pull 必然与服务器本地改动冲突(2026-11-06 部署拉取失败根因)。
+# 读取方均有缺文件防护,运行后自动再生;拉取脚本另带丢弃本地改动防护
+config/ai_news_summary_status.json
+config/ai_news_summary_result.md
+config/ai_daily_status.json
+config/ai_daily_result.md
+config/industry_cycle_status.json
+config/industry_cycle_result.json
+config/name_code_cache.json
 # 虚拟支付订单/权益库(含用户openid与交易数据,不入版本库)
 backend/data/mp_vpay.db
 # 微信送检探针词条(手动填敏感词,绝不入库)
