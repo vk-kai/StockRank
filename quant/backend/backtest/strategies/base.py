@@ -44,6 +44,18 @@ def ema_sma_seeded(values: np.ndarray, span: int) -> np.ndarray:
     SMA 种子让 EMA 从第 span 个样本起即无种子偏差;不足 span 个样本返回全 NaN。
     """
     arr = np.asarray(values, dtype=float)
+    # 单根脏数据(NaN收盘)会经递推毒化其后全部EMA→信号静默全丢;pandas ewm
+    # 遇NaN是跳过该样本继续递推(自愈),这里对齐:缺失处前向填充后再算
+    # (纯numpy实现,本模块不依赖pandas)
+    nan_mask = np.isnan(arr)
+    if nan_mask.any():
+        idx = np.where(~nan_mask, np.arange(arr.size), -1)
+        np.maximum.accumulate(idx, out=idx)
+        if idx[0] == -1:
+            # 开头就是NaN:无前值可用,后向填充(首个有效值)
+            first_valid = int(np.argmax(~nan_mask))
+            arr[:first_valid] = arr[first_valid]
+        arr = arr[np.maximum(idx, 0)]
     out = np.full(arr.shape, np.nan)
     if span <= 0 or arr.size < span:
         return out

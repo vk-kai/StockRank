@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from backend.backtest.strategies import get_backtest_strategy
+from backend.backtest.strategies.base import macd_sma_seeded
 from backend.backtest.strategies.macd_chan_base import BaseMACDChanStrategy, _MacdAreaSegment
 from backend.strategy_core import MABullPullbackBollCoreStrategy, MASupportPullbackCoreStrategy
 from backend.time_utils import to_chart_seconds, to_epoch_seconds
@@ -671,18 +672,15 @@ def _diagnose_macd_bar(strategy_name: str, df: pd.DataFrame, target_timestamp: i
     low = pd.to_numeric(work_df["low"], errors="coerce")
     high = pd.to_numeric(work_df["high"], errors="coerce")
 
-    ema_fast = close.ewm(span=strategy.fast, adjust=False).mean()
-    ema_slow = close.ewm(span=strategy.slow, adjust=False).mean()
-    dif = ema_fast - ema_slow
-    dea = dif.ewm(span=strategy.signal, adjust=False).mean()
-    hist = (dif - dea) * 2
+    # SMA种子MACD,与9269550后的真实策略指标同口径——诊断replay若仍用旧ewm,
+    # 交叉点/柱段历史会与回测信号对不上(用户看到的买点在图上无指标依据)
+    dif_vals, dea_vals, hist_vals = macd_sma_seeded(
+        close.values.astype(float), strategy.fast, strategy.slow, strategy.signal
+    )
 
     close_vals = close.values
     low_vals = low.values
     high_vals = high.values
-    dif_vals = dif.values
-    dea_vals = dea.values
-    hist_vals = hist.values
 
     completed_segments: list[_MacdAreaSegment] = []
     current_sign = 0
@@ -1938,11 +1936,10 @@ def _diagnose_non_divergence_bar(strategy_name: str, df: pd.DataFrame, target_ti
     low = pd.to_numeric(work_df["low"], errors="coerce")
     high = pd.to_numeric(work_df["high"], errors="coerce")
 
-    ema_fast = close.ewm(span=strategy.fast, adjust=False).mean()
-    ema_slow = close.ewm(span=strategy.slow, adjust=False).mean()
-    dif = ema_fast - ema_slow
-    dea = dif.ewm(span=strategy.signal, adjust=False).mean()
-    hist = (dif - dea) * 2
+    # SMA种子MACD(与回测口径一致,见 _diagnose_macd_bar 同款注释)
+    dif_vals, dea_vals, hist_vals = macd_sma_seeded(
+        close.values.astype(float), strategy.fast, strategy.slow, strategy.signal
+    )
 
     # 计算布林通道
     boll_mid = close.rolling(window=strategy.boll_period).mean()
@@ -1953,9 +1950,6 @@ def _diagnose_non_divergence_bar(strategy_name: str, df: pd.DataFrame, target_ti
     close_vals = close.values
     low_vals = low.values
     high_vals = high.values
-    dif_vals = dif.values
-    dea_vals = dea.values
-    hist_vals = hist.values
     boll_upper_vals = boll_upper.values
     boll_lower_vals = boll_lower.values
 

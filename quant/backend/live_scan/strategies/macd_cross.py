@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from backend.backtest.strategies.base import macd_sma_seeded
+
 from .base import BaseStrategy, Signal
 
 
@@ -16,23 +18,22 @@ class MACDStrategy(BaseStrategy):
             return []
 
         signals = []
-        close = pd.Series(df["close"].values)
-
-        ema_fast = close.ewm(span=self.fast, adjust=False).mean()
-        ema_slow = close.ewm(span=self.slow, adjust=False).mean()
-        dif = ema_fast - ema_slow
-        dea = dif.ewm(span=self.signal, adjust=False).mean()
-        macd = (dif - dea) * 2
-
-        dif_vals = dif.values
-        dea_vals = dea.values
+        # SMA种子MACD,与回测侧(backend.backtest.strategies.macd_cross)同口径:
+        # 实时扫描若用旧ewm(首值种子+从slow+1判交叉),同一标的同一K线的
+        # 金叉/死叉会与回测信号对不上(口径分裂,用户对比两端结果时困惑)
+        dif_vals, dea_vals, macd_vals = macd_sma_seeded(
+            pd.to_numeric(df["close"], errors="coerce").values.astype(float),
+            self.fast, self.slow, self.signal
+        )
         close_vals = df["close"].values
 
         time_col = "datetime" if "datetime" in df.columns else "date"
         times = df[time_col].values
 
-        for i in range(self.slow + 1, len(df)):
-            if np.isnan(dif_vals[i]) or np.isnan(dea_vals[i]):
+        # 与回测侧同起点:slow+signal 起,DIF/DEA 均已收敛
+        for i in range(self.slow + self.signal, len(df)):
+            if np.isnan(dif_vals[i]) or np.isnan(dea_vals[i]) \
+                    or np.isnan(dif_vals[i - 1]) or np.isnan(dea_vals[i - 1]):
                 continue
 
             signal_time = (
@@ -49,7 +50,7 @@ class MACDStrategy(BaseStrategy):
                         direction="buy",
                         price=round(float(close_vals[i]), 3),
                         time=signal_time,
-                        reason=f"DIF上穿DEA, MACD={macd.iloc[i]:.3f}",
+                        reason=f"DIF上穿DEA, MACD={macd_vals[i]:.3f}",
                     )
                 )
             elif dif_vals[i - 1] >= dea_vals[i - 1] and dif_vals[i] < dea_vals[i]:
@@ -60,7 +61,7 @@ class MACDStrategy(BaseStrategy):
                         direction="sell",
                         price=round(float(close_vals[i]), 3),
                         time=signal_time,
-                        reason=f"DIF下穿DEA, MACD={macd.iloc[i]:.3f}",
+                        reason=f"DIF下穿DEA, MACD={macd_vals[i]:.3f}",
                     )
                 )
 
