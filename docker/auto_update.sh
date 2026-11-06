@@ -69,8 +69,10 @@ slog() {
 # 历史版本曾跟踪过——服务器工作区里旧版文件的未提交改动若不丢弃,会与远端
 # 删除该文件的提交冲突,git pull --ff-only 永久失败(2026-11-06 部署卡死根因)。
 # 内容运行后自动再生,丢弃无损失。2>/dev/null:首次部署时文件可能不存在。
+# 必须 git -C 指定仓库根:重建分支会 cd 到 $DOCKER_DIR,此后相对路径
+# config/... 会解析到 docker/config/(不存在),防护静默失效。
 discard_runtime_state() {
-    git checkout -- \
+    git -C "$REPO_DIR" checkout -- \
         config/ai_news_summary_status.json config/ai_news_summary_result.md \
         config/ai_daily_status.json config/ai_daily_result.md \
         config/industry_cycle_status.json config/industry_cycle_result.json \

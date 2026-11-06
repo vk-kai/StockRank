@@ -2199,7 +2199,8 @@ def upsert_price_history(
 
 def get_price_history(code: str, period: str, limit: Optional[int] = None) -> list[dict]:
     from backend.kline_parquet import get_kline_parquet
-    
+    import pandas as pd   # 仅函数内使用,顶部无全局 pandas 依赖(保持模块轻量)
+
     code = str(code).strip().zfill(6)
     df = get_kline_parquet(code, str(period), limit=limit)
     if df.empty:

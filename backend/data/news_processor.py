@@ -188,7 +188,7 @@ def save_news_data(news_list):
                         existing_title = existing_item.get('title', '').strip()
                         existing_content = existing_item.get('content', '').strip()
 
-                        if normalize_news_title(existing_title) == normalized_title and existing_content == news_content:
+                        if normalize_news_title(existing_title) == news_key[0] and existing_content == news_content:
                             existing_item['url'] = item.get('url', existing_item.get('url', ''))
                             existing_item['time'] = item.get('time', existing_item.get('time', ''))
                             existing_item['importance'] = item.get('importance', existing_item.get('importance', '0'))
