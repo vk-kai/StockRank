@@ -27,7 +27,7 @@ error_logger = get_logger('error')
 # 回连会被安全组挡;裸机/本地调试时可设 DEPLOY_SSH_HOST=公网IP 直连。
 DEPLOY_SSH_HOST = os.environ.get('DEPLOY_SSH_HOST', 'host.docker.internal')
 DEPLOY_SSH_USER = os.environ.get('DEPLOY_SSH_USER', 'root')
-DEPLOY_MIN_INTERVAL = 300   # 两次手动部署最小间隔(秒),防连点
+DEPLOY_MIN_INTERVAL = 30    # 两次手动部署最小间隔(秒),防连点
 
 # 版本信息:仓库公开时匿名 API 够用;私有化后在 compose 配 GITHUB_TOKEN
 GITHUB_REPO = os.environ.get('DEPLOY_GITHUB_REPO', 'vk-kai/StockRank')
