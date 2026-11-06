@@ -173,9 +173,13 @@ def _get_last_ref_value(code, hit_type, alerts, today):
     """
     if not alerts:
         return None, True
-    # 从最新记录开始查找
+    # 从最新记录开始查找。按 types 列表匹配而非仅 primary type:
+    # 联动命中的记录同样携带该类型的水位参考值(record_alert 对 all_hits 都记)
     for a in reversed(alerts):
-        if a.get('code') != code or a.get('type') != hit_type:
+        if a.get('code') != code:
+            continue
+        a_types = a.get('types') or [a.get('type')]
+        if hit_type not in a_types:
             continue
         # 只看当天的记录
         if a.get('date') != today:
@@ -311,7 +315,10 @@ def _gap_open(q, state, cfg):
     if not cfg['gap_open']['enabled']:
         return None
     
-    # 时间窗口检查：只在开盘后30分钟内检测（9:30-10:00 或 13:00-13:30）
+    # 时间窗口检查：只在早盘开盘后30分钟内检测（9:30-10:00）。
+    # 判定基准是今开 vs 昨收,只对早盘有意义;午后窗口做同口径比较得到的仍是
+    # 早盘缺口(非"午后跳空"),不做。历史注释曾写"或 13:00-13:30"但代码从未
+    # 实现,亦无午后上午收盘价基准可用,此处按实际行为订正注释。
     # 无时间戳/解析失败时直接不判定——否则会退化成全天检测,午后的采样也会误报"高开/低开"。
     try:
         ts = q.get('ts', '')
@@ -481,13 +488,21 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
                 continue
             types = a.get('types') or [a.get('type')]
             if hit_type in types:
-                # 只要当天有记录，就认为已触发
+                # 当天已成功推过 → 已触发。推送失败(pushed=False)的记录只占
+                # 5 分钟短冷却:通道恢复后还能补推,不会把当天的高低开提醒整个吞掉
                 if a.get('date') == today:
-                    return True
+                    if a.get('pushed') is not False:
+                        return True
+                    try:
+                        t = datetime.fromisoformat(a['timestamp'])
+                    except Exception:
+                        return True
+                    return now - t < timedelta(minutes=5)
         return False
-    
+
     # 其他类型：按冷却时间判断
     threshold = timedelta(minutes=cooldown_minutes)
+    fail_threshold = timedelta(minutes=5)
     for a in reversed(alerts):
         if a.get('code') != code:
             continue
@@ -497,7 +512,10 @@ def is_in_cooldown(code, hit_type, alerts, cooldown_minutes, now=None):
                 t = datetime.fromisoformat(a['timestamp'])
             except Exception:
                 continue
-            if now - t < threshold:
+            # 推送失败的记录只占 5 分钟短冷却:record_alert 不区分推送成败都会
+            # 落库,若失败记录也占满 30 分钟,通道故障恢复后该异动会被冷却吞掉
+            effective = fail_threshold if a.get('pushed') is False else threshold
+            if now - t < effective:
                 return True
     return False
 
@@ -524,18 +542,22 @@ def record_alert(code, name, primary_hit, all_hits, quote, pushed, now=None):
         'date': (quote.get('ts', '') or now.strftime('%Y-%m-%d'))[:10],
         'pushed': pushed, 'timestamp': now.isoformat(),
     }
-    # 记录关键数据用于递进检测
-    if primary_hit['type'] == 'dip_rebound':
-        rec['ref_low'] = quote.get('low')  # 记录低点
-    elif primary_hit['type'] == 'spike_fade':
-        rec['ref_high'] = quote.get('high')  # 记录高点
-    elif primary_hit['type'] == 'cum_move':
-        rec['ref_pct'] = quote.get('pct')  # 记录涨跌幅
-    elif primary_hit['type'] == 'amplitude':
-        # 记录振幅
-        pc = quote.get('prev_close') or 0
-        if pc and quote.get('high') is not None and quote.get('low') is not None:
-            rec['ref_amp'] = (quote['high'] - quote['low']) / pc * 100
+    # 记录关键数据用于递进检测。对所有命中类型都记水位,不只 primary:
+    # 一次推送常含多类型(如 dip_rebound+amplitude),漏记会让另一维度的
+    # 递进检测拿不到起点而提前重复触发
+    for h in all_hits:
+        t_ = h['type']
+        if t_ == 'dip_rebound':
+            rec['ref_low'] = quote.get('low')  # 记录低点
+        elif t_ == 'spike_fade':
+            rec['ref_high'] = quote.get('high')  # 记录高点
+        elif t_ == 'cum_move':
+            rec['ref_pct'] = quote.get('pct')  # 记录涨跌幅
+        elif t_ == 'amplitude':
+            # 记录振幅
+            pc = quote.get('prev_close') or 0
+            if pc and quote.get('high') is not None and quote.get('low') is not None:
+                rec['ref_amp'] = (quote['high'] - quote['low']) / pc * 100
     alerts.append(rec)
     _save_alerts(alerts)
     return rec

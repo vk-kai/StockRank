@@ -46,6 +46,8 @@ trendzen_arb_thread = None
 quant_signal_thread = None
 vpay_checker_thread = None
 stock_pulse_thread = None
+stock_price_monitor_thread = None
+demo_snapshot_thread = None
 
 def create_app():
     app = Flask(__name__)
@@ -183,6 +185,7 @@ def create_app():
         
         global data_collection_thread, news_collection_thread, margin_collection_thread
         global trendzen_arb_thread, quant_signal_thread, vpay_checker_thread, stock_pulse_thread
+        global stock_price_monitor_thread, mm_snapshot_thread, demo_snapshot_thread
         
         if thread_name == 'data_collector':
             if data_collection_thread.is_alive():
@@ -257,6 +260,38 @@ def create_app():
             stock_pulse_thread.start()
             system_logger.info(f"[重启] stock_pulse 线程已重新启动")
             return jsonify({'success': True, 'message': 'stock_pulse 线程已重启'})
+
+        elif thread_name == 'stock_price_monitor':
+            if stock_price_monitor_thread is not None and stock_price_monitor_thread.is_alive():
+                system_logger.info(f"[重启] stock_price_monitor 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from monitors.stock_price_monitor import stock_price_loop
+            stock_price_monitor_thread = threading.Thread(target=stock_price_loop, daemon=True)
+            stock_price_monitor_thread.start()
+            system_logger.info(f"[重启] stock_price_monitor 线程已重新启动")
+            return jsonify({'success': True, 'message': 'stock_price_monitor 线程已重启'})
+
+        elif thread_name == 'market_map_snapshot':
+            if mm_snapshot_thread is not None and mm_snapshot_thread.is_alive():
+                system_logger.info(f"[重启] market_map_snapshot 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            mm_snapshot_thread = threading.Thread(target=market_map_snapshot_thread, daemon=True)
+            mm_snapshot_thread.start()
+            system_logger.info(f"[重启] market_map_snapshot 线程已重新启动")
+            return jsonify({'success': True, 'message': 'market_map_snapshot 线程已重启'})
+
+        elif thread_name == 'demo_snapshot':
+            if demo_snapshot_thread is not None and demo_snapshot_thread.is_alive():
+                system_logger.info(f"[重启] demo_snapshot 线程仍在运行(疑似心跳误报)，无需重启")
+                return jsonify({'success': True, 'message': '线程仍在运行'})
+
+            from data.demo_snapshot import demo_snapshot_loop
+            demo_snapshot_thread = threading.Thread(target=demo_snapshot_loop, daemon=True)
+            demo_snapshot_thread.start()
+            system_logger.info(f"[重启] demo_snapshot 线程已重新启动")
+            return jsonify({'success': True, 'message': 'demo_snapshot 线程已重启'})
 
         else:
             return jsonify({'success': False, 'message': f'未知的线程名称: {thread_name}'}), 400
@@ -335,7 +370,8 @@ if __name__ == '__main__':
         system_logger.info("监控线程已启动")
 
         from monitors.stock_price_monitor import stock_price_loop
-        threading.Thread(target=stock_price_loop, daemon=True).start()
+        stock_price_monitor_thread = threading.Thread(target=stock_price_loop, daemon=True)
+        stock_price_monitor_thread.start()
         system_logger.info("价格异动监控线程已启动")
 
         # 个股异动监控:盘中每5分钟采样全A涨跌幅,检测板块聚集/涨停/大幅拉升跳水(analysis/stock_pulse.py)
@@ -363,7 +399,8 @@ if __name__ == '__main__':
 
         # 演示模式快照:每个交易日收盘后固化首页+云图数据,未登录访客只读这份快照
         from data.demo_snapshot import demo_snapshot_loop
-        threading.Thread(target=demo_snapshot_loop, daemon=True).start()
+        demo_snapshot_thread = threading.Thread(target=demo_snapshot_loop, daemon=True)
+        demo_snapshot_thread.start()
         system_logger.info("演示快照线程已启动")
 
         # 虚拟支付兜底查单线程:每5分钟扫描 pending 订单,推送丢失时补发货

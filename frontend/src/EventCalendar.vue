@@ -280,7 +280,7 @@ export default {
   border-radius: 6px;
   border: 1px solid rgba(24, 144, 255, 0.4);
   background: rgba(24, 144, 255, 0.12);
-  color: #69c0ff;
+  color: #398BFF;
   cursor: pointer;
 }
 .evc-empty {
@@ -349,7 +349,7 @@ export default {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
-  color: #69c0ff;
+  color: #398BFF;
   background: rgba(24, 144, 255, 0.12);
   border: 1px solid rgba(24, 144, 255, 0.3);
 }
@@ -372,13 +372,13 @@ export default {
   align-items: center;
   gap: 6px;
 }
-.evc-day-head.today { color: #69c0ff; }
+.evc-day-head.today { color: #398BFF; }
 .evc-day-today-badge {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
   background: rgba(24, 144, 255, 0.15);
-  color: #69c0ff;
+  color: #398BFF;
 }
 .evc-day-body { display: grid; gap: 4px; }
 .evc-item {
@@ -417,7 +417,7 @@ export default {
 }
 .evc-vals { color: #8ba4c7; font-size: 11px; }
 .evc-vals b { color: #e0e6f0; font-weight: 600; }
-.evc-vals b.evc-actual { color: #69c0ff; font-weight: 700; }
+.evc-vals b.evc-actual { color: #398BFF; font-weight: 700; }
 .evc-footer {
   text-align: right;
   font-size: 11px;

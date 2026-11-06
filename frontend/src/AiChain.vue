@@ -183,57 +183,59 @@ export default {
 </script>
 
 <style scoped>
+/* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
 .aic-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
-  color: #e0e6f0;
-  padding: 20px;
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .aic-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 20px;
-  background: rgba(26, 35, 53, 0.8);
-  border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  backdrop-filter: blur(10px);
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #253247;
   gap: 12px;
 }
 .aic-header h1 {
-  font-size: 1.3rem;
-  color: #fff;
+  font-size: 18px;
+  color: #E5EAF2;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 .aic-header-right { display: flex; align-items: center; gap: 14px; margin-right: 250px; /* 避让右上角固定北京时间+登录入口 */ }
 .aic-source {
   padding: 5px 12px;
-  background: rgba(24, 144, 255, 0.15);
-  border: 1px solid rgba(24, 144, 255, 0.4);
+  background: rgba(57, 139, 255, 0.15);
+  border: 1px solid rgba(57, 139, 255, 0.4);
   border-radius: 6px;
   font-size: 12px;
-  color: #69c0ff;
+  color: #398BFF;
 }
-.aic-update { font-size: 12px; color: #8ba4c7; }
+.aic-update { font-size: 12px; color: #8795AA; }
 .aic-back, .aic-refresh {
-  border: 1px solid #4a5a7b;
-  background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
-  color: #e0e6f0;
+  background: #172235;
+  border: 1px solid #253247;
+  color: #8795AA;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s ease;
+  font-size: 13px;
+  transition: all 0.2s ease;
 }
-.aic-back { padding: 10px 20px; }
+.aic-back { padding: 7px 14px; white-space: nowrap; }
 .aic-refresh { padding: 8px 16px; }
 .aic-back:hover, .aic-refresh:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  color: #398BFF;
+  border-color: rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.08);
 }
 .aic-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -249,17 +251,17 @@ export default {
   font-size: 13px;
   font-weight: 600;
   border-radius: 8px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  background: rgba(26, 35, 53, 0.6);
-  color: #8ba4c7;
+  border: 1px solid #253247;
+  background: #172235;
+  color: #8795AA;
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.aic-tab:hover { color: #e0e6f0; border-color: rgba(111, 142, 190, 0.6); }
+.aic-tab:hover { color: #E5EAF2; border-color: rgba(57, 139, 255, 0.5); }
 .aic-tab.active {
   color: #fff;
-  background: rgba(24, 144, 255, 0.18);
-  border-color: rgba(24, 144, 255, 0.5);
+  background: rgba(57, 139, 255, 0.18);
+  border-color: rgba(57, 139, 255, 0.5);
 }
 
 /* 综合环境温度计 */
@@ -271,19 +273,19 @@ export default {
   gap: 12px;
   padding: 18px 24px;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  background: rgba(26, 35, 53, 0.6);
+  border: 1px solid #253247;
+  background: #111827;
   margin-bottom: 18px;
-  border-left: 5px solid #8ba4c7;
+  border-left: 5px solid #8795AA;
 }
 .aic-thermo.bull { border-left-color: #ff4d4f; background: rgba(239, 83, 80, 0.08); }
 .aic-thermo.bear { border-left-color: #52c41a; background: rgba(82, 196, 26, 0.08); }
 .aic-thermo-main { display: flex; align-items: center; gap: 12px; }
-.aic-thermo-dot { width: 14px; height: 14px; border-radius: 50%; background: #8ba4c7; }
+.aic-thermo-dot { width: 14px; height: 14px; border-radius: 50%; background: #8795AA; }
 .aic-thermo.bull .aic-thermo-dot { background: #ff4d4f; box-shadow: 0 0 12px #ff4d4f; }
 .aic-thermo.bear .aic-thermo-dot { background: #52c41a; box-shadow: 0 0 12px #52c41a; }
-.aic-thermo-label { font-size: 14px; color: #8ba4c7; }
-.aic-thermo-overall { font-size: 1.6rem; font-weight: 800; color: #fff; }
+.aic-thermo-label { font-size: 14px; color: #8795AA; }
+.aic-thermo-overall { font-size: 1.6rem; font-weight: 800; color: #E5EAF2; }
 .aic-thermo.bull .aic-thermo-overall { color: #ff7875; }
 .aic-thermo.bear .aic-thermo-overall { color: #73d13d; }
 .aic-thermo-sub { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -292,21 +294,21 @@ export default {
   border-radius: 6px;
   font-size: 13px;
   font-weight: 700;
-  background: rgba(58, 74, 107, 0.4);
-  color: #cbd5e1;
+  background: rgba(37, 50, 71, 0.4);
+  color: #E5EAF2;
 }
 .aic-signal.bull { color: #ff7875; background: rgba(239, 83, 80, 0.15); }
 .aic-signal.bear { color: #73d13d; background: rgba(82, 196, 26, 0.15); }
-.aic-counts { font-size: 12px; color: #8ba4c7; }
+.aic-counts { font-size: 12px; color: #8795AA; }
 
 /* 链区 */
 .aic-chain { margin-bottom: 18px; }
 .aic-chain-title {
   font-size: 1.05rem;
-  color: #e0e6f0;
+  color: #E5EAF2;
   margin: 0 0 12px 2px;
 }
-.aic-chain-title small { font-size: 12px; color: #8ba4c7; font-weight: 400; }
+.aic-chain-title small { font-size: 12px; color: #8795AA; font-weight: 400; }
 
 .aic-grid {
   display: grid;
@@ -318,42 +320,42 @@ export default {
 /* 卡片 */
 .aic-card {
   position: relative;
-  background: rgba(26, 35, 53, 0.6);
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 12px;
   padding: 16px 14px;
-  border-top: 3px solid #8ba4c7;
+  border-top: 3px solid #8795AA;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .aic-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
 .aic-card.bull { border-top-color: #ff4d4f; }
 .aic-card.bear { border-top-color: #52c41a; }
-.aic-card.neutral { border-top-color: #8ba4c7; }
+.aic-card.neutral { border-top-color: #8795AA; }
 .aic-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
 }
-.aic-name { font-size: 14px; font-weight: 700; color: #e0e6f0; }
+.aic-name { font-size: 14px; font-weight: 700; color: #E5EAF2; }
 .aic-tag {
   font-size: 11px;
-  color: #8ba4c7;
-  background: rgba(58, 74, 107, 0.4);
+  color: #8795AA;
+  background: rgba(37, 50, 71, 0.4);
   padding: 2px 7px;
   border-radius: 4px;
 }
 .aic-price {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #fff;
+  color: #E5EAF2;
   line-height: 1.1;
   margin-bottom: 4px;
 }
 .aic-change { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
 .aic-card.bull .aic-change { color: #ff4d4f; }
 .aic-card.bear .aic-change { color: #52c41a; }
-.aic-card.neutral .aic-change { color: #cbd5e1; }
+.aic-card.neutral .aic-change { color: #E5EAF2; }
 .aic-impact {
   display: inline-block;
   font-size: 12px;
@@ -364,12 +366,12 @@ export default {
 }
 .aic-card.bull .aic-impact { color: #ff4d4f; background: rgba(239, 83, 80, 0.15); }
 .aic-card.bear .aic-impact { color: #73d13d; background: rgba(82, 196, 26, 0.15); }
-.aic-card.neutral .aic-impact { color: #cbd5e1; background: rgba(139, 164, 199, 0.15); }
-.aic-meta { font-size: 11px; color: #6b7d99; }
+.aic-card.neutral .aic-impact { color: #E5EAF2; background: rgba(135, 149, 170, 0.15); }
+.aic-meta { font-size: 11px; color: #8795AA; }
 
 .aic-empty, .aic-loading {
   text-align: center;
-  color: #8ba4c7;
+  color: #8795AA;
   padding: 40px;
   font-size: 15px;
 }
@@ -377,8 +379,8 @@ export default {
   display: inline-block;
   width: 22px;
   height: 22px;
-  border: 3px solid rgba(58, 74, 107, 0.4);
-  border-top-color: #69c0ff;
+  border: 3px solid rgba(37, 50, 71, 0.4);
+  border-top-color: #398BFF;
   border-radius: 50%;
   animation: aic-spin 0.8s linear infinite;
   vertical-align: middle;
@@ -396,7 +398,7 @@ export default {
 .aic-footer {
   text-align: center;
   padding: 14px;
-  color: #8ba4c7;
+  color: #8795AA;
   font-size: 0.8rem;
   margin-top: 16px;
   line-height: 1.7;
@@ -410,6 +412,6 @@ export default {
   .aic-grid { grid-template-columns: repeat(2, 1fr); }
   .aic-grid-macro { grid-template-columns: repeat(2, 1fr); }
   .aic-header { flex-direction: column; text-align: center; }
-  .aic-header h1 { font-size: 1.05rem; }
+  .aic-header h1 { font-size: 16px; }
 }
 </style>

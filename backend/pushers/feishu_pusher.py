@@ -13,8 +13,11 @@ def load_feishu_config():
     try:
         with open(FEISHU_CONFIG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
+    except FileNotFoundError:
+        # 配置文件不存在 = 飞书未配置,不是错误(与 wechat_pusher 同语义)
+        return None
     except Exception as e:
-        error_logger.error(f"加载飞书配置失败: {e}")
+        error_logger.error_once(f"加载飞书配置失败: {e}") 
         return None
 
 def generate_sign(timestamp, secret):

@@ -353,19 +353,25 @@
           提交于 {{ draftView.row.create_time }}
         </p>
         <div class="draft-view-body">
-          <ol class="draft-qlist">
-            <li v-for="(q, i) in draftView.row.questions || []" :key="'q' + i">
-              {{ q.q }}
-              <ul>
-                <li v-for="(o, j) in q.opts || []" :key="'o' + j">{{ o }}</li>
-              </ul>
-            </li>
-          </ol>
-          <ul class="draft-rlist">
-            <li v-for="(r, i) in draftView.row.results || []" :key="'r' + i">
-              <b>{{ r.name }}</b>：{{ r.desc }}
-            </li>
-          </ul>
+          <!-- 解析失败(questions 为 null)时展示原始文本,审核员仍能看到用户投了什么 -->
+          <template v-if="draftView.row.questions || draftView.row.results">
+            <ol class="draft-qlist">
+              <li v-for="(q, i) in draftView.row.questions || []" :key="'q' + i">
+                {{ q.q }}
+                <ul>
+                  <li v-for="(o, j) in q.opts || []" :key="'o' + j">{{ o }}</li>
+                </ul>
+              </li>
+            </ol>
+            <ul class="draft-rlist">
+              <li v-for="(r, i) in draftView.row.results || []" :key="'r' + i">
+                <b>{{ r.name }}</b>：{{ r.desc }}
+              </li>
+            </ul>
+          </template>
+          <pre v-else class="draft-raw">题目原文：{{ draftView.row.questions_raw || '(空)' }}
+
+结果原文：{{ draftView.row.results_raw || '(空)' }}</pre>
         </div>
         <div class="pwd-actions">
           <button class="cancel-btn" @click="draftView.row = null">关闭</button>

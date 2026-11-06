@@ -124,6 +124,15 @@ def restart_thread(thread_name, restart_url, restart_cooldown):
                 headers=restart_headers
             )
         if response.status_code == 200:
+            # 200 ≠ 已重启:后端对「线程仍在运行」(心跳误报,线程其实活着)同样
+            # 返回 200。区分两种情况,避免把"什么都没做"记成"成功重启线程"。
+            try:
+                resp_msg = response.json().get('message', '')
+            except Exception:
+                resp_msg = ''
+            if '仍在运行' in resp_msg:
+                system_logger.warning(f"[监控] {thread_name} 后端报告线程仍在运行(疑似心跳误报)，本轮未执行重启")
+                return True
             system_logger.info(f"[监控] 成功重启线程: {thread_name}")
             _restart_fail_count[thread_name] = 0
             return True

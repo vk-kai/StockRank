@@ -478,9 +478,11 @@ export default {
 <style scoped>
 .house-kline-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
-  color: #e0e6f0;
-  padding: 20px;
+  /* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .kline-header {
@@ -488,56 +490,55 @@ export default {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   padding: 15px 290px 15px 20px; /* 右侧避让固定北京时间+登录入口 */
-  background: rgba(26, 35, 53, 0.8);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  backdrop-filter: blur(10px);
+  border: 1px solid #253247;
 }
-.kline-header h1 { font-size: 1.4rem; color: #fff; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kline-header h1 { font-size: 18px; color: #E5EAF2; font-weight: 700; letter-spacing: 0.5px; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .kline-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.ds-select { padding: 8px 10px; background: rgba(13,19,32,0.8); color: #e0e6f0; border: 1px solid #3a4a6b; border-radius: 8px; font-size: 13px; max-width: 220px; }
-.ds-select option { background: #0d1321; color: #e0e6f0; }
+.ds-select { padding: 8px 10px; background: #172235; color: #E5EAF2; border: 1px solid #253247; border-radius: 8px; font-size: 13px; max-width: 220px; }
+.ds-select option { background: #111827; color: #E5EAF2; }
 
-.action-btn { padding: 8px 14px; background: linear-gradient(135deg, #3a4a6b, #2a3a5b); border: 1px solid #4a5a7b; border-radius: 8px; color: #e0e6f0; cursor: pointer; font-size: 13px; transition: all 0.3s ease; white-space: nowrap; }
+.action-btn { padding: 8px 14px; background: #172235; border: 1px solid #253247; border-radius: 8px; color: #E5EAF2; cursor: pointer; font-size: 13px; transition: all 0.3s ease; white-space: nowrap; }
 .action-btn:hover { transform: translateY(-1px); }
-.action-btn.primary { background: linear-gradient(135deg, #1890ff, #096dd9); border-color: #40a9ff; color: #fff; }
+.action-btn.primary { background: linear-gradient(135deg, #398BFF, #2f7ae5); border-color: #5da2ff; color: #fff; }
 .action-btn.danger { background: linear-gradient(135deg, #ff4d4f, #cf1322); border-color: #ff7875; color: #fff; }
 .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.back-button { padding: 10px 20px; background: linear-gradient(135deg, #3a4a6b, #2a3a5b); border: 1px solid #4a5a7b; border-radius: 8px; color: #e0e6f0; cursor: pointer; transition: all 0.3s ease; font-size: 14px; white-space: nowrap; }
-.back-button:hover { background: linear-gradient(135deg, #4a5a7b, #3a4a6b); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.back-button { background: #172235; color: #8795AA; border: 1px solid #253247; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all 0.2s ease; white-space: nowrap; }
+.back-button:hover { color: #398BFF; border-color: rgba(57, 139, 255, 0.5); background: rgba(57, 139, 255, 0.08); }
 
 .kline-controls { display: flex; justify-content: center; margin-bottom: 20px; }
-.period-buttons { display: flex; gap: 10px; padding: 5px; background: rgba(26,35,53,0.8); border-radius: 10px; border: 1px solid rgba(58,74,107,0.5); }
-.period-btn { padding: 10px 30px; background: transparent; border: none; border-radius: 8px; color: #8ba4c7; cursor: pointer; transition: all 0.3s ease; font-size: 14px; font-weight: 500; }
-.period-btn:hover { background: rgba(58,74,107,0.5); color: #fff; }
-.period-btn.active { background: linear-gradient(135deg, #1890ff, #096dd9); color: #fff; font-weight: bold; box-shadow: 0 4px 12px rgba(24,144,255,0.3); }
+.period-buttons { display: flex; gap: 10px; padding: 5px; background: #172235; border-radius: 10px; border: 1px solid #253247; }
+.period-btn { padding: 10px 30px; background: transparent; border: none; border-radius: 8px; color: #8795AA; cursor: pointer; transition: all 0.3s ease; font-size: 14px; font-weight: 500; }
+.period-btn:hover { background: rgba(57, 139, 255, 0.08); color: #fff; }
+.period-btn.active { background: linear-gradient(135deg, #398BFF, #2f7ae5); color: #fff; font-weight: bold; box-shadow: 0 4px 12px rgba(57, 139, 255, 0.3); }
 
-.chart-container { position: relative; background: rgba(26,35,53,0.6); border-radius: 12px; border: 1px solid rgba(58,74,107,0.5); padding: 20px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+.chart-container { position: relative; background: #111827; border-radius: 12px; border: 1px solid #253247; padding: 20px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
 .main-chart { width: 100%; height: 600px; }
-.empty-tip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8ba4c7; font-size: 16px; }
+.empty-tip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8795AA; font-size: 16px; }
 
-.data-source { text-align: center; padding: 15px; color: #8ba4c7; font-size: 0.9rem; background: rgba(26,35,53,0.6); border-radius: 8px; border: 1px solid rgba(58,74,107,0.3); }
+.data-source { text-align: center; padding: 15px; color: #8795AA; font-size: 0.9rem; background: #172235; border-radius: 8px; border: 1px solid rgba(37, 50, 71, 0.5); }
 
 /* 弹窗 + 表单 */
 .modal-mask { position: fixed; inset: 0; background: rgba(5,10,20,0.7); display: flex; align-items: flex-start; justify-content: center; z-index: 2000; padding: 40px 16px; overflow-y: auto; }
-.modal { width: 100%; max-width: 720px; background: linear-gradient(135deg, #0d1321, #131a2e); border: 1px solid #3a4a6b; border-radius: 12px; padding: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
-.modal h2 { margin: 0 0 16px; color: #fff; font-size: 1.2rem; }
+.modal { width: 100%; max-width: 720px; background: #111827; border: 1px solid #253247; border-radius: 12px; padding: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+.modal h2 { margin: 0 0 16px; color: #E5EAF2; font-size: 1.2rem; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.form-cell { display: flex; flex-direction: column; gap: 5px; color: #8ba4c7; font-size: 13px; }
-.inp { padding: 8px 10px; background: rgba(13,19,32,0.9); color: #e0e6f0; border: 1px solid #3a4a6b; border-radius: 6px; font-size: 13px; }
+.form-cell { display: flex; flex-direction: column; gap: 5px; color: #8795AA; font-size: 13px; }
+.inp { padding: 8px 10px; background: #172235; color: #E5EAF2; border: 1px solid #253247; border-radius: 6px; font-size: 13px; }
 /* 日期框：深色主题下原生日期控件必须声明 color-scheme:dark 才能正常渲染/交互；
    并反相日历图标，否则图标在深色背景上几乎不可见，看着像“点不动” */
 .inp[type="date"] { color-scheme: dark; }
 .inp[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
 .frames-wrap { margin-top: 14px; }
-.frames-info { color: #8ba4c7; font-size: 12px; margin-bottom: 8px; }
-.frame-list { max-height: 360px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px; background: rgba(13,19,32,0.4); border-radius: 8px; }
+.frames-info { color: #8795AA; font-size: 12px; margin-bottom: 8px; }
+.frame-list { max-height: 360px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px; background: rgba(23, 34, 53, 0.5); border-radius: 8px; }
 .frame-row { display: flex; align-items: center; gap: 8px; }
-.frame-date { flex: 0 0 120px; color: #8ba4c7; font-size: 12px; font-family: monospace; }
+.frame-date { flex: 0 0 120px; color: #8795AA; font-size: 12px; font-family: monospace; }
 .frame-inp { flex: 1; min-width: 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
@@ -545,7 +546,7 @@ export default {
   .house-kline-page { padding: 10px; }
   /* 清除桌面端 .kline-header 的 padding-right:130px */
   .kline-header { flex-wrap: wrap; padding: 12px; }
-  .kline-header h1 { font-size: 1.1rem; }
+  .kline-header h1 { font-size: 16px; }
   /* 数据集下拉 + 新增/删除按钮换行铺满 */
   .kline-actions { flex-wrap: wrap; width: 100%; }
   .ds-select { max-width: 100%; flex: 1 1 100%; }

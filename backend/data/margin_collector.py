@@ -24,7 +24,7 @@ from core.config import REALTIME_DIR, em_request
 from core.logger import get_logger
 from monitors.thread_monitor import heartbeat, register_thread, set_busy
 
-system_logger = get_logger('system')
+data_logger = get_logger('data')
 error_logger = get_logger('error')
 
 STOCK_MARGIN_CACHE_FILE = os.path.join(REALTIME_DIR, 'stock_margin.json')
@@ -128,7 +128,7 @@ def _fetch_margin_em(date_str):
             res = (resp.json().get('result') or {})
             rows = res.get('data') or []
         except Exception as e:
-            system_logger.info(f"融资融券[EM] {date_str} 第{page}页抓取失败: {repr(e)[:120]}")
+            data_logger.info(f"融资融券[EM] {date_str} 第{page}页抓取失败: {repr(e)[:120]}")
             return out if out else {}
         for row in rows:
             code = _normalize_code(str(row.get('SCODE') or '').strip())
@@ -167,7 +167,7 @@ def _fetch_margin_official(date_str):
                     continue
                 result[code] = {'n': names[i], 'b': rzye[i], 'm': rzmre[i]}
     except Exception as e:
-        system_logger.info(f"融资融券[SSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
+        data_logger.info(f"融资融券[SSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
 
     # ---- 深交所 ----
     try:
@@ -183,7 +183,7 @@ def _fetch_margin_official(date_str):
                     continue
                 result[code] = {'n': names[i], 'b': rzye[i], 'm': rzmre[i]}
     except Exception as e:
-        system_logger.info(f"融资融券[SZSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
+        data_logger.info(f"融资融券[SZSE] {date_str} 无数据或抓取失败: {repr(e)[:120]}")
     return result
 
 
@@ -271,10 +271,10 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
         target_dates.sort()  # 远→近，便于做 SZSE Δ余额
 
     if not target_dates:
-        system_logger.info("融资融券缓存已是最新，无需更新")
+        data_logger.info("融资融券缓存已是最新，无需更新")
         return cache.get('latest_date', '')
 
-    system_logger.info(f"融资融券开始抓取 {len(target_dates)} 个交易日: {target_dates[0]}~{target_dates[-1]}")
+    data_logger.info(f"融资融券开始抓取 {len(target_dates)} 个交易日: {target_dates[0]}~{target_dates[-1]}")
 
     new_latest = cache.get('latest_date', '')
     for ds in target_dates:
@@ -287,7 +287,7 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
         retries = 0
         while len(day) < MARGIN_MIN_STOCKS and retries < MARGIN_FETCH_RETRIES:
             retries += 1
-            system_logger.warning(f"融资融券 {ds} 仅 {len(day)} 只(<{MARGIN_MIN_STOCKS},疑似单市失败),重试 {retries}/{MARGIN_FETCH_RETRIES}")
+            data_logger.warning(f"融资融券 {ds} 仅 {len(day)} 只(<{MARGIN_MIN_STOCKS},疑似单市失败),重试 {retries}/{MARGIN_FETCH_RETRIES}")
             time.sleep(2)
             day2 = fetch_margin_for_date(ds)
             if day2 and len(day2) > len(day):
@@ -304,7 +304,7 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
             # 仅存 [日期, 融资余额, 融资买入额]；净买入/偿还额在 get_stock_margin_series 读取时算
             rec['s'].append([ds, info['b'], info['m']])
         new_latest = max(new_latest, ds)
-        system_logger.info(f"融资融券 {ds} 已合并（{len(day)} 只）")
+        data_logger.info(f"融资融券 {ds} 已合并（{len(day)} 只）")
 
     # 每只股票：按日期升序排序、同日去重(留后)、仅保留最近 KEEP_TRADING_DAYS 个交易日
     for rec in stocks.values():
@@ -327,7 +327,7 @@ def _update_margin_cache_impl(max_calendar_days, force_dates, heartbeat_name,
     with _MEM['lock']:
         _MEM['mtime'] = -1
         _MEM['data'] = None  # 失效内存缓存
-    system_logger.info(f"融资融券缓存已写入: latest={new_latest}, 股票数={len(stocks)}")
+    data_logger.info(f"融资融券缓存已写入: latest={new_latest}, 股票数={len(stocks)}")
     return new_latest
 
 
@@ -705,7 +705,7 @@ def refresh_market_margin_total_ths():
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False)
         os.replace(tmp, MARKET_MARGIN_TOTAL_THS_FILE)
-        system_logger.info(
+        data_logger.info(
             f"同花顺融资汇总已缓存: {latest['date']} 融资余额{latest['total'] / 1e8:.1f}亿 "
             f"净买入{(latest['net_buy'] or 0) / 1e8:+.1f}亿 两融{(latest.get('rzrq') or 0) / 1e8:.1f}亿")
         return True
@@ -801,7 +801,7 @@ def _ondemand_update_worker():
     global _last_ondemand_date
     try:
         set_busy('margin_collector', True)
-        system_logger.info("融资融券：弹窗检测到无数据，触发按需更新…")
+        data_logger.info("融资融券：弹窗检测到无数据，触发按需更新…")
         update_margin_cache(heartbeat_name='margin_collector')
         try:
             if not refresh_market_margin_total_ths():
@@ -820,13 +820,14 @@ def margin_collection_thread():
     """每日 09:05 增量更新融资融券缓存；首次启动若缓存缺失则后台回填。"""
     global _last_margin_run_date
     register_thread('margin_collector')
-    system_logger.info("启动融资融券采集线程，每日 09:05 增量更新一次…")
+    # 线程启动属系统生命周期事件,归 system.log(其余采集日志已归 data.log)
+    get_logger('system_start').info("启动融资融券采集线程，每日 09:05 增量更新一次…")
 
     # 首次回填（缓存不存在时）
     if not os.path.exists(STOCK_MARGIN_CACHE_FILE):
         try:
             set_busy('margin_collector', True)
-            system_logger.info("融资融券缓存不存在，开始首次回填（约 60 交易日）…")
+            data_logger.info("融资融券缓存不存在，开始首次回填（约 60 交易日）…")
             update_margin_cache(heartbeat_name='margin_collector')
         except Exception as e:
             error_logger.error(f"融资融券首次回填失败: {e}")
@@ -844,7 +845,7 @@ def margin_collection_thread():
                 now.hour == DAILY_TRIGGER_HOUR and now.minute >= DAILY_TRIGGER_MINUTE
             )
             if after_trigger and _last_margin_run_date != today:
-                system_logger.info(f"融资融券每日更新触发（{today}）…")
+                data_logger.info(f"融资融券每日更新触发（{today}）…")
                 try:
                     set_busy('margin_collector', True)
                     # 每日增量:35 天外的历史缺失/残缺日不再天天重试(见 MARGIN_REPAIR_WINDOW_DAYS)

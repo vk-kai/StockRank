@@ -173,6 +173,7 @@ class BacktraderStrategyAdapter(bt.Strategy):
         ("strategy_name", "MA_BULL_PULLBACK_BOLL"),
         ("signal_map", {}),
         ("record_trade_records", True),
+        ("period", "daily"),
     )
 
     def __init__(self):
@@ -186,6 +187,10 @@ class BacktraderStrategyAdapter(bt.Strategy):
         self.pending_signal_time = None
         self.pending_signal_quality = None
         self.last_buy_date = None
+        # 日级前收盘跟踪(分钟周期判涨跌停用):当前交易日最后一根收盘 与 上一交易日收盘
+        self._cur_day = None
+        self._cur_day_close = None
+        self._prev_day_close = None
 
     def _build_trade_record(self, order, direction: str, reason: Optional[str] = None, quality: Optional[dict] = None):
         executed_at = bt.num2date(order.executed.dt)
@@ -248,17 +253,30 @@ class BacktraderStrategyAdapter(bt.Strategy):
         """判断当根 K 线是否因涨跌停/一字板无法按 direction 成交。
 
         direction="buy" → 检查涨停封板(买不进);"sell" → 检查跌停封板(卖不出)。
-        一字板(high==low)双向都无法成交。涨跌停按普通股 ±10% 近似(ST 股 ±5% 未单独处理)。
+        涨跌停按普通股 ±10% 近似(ST 股 ±5% 未单独处理)。
+        周期感知:日线用"一字板(high==low)+对前一根收盘±10%";
+        分钟线 high==low 大多只是集合竞价/清淡分钟的单一成交价,不代表封板,
+        改用"对上一交易日收盘±10%"判定(封板日的每根分钟K都贴着涨/跌停价);
+        周/月线一根bar跨多个交易日,bar粒度无法判定封板,跳过。
         """
+        period = str(self.p.period or "daily")
         high = float(self.data.high[0])
         low = float(self.data.low[0])
         close = float(self.data.close[0])
-        if high == low:  # 一字板,全天单一价格,无成交可能
-            return True
-        try:
-            pre_close = float(self.data.close[-1])
-        except (IndexError, ValueError):
-            pre_close = close
+        if period in ("weekly", "monthly"):
+            return False
+        if period == "daily":
+            if high == low:  # 日线一字板,全天单一价格,无成交可能
+                return True
+            try:
+                pre_close = float(self.data.close[-1])
+            except (IndexError, ValueError):
+                pre_close = close
+        else:
+            # 分钟周期:一字板由日级前收盘的涨跌幅近似兜底
+            pre_close = self._prev_day_close
+            if pre_close is None:
+                return False  # 首个交易日无日级前收,不做封板判断
         if pre_close <= 0:
             return False
         change_pct = (close - pre_close) / pre_close
@@ -269,10 +287,17 @@ class BacktraderStrategyAdapter(bt.Strategy):
         return False
 
     def next(self):
+        current_dt = bt.num2date(self.data.datetime[0])
+        # 日级前收盘跟踪(有挂单也要推进,否则跨日时前收缺最后一根K线)
+        bar_date = current_dt.date()
+        if bar_date != self._cur_day:
+            self._prev_day_close = self._cur_day_close
+            self._cur_day = bar_date
+        self._cur_day_close = float(self.data.close[0])
+
         if self.order:
             return
 
-        current_dt = bt.num2date(self.data.datetime[0])
         current_ts = _to_chart_timestamp(current_dt)
         signal_info = self.p.signal_map.get(current_ts)
         if not signal_info:
@@ -464,6 +489,7 @@ def run_backtest(
             strategy_name=strategy_name,
             signal_map=signal_map,
             record_trade_records=True,
+            period=period,
         )
 
         cerebro.broker.setcash(cash)

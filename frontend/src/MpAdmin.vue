@@ -12,16 +12,18 @@
       </button>
     </header>
 
-    <!-- 非 vk 提示 -->
-    <div v-if="!loading && !isAdmin" class="mpadmin-forbidden">
-      <p>仅管理员（vk 登录）可访问此页面。</p>
-    </div>
-
-    <div v-else-if="loading" class="mpadmin-loading">加载中…</div>
+    <!-- 分支优先级:加载中 → 加载失败(可重试) → 非管理员 → 正常内容。
+         原先把 forbidden 放最前,网络/接口异常时 catch 会把 isAdmin 置 false,
+         错误被顶成"仅管理员可访问",还丢了重试入口 -->
+    <div v-if="loading" class="mpadmin-loading">加载中…</div>
 
     <div v-else-if="error" class="mpadmin-error">
       <p>{{ error }}</p>
       <button @click="fetchOverview">重试</button>
+    </div>
+
+    <div v-else-if="!isAdmin" class="mpadmin-forbidden">
+      <p>仅管理员（vk 登录）可访问此页面。</p>
     </div>
 
     <div v-else class="mpadmin-body">

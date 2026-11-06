@@ -44,13 +44,13 @@ def _sector_snapshot(record: Any) -> list[dict]:
 
 
 def _format_amount(value: float) -> str:
+    """板块净流入口径为亿元(与 _sector_net/实时快照一致),直接以亿为单位
+    保留两位小数;不足 1 亿换算成万。原先按"元"除 1e8 会把 5.2 亿显示成"+5"。"""
     amount = abs(value)
     sign = "+" if value > 0 else "-" if value < 0 else ""
-    if amount >= 100000000:
-        return f"{sign}{amount / 100000000:.2f}亿"
-    if amount >= 10000:
-        return f"{sign}{amount / 10000:.2f}万"
-    return f"{sign}{amount:.0f}"
+    if amount >= 1:
+        return f"{sign}{amount:.2f}亿"
+    return f"{sign}{amount * 10000:.0f}万"
 
 
 def _news_time_to_hhmm(news_item: dict, fallback_date: str) -> str:
@@ -114,7 +114,9 @@ def _build_sector_events(realtime_data: dict, max_events: int = 120) -> list[dic
 
             if previous_flow is not None and flow > 0:
                 delta = flow - previous_flow
-                if delta >= 100000000 or (previous_flow > 0 and delta / max(previous_flow, 1) >= 1.5):
+                # 绝对门槛 1 亿(flow 单位即亿;原写 1e8 按"元"口径,实际门槛被抬到
+                # 一百万亿,该分支从未触发过,只剩 1.5 倍比例分支在勉强工作)
+                if delta >= 1 or (previous_flow > 0 and delta / max(previous_flow, 1) >= 1.5):
                     events.append({
                         "id": _event_id("sector_flow_surge", minute_key, name),
                         "time": minute_key,

@@ -379,11 +379,13 @@ export default {
 </script>
 
 <style scoped>
+/* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
 .icy-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1321 100%);
-  color: #e0e6f0;
-  padding: 20px;
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -394,11 +396,11 @@ export default {
   justify-content: space-between;
   gap: 16px;
   padding: 15px 20px;
-  background: rgba(26, 35, 53, 0.8);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  border: 1px solid #253247;
   backdrop-filter: blur(10px);
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 .icy-header-left {
@@ -407,8 +409,10 @@ export default {
   gap: 10px;
 }
 .icy-header h1 {
-  font-size: 1.3rem;
-  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #E5EAF2;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -417,26 +421,28 @@ export default {
   border-color: #ff7a45 !important;
 }
 .icy-back {
-  border: 1px solid #4a5a7b;
-  background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
-  color: #e0e6f0;
+  background: #172235;
+  color: #8795AA;
+  border: 1px solid #253247;
+  padding: 7px 14px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  padding: 10px 20px;
-  transition: all 0.3s ease;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 .icy-back:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  color: #398BFF;
+  border-color: rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.08);
 }
 
 /* 输入区 */
 .icy-input-section {
   padding: 20px 24px;
-  background: rgba(26, 35, 53, 0.6);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  border: 1px solid #253247;
   margin-bottom: 18px;
 }
 .icy-input-row {
@@ -446,26 +452,26 @@ export default {
 .icy-input {
   flex: 1;
   padding: 12px 16px;
-  background: rgba(10, 14, 23, 0.6);
-  border: 1px solid rgba(58, 74, 107, 0.6);
+  background: #172235;
+  border: 1px solid #253247;
   border-radius: 8px;
-  color: #e0e6f0;
+  color: #E5EAF2;
   font-size: 15px;
   outline: none;
   transition: border-color 0.3s;
 }
 .icy-input:focus {
-  border-color: #69c0ff;
+  border-color: #398BFF;
 }
 .icy-input::placeholder {
-  color: #5a6a8a;
+  color: #8795AA;
 }
 .icy-input:disabled {
   opacity: 0.6;
 }
 .icy-start-btn {
   padding: 12px 24px;
-  background: linear-gradient(135deg, #1890ff, #096dd9);
+  background: linear-gradient(135deg, #398BFF, #2f7ae5);
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -480,7 +486,7 @@ export default {
 }
 .icy-start-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.4);
+  box-shadow: 0 4px 16px rgba(57, 139, 255, 0.4);
 }
 .icy-start-btn:disabled {
   opacity: 0.6;
@@ -489,7 +495,7 @@ export default {
 .icy-input-hint {
   margin-top: 10px;
   font-size: 12px;
-  color: #8ba4c7;
+  color: #8795AA;
   line-height: 1.5;
 }
 
@@ -499,14 +505,14 @@ export default {
 }
 .icy-progress-bar {
   height: 6px;
-  background: rgba(58, 74, 107, 0.4);
+  background: rgba(37, 50, 71, 0.4);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 8px;
 }
 .icy-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1890ff, #69c0ff);
+  background: linear-gradient(90deg, #398BFF, #2f7ae5);
   border-radius: 3px;
   transition: width 0.5s ease;
 }
@@ -514,10 +520,10 @@ export default {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: #8ba4c7;
+  color: #8795AA;
 }
 .icy-progress-pct {
-  color: #69c0ff;
+  color: #398BFF;
   font-weight: 700;
 }
 
@@ -542,10 +548,10 @@ export default {
 }
 .icy-retry-btn {
   padding: 8px 20px;
-  background: linear-gradient(135deg, #3a4a6b, #2a3a5b);
-  border: 1px solid #4a5a7b;
+  background: #172235;
+  border: 1px solid #253247;
   border-radius: 8px;
-  color: #e0e6f0;
+  color: #E5EAF2;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.3s;
@@ -562,7 +568,7 @@ export default {
 }
 .icy-section-title {
   font-size: 1.05rem;
-  color: #e0e6f0;
+  color: #E5EAF2;
   margin: 0 0 12px 2px;
 }
 
@@ -570,9 +576,9 @@ export default {
 .icy-verdict {
   padding: 20px 24px;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
-  background: rgba(26, 35, 53, 0.6);
-  border-left: 5px solid #8ba4c7;
+  border: 1px solid #253247;
+  background: #111827;
+  border-left: 5px solid #8795AA;
 }
 .icy-verdict.verdict-safe { border-left-color: #52c41a; background: rgba(82, 196, 26, 0.08); }
 .icy-verdict.verdict-caution { border-left-color: #faad14; background: rgba(250, 173, 20, 0.08); }
@@ -588,12 +594,12 @@ export default {
 .icy-verdict-industry {
   font-size: 1.3rem;
   font-weight: 800;
-  color: #fff;
+  color: #E5EAF2;
 }
 .icy-verdict-text {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #e0e6f0;
+  color: #E5EAF2;
 }
 .icy-verdict-score {
   display: flex;
@@ -603,7 +609,7 @@ export default {
 }
 .icy-score-label {
   font-size: 13px;
-  color: #8ba4c7;
+  color: #8795AA;
 }
 .icy-score-value {
   font-size: 2.2rem;
@@ -614,10 +620,10 @@ export default {
 .icy-score-value.score-caution { color: #ffc53d; }
 .icy-score-value.score-warning { color: #fa8c16; }
 .icy-score-value.score-danger { color: #ff7875; }
-.icy-score-max { font-size: 14px; color: #6b7d99; }
+.icy-score-max { font-size: 14px; color: #8795AA; }
 .icy-verdict-time {
   font-size: 12px;
-  color: #6b7d99;
+  color: #8795AA;
 }
 
 /* 信号卡片 */
@@ -627,11 +633,11 @@ export default {
   gap: 14px;
 }
 .icy-signal-card {
-  background: rgba(26, 35, 53, 0.6);
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 12px;
   padding: 16px;
-  border-top: 3px solid #8ba4c7;
+  border-top: 3px solid #8795AA;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .icy-signal-card:hover {
@@ -652,15 +658,15 @@ export default {
 .icy-signal-name {
   font-size: 15px;
   font-weight: 700;
-  color: #e0e6f0;
+  color: #E5EAF2;
 }
 .icy-signal-status {
   font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 4px;
-  background: rgba(58, 74, 107, 0.4);
-  color: #cbd5e1;
+  background: rgba(37, 50, 71, 0.4);
+  color: #8795AA;
 }
 .icy-signal-status.status-safe { color: #73d13d; background: rgba(82, 196, 26, 0.15); }
 .icy-signal-status.status-caution { color: #ffc53d; background: rgba(250, 173, 20, 0.15); }
@@ -669,7 +675,7 @@ export default {
 
 .icy-signal-score-bar {
   height: 6px;
-  background: rgba(58, 74, 107, 0.3);
+  background: rgba(37, 50, 71, 0.3);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -686,31 +692,31 @@ export default {
 
 .icy-signal-score-num {
   font-size: 13px;
-  color: #8ba4c7;
+  color: #8795AA;
   margin-bottom: 8px;
 }
 .icy-signal-detail {
   font-size: 13px;
-  color: #a0b0c7;
+  color: #8795AA;
   line-height: 1.6;
 }
 
 /* 周期对标 */
 .icy-comparison {
   padding: 20px 24px;
-  background: rgba(26, 35, 53, 0.6);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  border: 1px solid #253247;
 }
 .icy-comparison-info {
   display: flex;
   gap: 24px;
   margin-bottom: 16px;
   font-size: 14px;
-  color: #a0b0c7;
+  color: #8795AA;
 }
 .icy-comparison-info strong {
-  color: #69c0ff;
+  color: #398BFF;
 }
 .icy-comparison-table-wrap {
   overflow-x: auto;
@@ -723,19 +729,19 @@ export default {
 .icy-comparison-table th {
   padding: 10px 14px;
   text-align: center;
-  background: rgba(24, 144, 255, 0.1);
-  border-bottom: 2px solid rgba(24, 144, 255, 0.3);
-  color: #69c0ff;
+  background: rgba(57, 139, 255, 0.1);
+  border-bottom: 2px solid rgba(57, 139, 255, 0.3);
+  color: #398BFF;
   font-weight: 700;
 }
 .icy-comparison-table td {
   padding: 12px 14px;
   text-align: center;
-  border-bottom: 1px solid rgba(58, 74, 107, 0.3);
-  color: #e0e6f0;
+  border-bottom: 1px solid rgba(37, 50, 71, 0.3);
+  color: #E5EAF2;
 }
 .icy-comparison-table tr.phase-future td {
-  color: #6b7d99;
+  color: #8795AA;
   font-style: italic;
 }
 .icy-td-phase {
@@ -752,7 +758,7 @@ export default {
   display: inline-block;
 }
 .icy-phase-dot.phase-0 { background: #52c41a; }
-.icy-phase-dot.phase-1 { background: #1890ff; }
+.icy-phase-dot.phase-1 { background: #398BFF; }
 .icy-phase-dot.phase-2 { background: #faad14; }
 .icy-phase-dot.phase-3 { background: #ff4d4f; }
 
@@ -775,26 +781,26 @@ export default {
 /* 综合结论 */
 .icy-summary {
   padding: 20px 24px;
-  background: rgba(26, 35, 53, 0.6);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  border: 1px solid #253247;
 }
 .icy-summary-text {
   font-size: 14px;
-  color: #c0d0e7;
+  color: #E5EAF2;
   line-height: 1.8;
 }
 
 /* AI原始返回 */
 .icy-raw {
   padding: 20px 24px;
-  background: rgba(26, 35, 53, 0.6);
+  background: #111827;
   border-radius: 12px;
-  border: 1px solid rgba(58, 74, 107, 0.5);
+  border: 1px solid #253247;
 }
 .icy-raw-content {
   font-size: 13px;
-  color: #8ba4c7;
+  color: #8795AA;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-all;
@@ -813,12 +819,12 @@ export default {
 }
 .icy-empty-text {
   font-size: 16px;
-  color: #8ba4c7;
+  color: #8795AA;
   margin-bottom: 8px;
 }
 .icy-empty-sub {
   font-size: 13px;
-  color: #5a6a8a;
+  color: #8795AA;
 }
 
 /* 加载动画 */
@@ -841,7 +847,7 @@ export default {
 .icy-footer {
   text-align: center;
   padding: 14px;
-  color: #6b7d99;
+  color: #8795AA;
   font-size: 0.8rem;
   margin-top: 24px;
   line-height: 1.7;
@@ -863,7 +869,7 @@ export default {
     text-align: center;
   }
   .icy-header h1 {
-    font-size: 1.05rem;
+    font-size: 16px;
   }
 }
 
@@ -876,14 +882,14 @@ export default {
   margin-right: 250px; /* 避让右上角固定北京时间+登录入口 */
 }
 .icy-history-label {
-  color: #8899aa;
+  color: #8795AA;
   font-size: 13px;
   white-space: nowrap;
 }
 .icy-history-select {
-  background: rgba(30, 42, 62, 0.9);
-  color: #e0e6f0;
-  border: 1px solid rgba(80, 100, 140, 0.6);
+  background: #172235;
+  color: #E5EAF2;
+  border: 1px solid #253247;
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 13px;
@@ -892,10 +898,10 @@ export default {
   max-width: 180px;
 }
 .icy-history-select:hover {
-  border-color: var(--accent-main, #60a5fa);
+  border-color: var(--accent-main, #398BFF);
 }
 .icy-history-select:focus {
-  border-color: var(--accent-main, #60a5fa);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+  border-color: var(--accent-main, #398BFF);
+  box-shadow: 0 0 0 2px rgba(57, 139, 255, 0.2);
 }
 </style>

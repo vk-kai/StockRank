@@ -2,7 +2,7 @@ import os
 import time
 import traceback
 from datetime import datetime, timedelta
-from data.news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR
+from data.news_processor import get_news_data, save_news_data, cleanup_old_news, load_today_news, get_recent_news, NEWS_DIR, normalize_news_title
 from analysis.ai_analyzer import batch_analyze_news, is_important_news, set_heartbeat_callback, analyze_news, save_news_analysis, get_news_analysis, load_news_analysis_cache, clear_news_analysis_cache, summarize_daily_news
 from pushers.notification_pusher import (
     ALL_AI_FILTER,
@@ -103,7 +103,9 @@ def _load_all_news_status_from_disk():
                                 news_title = item.get('title', '').strip()
                                 news_content = item.get('content', '').strip()
                                 if news_title and news_content:
-                                    key = (news_title, news_content)
+                                    # 与落盘判重同口径(归一化标题),否则源站微调标题
+                                    # 重发的旧新闻会 miss 判重被当新条目重复推送
+                                    key = (normalize_news_title(news_title), news_content)
                                     if key not in all_status:
                                         all_status[key] = {
                                             'pushed': item.get('pushed', False),
@@ -153,7 +155,7 @@ def process_news_with_ai_and_push(news_list):
         push_enabled = is_push_enabled()
         
         existing_news = load_today_news()
-        existing_keys = {(item.get('title', '').strip(), item.get('content', '').strip()): item for item in existing_news}
+        existing_keys = {(normalize_news_title(item.get('title', '')), item.get('content', '').strip()): item for item in existing_news}
         existing_dict = {item['id']: item for item in existing_news}
         all_news_status = load_all_news_status()
         
@@ -165,7 +167,12 @@ def process_news_with_ai_and_push(news_list):
             news_id = news_item.get('id')
             news_title = news_item.get('title', '').strip()
             news_content = news_item.get('content', '').strip()
-            news_key = (news_title, news_content)
+            # 空 digest 条目:落盘侧(要求标题与内容都非空)永远不会保存它,判重库
+            # 里永远查不到 → 若照推会每 30 秒轮询重复推送同一条。直接丢弃。
+            if not news_title or not news_content:
+                continue
+            # 与 save_news_data / 全量状态字典同口径的归一化 key
+            news_key = (normalize_news_title(news_title), news_content)
             
             if news_title and news_content and news_key in existing_keys:
                 existing_item = existing_keys[news_key]
@@ -231,7 +238,7 @@ def process_news_with_ai_and_push(news_list):
         
         # 如果消息推送未启用，跳过所有推送逻辑
         if not push_enabled:
-            ai_logger.info(f"消息推送已关闭，跳过重要新闻推送逻辑")
+            ai_logger.info_once(f"消息推送已关闭，跳过重要新闻推送逻辑")
             # 重要新闻仍然进行分析(AI开启走LLM/关闭走本地)，但不推送
             if important_items:
                 items_to_analyze = important_items[:5]
@@ -355,7 +362,7 @@ def process_news_with_ai_and_push(news_list):
                     if _record_push_results(news_item, results):
                         record_pushed(news_item, f"匹配股票：{stock_names}", news_item.get('core_event', ''))
         else:
-            ai_logger.info(f"消息推送已关闭，跳过股票匹配推送逻辑")
+            ai_logger.info_once(f"消息推送已关闭，跳过股票匹配推送逻辑")
         
         normal_items = [item for item in normal_items if not item.get('pushed')]
         return list(existing_dict.values()), normal_items, pushed_items, ignored_items, new_items
@@ -411,10 +418,21 @@ def _background_analyze_news(new_items):
         set_busy('news_collector', False)
 
 
+def _write_summary_status(status_data):
+    """原子写状态文件:tmp + os.replace,进程在写中途被杀也不会留下截断的 JSON
+    (截断文件会让 /summary/status 读取端持续 500)。"""
+    from core.config import AI_NEWS_SUMMARY_STATUS_FILE
+    import json as _json
+    import os as _os
+    tmp = AI_NEWS_SUMMARY_STATUS_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        _json.dump(status_data, f, ensure_ascii=False)
+    _os.replace(tmp, AI_NEWS_SUMMARY_STATUS_FILE)
+
+
 def _run_news_summary(auto=False):
     """执行新闻热点总结（同步，在后台线程中调用）"""
-    from core.config import AI_NEWS_SUMMARY_RESULT_FILE, AI_NEWS_SUMMARY_STATUS_FILE
-    import json as _json
+    from core.config import AI_NEWS_SUMMARY_RESULT_FILE
 
     now = datetime.now()
     today = now.strftime('%Y-%m-%d')
@@ -430,15 +448,13 @@ def _run_news_summary(auto=False):
     ai_logger.info(f"新闻热点总结：开始总结 {len(news_items)} 条新闻（{'自动' if auto else '手动'}）")
 
     # 保存运行状态
-    status_data = {
-        'status': 'running',
-        'start_time': now.astimezone().isoformat(),
-        'date': today,
-        'auto': auto
-    }
     try:
-        with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
-            _json.dump(status_data, f, ensure_ascii=False)
+        _write_summary_status({
+            'status': 'running',
+            'start_time': now.astimezone().isoformat(),
+            'date': today,
+            'auto': auto
+        })
     except Exception:
         pass
 
@@ -453,15 +469,13 @@ def _run_news_summary(auto=False):
             error_logger.error(f"保存新闻总结结果失败: {e}")
 
         # 保存完成状态
-        status_data = {
-            'status': 'completed',
-            'end_time': datetime.now().astimezone().isoformat(),
-            'date': today,
-            'auto': auto
-        }
         try:
-            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
-                _json.dump(status_data, f, ensure_ascii=False)
+            _write_summary_status({
+                'status': 'completed',
+                'end_time': datetime.now().astimezone().isoformat(),
+                'date': today,
+                'auto': auto
+            })
         except Exception:
             pass
 
@@ -474,16 +488,14 @@ def _run_news_summary(auto=False):
             error_logger.error(f"新闻总结推送失败: {e}")
     else:
         # 保存失败状态
-        status_data = {
-            'status': 'failed',
-            'message': result.get('message', '总结失败'),
-            'end_time': datetime.now().astimezone().isoformat(),
-            'date': today,
-            'auto': auto
-        }
         try:
-            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'w', encoding='utf-8') as f:
-                _json.dump(status_data, f, ensure_ascii=False)
+            _write_summary_status({
+                'status': 'failed',
+                'message': result.get('message', '总结失败'),
+                'end_time': datetime.now().astimezone().isoformat(),
+                'date': today,
+                'auto': auto
+            })
         except Exception:
             pass
 

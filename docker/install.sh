@@ -63,8 +63,8 @@ echo
 echo "服务地址: http://服务器IP:80"
 echo
 echo "使用以下命令管理服务:"
-echo "  启动: docker compose down"
-echo "  停止: docker compose up -d"
+echo "  启动: docker compose up -d"
+echo "  停止: docker compose down"
 echo "  重启: docker-compose restart"
 echo "  查看日志: docker-compose logs -f"
 echo

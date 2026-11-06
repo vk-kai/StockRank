@@ -279,13 +279,19 @@ def update_feishu_config():
 def test_feishu_push():
     try:
         data = request.json or {}
-        
+        # 防御:客户端可能 POST 非对象 JSON(字符串/数组),.get 会 AttributeError → 500
+        if not isinstance(data, dict):
+            data = {}
+
         if os.path.exists(FEISHU_CONFIG_FILE):
             with open(FEISHU_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 saved_config = json.load(f)
         else:
             saved_config = {}
-        
+        # 防御:配置文件内容损坏(非对象)时同样不该 500
+        if not isinstance(saved_config, dict):
+            saved_config = {}
+
         webhook_url = data.get('webhook_url')
         if not webhook_url or webhook_url == '******':
             webhook_url = saved_config.get('webhook_url')

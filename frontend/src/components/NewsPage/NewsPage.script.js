@@ -379,8 +379,7 @@ export default {
         legend: {
           data: [
             { name: '共识区', icon: 'rect' },
-            { name: '利好多', icon: 'rect' },
-            { name: '利空多', icon: 'rect' }
+            { name: '净差区', icon: 'rect' }
           ],
           top: 2,
           textStyle: { color: '#ccc', fontSize: 11 }

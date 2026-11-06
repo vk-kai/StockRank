@@ -28,7 +28,7 @@ import requests
 
 from core.logger import get_logger
 
-system_logger = get_logger('system')
+data_logger = get_logger('data')
 error_logger = get_logger('error')
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
@@ -109,7 +109,7 @@ def _fetch_forex_factory() -> list[dict]:
         try:
             resp = requests.get(url, headers=_FF_HEADERS, timeout=6)
             if resp.status_code != 200:
-                system_logger.debug("forexfactory %s http %s", url.rsplit("/", 1)[-1], resp.status_code)
+                data_logger.debug("forexfactory %s http %s", url.rsplit("/", 1)[-1], resp.status_code)
                 continue
             for it in resp.json():
                 impact = str(it.get("impact") or "Low").lower()
@@ -129,7 +129,7 @@ def _fetch_forex_factory() -> list[dict]:
                     "source": "ff",
                 })
         except Exception as exc:
-            system_logger.debug("forexfactory 拉取失败: %s", exc)
+            data_logger.debug("forexfactory 拉取失败: %s", exc)
     return items
 
 
@@ -158,14 +158,14 @@ def _build_calendar(days: int) -> list[dict]:
             if day_items:
                 ok_days += 1
         except Exception as exc:
-            system_logger.debug("百度日历 %s 拉取失败: %s", ds, exc)
+            data_logger.debug("百度日历 %s 拉取失败: %s", ds, exc)
         time.sleep(0.4)  # 风控节流: 逐日请求间留间隔
 
     if ok_days == 0:
         # 主源全挂: 至少把备源顶上,保证面板不空
-        system_logger.info("百度经济日历全部日期失败,降级 ForexFactory")
+        data_logger.info("百度经济日历全部日期失败,降级 ForexFactory")
     else:
-        system_logger.info("事件日历: 百度源命中 %d/%d 天", ok_days, days)
+        data_logger.info("事件日历: 百度源命中 %d/%d 天", ok_days, days)
 
     merged.extend(_fetch_forex_factory())
     items = _dedup(merged)

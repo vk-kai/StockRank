@@ -463,21 +463,24 @@ def _has_today_market_summary(summary, now):
     if not is_market_summary_complete(summary):
         return False
 
-    timestamp_text = summary.get('turnover_timestamp') or summary.get('timestamp')
-    if not timestamp_text:
-        return False
-
+    # 三个时间戳各自反映一部分数据的真实抓取时刻:任一存在的戳不是今天就说明
+    # 对应部分(成交额/涨跌家数/指数)还停在旧缓存,不应判"今日完整"
+    # (breadth_timestamp 是旧缓存没有的字段,缺省跳过,兼容平滑过渡)
     try:
-        timestamp = datetime.fromisoformat(timestamp_text)
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.astimezone()
-        if timestamp.astimezone(now.tzinfo).date() != now.date():
-            return False
-        # 收盘定格保护:交易日 15:05 后,缓存必须已含 15:00 收盘终值(两个时间戳都过线),
+        for key in ('turnover_timestamp', 'breadth_timestamp', 'timestamp'):
+            timestamp_text = summary.get(key)
+            if not timestamp_text:
+                continue
+            timestamp = datetime.fromisoformat(timestamp_text)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.astimezone()
+            if timestamp.astimezone(now.tzinfo).date() != now.date():
+                return False
+        # 收盘定格保护:交易日 15:05 后,缓存必须已含 15:00 收盘终值(各时间戳都过线),
         # 否则尾盘 14:5X 的中途快照会顶替收盘价一直显示到明天
         if is_trading_day(now) and (now.hour > 15 or (now.hour == 15 and now.minute >= 5)):
             market_close = now.replace(hour=15, minute=0, second=0, microsecond=0)
-            for key in ('turnover_timestamp', 'timestamp'):
+            for key in ('turnover_timestamp', 'breadth_timestamp', 'timestamp'):
                 stamp_text = summary.get(key)
                 if not stamp_text:
                     continue
@@ -1321,7 +1324,9 @@ def stock_pulse_run():
     """回放全天个股异动检测（不推送）。date 缺省为今天。"""
     try:
         from analysis.stock_pulse import detect_full_day, get_latest_summary
-        date_str = request.args.get('date')
+        # stock_pulse 内部/快照文件统一 YYYYMMDD;外部按全站习惯传 YYYY-MM-DD 时
+        # 去掉中划线归一,否则查不到快照文件、静默返回空结果
+        date_str = (request.args.get('date') or '').replace('-', '') or None
         findings, _ls, rounds = detect_full_day(date_str=date_str, push=False)
         # summary 统一走 get_latest_summary（含板块聚集活动概览）
         summary = get_latest_summary() if not date_str else _ls
@@ -1339,7 +1344,7 @@ def stock_pulse_alerts():
     """已推送的个股异动轮次记录（可选按日期过滤）。"""
     try:
         from analysis.stock_pulse import list_alerts as list_pulse_alerts
-        date_str = request.args.get('date')
+        date_str = (request.args.get('date') or '').replace('-', '') or None
         alerts = list_pulse_alerts(date_str=date_str)
         return jsonify({'success': True, 'data': alerts, 'count': len(alerts)})
     except Exception as e:

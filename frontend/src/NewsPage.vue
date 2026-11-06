@@ -152,7 +152,7 @@
 
     <div class="no-news" v-if="!loading && newsList.length === 0">
       <p>{{ activeBucket ? `「${activeBucket}」时段暂无新闻` : '暂无新闻数据' }}</p>
-      <button v-if="activeBucket" @click="clearBucketFilter" style="margin-top:8px;padding:6px 16px;background:rgba(79,195,247,.15);border:1px solid rgba(79,195,247,.5);color:#4fc3f7;border-radius:6px;cursor:pointer;">✕ 清除时段筛选</button>
+      <button v-if="activeBucket" @click="clearBucketFilter" style="margin-top:8px;padding:6px 16px;background:rgba(57,139,255,.12);border:1px solid rgba(57,139,255,.45);color:#398BFF;border-radius:6px;cursor:pointer;">✕ 清除时段筛选</button>
     </div>
 
     <button 

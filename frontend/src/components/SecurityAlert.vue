@@ -117,7 +117,7 @@ export default {
 }
 
 .security-alert-modal {
-  background: linear-gradient(135deg, #1a1f35 0%, #0d1321 100%);
+  background: #111827;
   border: 1px solid #ff4d4f;
   border-radius: 16px;
   padding: 32px;

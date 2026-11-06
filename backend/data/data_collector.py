@@ -81,17 +81,23 @@ def should_generate_morning_summary(now):
 
 def should_generate_afternoon_summary(now):
     global _last_afternoon_summary_date
-    
+
     today = now.strftime('%Y-%m-%d')
-    
+
     if _last_afternoon_summary_date == today:
         return False
-    
+
+    # 收盘定格保护:15:00 整分的收盘采集最坏要跑数分钟才落盘(THS cookie 刷新+重试),
+    # 刚跨进 15:00 就生成下午汇总会取到 14:55 快照,且当日不再重算——daily 文件与
+    # 飞书推送将永远缺最后5分钟+收盘值。推迟到 15:10(尾盘补采窗结束)后再生成。
+    if is_trading_day(now) and now.hour == 15 and now.minute < 10:
+        return False
+
     if is_afternoon_close(now):
         realtime_data = load_realtime_data(today)
         if realtime_data:
             return True
-    
+
     return False
 
 def _sector_net(sec):

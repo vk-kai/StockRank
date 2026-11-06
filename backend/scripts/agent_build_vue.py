@@ -5,7 +5,8 @@
 - CSS: :root/body 选择器 → .agent-page 组件根容器(scoped)
 - HTML: body 内容 → template(剔除 <script>)
 - JS: 全部包进 onMounted; fetch('/api/…') 改 /api/agent/…; 内联 onclick 引用的
-  函数挂到 window(Vue 组件内函数不在全局作用域); echarts 走 npm import
+  函数挂到 window(Vue 组件内函数不在全局作用域); echarts 走 npm import;
+  document/window 级监听器改走 _addWinListener, 卸载时自动移除
 转换是确定性的, 可重复执行(sync_agent_code.py 每次同步会重跑)。
 手动改本组件会被覆盖 —— 要改前端请改本地 web/index.html 后同步。
 
@@ -23,6 +24,17 @@ DEFAULT_LOCAL = r'C:\Users\Administrator\Desktop\WeChatExport\个人Agent'
 # 内联事件(onclick 等)引用的函数 → 挂 window; 'this' 是原生内联表达式, 跳过
 _EV_RE = re.compile(r'\bon(?:click|dblclick|change|input|submit|keydown)\s*=\s*.([a-zA-Z_$][\w$]*)')
 
+# JS 中"名字有定义"的判定: function 声明 / const-let-var 声明 / 具名赋值(含箭头函数)
+_DEF_PATTERNS = (
+    r'\bfunction\s+{n}\s*\(',
+    r'\b(?:const|let|var)\s+{n}\s*=',
+    r'\b{n}\s*=\s*(?:async\s+)?(?:function|\()',
+)
+
+
+def _defined_in_js(name, js):
+    return any(re.search(p.format(n=re.escape(name)), js) for p in _DEF_PATTERNS)
+
 
 def convert(local_dir):
     src = open(os.path.join(local_dir, 'web', 'index.html'), encoding='utf-8').read()
@@ -38,8 +50,20 @@ def convert(local_dir):
 
     js = js.replace("'/api/", "'/api/agent/").replace('"/api/', '"/api/agent/')
 
-    handlers = sorted({n for n in _EV_RE.findall(src) if n != 'this'})
+    # 只导出 JS 里真实定义的函数: 导出未定义名会抛 ReferenceError,
+    # 中断整段 onMounted, 其后所有导出(全部内联按钮)一起失效
+    dropped = []
+    handlers = []
+    for n in sorted(set(_EV_RE.findall(src)) - {'this'}):
+        (handlers if _defined_in_js(n, js) else dropped).append(n)
     expose = '\n'.join(f'  window.{n} = {n};' for n in handlers)
+
+    # document/window 级监听器不随组件 DOM 销毁回收: 改走 _addWinListener
+    # 登记清理(参数原样透传, 箭头函数/具名函数都适用)
+    n_win = len(re.findall(r'\bwindow\.addEventListener\(', js))
+    n_doc = len(re.findall(r'\bdocument\.addEventListener\(', js))
+    js = js.replace('window.addEventListener(', '_addWinListener(window, ')
+    js = js.replace('document.addEventListener(', '_addWinListener(document, ')
 
     vue = f'''<!-- ⚠ 本文件由 backend/scripts/agent_build_vue.py 从本地 个人Agent/web/index.html 自动生成 -->
 <!-- 手动修改会在下次同步时被覆盖; 要改前端请改本地 web/index.html 后跑同步脚本 -->
@@ -50,10 +74,19 @@ def convert(local_dir):
 </template>
 
 <script setup>
-import {{ onMounted }} from 'vue'
+import {{ onMounted, onUnmounted }} from 'vue'
 import * as echarts from 'echarts'
 
+// 卸载清理队列: document/window 级监听器必须显式移除, 否则切页后泄漏并在
+// 重新进入时叠加(Esc 关抽屉、图表 resize 等会对着已销毁 DOM 继续触发)
+const _winCleanups = []
+onUnmounted(() => {{ while (_winCleanups.length) _winCleanups.pop()() }})
+
 onMounted(() => {{
+const _addWinListener = (target, type, fn) => {{
+  target.addEventListener(type, fn)
+  _winCleanups.push(() => target.removeEventListener(type, fn))
+}}
 {js}
 
   // ---- 内联 onclick/ondblclick 属性走全局作用域: 把组件内函数挂到 window ----
@@ -70,6 +103,10 @@ onMounted(() => {{
         f.write(vue)
     print(f'AgentAvatar.vue 已生成: {len(vue)} 字符 | 事件函数挂载: {len(handlers)} 个')
     print('  handlers:', ', '.join(handlers))
+    if dropped:
+        print(f'  ⚠ 跳过 {len(dropped)} 个内联引用但 JS 未定义的函数(源 HTML 有过期 onclick 残留):')
+        print('    ', ', '.join(dropped))
+    print(f'  监听器清理: window×{n_win} document×{n_doc} → _addWinListener')
 
 
 if __name__ == '__main__':

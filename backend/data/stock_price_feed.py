@@ -38,6 +38,10 @@ def parse_sina(text, codes):
         try:
             price = _f(f[3])
             prev_close = _f(f[2])
+            # price<=0:盘前/停牌无成交,新浪此时最新价为 0,直接算会得到 -100%
+            # 触发假跌停/急跌告警(market_map.py 同源同款防护)。跳过让腾讯兜底。
+            if price <= 0 or prev_close <= 0:
+                continue
             pct = round((price - prev_close) / prev_close * 100, 3) if prev_close else 0.0
             ts = f'{f[30]} {f[31]}' if len(f) > 31 and f[30] else ''
             out[code] = {
@@ -64,6 +68,9 @@ def parse_tencent(text, codes):
         try:
             price = _f(f[3])
             prev_close = _f(f[4])
+            # 同新浪:停牌/无成交现价为 0,算出的 -100% 是假数据,整票跳过本轮
+            if price <= 0 or prev_close <= 0:
+                continue
             pct = round((price - prev_close) / prev_close * 100, 3) if prev_close else 0.0
             high = _f(f[33]) if len(f) > 33 else price
             low = _f(f[34]) if len(f) > 34 else price

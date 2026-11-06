@@ -125,11 +125,12 @@ export default {
 
     formatFlow(value) {
       if (value === null || value === undefined) return '-'
-      if (Math.abs(value) >= 10000) {
-        return (value / 10000).toFixed(2) + ' 亿'
-      } else {
-        return value.toFixed(2) + ' 万'
+      // 数据源净流入单位是亿元(与首页/资金异动推送同口径),≥1亿直接展示,
+      // 不足1亿换算成万;原实现按"万为单位"写,把亿当万除以一万,数值标注全错
+      if (Math.abs(value) >= 1) {
+        return value.toFixed(2) + ' 亿'
       }
+      return (value * 10000).toFixed(0) + ' 万'
     },
 
     formatChange(value) {
@@ -158,11 +159,12 @@ export default {
     },
 
     getStrengthIcon(strength) {
+      // 与全站"涨红跌绿"一致:资金增强(利好)红、减弱(利空)绿
       switch (strength) {
         case '增强':
-          return '🟢'
-        case '减弱':
           return '🔴'
+        case '减弱':
+          return '🟢'
         case '持平':
           return '🟡'
         default:

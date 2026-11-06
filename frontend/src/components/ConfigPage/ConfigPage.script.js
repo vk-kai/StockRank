@@ -189,6 +189,9 @@ export default {
   },
   beforeUnmount() {
     this.stopDeployVersionPolling()
+    // 部署恢复轮询是 setTimeout 链:组件卸载(切页)后不再续链,防止对着
+    // 已卸载组件继续空跑 10 分钟请求
+    this._deployPollCancelled = true
   },
   computed: {
     datasourceGroups() {
@@ -951,6 +954,7 @@ export default {
     },
 
     async confirmDeploy(password) {
+      this._deployPollCancelled = false   // 新一轮部署:清除上一次卸载留下的取消标记
       this.deployStatus = { phase: 'recovering', message: '🚀 正在触发部署…' }
       try {
         const res = await deployDockerRestart(password)
@@ -994,6 +998,7 @@ export default {
       // fetch 必须带超时:容器 down 期间端口可能黑洞式挂起,一个不超时的
       // fetch 会把整条轮询链卡住数分钟——表现为"页面明明能访问了,按钮一直
       // '部署中'"。
+      if (this._deployPollCancelled) return   // 组件已卸载,停止续链
       if (attempt >= 60) {
         this.deployStatus = {
           phase: 'done',

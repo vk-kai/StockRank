@@ -74,7 +74,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { fetchSecurityEvents } from './services/apiService'
 
 export default {
@@ -82,6 +82,7 @@ export default {
   setup() {
     const logs = ref([])
     const filterType = ref('all')
+    let _timer = null
     const filterAttackType = ref('all')
     const stats = ref({
       totalAttempts: 0,
@@ -170,7 +171,12 @@ export default {
     
     onMounted(() => {
       refreshLogs()
-      setInterval(refreshLogs, 60000)
+      // 句柄存下来,卸载时清掉:否则每次进出本页都漏一个 60s 轮询,永久叠加
+      _timer = setInterval(refreshLogs, 60000)
+    })
+
+    onUnmounted(() => {
+      if (_timer) clearInterval(_timer)
     })
     
     return {

@@ -19,7 +19,7 @@ import requests
 
 from core.config import REALTIME_DIR, TRENDZEN_ARB_CONFIG_FILE
 from core.logger import get_logger
-from monitors.thread_monitor import register_thread, heartbeat
+from monitors.thread_monitor import register_thread, heartbeat, heartbeat_if_registered
 
 logger = get_logger('trendzen_arb')
 error_logger = get_logger('error')
@@ -184,6 +184,9 @@ def poll_once(cfg=None):
     ack_ids = []
 
     for item in items:
+        # 逐条报平安:一批新告警逐条推送(双通道各带超时)最坏可耗时远超 900s
+        # 心跳超时,循环内不发心跳会让活线程被判死、触发误重启
+        heartbeat_if_registered('trendzen_arb_monitor')
         try:
             tz_id = int(item.get('id'))
         except (TypeError, ValueError):

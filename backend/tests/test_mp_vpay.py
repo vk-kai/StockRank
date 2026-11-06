@@ -312,14 +312,16 @@ class PendingCheckTests(VpayTestCase):
     def test_cleanup_expired_pending_orders(self):
         from datetime import datetime, timedelta
         self._mk_order(out_trade_no='VPTEST_RECENT', status='pending')
-        # 创建一个 11 分钟前的订单
-        old_time = (datetime.now() - timedelta(minutes=11)).strftime('%Y-%m-%d %H:%M:%S')
+        # 保留窗口与兜底查单对齐(PENDING_QUERY_MAX_HOURS+1h):窗口内的 pending 不删,
+        # 迟到支付仍可被兜底查单补发货;只有超过窗口的才清理
+        old_time = (datetime.now() - timedelta(hours=m.PENDING_QUERY_MAX_HOURS + 2)
+                    ).strftime('%Y-%m-%d %H:%M:%S')
         with m._db() as conn:
             conn.execute('''INSERT INTO vpay_orders(out_trade_no, openid, product_id, quantity,
                             goods_price, env, attach, status, created_at)
                             VALUES (?, ?, 'adfree_test', 1, 600, 0, ?, 'pending', ?)''',
                          ('VPTEST_OLD', 'oBUYER', 'VPTEST_OLD', old_time))
-        
+
         deleted = m.cleanup_expired_pending_orders()
         self.assertEqual(deleted, 1)
         self.assertIsNone(self._order('VPTEST_OLD'))

@@ -1,9 +1,11 @@
+/* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
 .mpadmin-page {
   min-height: 100vh;
-  background: #0b1424;
-  color: #e5edf7;
-  padding: 20px;
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
   font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 /* 投稿内容预览弹窗 */
@@ -30,10 +32,10 @@
 .draft-rlist {
   margin: 8px 0 0;
   padding-left: 20px;
-  border-top: 1px dashed rgba(111, 142, 190, 0.35);
+  border-top: 1px dashed rgba(37, 50, 71, 0.5);
   padding-top: 10px;
 }
-.draft-rlist b { color: #e5edf7; }
+.draft-rlist b { color: #E5EAF2; }
 
 /* 拒绝原因展示(列表状态格内)与弹窗输入 */
 .reject-reason {
@@ -51,22 +53,34 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #253247;
 }
 .mpadmin-header h1 {
-  font-size: 20px;
+  color: #E5EAF2;
+  font-size: 18px;
+  font-weight: 700;
   margin: 0;
+  letter-spacing: 0.5px;
 }
 
 .back-button {
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
-  color: #d7e4f5;
-  border-radius: 6px;
-  padding: 6px 12px;
+  background: #172235;
+  color: #8795AA;
+  border: 1px solid #253247;
+  padding: 7px 14px;
+  border-radius: 8px;
   cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
-.back-button:hover { background: rgba(40, 50, 70, 0.95); }
+.back-button:hover {
+  color: #398BFF;
+  border-color: rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.08);
+}
 
 .tab-nav {
   display: flex;
@@ -76,17 +90,17 @@
 .tab {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid rgba(111, 142, 190, 0.35);
-  color: #9db0ca;
+  border: 1px solid #253247;
+  color: #8795AA;
   cursor: pointer;
   font-size: 13px;
   user-select: none;
 }
 .tab:hover { color: #d7e4f5; }
 .tab.active {
-  background: rgba(22, 119, 255, 0.18);
-  border-color: rgba(22, 119, 255, 0.55);
-  color: #7cc4ff;
+  background: rgba(57, 139, 255, 0.18);
+  border-color: rgba(57, 139, 255, 0.55);
+  color: #398BFF;
   cursor: default;
 }
 
@@ -94,7 +108,7 @@
 .mpadmin-loading {
   text-align: center;
   margin-top: 60px;
-  color: #9db0ca;
+  color: #8795AA;
 }
 
 .mpadmin-body {
@@ -112,22 +126,22 @@
 .sub-tab {
   padding: 7px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(111, 142, 190, 0.35);
-  color: #9db0ca;
+  border: 1px solid #253247;
+  color: #8795AA;
   cursor: pointer;
   font-size: 13px;
   user-select: none;
 }
 .sub-tab:hover { color: #d7e4f5; }
 .sub-tab.active {
-  background: rgba(124, 196, 255, 0.14);
-  border-color: rgba(124, 196, 255, 0.5);
-  color: #7cc4ff;
+  background: rgba(57, 139, 255, 0.18);
+  border-color: rgba(57, 139, 255, 0.55);
+  color: #398BFF;
 }
 
 .card {
-  background: #101827;
-  border: 1px solid rgba(111, 142, 190, 0.22);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 8px;
   padding: 18px;
   /* 窄窗口兜底:表格内容超宽时在卡片内滚动,操作按钮不再溢出卡片边界 */
@@ -146,9 +160,9 @@
   flex: 0 0 300px;
   max-width: 100%;
   border-radius: 6px;
-  border: 1px solid rgba(111, 142, 190, 0.42);
-  background: #08111f;
-  color: #e5edf7;
+  border: 1px solid #253247;
+  background: #172235;
+  color: #E5EAF2;
   padding: 0 10px;
   font-size: 13px;
 }
@@ -156,9 +170,9 @@
   height: 34px;
   width: 110px;
   border-radius: 6px;
-  border: 1px solid rgba(111, 142, 190, 0.42);
-  background: #08111f;
-  color: #e5edf7;
+  border: 1px solid #253247;
+  background: #172235;
+  color: #E5EAF2;
   padding: 0 10px;
   font-size: 13px;
 }
@@ -168,13 +182,13 @@
   padding: 0 16px;
   border: 0;
   border-radius: 6px;
-  background: #1677ff;
+  background: #398BFF;
   color: #fff;
   font-weight: 600;
   cursor: pointer;
   font-size: 13px;
 }
-.gen-btn:hover { background: #4096ff; }
+.gen-btn:hover { background: #2f7ae5; }
 
 .warn-btn {
   height: 34px;
@@ -216,7 +230,7 @@
 .data-table td {
   padding: 8px 10px;
   text-align: left;
-  border-bottom: 1px solid rgba(111, 142, 190, 0.14);
+  border-bottom: 1px solid rgba(37, 50, 71, 0.5);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -224,7 +238,7 @@
   color: #8ba4c7;
   font-weight: 600;
 }
-.data-table tbody tr:hover { background: rgba(22, 119, 255, 0.06); }
+.data-table tbody tr:hover { background: rgba(57, 139, 255, 0.06); }
 
 /* 留言正文列:超宽截断省号,防止长内容把表格撑出卡片 */
 td.echo-text {
@@ -240,15 +254,15 @@ td.echo-text {
 }
 
 .copy-btn {
-  border: 1px solid rgba(22, 119, 255, 0.5);
-  background: rgba(22, 119, 255, 0.12);
-  color: #7cc4ff;
+  border: 1px solid rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.12);
+  color: #398BFF;
   border-radius: 6px;
   padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
 }
-.copy-btn:hover { background: rgba(22, 119, 255, 0.25); }
+.copy-btn:hover { background: rgba(57, 139, 255, 0.25); }
 
 .del-btn {
   border: 1px solid rgba(255, 77, 79, 0.45);
@@ -279,7 +293,7 @@ td.echo-text {
   font-size: 12px;
 }
 .status.waiting { background: rgba(250, 173, 20, 0.15); color: #faad14; }
-.status.ready { background: rgba(22, 119, 255, 0.15); color: #7cc4ff; }
+.status.ready { background: rgba(57, 139, 255, 0.15); color: #398BFF; }
 .status.finished { background: rgba(82, 196, 26, 0.15); color: #52c41a; }
 .status.expired { background: rgba(107, 125, 153, 0.18); color: #8ba4c7; }
 
@@ -292,8 +306,8 @@ td.echo-text {
   font-size: 12px;
 }
 .pager button {
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
+  border: 1px solid #253247;
+  background: #172235;
   color: #d7e4f5;
   border-radius: 6px;
   padding: 4px 12px;
@@ -315,15 +329,15 @@ td.echo-text {
 .pwd-card {
   width: 340px;
   max-width: calc(100vw - 40px);
-  background: #101827;
-  border: 1px solid rgba(111, 142, 190, 0.35);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 10px;
   padding: 20px;
 }
 .pwd-card h3 {
   margin: 0 0 8px;
   font-size: 16px;
-  color: #e5edf7;
+  color: #E5EAF2;
 }
 .pwd-desc {
   margin: 0 0 14px;
@@ -335,9 +349,9 @@ td.echo-text {
   width: 100%;
   height: 36px;
   border-radius: 6px;
-  border: 1px solid rgba(111, 142, 190, 0.42);
-  background: #08111f;
-  color: #e5edf7;
+  border: 1px solid #253247;
+  background: #172235;
+  color: #E5EAF2;
   padding: 0 10px;
   font-size: 14px;
   box-sizing: border-box;
@@ -347,7 +361,7 @@ td.echo-text {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #9db0ca;
+  color: #8795AA;
   font-size: 13px;
   margin-bottom: 10px;
 }
@@ -362,9 +376,9 @@ td.echo-text {
   margin-top: 14px;
 }
 .cancel-btn {
-  border: 1px solid rgba(111, 142, 190, 0.4);
+  border: 1px solid #253247;
   background: transparent;
-  color: #9db0ca;
+  color: #8795AA;
   border-radius: 6px;
   padding: 7px 16px;
   cursor: pointer;
@@ -372,7 +386,7 @@ td.echo-text {
 .ok-btn {
   border: 0;
   border-radius: 6px;
-  background: #1677ff;
+  background: #398BFF;
   color: #fff;
   font-weight: 600;
   padding: 7px 18px;
@@ -394,7 +408,7 @@ td.echo-text {
 }
 .toast.ok { background: rgba(82, 196, 26, 0.92); color: #06130a; }
 .toast.error { background: rgba(255, 77, 79, 0.94); color: #fff; }
-.toast.info { background: rgba(22, 119, 255, 0.94); color: #fff; }
+.toast.info { background: rgba(57, 139, 255, 0.94); color: #fff; }
 
 /* ---- 弹幕墙种子数据角标 ---- */
 .seed-tag {
@@ -415,9 +429,9 @@ td.echo-text {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(110, 148, 255, 0.45);
-  background: rgba(110, 148, 255, 0.12);
-  color: #8fa8ff;
+  border: 1px solid rgba(57, 139, 255, 0.45);
+  background: rgba(57, 139, 255, 0.12);
+  color: #398BFF;
   font-size: 11px;
   line-height: 16px;
   white-space: nowrap;

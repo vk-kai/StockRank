@@ -594,7 +594,7 @@
             <label>浏览器权限状态</label>
             <span class="hint">
               当前：<b>{{ notifyPermissionLabel() }}</b> ·
-              <a href="javascript:void(0)" @click="requestNotifyPermission" style="color:#4fc3f7;">重新授权</a>
+              <a href="javascript:void(0)" @click="requestNotifyPermission" style="color:#398BFF;">重新授权</a>
             </span>
           </div>
 

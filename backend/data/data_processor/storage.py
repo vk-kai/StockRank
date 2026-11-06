@@ -306,9 +306,12 @@ def _build_daily_summary_from_latest_realtime(date_str):
     if not isinstance(latest_data, list):
         return None
 
+    # 按净流入排序,与 generate_daily_summary_for_date 同口径(曾按 flow=总流入排,
+    # 总流入大但净流出的板块会顶到榜首,排名与展示值不符;generate_daily_summary_for_date
+    # 与 get_accumulated_top_sectors 均已改净流入,此处是同一修复的漏网点)
     sorted_sectors = sorted(
         latest_data,
-        key=lambda item: item.get('flow', 0) or 0,
+        key=lambda item: item.get('net_flow', 0) or 0,
         reverse=True
     )
 

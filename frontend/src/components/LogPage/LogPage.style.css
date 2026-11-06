@@ -1,38 +1,47 @@
+/* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
 .log-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  color: #fff;
-  padding: 20px;
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .log-header {
   display: flex;
   align-items: center;
   gap: 20px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   padding-right: 290px; /* 避让右上角固定北京时间+登录入口 */
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid #253247;
 }
 
 .log-header h1 {
-  font-size: 24px;
+  color: #E5EAF2;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   margin: 0;
   flex: 1;
 }
 
 .back-button {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: #fff;
-  padding: 10px 20px;
+  background: #172235;
+  color: #8795AA;
+  border: 1px solid #253247;
+  padding: 7px 14px;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.3s;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .back-button:hover {
-  background: rgba(255, 255, 255, 0.2);
+  color: #398BFF;
+  border-color: rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.08);
 }
 
 .header-actions {
@@ -126,7 +135,7 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #4fc3f7;
+  border-color: #398BFF;
 }
 
 .search-input::placeholder {
@@ -134,7 +143,7 @@
 }
 
 .search-btn {
-  background: #4fc3f7;
+  background: #398BFF;
   border: none;
   color: #fff;
   padding: 8px 16px;
@@ -145,7 +154,7 @@
 }
 
 .search-btn:hover {
-  background: #29b6f6;
+  background: #398BFF;
 }
 
 .clear-btn {
@@ -179,7 +188,7 @@
 }
 
 .log-controls select option {
-  background: #1a1a2e;
+  background: #172235;
 }
 
 .auto-refresh label {
@@ -196,7 +205,7 @@
 }
 
 .log-content {
-  background: rgba(0, 0, 0, 0.3);
+  background: #111827;
   border-radius: 8px;
   padding: 20px;
   min-height: 400px;
@@ -235,11 +244,11 @@
   grid-template-columns: 180px 70px 120px 150px 1fr 50px;
   gap: 10px;
   padding: 12px 10px;
-  background: rgba(79, 195, 247, 0.2);
+  background: rgba(57, 139, 255, 0.2);
   border-radius: 6px 6px 0 0;
   font-weight: bold;
   font-size: 13px;
-  color: #4fc3f7;
+  color: #398BFF;
   position: sticky;
   top: 0;
 }
@@ -360,7 +369,7 @@
 
 .log-api {
   font-size: 11px;
-  color: #4fc3f7;
+  color: #398BFF;
   font-family: monospace;
 }
 
@@ -402,9 +411,9 @@
 }
 
 .detail-btn {
-  background: rgba(79, 195, 247, 0.2);
-  border: 1px solid rgba(79, 195, 247, 0.3);
-  color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.2);
+  border: 1px solid rgba(57, 139, 255, 0.3);
+  color: #398BFF;
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -413,8 +422,8 @@
 }
 
 .detail-btn:hover {
-  background: rgba(79, 195, 247, 0.4);
-  border-color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.4);
+  border-color: #398BFF;
 }
 
 .level-debug {
@@ -471,8 +480,8 @@
 }
 
 .page-btn:hover:not(:disabled) {
-  background: rgba(79, 195, 247, 0.3);
-  border-color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.3);
+  border-color: #398BFF;
 }
 
 .page-btn:disabled {
@@ -498,13 +507,13 @@
 }
 
 .page-num:hover {
-  background: rgba(79, 195, 247, 0.3);
-  border-color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.3);
+  border-color: #398BFF;
 }
 
 .page-num.active {
-  background: #4fc3f7;
-  border-color: #4fc3f7;
+  background: #398BFF;
+  border-color: #398BFF;
   color: #fff;
 }
 
@@ -533,7 +542,7 @@
 
 .goto-page input:focus {
   outline: none;
-  border-color: #4fc3f7;
+  border-color: #398BFF;
 }
 
 .modal-overlay {
@@ -551,14 +560,14 @@
 }
 
 .modal {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: #111827;
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
   max-height: 80vh;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid #253247;
 }
 
 .modal-header {
@@ -566,13 +575,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid #253247;
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 18px;
-  color: #4fc3f7;
+  color: #398BFF;
 }
 
 .modal-close {
@@ -715,7 +724,7 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid #253247;
 }
 
 .copy-btn,
@@ -728,14 +737,14 @@
 }
 
 .copy-btn {
-  background: rgba(79, 195, 247, 0.2);
-  border: 1px solid rgba(79, 195, 247, 0.3);
-  color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.2);
+  border: 1px solid rgba(57, 139, 255, 0.3);
+  color: #398BFF;
 }
 
 .copy-btn:hover {
-  background: rgba(79, 195, 247, 0.4);
-  border-color: #4fc3f7;
+  background: rgba(57, 139, 255, 0.4);
+  border-color: #398BFF;
 }
 
 .close-btn {

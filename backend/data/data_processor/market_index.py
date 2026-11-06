@@ -464,7 +464,9 @@ def get_ths_market_breadth():
     try:
         response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
         if response.status_code in (401, 403):
-            headers = attach_fresh_ths_cookie(headers)
+            # force=True: 401/403 说明缓存 cookie 已失效,不带 force 会把同一枚
+            # 旧 cookie 原样贴回去,重试必然同样 401/403,等于白试一次
+            headers = attach_fresh_ths_cookie(headers, force=True)
             response = requests.get(THS_INDEX_FLASH_URL, headers=headers, timeout=10)
         response.raise_for_status()
         data = _parse_json_or_jsonp(response.text)
@@ -511,7 +513,8 @@ def get_ths_turnover_summary():
             timeout=10
         )
         if response.status_code in (401, 403):
-            headers = attach_fresh_ths_cookie(headers)
+            # 同上:强制刷新新 cookie 再重试,否则重试无意义
+            headers = attach_fresh_ths_cookie(headers, force=True)
             response = requests.get(
                 THS_TURNOVER_MINUTE_URL,
                 params={'chart_key': 'turnover_minute'},
@@ -603,7 +606,8 @@ def get_market_summary():
 
 def get_market_fast_summary():
     cached_summary = load_market_summary_cache() or {}
-    breadth = get_jrj_market_breadth() or get_ths_market_breadth() or cached_summary.get('breadth')
+    fresh_breadth = get_jrj_market_breadth() or get_ths_market_breadth()
+    breadth = fresh_breadth or cached_summary.get('breadth')
     fresh_indices = get_market_index_data()
     indices = fresh_indices or cached_summary.get('indices')
     main_index = indices.get('000001') if isinstance(indices, dict) else cached_summary.get('main_index')
@@ -616,7 +620,11 @@ def get_market_fast_summary():
         # 时间戳只反映指数快照的真实抓取时刻:新浪/东财都挂掉回落旧缓存时不刷新时间戳,
         # 否则新鲜度判定(含收盘定格保护)会把任意旧的涨跌值当新鲜数据放行
         'timestamp': datetime.now().astimezone().isoformat() if fresh_indices else cached_summary.get('timestamp'),
-        'turnover_timestamp': cached_summary.get('turnover_timestamp') or cached_summary.get('timestamp')
+        'turnover_timestamp': cached_summary.get('turnover_timestamp') or cached_summary.get('timestamp'),
+        # 涨跌家数同理记独立时间戳:jrj/ths 双挂回落昨日 breadth 时,指数时间戳不该
+        # 替它背书——否则昨日涨跌家数被当今日新鲜值定格一整天且不再重试
+        'breadth_timestamp': (datetime.now().astimezone().isoformat()
+                              if fresh_breadth else cached_summary.get('breadth_timestamp'))
     }
     latest_market_data['summary'] = summary
     save_market_summary_cache(summary)

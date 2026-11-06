@@ -1,31 +1,45 @@
+/* 统一页面底座:与首页同规范(见 styles/App.css 顶部设计规范) */
 .mpadmin-page {
   min-height: 100vh;
-  background: #0b1424;
-  color: #e5edf7;
-  padding: 20px;
+  background: #080D18;
+  color: #E5EAF2;
+  padding: 20px 24px;
   font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 .mpadmin-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #253247;
 }
 .mpadmin-header h1 {
-  font-size: 20px;
+  color: #E5EAF2;
+  font-size: 18px;
+  font-weight: 700;
   margin: 0;
+  letter-spacing: 0.5px;
 }
 
 .back-button {
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
-  color: #d7e4f5;
-  border-radius: 6px;
-  padding: 6px 12px;
+  background: #172235;
+  color: #8795AA;
+  border: 1px solid #253247;
+  padding: 7px 14px;
+  border-radius: 8px;
   cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
-.back-button:hover { background: rgba(40, 50, 70, 0.95); }
+.back-button:hover {
+  color: #398BFF;
+  border-color: rgba(57, 139, 255, 0.5);
+  background: rgba(57, 139, 255, 0.08);
+}
 
 .tab-nav {
   display: flex;
@@ -35,38 +49,38 @@
 .tab {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid rgba(111, 142, 190, 0.35);
-  color: #9db0ca;
+  border: 1px solid #253247;
+  color: #8795AA;
   cursor: pointer;
   font-size: 13px;
   user-select: none;
 }
 .tab:hover { color: #d7e4f5; }
 .tab.active {
-  background: rgba(22, 119, 255, 0.18);
-  border-color: rgba(22, 119, 255, 0.55);
-  color: #7cc4ff;
+  background: rgba(57, 139, 255, 0.18);
+  border-color: rgba(57, 139, 255, 0.55);
+  color: #398BFF;
   cursor: default;
 }
 
 .export-btn {
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid rgba(22, 119, 255, 0.55);
-  background: rgba(22, 119, 255, 0.18);
-  color: #7cc4ff;
+  border: 1px solid rgba(57, 139, 255, 0.55);
+  background: rgba(57, 139, 255, 0.18);
+  color: #398BFF;
   cursor: pointer;
   font-size: 13px;
   white-space: nowrap;
 }
-.export-btn:hover:not(:disabled) { background: rgba(22, 119, 255, 0.32); color: #a3d5ff; }
+.export-btn:hover:not(:disabled) { background: rgba(57, 139, 255, 0.32); color: #E5EAF2; }
 .export-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .mpadmin-forbidden,
 .mpadmin-loading {
   text-align: center;
   margin-top: 60px;
-  color: #9db0ca;
+  color: #8795AA;
 }
 .mpadmin-error {
   text-align: center;
@@ -75,8 +89,8 @@
 }
 .mpadmin-error button {
   margin-top: 10px;
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
+  border: 1px solid #253247;
+  background: #172235;
   color: #d7e4f5;
   border-radius: 6px;
   padding: 6px 16px;
@@ -97,34 +111,34 @@
   gap: 14px;
 }
 .stat-card {
-  background: #101827;
-  border: 1px solid rgba(111, 142, 190, 0.22);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 8px;
   padding: 16px 18px;
 }
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #7cc4ff;
+  color: #398BFF;
   font-family: 'Consolas', 'Monaco', monospace;
 }
 .stat-label {
   margin-top: 4px;
   font-size: 12px;
-  color: #9db0ca;
+  color: #8795AA;
 }
 .stat-label small { color: #6b7d99; }
 
 .card {
-  background: #101827;
-  border: 1px solid rgba(111, 142, 190, 0.22);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 8px;
   padding: 18px;
 }
 .card h2 {
   font-size: 15px;
   margin: 0 0 14px;
-  color: #7cc4ff;
+  color: #398BFF;
 }
 
 .chart-box {
@@ -146,7 +160,7 @@
 .data-table td {
   padding: 8px 10px;
   text-align: left;
-  border-bottom: 1px solid rgba(111, 142, 190, 0.14);
+  border-bottom: 1px solid rgba(37, 50, 71, 0.5);
   font-size: 13px;
 }
 .data-table th {
@@ -154,7 +168,7 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.data-table tbody tr:hover { background: rgba(22, 119, 255, 0.06); }
+.data-table tbody tr:hover { background: rgba(57, 139, 255, 0.06); }
 
 .code-text {
   font-family: 'Consolas', 'Monaco', monospace;
@@ -175,7 +189,7 @@
 .quiz-link {
   border: 0;
   background: transparent;
-  color: #7cc4ff;
+  color: #398BFF;
   cursor: pointer;
   padding: 0;
   font-size: 13px;
@@ -197,8 +211,8 @@
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 80px);
   overflow-y: auto;
-  background: #101827;
-  border: 1px solid rgba(111, 142, 190, 0.35);
+  background: #111827;
+  border: 1px solid #253247;
   border-radius: 10px;
   padding: 20px;
 }
@@ -210,18 +224,18 @@
 .rank-head h3 {
   margin: 0;
   font-size: 16px;
-  color: #e5edf7;
+  color: #E5EAF2;
 }
 .rank-close {
   border: 0;
   background: transparent;
-  color: #9db0ca;
+  color: #8795AA;
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
 }
-.rank-close:hover { color: #e5edf7; }
+.rank-close:hover { color: #E5EAF2; }
 .rank-sub {
   margin: 6px 0 14px;
   color: #8ba4c7;
@@ -241,8 +255,8 @@
   font-size: 12px;
 }
 .rank-card .pager button {
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
+  border: 1px solid #253247;
+  background: #172235;
   color: #d7e4f5;
   border-radius: 6px;
   padding: 4px 12px;
@@ -255,7 +269,7 @@
 .env-toggle {
   float: right;
   font-size: 12px;
-  color: #9db0ca;
+  color: #8795AA;
   cursor: pointer;
   user-select: none;
   font-weight: 400;
@@ -269,18 +283,18 @@
   margin-bottom: 14px;
 }
 .vpay-item {
-  background: rgba(16, 24, 39, 0.55);
-  border: 1px solid rgba(111, 142, 190, 0.18);
+  background: #172235;
+  border: 1px solid #253247;
   border-radius: 8px;
   padding: 12px 14px;
 }
 .vpay-item b {
   display: block;
   font-size: 20px;
-  color: #7cc4ff;
+  color: #398BFF;
   font-family: 'Consolas', 'Monaco', monospace;
 }
-.vpay-item span { font-size: 12px; color: #9db0ca; }
+.vpay-item span { font-size: 12px; color: #8795AA; }
 .vpay-item span small { color: #6b7d99; }
 
 .vpay-amount {
@@ -318,8 +332,8 @@
   font-size: 12px;
 }
 .mpadmin-body .pager button {
-  border: 1px solid rgba(111, 142, 190, 0.4);
-  background: rgba(16, 24, 39, 0.9);
+  border: 1px solid #253247;
+  background: #172235;
   color: #d7e4f5;
   border-radius: 6px;
   padding: 4px 12px;

@@ -80,9 +80,7 @@ export default {
       countdownInterval: null,
       latestNews: [],
       latestNewsCount: 0,
-      currentNewsIndex: 0,
       newsRotationInterval: null,
-      newsScrollInterval: null,
       threadStatus: {},
       healthStatus: {},
       crawlerStatus: {},
@@ -172,24 +170,9 @@ export default {
     countdownSeconds() {
       return (this.countdown % 60).toString().padStart(2, '0')
     },
-    importantNews() {
-      return this.latestNews.filter(news => 
-        news.importance === '3' || (news.ai_analysis && news.ai_analysis.level === '重大')
-      ).slice(0, 10)
-    },
-    currentNewsItem() {
-      if (this.latestNews.length === 0) return null
-      return this.latestNews[this.currentNewsIndex] || this.latestNews[0]
-    },
-    // 新闻条一行同屏 3 条:从 currentNewsIndex 起连续取 3 条(取模轮转),
-    // 轮播步进仍 +1,4s 一换,5 条新闻 5 拍滚完所有窗口组合
+    // 新闻条固定展示最新 3 条(不轮播,30s 拉新后自动替换)
     currentNewsItems() {
-      const n = this.latestNews.length
-      if (n === 0) return []
-      const total = Math.min(n, 5)
-      return Array.from({ length: Math.min(3, total) }, (_, k) =>
-        this.latestNews[(this.currentNewsIndex + k) % total]
-      )
+      return this.latestNews.slice(0, 3)
     },
     marketIndexCards() {
       const indices = this.marketSummary?.indices || {}
@@ -545,9 +528,6 @@ export default {
     if (this.newsRotationInterval) {
       clearInterval(this.newsRotationInterval)
     }
-    if (this.newsScrollInterval) {
-      clearInterval(this.newsScrollInterval)
-    }
     if (this.anomalyWatchInterval) {
       clearInterval(this.anomalyWatchInterval)
     }
@@ -592,6 +572,10 @@ export default {
     },
     // 登录态变化回调
     onAuthRequired() {
+      // 会话已失效:先停掉所有数据轮询器。否则它们每15-60s再发一次401,
+      // 每次都触发 auth-required → Root 重开登录框(过期后登录框反复自弹);
+      // 重登录后 bootstrapData 全量重启轮询,旧链不清就是双倍速轮播/双链请求
+      this.stopDataPollers()
       this.needsAuth = true
       this.isAdmin = false
       this.loading = false
@@ -602,11 +586,7 @@ export default {
       // 演示态 → 登录态：停掉演示轮播，走正常实时链路
       if (this.demoMode) {
         this.demoMode = false
-        if (this.newsScrollInterval) {
-          clearInterval(this.newsScrollInterval)
-          this.newsScrollInterval = null
-        }
-        this.currentNewsIndex = 0
+        this.stopDataPollers()
         this.needsAuth = false
         this.error = null
         this.bootstrapData()
@@ -656,14 +636,50 @@ export default {
       if (this.chartInstance) {
         this.chartInstance.clear()
       }
-      if (this.newsScrollInterval) {
-        clearInterval(this.newsScrollInterval)
-        this.newsScrollInterval = null
-      }
+      // 停掉所有实时轮询器(演示态只保留自己的新闻轮播,由 tryLoadDemoData 重建)
+      this.stopDataPollers()
       // 登出后访客重新回到演示快照（不可用则维持登录提示态）
       this.tryLoadDemoData()
       // 登出后监控卡/新闻条会消失，重新计算图表高度
       this.$nextTick(() => this.updateLayoutHeight())
+    },
+    // 统一停掉全部会打网络请求的轮询器(会话失效/登出/演示态切换时调用)。
+    // 各 start* 原先都没有 clear-first,登录事件重入 bootstrapData 会叠加:
+    // 新闻轮播双倍速、market-summary/ai-chain 双链重复请求;会话过期后它们
+    // 每15-60s发一次401,每次401都派发auth-required → 登录框反复自弹。
+    // countdownInterval 不停:5分钟整页自动刷新是既定行为,reload 自愈一切。
+    stopDataPollers() {
+      if (this.newsRotationInterval) {
+        clearInterval(this.newsRotationInterval)
+        this.newsRotationInterval = null
+      }
+      if (this.anomalyWatchInterval) {
+        clearInterval(this.anomalyWatchInterval)
+        this.anomalyWatchInterval = null
+      }
+      if (this.marketSummaryInterval) {
+        clearTimeout(this.marketSummaryInterval)
+        this.marketSummaryInterval = null
+      }
+      if (this.aiChainInterval) {
+        clearTimeout(this.aiChainInterval)
+        this.aiChainInterval = null
+      }
+      if (this.nextEventTimer) {
+        clearInterval(this.nextEventTimer)
+        this.nextEventTimer = null
+      }
+      if (this._nextEventRetry) {
+        clearTimeout(this._nextEventRetry)
+        this._nextEventRetry = null
+      }
+      if (this.aiAnalysisPollTimer) {
+        clearInterval(this.aiAnalysisPollTimer)
+        this.aiAnalysisPollTimer = null
+        // 复位按钮态:重登录后 checkAIAnalysisStatus 会按后端真实状态重新同步
+        this.aiAnalyzing = false
+        this.aiAnalysisStep = ''
+      }
     },
     // 演示模式：未登录访客加载固定快照(免鉴权 /api/demo/home)。
     // 数据按"历史回放"方式渲染——整天折线+top 静态展示,不启动任何实时轮询/自动刷新。
@@ -691,24 +707,12 @@ export default {
           }
           if (data.market_summary) this.marketSummary = data.market_summary
           this.updateChart()
-          this.startDemoNewsRotation()
           return
         }
       } catch (e) {
         console.error('演示数据加载失败:', e)
       }
       this.needsAuth = true
-    },
-    // 演示态新闻条：只做 4s 轮播展示,30s 拉新不启动(快照永远不刷新)
-    startDemoNewsRotation() {
-      if (this.newsScrollInterval) {
-        clearInterval(this.newsScrollInterval)
-      }
-      this.newsScrollInterval = setInterval(() => {
-        if (this.latestNews.length > 0) {
-          this.currentNewsIndex = (this.currentNewsIndex + 1) % Math.min(this.latestNews.length, 5)
-        }
-      }, 4000)
     },
     // 已登录后拉取首页全部数据（从原 mounted 拆出）
     bootstrapData() {
@@ -862,6 +866,8 @@ export default {
     },
 
     startMarketSummaryRefresh() {
+      // 幂等:不清旧链会两条 setTimeout 自链并行,请求翻倍
+      if (this.marketSummaryInterval) clearTimeout(this.marketSummaryInterval)
       const scheduleNextRefresh = () => {
         this.marketSummaryInterval = setTimeout(async () => {
           await this.fetchMarketSummary()
@@ -883,6 +889,8 @@ export default {
     },
 
     startAiChainRefresh() {
+      // 幂等:不清旧链会两条 setTimeout 自链并行
+      if (this.aiChainInterval) clearTimeout(this.aiChainInterval)
       const scheduleNext = () => {
         // 外部指标无需高频，且避免东财反爬：固定60s
         this.aiChainInterval = setTimeout(async () => {
@@ -914,6 +922,8 @@ export default {
     },
 
     startNextEventRefresh() {
+      // 幂等:登录事件重入时清掉旧 30 分钟轮询,否则叠加
+      if (this.nextEventTimer) clearInterval(this.nextEventTimer)
       // 日历变化很慢，30 分钟一刷足够（quant 侧同源数据还有 30 分钟缓存）
       this.fetchNextEvent()
       this.nextEventTimer = setInterval(() => this.fetchNextEvent(), 30 * 60 * 1000)
@@ -1823,16 +1833,12 @@ export default {
         if (response.success) {
           const newNews = response.data
           
-          // 桌面通知改由全局 notificationManager 统一负责（任意页面都提醒），这里只更新首页滚动条展示
-          const previousFirstId = this.latestNews.length > 0 ? this.latestNews[0].id : null
+          // 桌面通知改由全局 notificationManager 统一负责（任意页面都提醒），这里只更新首页新闻条展示
           this.latestNews = newNews
           this.latestNewsCount = response.pagination?.total || 0
           
           if (newNews.length > 0) {
             this.lastNewsId = newNews[0].id
-            if (previousFirstId !== newNews[0].id) {
-              this.currentNewsIndex = 0
-            }
           }
         }
       } catch (err) {
@@ -1841,12 +1847,9 @@ export default {
     },
 
     startNewsRotation() {
-      this.newsScrollInterval = setInterval(() => {
-        if (this.latestNews.length > 0) {
-          this.currentNewsIndex = (this.currentNewsIndex + 1) % Math.min(this.latestNews.length, 5)
-        }
-      }, 4000)
-      
+      // 新闻条固定展示最新 3 条,不再轮播;这里只保留 30s 拉新。
+      // 幂等:登录事件每次都会走到这里,旧的不清会叠加成双倍速刷新
+      if (this.newsRotationInterval) clearInterval(this.newsRotationInterval)
       this.newsRotationInterval = setInterval(() => {
         this.fetchLatestNews()
       }, 30000)
@@ -2044,6 +2047,8 @@ export default {
 
     // ===== 资金异动未读红点轮询（桌面通知已交由全局 notificationManager 统一负责）=====
     startAnomalyWatch() {
+      // 幂等:登录事件重入时先清旧轮询,否则60s一发的异动查询叠加
+      if (this.anomalyWatchInterval) clearInterval(this.anomalyWatchInterval)
       this.fetchAnomalyForNotify(true)   // 首次只记录基线，不弹窗
       this.anomalyWatchInterval = setInterval(() => {
         this.fetchAnomalyForNotify(false)

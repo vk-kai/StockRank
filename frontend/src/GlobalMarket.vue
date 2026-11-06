@@ -433,9 +433,8 @@ export default {
         const data = await this.fetchSnapshot()
         this.data = data
         this.$nextTick(() => this.renderChart())
-        // 分时:腾讯/新浪仅覆盖 A股(sh)/港股(hk),其余国际指数(美股/日股/韩股/欧股)不得不走东财 trends2(访客 IP)。
-        // 统一走东财,单只失败返回 null 被 filter(Boolean) 滤掉 → 该指数显示无分时 sparkline,不影响其他。
-        this.fetchIntraday()
+        // 分时由独立的 5 分钟定时器负责,这里不再顺带抓:原先每次快照刷新(30s)
+        // 都拉一轮东财 trends2,分时实际变成 30s 一抓,访客 IP 侧压力放大 10 倍
       } catch (e) {
         console.error('获取全球指数失败', e)
       } finally {
@@ -488,6 +487,7 @@ export default {
     async fetchIntraday() {
       const list = this.indices
       if (!list.length) return
+      if (this.intradayLoading) return   // 重入保护:上一轮分批抓取未完成时跳过,避免并发互踩状态
       this.intradayLoading = true
       try {
         // 分批并发(每批 4 个)抓东财 trends2:原先逐个串行 + 500ms 间隔要 8s+,
@@ -558,15 +558,18 @@ export default {
     },
     renderChart() {
       const list = this.filteredIndices
-      if (!list.length && this.regionFilter !== 'all') {
-        // 筛选后无数据:仍渲染地图本体,只清空气泡
-        if (!this.chart) return
-      }
-      if (!list.length) return
       const el = this.$refs.chartEl
       if (!el) return
       if (!this.chart) {
         this.chart = markRaw(echarts.init(el))
+      }
+      if (!list.length) {
+        // 筛选后无数据:保留地图本体,但必须显式清空系列数据——
+        // 直接 return 会让上一个区域筛选的旧气泡一直残留在图上
+        this.chart.setOption({
+          series: this.chart.getOption().series.map(s => ({ data: [] }))
+        })
+        return
       }
 
       const scatterData = list.map(i => ({

@@ -56,7 +56,7 @@ def load_ai_config():
         with open(AI_CONFIG_FILE, 'r', encoding='utf-8') as f:
             config = json.load(f)
     except Exception as e:
-        error_logger.error(f"加载AI配置失败: {e}")
+        error_logger.error_once(f"加载AI配置失败: {e}")
         return None
     _AI_RESPONSE_FORMAT = config.get('response_format')  # None / "json_object" / ...
     return config

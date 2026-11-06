@@ -782,8 +782,18 @@ def join_room():
                     # 幂等:重复加入直接返回当前状态
                     return jsonify({'success': True, 'state': room['state'], 'quiz_id': room['quiz_id']})
                 return jsonify({'success': False, 'message': '房间已满'})
-            conn.execute("UPDATE rooms SET openid_b = ?, state = 'ready' WHERE room_code = ?",
-                         (openid, room_code))
+            # 条件更新(compare-and-set):SELECT 与 UPDATE 之间无事务保护,两人同时
+            # 加入都会读到空位;只在 openid_b 仍为空时写入,输家按真实结果答复,
+            # 避免先加入者拿到 success 后提交答案却被拒"你不在该房间中"
+            cur = conn.execute(
+                "UPDATE rooms SET openid_b = ?, state = 'ready' "
+                "WHERE room_code = ? AND (openid_b IS NULL OR openid_b = '')",
+                (openid, room_code))
+            if cur.rowcount == 0:
+                fresh = _fetch_room(conn, room_code)
+                if fresh and fresh['openid_b'] == openid:
+                    return jsonify({'success': True, 'state': fresh['state'], 'quiz_id': fresh['quiz_id']})
+                return jsonify({'success': False, 'message': '房间已满'})
             state = 'ready'
         return jsonify({'success': True, 'state': state, 'quiz_id': room['quiz_id']})
     except Exception as e:

@@ -244,14 +244,27 @@ def _load_realtime(date_str):
 # --------------------------------------------------------------------------
 # 维度 1：价量背离
 # --------------------------------------------------------------------------
-def _is_adjacent_five_minutes(previous_time, current_time):
-    """Only treat records as a five-minute pair when both snapshots are truly adjacent."""
+def _gap_seconds(previous_time, current_time):
+    """相邻两个采样点 'HH:MM' 的间隔秒数;解析失败返回 None。"""
     try:
         previous = datetime.strptime(str(previous_time), '%H:%M')
         current = datetime.strptime(str(current_time), '%H:%M')
-        return (current - previous).total_seconds() == 5 * 60
+        return (current - previous).total_seconds()
     except (TypeError, ValueError):
-        return False
+        return None
+
+
+def _is_adjacent_five_minutes(previous_time, current_time):
+    """相邻采样判定:间隔 ∈ (0, 5分钟] 视为可比。
+
+    历史版本要求恰好 300 秒——但采集层有自适应加密采样(data_collector 异动态
+    1 分钟一采,生产常态即处于该模式),1 分钟间隔 ≠ 300 秒会把背离/突变/反转/
+    连续同向四个维度在「最该报警的异动时段」全部判死,只剩巨量维度存活。
+    放宽后:1 分钟加密点、区间重试写出的 09:41→09:45(4分钟)、加密态回落切换后
+    首个 5 分钟点都算相邻;跨午休(11:30→13:00,90分钟)与跨日 gap 天然排除。
+    """
+    gap = _gap_seconds(previous_time, current_time)
+    return gap is not None and 0 < gap <= 5 * 60
 
 
 def _check_divergence(sec, series, cfg, current_time=None):
@@ -309,11 +322,15 @@ def _spike_fired(delta, series, cfg):
     if len(hist) >= int(cfg.get('spike_min_samples', 10)):
         mean = sum(hist) / len(hist)
         var = sum((v - mean) ** 2 for v in hist) / len(hist)
-        std = math.sqrt(var) or 1e-9
-        z = (abs_d - mean) / std
-        if z >= float(cfg.get('spike_z_threshold', 3.0)):
-            return True, f'z={z:.1f}'
-        return False, ''
+        std = math.sqrt(var)
+        if std >= 0.5:  # 亿;方差过小时 z 无意义
+            z = (abs_d - mean) / std
+            if z >= float(cfg.get('spike_z_threshold', 3.0)):
+                return True, f'z={z:.1f}'
+            return False, ''
+        # 近零方差退化:样本几乎完全相同(典型:封板板块累计净流入纹丝不动,
+        # delta 全 0)。原先 or 1e-9 会让 0.5亿 的变动算出 z≈5e8,完全绕过
+        # spike_threshold=20亿 的本意误推。回退绝对阈值(保守方向)。
     if abs_d >= float(cfg.get('spike_threshold', 20.0)):
         return True, '绝对量级'
     return False, ''
@@ -421,32 +438,36 @@ def _check_streak(sec, series, cfg, current_time=None):
         return None  # 无历史，无法算增量
     # series = [(time, 累计nf), ...]（不含当前时点），末尾追加当前累计 → 构造增量序列
     points = list(series) + [{'time': current_time, 'net_flow': nf}]
-    deltas = []
+    deltas = []  # 元素为 (Δnet_flow, 实际间隔分钟);不相邻处记 None 断链
     for i in range(1, len(points)):
-        if current_time and not _is_adjacent_five_minutes(points[i - 1]['time'], points[i]['time']):
+        gap = _gap_seconds(points[i - 1]['time'], points[i]['time'])
+        if current_time and (gap is None or not 0 < gap <= 5 * 60):
             deltas.append(None)
         else:
-            deltas.append(points[i]['net_flow'] - points[i - 1]['net_flow'])
+            deltas.append((points[i]['net_flow'] - points[i - 1]['net_flow'], (gap or 0) / 60.0))
     if not deltas:
         return None
-    cur_delta = deltas[-1]
-    if cur_delta is None or cur_delta == 0:
+    last = deltas[-1]
+    if last is None or last[0] == 0:
         return None
-    sign = 1 if cur_delta > 0 else -1
+    sign = 1 if last[0] > 0 else -1
     streak = 0
     cum_delta = 0.0
-    for d in reversed(deltas):
+    minutes = 0.0
+    for d, g in reversed(deltas):
         if d is None:
             break
         d_sign = 1 if d > 0 else -1
         if d_sign == sign and abs(d) >= cfg['min_net_for_streak']:
             streak += 1
             cum_delta += d
+            minutes += g
         else:
             break
     if streak < cfg['streak_min']:
         return None
-    minutes = streak * 5
+    # 加密采样下 streak 段长是 1 分钟而非恒 5 分钟,持续时长按实际间隔累计
+    minutes = round(minutes)
     return {'type': 'streak', 'sub': 'streak_in' if sign > 0 else 'streak_out',
             'label': f'持续流入{streak}段(≈{minutes}分钟)' if sign > 0 else f'持续流出{streak}段(≈{minutes}分钟)',
             'streak': streak, 'minutes': minutes, 'cum_delta': round(cum_delta, 2),
@@ -463,10 +484,12 @@ def _check_surge(sec, baseline, cfg, current_time=None):
     sec_stats = (sector_baseline.get('by_time') or {}).get(current_time, {})
     count = sec_stats.get('count', 0)
     mean = sec_stats.get('mean', 0)
-    std = sec_stats.get('std', 0) or 1e-9
+    # 勿用 `or 1e-9` 兜零:std 舍入到 0.00 的近恒定基线会让 z 爆表(微小净流入
+    # 算出天文 z 值)绕过巨量判定。std 过小一律走绝对阈值分支(保守方向)。
+    std = sec_stats.get('std', 0) or 0
 
     # 样本充足：用 z-score
-    if count >= cfg['min_samples'] and std > 0:
+    if count >= cfg['min_samples'] and std >= 0.5:
         z = (abs_nf - mean) / std
         if z >= cfg['z_threshold']:
             return {'type': 'surge', 'sub': 'surge_in' if nf > 0 else 'surge_out',

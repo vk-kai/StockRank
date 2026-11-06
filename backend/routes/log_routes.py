@@ -205,9 +205,9 @@ def get_log_content(log_type):
         module_filter = request.args.get('module', '').strip()
         search_keyword = request.args.get('search', '').strip()
         
-        page = max(1, int(request.args.get('page', 1)))
-        page_size = min(max(1, int(request.args.get('page_size', 100))), 500)
-        
+        page = max(1, request.args.get('page', 1, type=int))
+        page_size = min(max(1, request.args.get('page_size', 100, type=int)), 500)
+
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         
@@ -326,9 +326,9 @@ def get_security_log_content():
         level_filter = request.args.get('level', '').upper()
         search_keyword = request.args.get('search', '').strip()
         
-        page = max(1, int(request.args.get('page', 1)))
-        page_size = min(max(1, int(request.args.get('page_size', 100))), 500)
-        
+        page = max(1, request.args.get('page', 1, type=int))
+        page_size = min(max(1, request.args.get('page_size', 100, type=int)), 500)
+
         parsed_lines = []
         for event in events:
             event_type = event.get('type', '')

@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 error_logger = get_logger('error')
-health_logger = get_logger('health')
+health_logger = get_logger('monitor_check')
 
 HEALTH_DATA_DIR = os.path.join(DATA_DIR, 'health')
 HEALTH_FILE = os.path.join(HEALTH_DATA_DIR, 'status.json')
@@ -366,7 +366,10 @@ def start_health_checker():
 
         news_headers, news_found = _acquire_news_headers(5)
 
-        if sector_ok and news_found:
+        # news 与 sector 独立判定:原先耦合在一个 if 里,板块请求头获取失败会把
+        # 明明正常的新闻源直接标成"获取新闻请求头失败"(且新闻 API 从未被真正
+        # 探测过),两类健康状态互相污染
+        if news_found:
             news_ok, _, news_error = _test_news_with_headers(news_headers)
             _health_status['news'] = {
                 'status': 'ok' if news_ok else 'error',
@@ -374,23 +377,20 @@ def start_health_checker():
                 'error': None if news_ok else news_error,
                 'response_time': None
             }
-            _health_status['sector'] = {
-                'status': 'ok' if sector_ok else 'error',
-                'last_check': now,
-                'error': None if trading_now else '非交易时间，跳过板块检测',
-                'response_time': sector_time if trading_now else None
-            }
-            save_health_status()
         else:
             _health_status['news'] = {'status': 'error', 'last_check': now, 'error': '获取新闻请求头失败', 'response_time': None}
-            _health_status['sector'] = {
-                'status': 'error' if trading_now and not sector_ok else 'ok',
-                'last_check': now,
-                'error': '获取板块请求头失败' if trading_now and not sector_ok else '非交易时间，跳过板块检测',
-                'response_time': None
-            }
-            save_health_status()
-            health_logger.warning('健康检测初始化失败：新闻或板块数据源不可用')
+
+        _health_status['sector'] = {
+            'status': 'ok' if sector_ok else 'error',
+            'last_check': now,
+            'error': (None if sector_ok else '获取板块请求头失败')
+                     if trading_now else '非交易时间，跳过板块检测',
+            'response_time': sector_time if trading_now else None
+        }
+        save_health_status()
+        if (_health_status['news']['status'] == 'error'
+                or _health_status['sector']['status'] == 'error'):
+            health_logger.warning('健康检测初始化：新闻或板块数据源不可用')
 
         # 首屏检测完成后，开启定时检测循环
         _check_running = True

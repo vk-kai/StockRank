@@ -6,6 +6,11 @@ from core.config import LOG_DIR, is_dev_mode
 
 _loggers = {}
 
+# 去重窗口:同一消息在窗口内只记一次(自动恢复的心跳类噪声靠它消除)
+_ONCE_WINDOW_SECONDS = 3600
+# 防御封顶:seen 表条目超限直接清空重建,防止异常场景无限膨胀
+_ONCE_MAX_ENTRIES = 200
+
 MODULE_DISPLAY_NAMES = {
     'data': '数据采集',
     'data_collect': '数据采集—数据获取',
@@ -33,7 +38,12 @@ MODULE_DISPLAY_NAMES = {
     'health': '健康检查',
     'stock_price': '价格异动监控',
     'stock_feed': '行情数据',
-    'stock_resolver': '股票代码解析'
+    'stock_resolver': '股票代码解析',
+    'demo': '演示数据',
+    'demo_snapshot': '演示数据—快照',
+    'pulse': '个股异动',
+    'quant_signal': '量化信号',
+    'trendzen_arb': '趋势套利监控'
 }
 
 class ModuleFormatter(logging.Formatter):
@@ -48,27 +58,52 @@ class ModuleLogger:
     def __init__(self, logger, module_name):
         self.logger = logger
         self.module_name = module_name
-    
+        # once 去重表: msg -> 上次记录时间(同消息窗口内重复直接吞掉)
+        self._seen_once = {}
+
     def _log(self, level, msg, *args, **kwargs):
         extra = kwargs.get('extra', {})
         extra['module_name'] = self.module_name
         kwargs['extra'] = extra
         self.logger.log(level, msg, *args, **kwargs)
-    
+
+    def _should_log_once(self, msg):
+        """同一条消息在 _ONCE_WINDOW_SECONDS 内只放行一次。"""
+        now = datetime.now()
+        last = self._seen_once.get(msg)
+        if last is not None and (now - last).total_seconds() < _ONCE_WINDOW_SECONDS:
+            return False
+        if len(self._seen_once) >= _ONCE_MAX_ENTRIES:
+            self._seen_once.clear()
+        self._seen_once[msg] = now
+        return True
+
     def info(self, msg, *args, **kwargs):
         self._log(logging.INFO, msg, *args, **kwargs)
-    
+
     def debug(self, msg, *args, **kwargs):
         self._log(logging.DEBUG, msg, *args, **kwargs)
-    
+
     def warning(self, msg, *args, **kwargs):
         self._log(logging.WARNING, msg, *args, **kwargs)
-    
+
     def error(self, msg, *args, **kwargs):
         self._log(logging.ERROR, msg, *args, **kwargs)
-    
+
     def critical(self, msg, *args, **kwargs):
         self._log(logging.CRITICAL, msg, *args, **kwargs)
+
+    def info_once(self, msg, *args, **kwargs):
+        if self._should_log_once(msg):
+            self._log(logging.INFO, msg, *args, **kwargs)
+
+    def warning_once(self, msg, *args, **kwargs):
+        if self._should_log_once(msg):
+            self._log(logging.WARNING, msg, *args, **kwargs)
+
+    def error_once(self, msg, *args, **kwargs):
+        if self._should_log_once(msg):
+            self._log(logging.ERROR, msg, *args, **kwargs)
 
 def ensure_directories():
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -103,12 +138,13 @@ def get_logger(module_name='system'):
     ensure_directories()
     
     is_system = (
-        module_name == 'system' or 
-        module_name.startswith('system_') or 
-        module_name == 'monitor' or 
+        module_name == 'system' or
+        module_name.startswith('system_') or
+        module_name == 'monitor' or
         module_name.startswith('monitor_') or
         module_name == 'cleanup' or
-        module_name.startswith('cleanup_')
+        module_name.startswith('cleanup_') or
+        module_name == 'health'
     )
     log_file = 'system.log' if is_system else 'data.log'
     logger_name = 'system_logger' if is_system else 'data_logger'

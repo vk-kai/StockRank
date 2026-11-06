@@ -492,11 +492,15 @@ def get_news_summary_status():
                 'message': '新闻总结正在执行中'
             })
 
-        # 检查状态文件
+        # 检查状态文件(损坏/半截 JSON 容错:按无状态处理,别让接口 500 卡死到下次总结成功)
+        status_data = None
         if os.path.exists(AI_NEWS_SUMMARY_STATUS_FILE):
-            with open(AI_NEWS_SUMMARY_STATUS_FILE, 'r', encoding='utf-8') as f:
-                status_data = json.load(f)
-
+            try:
+                with open(AI_NEWS_SUMMARY_STATUS_FILE, 'r', encoding='utf-8') as f:
+                    status_data = json.load(f)
+            except (ValueError, OSError):
+                status_data = None
+        if status_data:
             status = status_data.get('status', '')
 
             if status == 'completed':

@@ -6,7 +6,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from .base import BacktestSignal, BaseBacktestStrategy
+from .base import BacktestSignal, BaseBacktestStrategy, macd_sma_seeded
 from backend.time_utils import format_beijing_time
 
 
@@ -352,18 +352,14 @@ class BaseMACDChanStrategy(BaseBacktestStrategy):
         low = pd.to_numeric(work_df["low"], errors="coerce")
         high = pd.to_numeric(work_df["high"], errors="coerce")
 
-        ema_fast = close.ewm(span=self.fast, adjust=False).mean()
-        ema_slow = close.ewm(span=self.slow, adjust=False).mean()
-        dif = ema_fast - ema_slow
-        dea = dif.ewm(span=self.signal, adjust=False).mean()
-        hist = (dif - dea) * 2
-
+        # SMA种子MACD:ewm(adjust=False) 的首值种子会让前几十根柱面积/黄白线带偏差,
+        # 预热区输出 NaN,由主循环的 isnan 防护跳过
         close_vals = close.values
+        dif_vals, dea_vals, hist_vals = macd_sma_seeded(
+            close_vals, self.fast, self.slow, self.signal
+        )
         low_vals = low.values
         high_vals = high.values
-        dif_vals = dif.values
-        dea_vals = dea.values
-        hist_vals = hist.values
 
         signals: List[BacktestSignal] = []
         completed_segments: List[_MacdAreaSegment] = []

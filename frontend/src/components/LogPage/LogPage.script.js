@@ -129,8 +129,12 @@ export default {
           this.logLines = response.data.lines
           this.totalLines = response.data.total
           this.totalPages = response.data.total_pages
-          if (this.currentPage > this.totalPages) {
+          if (this.totalPages >= 1 && this.currentPage > this.totalPages) {
             this.currentPage = Math.max(1, this.totalPages)
+            // 钳制后必须重取:只改页码不重新请求,界面会一直停在越界页的空列表
+            // (后端对越界页按空页返回,新页码下的数据从未加载)。
+            // totalPages>=1 才重取:0 页(无日志)时钳到 1 再查会 1>0 无限递归
+            return this.loadLogContent()
           }
         }
       } catch (error) {

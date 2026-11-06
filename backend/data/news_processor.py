@@ -6,15 +6,19 @@ from core.config import NEWS_DIR, NEWS_URL, MAX_NEWS_HOURS, is_dev_mode, DEV_NEW
 from core.logger import get_logger
 
 error_logger = get_logger('error')
+
+# fetch连续失败计数器(限频日志用)
+_fetch_fail_streak = 0
 info_logger = get_logger('news')
 
 def get_news_data(page=1, pagesize=400):
+    global _fetch_fail_streak
     from monitors.health_checker import get_crawler_status, set_crawler_working, set_crawler_idle, get_news_headers
     
     dev_mode = is_dev_mode()
     api_url = DEV_NEWS_URL if dev_mode else NEWS_URL
     if dev_mode:
-        info_logger.info(f"[DEV模式] 使用模拟服务: {api_url}")
+        info_logger.info_once(f"[DEV模式] 使用模拟服务: {api_url}")
     
     set_crawler_working('news')
     headers = get_news_headers()
@@ -78,10 +82,18 @@ def get_news_data(page=1, pagesize=400):
                     }
                     news_list.append(news_item)
         
+        if _fetch_fail_streak > 0:
+            info_logger.info(f"新闻采集恢复正常(此前连续失败{_fetch_fail_streak}次)")
+            _fetch_fail_streak = 0
         set_crawler_idle('news')
         return news_list
     except Exception as e:
-        error_logger.error(f"获取新闻数据失败: {e}")
+        # 采集失败限频:首次完整ERROR,之后每20次降一条截断warning,避免长时间故障刷屏
+        _fetch_fail_streak += 1
+        if _fetch_fail_streak == 1:
+            error_logger.error(f"获取新闻数据失败: {e}")
+        elif _fetch_fail_streak % 20 == 0:
+            error_logger.warning(f"获取新闻持续失败(已连续{_fetch_fail_streak}次): {str(e)[:120]}")
         set_crawler_idle('news')
         return []
 
@@ -113,6 +125,18 @@ def load_today_news():
             return []
     return []
 
+def normalize_news_title(title):
+    """标题归一化判重口径:同源会对同一新闻微调标题重发(初盘/开盘/早盘→盘初,
+    午后/尾盘→盘后)。
+
+    落盘判重(save_news_data)与推送判重(news_collector 的今日文件/全量状态
+    两个字典)必须共用本函数。历史版本只有落盘侧归一化、推送侧用精确标题:
+    数据源改标题重发时落盘判重命中不落新记录、推送判重 miss → 每 30 秒
+    轮询都会把同一条新闻当新条目重新推送,直到它滚出首页。
+    """
+    return (str(title or '')).replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初').replace('午后', '盘后').replace('尾盘', '盘后')
+
+
 def save_news_data(news_list):
     ensure_news_dir()
     file_path = get_news_file_path()
@@ -133,10 +157,7 @@ def save_news_data(news_list):
                                 news_title = item.get('title', '').strip()
                                 news_content = item.get('content', '').strip()
                                 if news_title and news_content:
-                                    # 处理标题中的细微差异（如“初盘”和“盘初”）
-                                    normalized_title = news_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
-                                    normalized_title = normalized_title.replace('午后', '盘后').replace('尾盘', '盘后')
-                                    all_existing_keys.add((normalized_title, news_content))
+                                    all_existing_keys.add((normalize_news_title(news_title), news_content))
                 except (json.JSONDecodeError, Exception) as e:
                     continue
         
@@ -156,12 +177,8 @@ def save_news_data(news_list):
             news_title = item.get('title', '').strip()
             news_content = item.get('content', '').strip()
             
-            # 处理标题中的细微差异（如“初盘”和“盘初”）
-            normalized_title = news_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
-            normalized_title = normalized_title.replace('午后', '盘后').replace('尾盘', '盘后')
-            
             if news_title and news_content:
-                news_key = (normalized_title, news_content)
+                news_key = (normalize_news_title(news_title), news_content)
                 if news_key not in all_existing_keys:
                     existing_dict[news_id] = item
                     new_count += 1
@@ -170,12 +187,8 @@ def save_news_data(news_list):
                     for existing_id, existing_item in existing_dict.items():
                         existing_title = existing_item.get('title', '').strip()
                         existing_content = existing_item.get('content', '').strip()
-                        
-                        # 处理标题中的细微差异（如“初盘”和“盘初”）
-                        normalized_existing_title = existing_title.replace('初盘', '盘初').replace('开盘', '盘初').replace('早盘', '盘初')
-                        normalized_existing_title = normalized_existing_title.replace('午后', '盘后').replace('尾盘', '盘后')
-                        
-                        if normalized_existing_title == normalized_title and existing_content == news_content:
+
+                        if normalize_news_title(existing_title) == normalized_title and existing_content == news_content:
                             existing_item['url'] = item.get('url', existing_item.get('url', ''))
                             existing_item['time'] = item.get('time', existing_item.get('time', ''))
                             existing_item['importance'] = item.get('importance', existing_item.get('importance', '0'))

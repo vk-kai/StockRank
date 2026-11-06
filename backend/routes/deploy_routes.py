@@ -100,6 +100,19 @@ def docker_restart():
                         'message': '仅管理员可操作'}), 401
 
     global _last_deploy_ts
+
+    def _rollback_cooldown():
+        """触发失败时释放冷却占位:冷却时间戳在锁内置位是为了防并发双触发,
+        但密码错误/SSH 异常等失败路径若不回滚,用户改对密码还得干等满 5 分钟。"""
+        global _last_deploy_ts
+        with _deploy_lock:
+            _last_deploy_ts = 0.0
+
+    # 密码空检查放锁外:缺密码根本没到触发环节,不应触碰冷却状态
+    password = (request.get_json(silent=True) or {}).get('password', '')
+    if not password:
+        return jsonify({'success': False, 'message': '缺少 SSH 密码'}), 400
+
     with _deploy_lock:
         now = time.time()
         if now - _last_deploy_ts < DEPLOY_MIN_INTERVAL:
@@ -108,14 +121,11 @@ def docker_restart():
                             'message': f'部署太频繁,请 {remain}s 后再试'}), 429
         _last_deploy_ts = now
 
-    password = (request.get_json(silent=True) or {}).get('password', '')
-    if not password:
-        return jsonify({'success': False, 'message': '缺少 SSH 密码'}), 400
-
     try:
         import paramiko
     except ImportError:
         error_logger.error('paramiko 未安装,页面部署不可用(需重建镜像装依赖)')
+        _rollback_cooldown()
         return jsonify({'success': False,
                         'message': '服务器缺少 paramiko 依赖,需重建镜像'}), 500
 
@@ -132,6 +142,7 @@ def docker_restart():
             cli.close()
         if 'DEPLOY_TRIGGERED' not in out:
             error_logger.error(f'手动部署远程命令无触发回显: {out[:200]}')
+            _rollback_cooldown()
             return jsonify({'success': False,
                             'message': '远程命令触发异常,详见服务端日志'}), 500
         # 状态行由宿主机脚本自己写(第一步 wr triggered):此处不写,避免在脚本
@@ -142,10 +153,12 @@ def docker_restart():
                         'message': '部署已触发,服务将中断 1-3 分钟后自动恢复'})
     except paramiko.AuthenticationException:
         error_logger.warning('手动部署失败: SSH 密码错误')
+        _rollback_cooldown()
         return jsonify({'success': False, 'message': 'SSH 密码错误'}), 401
     except Exception as e:
         # 异常对象不含密码,可安全记录;提示保持模糊防探测
         error_logger.warning(f'手动部署触发失败: {repr(e)[:160]}')
+        _rollback_cooldown()
         return jsonify({'success': False, 'message': '触发失败:SSH 连接异常'}), 500
 
 

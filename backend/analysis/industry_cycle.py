@@ -683,17 +683,13 @@ def _run_batch_analysis(industries):
                         _merge_cycle_score(industry_name, parsed)
                         done += 1
                     else:
-                        # 解析失败，也保存原始内容
-                        _merge_cycle_score(industry_name, {
-                            'overall_score': 0,
-                            'overall_verdict': '分析失败',
-                            'signals': [],
-                            'analyze_time': time.strftime('%Y-%m-%d %H:%M:%S'),
-                            'raw_content': content,
-                            'parse_error': True
-                        })
+                        # 解析失败不写入分数库:overall_score=0 会被云图当合法分
+                        # 着色成"0分=最安全"档,错误结果被当成功展示(与 HTTP 失败
+                        # 路径只进 failed_list 的行为也不一致)。保留在 failed_list/
+                        # batch_status 里即可,原始内容进日志便于排查。
                         failed += 1
                         failed_list.append(industry_name)
+                        error_logger.error(f"批量诊断 {industry_name} 结果解析失败,已跳过入库: {content[:200]}")
                 else:
                     failed += 1
                     failed_list.append(industry_name)

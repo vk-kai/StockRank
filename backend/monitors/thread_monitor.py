@@ -33,6 +33,12 @@ def heartbeat(name):
     else:
         system_logger.warning(f"[线程监控] 收到未注册线程的心跳: {name}")
 
+def heartbeat_if_registered(name):
+    """已注册才发心跳:供 poll_once 这类"后台线程与测试/手动触发共用"的函数
+    在长循环内逐项报平安;未注册(测试直调)时静默跳过,不刷未注册告警。"""
+    if name in _thread_status:
+        heartbeat(name)
+
 def set_busy(name, busy=True):
     if name in _thread_status:
         _thread_status[name]['busy'] = busy
@@ -62,7 +68,14 @@ def get_all_status():
         if not is_alive and not _dead_logged.get(name, False):
             if is_busy:
                 busy_duration = now - status.get('busy_since', now) if status.get('busy_since') else 0
-                system_logger.warning(f"[线程监控] 线程 {name} 处于忙碌状态({round(busy_duration, 1)}秒)，延长超时检测")
+                # 同一卡死周期只告警一次:忙碌超时的线程每次健康轮询都会走到这里,
+                # 不去重会每 30 秒刷一条 warning。busy 线程监控循环会跳过不重启,
+                # 卡死超过 30 分钟升级 error 提示人工介入。
+                _dead_logged[name] = True
+                if busy_duration > 1800:
+                    system_logger.error(f"[线程监控] 线程 {name} 忙碌已 {round(busy_duration / 60)} 分钟，疑似卡死(busy 状态不自动重启,需人工检查)")
+                else:
+                    system_logger.warning(f"[线程监控] 线程 {name} 处于忙碌状态({round(busy_duration, 1)}秒)，延长超时检测")
             else:
                 system_logger.error(f"[线程监控] 线程 {name} 心跳超时: 已 {round(elapsed, 1)} 秒无响应")
                 _dead_logged[name] = True

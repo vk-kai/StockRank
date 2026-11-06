@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from .base import BacktestSignal, BaseBacktestStrategy
+from .base import BacktestSignal, BaseBacktestStrategy, macd_sma_seeded
 
 
 class MACDCrossBacktestStrategy(BaseBacktestStrategy):
@@ -18,22 +18,25 @@ class MACDCrossBacktestStrategy(BaseBacktestStrategy):
         if df is None or len(df) < self.min_bars:
             return []
 
-        close = pd.Series(df["close"].values)
-        ema_fast = close.ewm(span=self.fast, adjust=False).mean()
-        ema_slow = close.ewm(span=self.slow, adjust=False).mean()
-        dif = ema_fast - ema_slow
-        dea = dif.ewm(span=self.signal, adjust=False).mean()
-        macd = (dif - dea) * 2
+        close_vals = pd.to_numeric(df["close"], errors="coerce").values
+        # SMA种子EMA:ewm(adjust=False) 的首值种子在短窗口会残留两位数百分比的偏差
+        dif_vals, dea_vals, hist_vals = macd_sma_seeded(
+            close_vals, self.fast, self.slow, self.signal
+        )
 
-        dif_vals = dif.values
-        dea_vals = dea.values
-        close_vals = df["close"].values
         time_col = "datetime" if "datetime" in df.columns else "date"
         times = df[time_col].values
         signals: list[BacktestSignal] = []
 
-        for i in range(self.slow + 1, len(df)):
-            if np.isnan(dif_vals[i]) or np.isnan(dea_vals[i]):
+        # DIF 自 i>=slow-1、DEA 自 i>=slow+signal-2 起才收敛,从 slow+signal 起判交叉;
+        # 旧实现从 slow+1 起判,前几十根信号被 EMA 种子偏差污染(假金叉/假死叉)
+        for i in range(self.slow + self.signal, len(df)):
+            if (
+                np.isnan(dif_vals[i])
+                or np.isnan(dea_vals[i])
+                or np.isnan(dif_vals[i - 1])
+                or np.isnan(dea_vals[i - 1])
+            ):
                 continue
             signal_time = (
                 pd.Timestamp(times[i]).strftime("%Y-%m-%d %H:%M:%S")
@@ -46,7 +49,7 @@ class MACDCrossBacktestStrategy(BaseBacktestStrategy):
                         "buy",
                         float(close_vals[i]),
                         signal_time,
-                        f"DIF上穿DEA, MACD={macd.iloc[i]:.3f}",
+                        f"DIF上穿DEA, MACD={hist_vals[i]:.3f}",
                     )
                 )
             elif dif_vals[i - 1] >= dea_vals[i - 1] and dif_vals[i] < dea_vals[i]:
@@ -55,7 +58,7 @@ class MACDCrossBacktestStrategy(BaseBacktestStrategy):
                         "sell",
                         float(close_vals[i]),
                         signal_time,
-                        f"DIF下穿DEA, MACD={macd.iloc[i]:.3f}",
+                        f"DIF下穿DEA, MACD={hist_vals[i]:.3f}",
                     )
                 )
 

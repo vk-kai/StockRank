@@ -80,6 +80,12 @@ clean_stale_dnat() {
     done
 }
 
+# 更新部署版本标记文件(配置页"部署版本"的兜底数据源;主数据源是只读挂载的 .git,
+# 与 deploy_routes.py 的手动部署脚本同款写法)
+write_deployed_version() {
+    git rev-parse HEAD >"$REPO_DIR/backend/DEPLOYED_VERSION" 2>/dev/null
+}
+
 # 检查 docker compose v2 可用
 if ! docker compose version >/dev/null 2>&1; then
     log "错误: 未检测到 'docker compose'(v2)。请安装或改用 docker-compose 后调整本脚本。"
@@ -109,7 +115,9 @@ while true; do
                 log "git pull 成功,代码已更新到磁盘(运行中容器仍用旧代码,需重建生效)"
                 # 判断是否需要重建镜像:只有 Dockerfile 依赖的文件(requirements*/start.sh)变了才 --build。
                 # 业务 .py 靠 volume 挂载,只重启即生效,不必 build(每次 build 即使全 cache 命中也有开销)。
-                NEED_BUILD=""
+                # 注意 NEED_BUILD 只置位不清零:上一轮已 pull 但被交易时段推迟的依赖变更,
+                # 不能被后续普通 .py 提交的重置抹掉(否则收盘重建不带 --build,镜像缺依赖)。
+                # 重建成功后才清零。
                 if git diff --name-only "$LOCAL" HEAD 2>/dev/null | \
                    grep -qE '(^|/)(requirements[^/]*\.txt|start\.sh|.*Dockerfile)$'; then
                     NEED_BUILD="--build"
@@ -156,6 +164,7 @@ while true; do
                 if curl -s -m 5 -o /dev/null "http://127.0.0.1:${HEALTH_PORT:-80}/"; then
                     log "======== 容器重建完成(总耗时 $((t2 - t0))s),本地探测正常,新代码已生效 ========"
                     PENDING_REBUILD=0
+                    NEED_BUILD=""
                 else
                     log "  本地探测不通,执行转发修复: down -> 清残留DNAT -> up"
                     docker compose down --timeout 10 >>"$LOG_FILE" 2>&1
@@ -168,6 +177,7 @@ while true; do
                         log "======== 转发修复后仍不通!代码已生效,请人工检查: docker compose ps / iptables -t nat -S ========"
                     fi
                     PENDING_REBUILD=0   # 代码已部署,不再无限重试;转发问题转人工,避免循环破坏
+                    NEED_BUILD=""
                 fi
             else
                 log "======== 容器重建失败(down_rc=$down_rc up_rc=$up_rc),保留待重建标志,下一轮重试 ========"

@@ -156,7 +156,6 @@
               :class="{ 'important': news.importance === '3' }"
               @click="openNews(news.url)"
             >
-              <span v-if="news.importance === '3'" class="important-badge">重要</span>
               {{ news.title }}
             </span>
           </div>

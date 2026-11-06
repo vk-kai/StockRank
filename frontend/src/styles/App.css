@@ -428,9 +428,9 @@
   text-overflow: ellipsis;
 }
 
-/* 相邻新闻之间的竖直分割线:一眼看清每条的开始/结束 */
+/* 相邻新闻之间的竖直分割线:一眼看清每条的开始/结束(加粗加深,三条新闻边界清晰) */
 .news-ticker-container .ticker-item + .ticker-item {
-  border-left: 1px solid rgba(135, 149, 170, 0.28);
+  border-left: 1px solid rgba(135, 149, 170, 0.6);
 }
 
 .news-ticker-container .ticker-item:first-child {
@@ -1349,7 +1349,7 @@ button:active:not(:disabled) {
   .news-ticker-container {
     flex-basis: 100%;
   }
-  /* 窄屏一行放不下 3 条:第 2、3 条隐藏,退回单条轮播 */
+  /* 窄屏一行放不下 3 条:第 2、3 条隐藏,只显示最新一条(静态,不轮播) */
   .news-ticker-container .ticker-item:nth-child(n+2) {
     display: none;
   }

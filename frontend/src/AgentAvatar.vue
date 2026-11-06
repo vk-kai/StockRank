@@ -318,8 +318,13 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
+
+// 卸载清理队列:挂在 document/window 上的监听器不随组件 DOM 销毁回收,
+// 必须显式移除(元素级监听随节点 GC,无需登记)
+const _winCleanups = []
+onUnmounted(() => { while (_winCleanups.length) _winCleanups.pop()() })
 
 onMounted(() => {
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
@@ -1271,7 +1276,9 @@ function closeOracle(){ORA.open=false;
   $('#oraDrawer').classList.remove('on');$('#oraMask').classList.remove('on')}
 $('#oraClose').onclick=closeOracle;
 $('#oraMask').onclick=closeOracle;
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ORA.open)closeOracle()});
+const _escClose=e=>{if(e.key==='Escape'&&ORA.open)closeOracle()};
+document.addEventListener('keydown',_escClose);
+_winCleanups.push(()=>document.removeEventListener('keydown',_escClose));
 /* 全局贾维斯提问 chips(认识自己 05/06 · 认识他人 · 首页) */
 $$('.chip[data-ora]').forEach(c=>c.onclick=()=>openOracle(c.dataset.ora));
 $$('.chip[data-go]').forEach(c=>c.onclick=()=>go(c.dataset.go));
@@ -1502,7 +1509,11 @@ async function gfPromoteTop(btn){
 /* ── 关系图: ECharts 力导向布局(缩放/平移/悬停高亮/标签防重叠均为库内置, 不再自研渲染) ── */
 let NETCHART=null; // ECharts 关系图实例
 let NET_SEARCH='', NET_CONTACTS=null; // 搜索关键字 / 全量联系人缓存(搜不在图里的人时补节点)
-window.addEventListener('resize',()=>{if(NETCHART)NETCHART.resize()});
+const _netResize=()=>{if(NETCHART)NETCHART.resize()};
+window.addEventListener('resize',_netResize);
+_winCleanups.push(()=>{window.removeEventListener('resize',_netResize)});
+// 卸载时释放图表实例,避免 echarts 内部计时器/监听泄漏
+_winCleanups.push(()=>{if(NETCHART){NETCHART.dispose();NETCHART=null}});
 async function drawNet(){
   // 先读工具栏状态再清空容器(innerHTML 会连带清掉复选框)
   const strong0=$('#netStrong')?$('#netStrong').checked:true;
@@ -1998,24 +2009,20 @@ $('#topdt').textContent=(d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStar
 loadHome().catch(e=>showErr('pg-home',e));
 
   // ---- 内联 onclick/ondblclick 属性走全局作用域: 把组件内函数挂到 window ----
+  // 只导出 JS 里真实定义的函数:导出未定义名会抛 ReferenceError,
+  // 中断整段 onMounted,其后所有导出(全部内联按钮)一起失效
   window.closeEgo = closeEgo;
   window.copyName = copyName;
-  window.end = end;
   window.gfDemote = gfDemote;
   window.gfPromote = gfPromote;
   window.gfPromoteTop = gfPromoteTop;
   window.go = go;
   window.loadGroupFriends = loadGroupFriends;
-  window.loseOracle = loseOracle;
-  window.oCmp = oCmp;
-  window.oSearch = oSearch;
   window.openOracle = openOracle;
-  window.rawNet = rawNet;
   window.showDetail = showDetail;
   window.showRecent = showRecent;
   window.simApprove = simApprove;
   window.simDel = simDel;
-  window.sync = sync;
 })
 </script>
 

@@ -120,6 +120,10 @@ export default {
         })
         if (res && res.success) {
           const d = res.data
+          // 删除末页最后一条后当前页越界:退回最后一页重查(与 loadEcho 同策略)
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadScores(d.total_pages)
+          }
           this.scores = {
             items: d.items,
             page: d.page,
@@ -149,6 +153,10 @@ export default {
         const res = await getMpAdminRooms({ page, pageSize: 20, days: this.roomsDays })
         if (res && res.success) {
           const d = res.data
+          // 删除末页最后一条后当前页越界:退回最后一页重查(与 loadEcho 同策略)
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadRooms(d.total_pages)
+          }
           this.rooms = {
             items: d.items,
             page: d.page,
@@ -186,10 +194,16 @@ export default {
     },
 
     // ---- 弹幕墙留言管理 ----
+    // 北京本地日期作默认 wall_id(toISOString 是 UTC,北京时间 0-8 点会差一天)
+    _todayWallId() {
+      const d = new Date()
+      const p = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
+    },
     openEchoCreate() {
       this.echoCreate = {
         show: true, busy: false,
-        wall_id: this.echoWall.trim() || String(new Date().toISOString().slice(0, 10).replace(/-/g, '')),
+        wall_id: this.echoWall.trim() || this._todayWallId(),
         nickname: '', text: '', category: '其他'
       }
     },
@@ -241,8 +255,7 @@ export default {
     },
 
     onEchoSeed() {
-      const wallId = this.echoWall.trim() ||
-        String(new Date().toISOString().slice(0, 10).replace(/-/g, ''))
+      const wallId = this.echoWall.trim() || this._todayWallId()
       this.openConfirm('导入种子数据',
         `向墙 ${wallId} 写入 20 条内置共鸣留言（昵称/内容/抱抱数固定，标记为种子数据，全局仅可导入一次）`,
         async () => {
@@ -372,6 +385,10 @@ export default {
         const res = await mpAdminFeedbackList({ status: this.fbStatus, page, pageSize: 20 })
         if (res && res.success) {
           const d = res.data
+          // 删除末页最后一条后当前页越界:退回最后一页重查(与 loadEcho 同策略)
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadFeedback(d.total_pages)
+          }
           this.fb = { items: d.items, page: d.page, totalPages: d.total_pages, total: d.total }
         } else {
           this.showToast((res && res.message) || '加载许愿失败', 'error')
@@ -406,6 +423,10 @@ export default {
         const res = await mpAdminDraftList({ status: this.draftStatus, page, pageSize: 20 })
         if (res && res.success) {
           const d = res.data
+          // 删除末页最后一条后当前页越界:退回最后一页重查(与 loadEcho 同策略)
+          if (page > 1 && d.total_pages && d.page > d.total_pages) {
+            return this.loadDrafts(d.total_pages)
+          }
           this.drafts = { items: d.items, page: d.page, totalPages: d.total_pages, total: d.total }
         } else {
           this.showToast((res && res.message) || '加载投稿失败', 'error')

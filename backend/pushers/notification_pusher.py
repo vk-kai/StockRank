@@ -34,7 +34,16 @@ def _get_news_push_mode(config):
     return mode if mode in NEWS_PUSH_MODES else IMPORTANT_AI_FILTER
 
 
-def is_push_enabled():
+def is_push_enabled(channel=None):
+    """是否启用了推送通道。channel 省略=任一通道启用;'feishu'/'wechat'=指定通道。
+
+    带可选参数是为了 config_routes 测试推送按通道判断(曾以无参签名被传参调用,
+    TypeError → /api/config/push/test 必 500,「测试通知」按钮永远失败)。
+    """
+    if channel == 'feishu':
+        return _is_enabled(load_feishu_config())
+    if channel == 'wechat':
+        return _is_enabled(load_wechat_config())
     return _is_enabled(load_feishu_config()) or _is_enabled(load_wechat_config())
 
 

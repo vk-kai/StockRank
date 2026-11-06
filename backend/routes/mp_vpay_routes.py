@@ -262,6 +262,13 @@ def _deliver_order(openid, out_trade_no, wx_order_id, product_id, quantity, env,
         if order is not None:
             if order['status'] == 'delivered':
                 return False  # 幂等:已发货
+            if order['status'] in ('refunded', 'closed'):
+                # 终态保护:已退款/已关闭的订单收到(重放的)发货推送时直接拒绝,
+                # 否则会被改回 delivered 并重新授予权益——用户退款后又拿回权益
+                error_logger.error(
+                    f'虚拟支付:终态订单收到发货推送,拒绝复活 order={order["out_trade_no"]} '
+                    f'wx={wx_order_id} status={order["status"]}')
+                return False
             if openid and order['openid'] and openid != order['openid']:
                 # 串单风险:不发货、不重试(回 0 终止平台重推),人工排查
                 error_logger.error(
@@ -650,13 +657,18 @@ def check_pending_orders(max_age_hours=PENDING_QUERY_MAX_HOURS, batch_limit=50):
 
 
 def cleanup_expired_pending_orders():
-    """删除超过10分钟仍未支付的 pending 订单。"""
-    ten_mins_ago = (datetime.now() - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+    """删除超过查询窗口(PENDING_QUERY_MAX_HOURS+1h)仍未支付的 pending 订单。
+
+    原先 10 分钟就硬删,与兜底查单的 24h 窗口矛盾:推送丢失+迟到支付的场景里,
+    兜底查单正是为 10 分钟后的补发货而存在,提前删单会让用户已扣款却永久无货
+    无记录。窗口外加 1h 缓冲再删,与 check_pending_orders 的口径闭环。"""
+    cutoff = (datetime.now() - timedelta(hours=PENDING_QUERY_MAX_HOURS + 1)
+              ).strftime('%Y-%m-%d %H:%M:%S')
     with _db() as conn:
-        cursor = conn.execute("DELETE FROM vpay_orders WHERE status = 'pending' AND created_at < ?", (ten_mins_ago,))
+        cursor = conn.execute("DELETE FROM vpay_orders WHERE status = 'pending' AND created_at < ?", (cutoff,))
         deleted = cursor.rowcount
     if deleted > 0:
-        logger.info(f'虚拟支付:清理超过10分钟未支付订单 {deleted} 条')
+        logger.info(f'虚拟支付:清理超过{PENDING_QUERY_MAX_HOURS + 1}小时未支付订单 {deleted} 条')
     return deleted
 
 
